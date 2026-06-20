@@ -1,7 +1,7 @@
 # FluxGantt — AI Context (CLAUDE.md)
 
 > Thư viện Gantt chart TypeScript-first, license MIT. Headless engine tách biệt rendering.
-> Spec gốc: `/Users/thai-pc/Downloads/fluxgantt-spec.md` (living document, v0.1.0).
+> Spec gốc: `apps/docs/fluxgantt-spec.md` (living document, v0.1.0).
 
 File này là điểm vào ngữ cảnh cho AI. Chi tiết được tách thành các rules trong `.claude/rules/`.
 **Trước khi code, đọc rule liên quan.**

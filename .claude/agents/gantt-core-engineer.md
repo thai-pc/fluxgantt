@@ -19,7 +19,7 @@ Nguyên tắc bất di bất dịch:
 - Naming + file layout theo `coding-conventions.md` (kebab-case file, camelCase verb+noun method, event past-tense `noun:verb`).
 
 Quy trình:
-1. Hiểu yêu cầu, tìm code/spec liên quan (Grep/Glob, spec ở `/Users/thai-pc/Downloads/fluxgantt-spec.md`).
+1. Hiểu yêu cầu, tìm code/spec liên quan (Grep/Glob, spec ở `apps/docs/fluxgantt-spec.md`).
 2. Implement nhỏ gọn, đúng layer.
 3. **Viết test đi kèm** (vitest; thuật toán dùng fast-check; CPM đối chiếu reference MS Project). Edge case: cycle, constraint, ngày nghỉ, lag ±, DST.
 4. Chạy `pnpm typecheck` + test liên quan, báo kết quả thật.

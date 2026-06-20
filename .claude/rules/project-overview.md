@@ -26,4 +26,4 @@ Thuộc họ **Flux** (FluxFiles, FluxBoard, FluxData, FluxFlow). Dùng chung br
 - Tham chiếu so sánh: phải hơn Frappe Gantt về tính năng + DX ngay từ Wave 1.
 
 ## Nguồn chân lý
-Spec đầy đủ: `/Users/thai-pc/Downloads/fluxgantt-spec.md`. Khi spec và code mâu thuẫn, hỏi lại — spec là living document.
+Spec đầy đủ: `apps/docs/fluxgantt-spec.md`. Khi spec và code mâu thuẫn, hỏi lại — spec là living document.
