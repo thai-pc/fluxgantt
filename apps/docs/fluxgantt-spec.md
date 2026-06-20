@@ -4,7 +4,7 @@
 
 | | |
 |---|---|
-| **Version** | 0.1.0 (Pre-launch Draft) |
+| **Version** | 0.1.1 (Pre-launch Draft — revised) |
 | **Status** | Planning / Pre-build |
 | **Author** | Flux Toolkit Team |
 | **License** | Core MIT · Pro Commercial · Cloud SaaS |
@@ -204,7 +204,7 @@ Có cơ hội rõ ràng cho một thư viện MIT-licensed mang lại:
 | **Architecture** | Headless core (state + logic) tách biệt với rendering |
 | **State management** | Reactive store dựa trên signal tự viết, theo semantics của Preact Signals, zero dependency với React/Vue |
 | **Rendering** | SVG chính (sạch, vector, accessible, export được); fallback Canvas tự động khi task count > 2,000 |
-| **Date arithmetic** | Temporal API (`@js-temporal/polyfill`), fallback `date-fns` cho ergonomics. Lý do: Temporal xử lý timezone và calendar đúng, native `Date` không đáng tin |
+| **Date arithmetic** | Temporal API qua lớp adapter nội bộ. Dùng `globalThis.Temporal` native nếu runtime có; `@js-temporal/polyfill` là **optional peerDependency** (consumer tự cài khi cần, KHÔNG bundle vào core → không tính vào bundle budget). `date-fns` chỉ cho ergonomics phụ. Lý do: Temporal xử lý timezone/DST đúng, native `Date` không đáng tin |
 | **Multiplayer** | Yjs (CRDT) — chỉ Pro/Cloud. Reference: tldraw, BlockNote dùng Yjs thành công |
 | **Build tooling** | tsup (library packages), vite (demo apps), changesets (versioning + changelog) |
 | **Testing** | vitest (unit), playwright (e2e + visual regression), @testing-library (framework wrappers) |
@@ -330,7 +330,7 @@ Có cơ hội rõ ràng cho một thư viện MIT-licensed mang lại:
 
 3. **Plugin system cho tính năng non-core** — MS Project import, AI scheduling, custom calendar đều là plugin. Giữ core bundle dưới 30kb gzip.
 
-4. **Tree-shakable mọi thứ** — Chỉ import module cần dùng. Một Gantt "hello world" chỉ render task nên dưới 15kb gzip.
+4. **Tree-shakable mọi thứ** — Chỉ import module cần dùng. Một Gantt "hello world" chỉ render task nên dưới 15kb gzip. Budget core (<30kb) / hello-world (<15kb) **không bao gồm Temporal polyfill** (optional peerDependency, xem §4.1).
 
 5. **Core framework-agnostic, wrapper opinionated** — Core không có opinion về UI framework. Wrapper cung cấp API idiomatic cho mỗi framework (hooks cho React, composable cho Vue, runes cho Svelte...).
 
@@ -355,16 +355,22 @@ type BaselineId   = Brand<string, 'BaselineId'>;
 type ProjectId    = Brand<string, 'ProjectId'>;
 ```
 
+> **Coercion ở boundary:** API công khai nhận `string` cho ID (xem ví dụ §7.1); core tự brand nội bộ qua helper `toTaskId(s: string): TaskId`. Người dùng KHÔNG phải tự viết `as TaskId`. Branded type chỉ ràng buộc nội bộ giữa các hàm core để tránh trộn `TaskId`/`ResourceId`.
+
 ### 6.2 Core Entity Types
 
 ```typescript
+// Mọi mốc lịch trình nhận nhiều dạng ở input, chuẩn hoá về Temporal nội bộ
+type DateInput = string | Date | Temporal.ZonedDateTime | Temporal.PlainDate;
+
 type Task = {
   id:          TaskId;
   name:        string;
-  start:       Date;               // ISO Date
-  end:         Date;               // ISO Date
-  duration?:   number;             // tính theo working hour; derive nếu không có
+  start:       DateInput;          // string ISO | Date | Temporal; chuẩn hoá về Temporal nội bộ
+  end:         DateInput;          // như trên
+  duration?:   number;             // working hour; derive từ start/end nếu thiếu
   progress:    number;             // 0..1
+  priority?:   number;             // số nhỏ = ưu tiên cao; dùng cho resource leveling (§13.2)
   parent?:     TaskId;             // parent trong hierarchy
   type:        'task' | 'summary' | 'milestone' | 'project';
   constraint?: TaskConstraint;
@@ -393,12 +399,12 @@ type Dependency = {
 type TaskConstraint =
   | { kind: 'asap' }                           // càng sớm càng tốt
   | { kind: 'alap' }                           // càng muộn càng tốt
-  | { kind: 'must-start-on'; date: Date }
-  | { kind: 'must-finish-on'; date: Date }
-  | { kind: 'start-no-earlier-than'; date: Date }
-  | { kind: 'start-no-later-than'; date: Date }
-  | { kind: 'finish-no-earlier-than'; date: Date }
-  | { kind: 'finish-no-later-than'; date: Date };
+  | { kind: 'must-start-on'; date: DateInput }
+  | { kind: 'must-finish-on'; date: DateInput }
+  | { kind: 'start-no-earlier-than'; date: DateInput }
+  | { kind: 'start-no-later-than'; date: DateInput }
+  | { kind: 'finish-no-earlier-than'; date: DateInput }
+  | { kind: 'finish-no-later-than'; date: DateInput };
 
 type Resource = {
   id:           ResourceId;
@@ -426,7 +432,7 @@ type Baseline = {
 type WorkingCalendar = {
   workingDays:   ('mon'|'tue'|'wed'|'thu'|'fri'|'sat'|'sun')[];
   workingHours:  { start: string; end: string }[];   // ví dụ "09:00"–"17:00"
-  holidays:      Date[];
+  holidays:      DateInput[];
   timezone:      string;         // IANA timezone, ví dụ "America/New_York"
 };
 ```
@@ -441,25 +447,25 @@ type GanttConfig = {
   resources?:    Resource[];      // Pro
   baselines?:    Baseline[];      // Pro
 
-  // Hiển thị
-  viewMode:      'day' | 'week' | 'month' | 'quarter' | 'year';
-  density:       'compact' | 'default' | 'comfortable';
-  theme:         'light' | 'dark' | 'auto';
-  rtl:           boolean;
-  locale:        string;          // 'en', 'vi', 'ja', ...
+  // Hiển thị (đều optional + có default; thường chỉ cần set viewMode)
+  viewMode?:     'day' | 'week' | 'month' | 'quarter' | 'year';  // default 'week'
+  density?:      'compact' | 'default' | 'comfortable';          // default 'default'
+  theme?:        'light' | 'dark' | 'auto';                      // default 'auto'
+  rtl?:          boolean;                                        // default false
+  locale?:       string;          // default 'en'
 
   // Calendar
   calendar?:     WorkingCalendar;
 
-  // Tính năng
-  enableCriticalPath:    boolean;
-  enableResourceView:    boolean; // Pro
-  enableBaselines:       boolean; // Pro
-  enableDependencyDrag:  boolean;
-  enableKeyboardNav:     boolean;
+  // Tính năng (optional; default false trừ khi ghi chú)
+  enableCriticalPath?:    boolean; // default false
+  enableResourceView?:    boolean; // Pro, default false
+  enableBaselines?:       boolean; // Pro, default false
+  enableDependencyDrag?:  boolean; // default true
+  enableKeyboardNav?:     boolean; // default true
 
   // Read-only
-  readOnly:      boolean;
+  readOnly?:     boolean;          // default false
 
   // Callback
   onTaskChange?:       (task: Task, prev: Task) => void;
@@ -497,13 +503,15 @@ gantt.mount(document.getElementById('gantt-container'));
 gantt.addTask(task: Omit<Task, 'id' | 'createdAt' | 'updatedAt'>): Task
 gantt.updateTask(id: TaskId, patch: Partial<Task>): Task
 gantt.removeTask(id: TaskId): void
-gantt.moveTask(id: TaskId, newStart: Date): Task
+gantt.moveTask(id: TaskId, newStart: DateInput): Task
 gantt.resizeTask(id: TaskId, newDuration: number): Task
 gantt.setProgress(id: TaskId, progress: number): Task
 gantt.getTask(id: TaskId): Task | undefined
 gantt.getTasks(): Task[]
 gantt.findTasks(predicate: (t: Task) => boolean): Task[]
 ```
+
+> **Cascade:** `moveTask` / `resizeTask` / `updateTask` mặc định dời các task phụ thuộc theo dependency (FS/SS/FF/SF + lag) và tôn trọng `constraint`, phát `task:moved` cho mọi task bị ảnh hưởng. Tắt bằng scheduling mode `manual`.
 
 ### 7.3 Dependency Operations
 
@@ -554,16 +562,16 @@ gantt.getSelection(): TaskId[]
 ### 7.8 IO
 
 ```typescript
-gantt.import.json(data: object): void
-gantt.import.csv(csv: string, mapping?: ColumnMapping): void
-gantt.import.msproject(xml: string): void                      // Pro
+gantt.importJson(data: object): void
+gantt.importCsv(csv: string, mapping?: ColumnMapping): void
+gantt.importMsproject(xml: string): void                       // Pro
 
-gantt.export.json(): object
-gantt.export.csv(columns?: string[]): string
-gantt.export.png(options?: ExportOptions): Promise<Blob>
-gantt.export.svg(options?: ExportOptions): string
-gantt.export.pdf(options?: ExportOptions): Promise<Blob>
-gantt.export.msproject(): string                                // Pro
+gantt.exportJson(): object
+gantt.exportCsv(columns?: string[]): string
+gantt.exportPng(options?: ExportOptions): Promise<Blob>
+gantt.exportSvg(options?: ExportOptions): string
+gantt.exportPdf(options?: ExportOptions): Promise<Blob>
+gantt.exportMsproject(): string                                 // Pro
 ```
 
 ### 7.9 Events
@@ -573,7 +581,7 @@ gantt.on('task:added',          (task: Task) => void): UnsubscribeFn
 gantt.on('task:moved',          (task: Task, prevStart: Date) => void)
 gantt.on('task:resized',        (task: Task, prevDuration: number) => void)
 gantt.on('task:removed',        (taskId: TaskId) => void)
-gantt.on('task:progress',       (task: Task, prevProgress: number) => void)
+gantt.on('task:progressed',     (task: Task, prevProgress: number) => void)
 gantt.on('dependency:added',    (dep: Dependency) => void)
 gantt.on('dependency:removed',  (depId: DependencyId) => void)
 gantt.on('selection:changed',   (taskIds: TaskId[]) => void)
@@ -795,6 +803,7 @@ FluxGantt là công cụ business chuyên nghiệp. Aesthetic phải truyền t�
 - Critical path phân biệt được không cần màu (viền dashed)
 - Focus indicator trên mọi phần tử tương tác
 - Tôn trọng `prefers-reduced-motion`
+- **Chế độ Canvas (≥2.000 task)** vẫn giữ a11y: một lớp DOM ẩn (offscreen) chứa ARIA grid + row focusable chạy song song với Canvas vẽ bar, để keyboard navigation và screen reader không bị mất khi đổi renderer (xem §5.1). WCAG AA áp dụng cho cả hai renderer.
 
 ---
 
@@ -958,7 +967,7 @@ task:added
 task:moved
 task:resized
 task:removed
-task:progress
+task:progressed
 dependency:added
 dependency:removed
 resource:assigned
@@ -1167,6 +1176,8 @@ fluxgantt/
 ## 12. Database Schema (Cloud Tier)
 
 PostgreSQL schema cho bản Cloud hosted. Dùng Drizzle ORM.
+
+> **Mapping DB ↔ type:** một số cột đặt tên khác field trong type công khai (§6.2): `tasks.end_at` ↔ `Task.end`, `tasks.constraint_data` ↔ `Task.constraint`, `resources.cost_rate`/`cost_curr` ↔ `Resource.cost`. Lớp ánh xạ nằm trong `@fluxgantt/cloud-sdk`, không để chênh lệch tên rò ra API công khai.
 
 ```sql
 -- Organizations (root multi-tenant)
@@ -1426,7 +1437,7 @@ function autoSchedule(naturalLanguageInput):
               Output JSON with tasks and dependencies.
               ${naturalLanguageInput}`
 
-    structuredPlan = callLLM(prompt, model='claude-sonnet-4')
+    structuredPlan = callLLM(prompt, model=config.aiModel)  // model cấu hình được, không hardcode
 
     // Stage 2: Áp dụng working calendar và resource constraint
     tasks = parseTasks(structuredPlan)
@@ -1441,6 +1452,8 @@ function autoSchedule(naturalLanguageInput):
 
     return scheduledTasks
 ```
+
+> **Bảo mật AI:** tách `naturalLanguageInput` (untrusted) khỏi system prompt; **validate lại** `structuredPlan` bằng schema trước khi dùng; AI chỉ *suggest* (user review + revert), không tự ghi đè plan. Chi tiết: `.claude/rules/security.md`.
 
 ---
 
@@ -1645,8 +1658,8 @@ Tín hiệu để trì hoãn Cloud:
 
 ### 18.1 Technical Risks
 
-**Risk:** SVG performance giảm với project lớn (>1000 task)
-**Mitigation:** Tự chuyển sang Canvas renderer khi vượt threshold. Dùng virtual scrolling. Benchmark liên tục.
+**Risk:** SVG performance giảm với project lớn (bắt đầu rõ từ ~1.000 task)
+**Mitigation:** Tự chuyển sang Canvas renderer khi vượt **ngưỡng chính thức 2.000 task** (thống nhất §4.1/§5.1). Dùng virtual scrolling. Benchmark liên tục để hiệu chỉnh ngưỡng.
 
 **Risk:** Bug thuật toán critical path ở edge case (cycle, constraint)
 **Mitigation:** Test suite mở rộng đối chiếu với output reference từ MS Project. Property-based testing với library fast-check.
@@ -1695,6 +1708,23 @@ Tín hiệu để trì hoãn Cloud:
 
 **Risk:** Tuân thủ GDPR/privacy cho Cloud tier
 **Mitigation:** Privacy-by-design từ đầu. Tùy chọn data residency cho Enterprise. Template DPA chuẩn sẵn sàng.
+
+### 18.5 Security (Library & Cloud)
+
+Threat model kỹ thuật (chi tiết & checklist đầy đủ trong `.claude/rules/security.md`). Vì FluxGantt là **library nhúng render dữ liệu untrusted**, lỗ hổng ở đây ảnh hưởng mọi app dùng nó.
+
+**Library (Core/Pro) — chạy trong app khách:**
+- **XSS qua render:** KHÔNG nội suy `task.name`/`notes`/`meta`/`color` vào SVG/DOM bằng `innerHTML`/template — dùng `textContent`/`setAttribute`. Validate `color` theo whitelist. Sanitize SVG khi export.
+- **Parsing untrusted (JSON/CSV/XML):** validate schema trước khi nạp store. **XML (MS Project) phải tắt external entity/DTD → chống XXE**; giới hạn size/độ sâu chống DoS. CSV export chống formula injection. Phát hiện cycle dependency (throw).
+- Tôn trọng CSP của host (không inline script/`eval`).
+
+**Cloud (Wave 3):**
+- **AuthZ multi-tenant:** mọi query scope `org_id`/`project_id` + kiểm `membership.role` ở server (chống IDOR).
+- **Share link:** token ≥32 byte entropy; `password_hash` dùng argon2/bcrypt; tôn trọng `expires_at`/`permission`.
+- **API key:** chỉ lưu `key_hash` + `prefix`; hỗ trợ `scopes`/`revoked_at`.
+- SQL param hoá (Drizzle); webhook ký HMAC + chống SSRF; rate limit (đặc biệt endpoint AI tốn phí). Secret không hardcode/log; Stripe webhook verify signature.
+
+**AI:** tách user input khỏi system prompt; validate output LLM bằng schema; AI *suggest* không *decide* (xem §13.3).
 
 ---
 
@@ -1749,7 +1779,7 @@ Tín hiệu để trì hoãn Cloud:
 ```json
 {
   "fluxgantt": {
-    "version": "1.0.0",
+    "schemaVersion": "1.0",
     "exported_at": "2026-06-20T10:00:00Z"
   },
   "project": {
@@ -1802,14 +1832,16 @@ function computeCriticalPath(
     for task in sorted:
         preds = predecessors.get(task.id) || []
 
+        // NOTE: nếu task.constraint (must-start-on / start-no-earlier-than / ASAP...) tồn tại
+        //       → áp vào ES sau khi tính từ predecessors (constraint override).
         if preds.empty:
-            es.set(task.id, task.start)
+            es.set(task.id, task.start)          // hoặc projectStart nếu ASAP
         else:
             earliest = -Infinity
             for pred in preds:
                 predTask = tasks.find(t => t.id == pred.from)
-                predEnd = computeEndConsideringType(predTask, ef, pred.type, pred.lag)
-                earliest = max(earliest, predEnd)
+                candidate = earliestStartFromPred(predTask, task, es, ef, pred.type, pred.lag, calendar)
+                earliest = max(earliest, candidate)
             es.set(task.id, earliest)
 
         ef.set(task.id, addWorkingHours(es.get(task.id), task.duration, calendar))
@@ -1847,19 +1879,19 @@ function computeCriticalPath(
     return criticalPath
 }
 
-function computeEndConsideringType(
-    predTask: Task,
-    ef: Map<TaskId, Date>,
-    depType: DependencyType,
-    lag: number
+// Trả về earliest start cho `succ` do ràng buộc từ MỘT predecessor link.
+// es/ef truyền tường minh (không dùng biến ngoài scope); FF/SF dùng succ.duration (không phải pred).
+function earliestStartFromPred(
+    pred: Task, succ: Task,
+    es: Map<TaskId, Date>, ef: Map<TaskId, Date>,
+    depType: DependencyType, lag: number,
+    calendar: WorkingCalendar
 ): Date {
-    base = ef.get(predTask.id)
-
     switch depType:
-        case 'FS': return addWorkingHours(base, lag)
-        case 'SS': return addWorkingHours(es.get(predTask.id), lag)
-        case 'FF': return addWorkingHours(ef.get(predTask.id), lag - predTask.duration)
-        case 'SF': return addWorkingHours(es.get(predTask.id), lag - predTask.duration)
+        case 'FS': return addWorkingHours(ef.get(pred.id), lag, calendar)                  // succ.start ≥ pred.EF + lag
+        case 'SS': return addWorkingHours(es.get(pred.id), lag, calendar)                  // succ.start ≥ pred.ES + lag
+        case 'FF': return addWorkingHours(ef.get(pred.id), lag - succ.duration, calendar)  // succ.EF ≥ pred.EF + lag
+        case 'SF': return addWorkingHours(es.get(pred.id), lag - succ.duration, calendar)  // succ.EF ≥ pred.ES + lag
 }
 ```
 
@@ -1900,6 +1932,8 @@ function computeEndConsideringType(
 ## Kết
 
 Đây là bản spec living document. Khi sản phẩm phát triển, các phần sẽ được cập nhật, và thay đổi lớn sẽ phản ánh qua version number ở đầu tài liệu.
+
+**Revision 0.1.1 (review hoà giải mâu thuẫn):** Temporal là optional peerDependency không tính vào bundle budget (§4.1, §5.2); thêm `DateInput` + `Task.priority`, ID coercion ở boundary (§6); `GanttConfig` flags optional + default (§6.3); thống nhất API flat `exportPng`/`importJson` (§7.8); cascade behavior (§7.2); event `task:progressed` (§7.9, §10.2); a11y giữ ở chế độ Canvas (§8.5); ngưỡng renderer 2.000 (§18.1); mapping DB↔type (§12); AI model cấu hình được (§13.3); sửa lỗi scope `es` + `succ.duration` trong pseudocode CPM (§20); thêm §18.5 Security; export bundle dùng `schemaVersion`.
 
 **Liên hệ:**
 
