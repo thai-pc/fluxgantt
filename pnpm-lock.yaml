@@ -37,10 +37,6 @@ importers:
         version: 8.61.1(eslint@9.39.4)(typescript@5.9.3)
 
   packages/core:
-    dependencies:
-      '@js-temporal/polyfill':
-        specifier: ^0.5.1
-        version: 0.5.1
     devDependencies:
       '@fluxgantt/eslint-config':
         specifier: workspace:*
@@ -48,6 +44,9 @@ importers:
       '@fluxgantt/tsconfig':
         specifier: workspace:*
         version: link:../../tooling/tsconfig
+      '@js-temporal/polyfill':
+        specifier: ^0.5.1
+        version: 0.5.1
       tsup:
         specifier: ^8.3.5
         version: 8.5.1(postcss@8.5.15)(typescript@5.9.3)

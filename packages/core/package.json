@@ -30,12 +30,18 @@
   "devDependencies": {
     "@fluxgantt/eslint-config": "workspace:*",
     "@fluxgantt/tsconfig": "workspace:*",
+    "@js-temporal/polyfill": "^0.5.1",
     "tsup": "^8.3.5",
     "typescript": "^5.7.2",
     "vitest": "^2.1.8"
   },
-  "dependencies": {
+  "peerDependencies": {
     "@js-temporal/polyfill": "^0.5.1"
+  },
+  "peerDependenciesMeta": {
+    "@js-temporal/polyfill": {
+      "optional": true
+    }
   },
   "publishConfig": {
     "access": "public"

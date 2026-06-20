@@ -3,6 +3,15 @@
 
 export const VERSION = '0.0.0';
 
+// ID coercion helpers (spec §6.1)
+export {
+  toTaskId,
+  toResourceId,
+  toDependencyId,
+  toBaselineId,
+  toProjectId,
+} from './types.js';
+
 export type {
   Brand,
   TaskId,
@@ -10,8 +19,11 @@ export type {
   DependencyId,
   BaselineId,
   ProjectId,
+  DateInput,
   DependencyType,
   TaskKind,
+  TaskConstraint,
+  ResourceAssignment,
   Task,
   Dependency,
 } from './types.js';
