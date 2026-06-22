@@ -70,3 +70,18 @@ export interface Dependency {
   type: DependencyType;
   lag?: number; // giờ; âm = lead time
 }
+
+export type WeekdayCode = 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat' | 'sun';
+
+/** Cửa sổ giờ làm việc trong ngày, định dạng "HH:MM" (24h). */
+export interface WorkingHours {
+  start: string;
+  end: string;
+}
+
+export interface WorkingCalendar {
+  workingDays: WeekdayCode[];
+  workingHours: WorkingHours[]; // có thể nhiều cửa sổ (vd nghỉ trưa)
+  holidays: DateInput[];
+  timezone: string; // IANA, vd "America/New_York"
+}

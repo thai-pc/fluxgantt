@@ -11,6 +11,16 @@ export type { ReadonlySignal } from './signals.js';
 export { TaskStore, DependencyStore } from './store/index.js';
 export type { TaskInput, TaskPatch, LinkOptions } from './store/index.js';
 
+// Compute layer (spec §5.1, §13)
+export {
+  DEFAULT_CALENDAR,
+  isWorkingDay,
+  isHoliday,
+  addWorkingHours,
+  subtractWorkingHours,
+  differenceInWorkingHours,
+} from './compute/index.js';
+
 // ID coercion helpers (spec §6.1)
 export { toTaskId, toResourceId, toDependencyId, toBaselineId, toProjectId } from './types.js';
 
@@ -28,4 +38,7 @@ export type {
   ResourceAssignment,
   Task,
   Dependency,
+  WeekdayCode,
+  WorkingHours,
+  WorkingCalendar,
 } from './types.js';
