@@ -40,3 +40,7 @@ pnpm-debug.log*
 .cache/
 .vercel/
 .wrangler/
+
+# Claude subagent working artifacts (handoff files, không commit — trừ README)
+.claude/work/*
+!.claude/work/README.md
