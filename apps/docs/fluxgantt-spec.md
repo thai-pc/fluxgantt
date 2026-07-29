@@ -1883,7 +1883,9 @@ function computeCriticalPath(
     criticalPath: TaskId[] = []
 
     for task in tasks:
-        slack = differenceInWorkingHours(ls.get(task.id), es.get(task.id), calendar)
+        // slack = LS - ES ≥ 0; differenceInWorkingHours(from, to) dương khi `to` sau `from`,
+        // nên tham số phải là (es, ls) — KHÔNG phải (ls, es) (sẽ ra dấu âm).
+        slack = differenceInWorkingHours(es.get(task.id), ls.get(task.id), calendar)
         if slack == 0:
             criticalPath.push(task.id)
 
