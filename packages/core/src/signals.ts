@@ -1,22 +1,22 @@
-// Reactive primitive tự viết — semantics theo Preact Signals, ZERO dependency với
-// React/Vue (spec §4.1, §5.2). Headless: không đụng DOM/framework.
+// Hand-rolled reactive primitive — Preact-Signals-like semantics, ZERO dependency on
+// React/Vue (spec §4.1, §5.2). Headless: never touches the DOM or any framework.
 //
 // API: signal() / computed() / effect() / batch() / untracked().
-// Mô hình push-based đơn giản: signal là source, effect/computed là subscriber.
-// Đây là skeleton Wave 1 — đủ đúng cho dependency tracking + batching; tối ưu
-// glitch-free/diamond để sau (xem note cuối file).
+// Simple push-based model: a signal is a source, an effect/computed is a subscriber.
+// This is the Wave 1 skeleton — correct enough for dependency tracking + batching;
+// glitch-free/diamond optimization is deferred (see note at the end of the file).
 
 export interface ReadonlySignal<T> {
   readonly value: T;
-  /** Đọc giá trị KHÔNG đăng ký dependency. */
+  /** Read the value WITHOUT registering a dependency. */
   peek(): T;
 }
 
 type DepSet = Set<ReactiveNode>;
 
-/** Node phản ứng (effect hoặc computed) — thứ có thể "subscribe" vào signal. */
+/** A reactive node (effect or computed) — something that can subscribe to a signal. */
 abstract class ReactiveNode {
-  /** Các tập subscriber mà node này đang nằm trong (để cleanup trước khi chạy lại). */
+  /** Subscriber sets this node currently belongs to (used to clean up before re-running). */
   readonly deps: Set<DepSet> = new Set();
 
   abstract _notify(): void;
@@ -84,7 +84,7 @@ class ComputedImpl<T> extends ReactiveNode implements ReadonlySignal<T> {
     if (this.#dirty) {
       this._cleanup();
       const prev = activeSub;
-      // eslint-disable-next-line @typescript-eslint/no-this-alias -- reactive graph: computed tự đăng ký làm subscriber khi tính
+      // eslint-disable-next-line @typescript-eslint/no-this-alias -- reactive graph: the computed registers itself as the active subscriber while evaluating
       activeSub = this;
       try {
         this.#value = this.#fn();
@@ -131,7 +131,7 @@ class EffectImpl extends ReactiveNode {
     if (!this.#active) return;
     this._cleanup();
     const prev = activeSub;
-    // eslint-disable-next-line @typescript-eslint/no-this-alias -- reactive graph: effect tự đăng ký làm subscriber khi chạy
+    // eslint-disable-next-line @typescript-eslint/no-this-alias -- reactive graph: the effect registers itself as the active subscriber while running
     activeSub = this;
     try {
       this.#fn();
@@ -148,33 +148,33 @@ class EffectImpl extends ReactiveNode {
 }
 
 function flush(): void {
-  // Lặp tới khi ổn định (effect có thể kéo theo effect khác).
+  // Loop until stable (an effect may trigger further effects).
   let guard = 0;
   while (pending.size > 0) {
-    if (++guard > 10_000) throw new Error('signals: flush loop không hội tụ (cycle?)');
+    if (++guard > 10_000) throw new Error('signals: flush loop did not converge (cycle?)');
     const batchList = [...pending];
     pending.clear();
     for (const e of batchList) e._run();
   }
 }
 
-/** Tạo một reactive signal có thể đọc/ghi qua `.value`. */
+/** Create a reactive signal that can be read/written through `.value`. */
 export function signal<T>(value: T): Signal<T> {
   return new Signal(value);
 }
 
-/** Giá trị dẫn xuất, memoized, tự cập nhật khi dependency đổi. */
+/** A derived, memoized value that updates automatically when its dependencies change. */
 export function computed<T>(fn: () => T): ReadonlySignal<T> {
   return new ComputedImpl(fn);
 }
 
-/** Chạy `fn` ngay và chạy lại mỗi khi dependency đổi. Trả về hàm dispose. */
+/** Run `fn` immediately and re-run it whenever its dependencies change. Returns a dispose fn. */
 export function effect(fn: () => void): () => void {
   const e = new EffectImpl(fn);
   return () => e.dispose();
 }
 
-/** Gộp nhiều write thành một lần flush effect. */
+/** Batch multiple writes into a single effect flush. */
 export function batch<T>(fn: () => T): T {
   batchDepth++;
   try {
@@ -185,7 +185,7 @@ export function batch<T>(fn: () => T): T {
   }
 }
 
-/** Chạy `fn` mà KHÔNG đăng ký dependency cho subscriber hiện tại. */
+/** Run `fn` WITHOUT registering dependencies for the current subscriber. */
 export function untracked<T>(fn: () => T): T {
   const prev = activeSub;
   activeSub = null;
@@ -196,6 +196,7 @@ export function untracked<T>(fn: () => T): T {
   }
 }
 
-// NOTE (Wave 1 skeleton): push-based naive có thể chạy effect dư trong đồ thị
-// diamond (A→B, A→C, B&C→D ⇒ D có thể chạy 2 lần). Đúng kết quả, chưa tối ưu.
-// Sẽ thay bằng version-based / lazy pull glitch-free khi tối ưu performance.
+// NOTE (Wave 1 skeleton): the naive push-based model may run an effect redundantly in a
+// diamond graph (A→B, A→C, B&C→D ⇒ D may run twice). The result is correct, just not
+// optimal. To be replaced with a version-based / lazy-pull glitch-free model when we
+// optimize performance.

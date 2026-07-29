@@ -1,7 +1,7 @@
-// Core type system (spec §6). Branded ID + DateInput chuẩn hoá về Temporal nội bộ.
+// Core type system (spec §6). Branded IDs + DateInput normalized to Temporal internally.
 import type { Temporal } from '@js-temporal/polyfill';
 
-// Branded ID types — ngăn trộn lẫn ID ở compile time (spec §6.1)
+// Branded ID types — prevent mixing up IDs at compile time (spec §6.1)
 export type Brand<T, B> = T & { readonly __brand: B };
 
 export type TaskId = Brand<string, 'TaskId'>;
@@ -10,22 +10,22 @@ export type DependencyId = Brand<string, 'DependencyId'>;
 export type BaselineId = Brand<string, 'BaselineId'>;
 export type ProjectId = Brand<string, 'ProjectId'>;
 
-// Coercion ở boundary: API công khai nhận string, core brand nội bộ (spec §6.1).
-// Người dùng không phải tự `as TaskId`.
+// Coercion at the boundary: the public API accepts plain strings, the core brands
+// them internally (spec §6.1). Callers never need to write `as TaskId`.
 export const toTaskId = (s: string): TaskId => s as TaskId;
 export const toResourceId = (s: string): ResourceId => s as ResourceId;
 export const toDependencyId = (s: string): DependencyId => s as DependencyId;
 export const toBaselineId = (s: string): BaselineId => s as BaselineId;
 export const toProjectId = (s: string): ProjectId => s as ProjectId;
 
-// Mọi mốc lịch trình nhận nhiều dạng ở input, chuẩn hoá về Temporal nội bộ (spec §6.2)
+// Schedule instants accept several input shapes; normalized to Temporal internally (spec §6.2).
 export type DateInput = string | Date | Temporal.ZonedDateTime | Temporal.PlainDate;
 
 export type DependencyType =
-  | 'FS' // Finish-to-Start (mặc định)
+  | 'FS' // Finish-to-Start (default)
   | 'SS' // Start-to-Start
   | 'FF' // Finish-to-Finish
-  | 'SF'; // Start-to-Finish (hiếm)
+  | 'SF'; // Start-to-Finish (rare)
 
 export type TaskKind = 'task' | 'summary' | 'milestone' | 'project';
 
@@ -47,18 +47,18 @@ export interface ResourceAssignment {
 export interface Task {
   id: TaskId;
   name: string;
-  start: DateInput; // chuẩn hoá về Temporal nội bộ
+  start: DateInput; // normalized to Temporal internally
   end: DateInput;
-  duration?: number; // working hour; derive từ start/end nếu thiếu
+  duration?: number; // working hours; derived from start/end when omitted
   progress: number; // 0..1
-  priority?: number; // số nhỏ = ưu tiên cao; dùng cho resource leveling (spec §13.2)
+  priority?: number; // lower = higher priority; used by resource leveling (spec §13.2)
   parent?: TaskId;
   type: TaskKind;
   constraint?: TaskConstraint;
   resources?: ResourceAssignment[]; // Pro
   notes?: string;
-  color?: string; // validate whitelist khi render (xem security rule)
-  meta?: Record<string, unknown>; // field tự do của user — untrusted khi hiển thị
+  color?: string; // must be whitelist-validated when rendered (see security rule)
+  meta?: Record<string, unknown>; // free-form user field — untrusted when displayed
   createdAt: Date;
   updatedAt: Date;
 }
@@ -68,12 +68,12 @@ export interface Dependency {
   from: TaskId;
   to: TaskId;
   type: DependencyType;
-  lag?: number; // giờ; âm = lead time
+  lag?: number; // hours; negative = lead time
 }
 
 export type WeekdayCode = 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat' | 'sun';
 
-/** Cửa sổ giờ làm việc trong ngày, định dạng "HH:MM" (24h). */
+/** A working-time window within a day, formatted as "HH:MM" (24h). */
 export interface WorkingHours {
   start: string;
   end: string;
@@ -81,9 +81,9 @@ export interface WorkingHours {
 
 export interface WorkingCalendar {
   workingDays: WeekdayCode[];
-  workingHours: WorkingHours[]; // có thể nhiều cửa sổ (vd nghỉ trưa)
+  workingHours: WorkingHours[]; // may contain multiple windows (e.g. a lunch break)
   holidays: DateInput[];
-  timezone: string; // IANA, vd "America/New_York"
+  timezone: string; // IANA, e.g. "America/New_York"
 }
 
 // Critical Path (CPM) result types (spec §13.1, §20 Appendix B). Placed here (not
