@@ -31,6 +31,8 @@
     "@fluxgantt/eslint-config": "workspace:*",
     "@fluxgantt/tsconfig": "workspace:*",
     "@js-temporal/polyfill": "^0.5.1",
+    "@vitest/coverage-v8": "2.1.9",
+    "fast-check": "^4.9.0",
     "tsup": "^8.3.5",
     "typescript": "^5.7.2",
     "vitest": "^2.1.8"

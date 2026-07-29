@@ -19,6 +19,13 @@ export {
   addWorkingHours,
   subtractWorkingHours,
   differenceInWorkingHours,
+  computeCriticalPath,
+  CyclicDependencyError,
+} from './compute/index.js';
+export type {
+  ComputeCriticalPathOptions,
+  ConstraintResolver,
+  ConstraintResolverContext,
 } from './compute/index.js';
 
 // ID coercion helpers (spec §6.1)
@@ -41,4 +48,6 @@ export type {
   WeekdayCode,
   WorkingHours,
   WorkingCalendar,
+  TaskSchedule,
+  CriticalPathResult,
 } from './types.js';

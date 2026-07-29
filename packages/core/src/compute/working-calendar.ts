@@ -206,7 +206,12 @@ function hoursToNs(hours: number): bigint {
 
 function assertProgress(guard: number): void {
   if (guard > 1_000_000) {
-    throw new Error('working-calendar: lịch không có thời gian làm việc khả dụng (lặp vô hạn)');
+    throw new Error(
+      'working-calendar: exceeded max iteration guard (1,000,000) — either the calendar has no ' +
+        'working time available, or the requested duration/lag magnitude is too large. Check ' +
+        'workingDays/workingHours are non-empty and task.duration / dependency.lag are within a ' +
+        'reasonable range.',
+    );
   }
 }
 
