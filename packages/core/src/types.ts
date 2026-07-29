@@ -85,3 +85,25 @@ export interface WorkingCalendar {
   holidays: DateInput[];
   timezone: string; // IANA, vd "America/New_York"
 }
+
+// Critical Path (CPM) result types (spec §13.1, §20 Appendix B). Placed here (not
+// co-located in compute/critical-path.ts) because the render layer also needs
+// `TaskSchedule` per-task to paint `.fg-task--critical` (dashed outline, spec §8.5).
+export interface TaskSchedule {
+  readonly taskId: TaskId;
+  readonly earlyStart: Temporal.ZonedDateTime;
+  readonly earlyFinish: Temporal.ZonedDateTime;
+  readonly lateStart: Temporal.ZonedDateTime;
+  readonly lateFinish: Temporal.ZonedDateTime;
+  /** Working hours; always ≥ 0 within epsilon (see CRITICAL_SLACK_EPSILON_HOURS). */
+  readonly slackHours: number;
+  /** true when slackHours ~ 0 (within CRITICAL_SLACK_EPSILON_HOURS). */
+  readonly isCritical: boolean;
+}
+
+export interface CriticalPathResult {
+  readonly schedule: ReadonlyMap<TaskId, TaskSchedule>;
+  /** Task ids with isCritical === true, in the same order as the input `tasks` array. */
+  readonly criticalTaskIds: readonly TaskId[];
+  readonly projectEnd: Temporal.ZonedDateTime;
+}

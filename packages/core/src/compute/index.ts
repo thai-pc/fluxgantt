@@ -6,3 +6,6 @@ export {
   subtractWorkingHours,
   differenceInWorkingHours,
 } from './working-calendar.js';
+
+export { computeCriticalPath, CyclicDependencyError } from './critical-path.js';
+export type { ComputeCriticalPathOptions, ConstraintResolver, ConstraintResolverContext } from './critical-path.js';
