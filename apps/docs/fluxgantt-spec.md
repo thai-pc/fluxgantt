@@ -348,7 +348,7 @@ Resource view/leveling, MS Project XML I/O, and baselines remain in the Pro tier
 ### 6.1 Branded ID Types
 
 ```typescript
-// Ngăn việc trộn lẫn ID type ở compile time
+// Prevent mixing up ID types at compile time
 type Brand<T, B> = T & { readonly __brand: B };
 
 type TaskId       = Brand<string, 'TaskId'>;
@@ -358,50 +358,50 @@ type BaselineId   = Brand<string, 'BaselineId'>;
 type ProjectId    = Brand<string, 'ProjectId'>;
 ```
 
-> **Coercion ở boundary:** API công khai nhận `string` cho ID (xem ví dụ §7.1); core tự brand nội bộ qua helper `toTaskId(s: string): TaskId`. Người dùng KHÔNG phải tự viết `as TaskId`. Branded type chỉ ràng buộc nội bộ giữa các hàm core để tránh trộn `TaskId`/`ResourceId`.
+> **Coercion at the boundary:** the public API accepts a `string` for IDs (see the §7.1 example); the core brands them internally via the `toTaskId(s: string): TaskId` helper. Users do NOT write `as TaskId` themselves. Branded types only constrain the internals between core functions to avoid mixing `TaskId`/`ResourceId`.
 
 ### 6.2 Core Entity Types
 
 ```typescript
-// Mọi mốc lịch trình nhận nhiều dạng ở input, chuẩn hoá về Temporal nội bộ
+// Schedule instants accept several input shapes; normalized to Temporal internally
 type DateInput = string | Date | Temporal.ZonedDateTime | Temporal.PlainDate;
 
 type Task = {
   id:          TaskId;
   name:        string;
-  start:       DateInput;          // string ISO | Date | Temporal; chuẩn hoá về Temporal nội bộ
-  end:         DateInput;          // như trên
-  duration?:   number;             // working hour; derive từ start/end nếu thiếu
+  start:       DateInput;          // ISO string | Date | Temporal; normalized to Temporal internally
+  end:         DateInput;          // as above
+  duration?:   number;             // working hours; derived from start/end when omitted
   progress:    number;             // 0..1
-  priority?:   number;             // số nhỏ = ưu tiên cao; dùng cho resource leveling (§13.2)
-  parent?:     TaskId;             // parent trong hierarchy
+  priority?:   number;             // lower = higher priority; used by resource leveling (§13.2)
+  parent?:     TaskId;             // parent in the hierarchy
   type:        'task' | 'summary' | 'milestone' | 'project';
   constraint?: TaskConstraint;
   resources?:  ResourceAssignment[];
   notes?:      string;
-  color?:      string;             // override màu mặc định
-  meta?:       Record<string, unknown>;  // field tùy biến của user
+  color?:      string;             // overrides the default color
+  meta?:       Record<string, unknown>;  // user's custom field
   createdAt:   Date;
   updatedAt:   Date;
 };
 
 type DependencyType =
-  | 'FS'   // Finish-to-Start  (mặc định; B bắt đầu sau khi A kết thúc)
-  | 'SS'   // Start-to-Start   (B bắt đầu khi A bắt đầu)
-  | 'FF'   // Finish-to-Finish (B kết thúc khi A kết thúc)
-  | 'SF';  // Start-to-Finish  (B kết thúc khi A bắt đầu; hiếm dùng)
+  | 'FS'   // Finish-to-Start  (default; B starts after A finishes)
+  | 'SS'   // Start-to-Start   (B starts when A starts)
+  | 'FF'   // Finish-to-Finish (B finishes when A finishes)
+  | 'SF';  // Start-to-Finish  (B finishes when A starts; rarely used)
 
 type Dependency = {
   id:    DependencyId;
   from:  TaskId;
   to:    TaskId;
   type:  DependencyType;
-  lag?:  number;        // giờ; âm = lead time
+  lag?:  number;        // hours; negative = lead time
 };
 
 type TaskConstraint =
-  | { kind: 'asap' }                           // càng sớm càng tốt
-  | { kind: 'alap' }                           // càng muộn càng tốt
+  | { kind: 'asap' }                           // as soon as possible
+  | { kind: 'alap' }                           // as late as possible
   | { kind: 'must-start-on'; date: DateInput }
   | { kind: 'must-finish-on'; date: DateInput }
   | { kind: 'start-no-earlier-than'; date: DateInput }
@@ -413,9 +413,9 @@ type Resource = {
   id:           ResourceId;
   name:         string;
   type:         'person' | 'team' | 'equipment' | 'material';
-  capacity:     number;          // giờ/ngày có thể làm
+  capacity:     number;          // working hours/day
   cost?:        { rate: number; currency: string };
-  calendar?:    WorkingCalendar; // override working calendar mặc định
+  calendar?:    WorkingCalendar; // overrides the default working calendar
   color?:       string;
   avatar?:      string;
 };
@@ -427,16 +427,16 @@ type ResourceAssignment = {
 
 type Baseline = {
   id:        BaselineId;
-  name:      string;             // ví dụ "v1.0 — Initial plan"
+  name:      string;             // e.g. "v1.0 — Initial plan"
   capturedAt: Date;
   tasks:     Map<TaskId, { start: Date; end: Date; duration: number }>;
 };
 
 type WorkingCalendar = {
   workingDays:   ('mon'|'tue'|'wed'|'thu'|'fri'|'sat'|'sun')[];
-  workingHours:  { start: string; end: string }[];   // ví dụ "09:00"–"17:00"
+  workingHours:  { start: string; end: string }[];   // e.g. "09:00"–"17:00"
   holidays:      DateInput[];
-  timezone:      string;         // IANA timezone, ví dụ "America/New_York"
+  timezone:      string;         // IANA timezone, e.g. "America/New_York"
 };
 ```
 
@@ -444,13 +444,13 @@ type WorkingCalendar = {
 
 ```typescript
 type GanttConfig = {
-  // Dữ liệu khởi tạo
+  // Initial data
   tasks?:        Task[];
   dependencies?: Dependency[];
   resources?:    Resource[];      // Pro
   baselines?:    Baseline[];      // Pro
 
-  // Hiển thị (đều optional + có default; thường chỉ cần set viewMode)
+  // Display (all optional + have defaults; usually you only set viewMode)
   viewMode?:     'day' | 'week' | 'month' | 'quarter' | 'year';  // default 'week'
   density?:      'compact' | 'default' | 'comfortable';          // default 'default'
   theme?:        'light' | 'dark' | 'auto';                      // default 'auto'
@@ -460,7 +460,7 @@ type GanttConfig = {
   // Calendar
   calendar?:     WorkingCalendar;
 
-  // Tính năng (optional; default false trừ khi ghi chú)
+  // Features (optional; default false unless noted)
   enableCriticalPath?:    boolean; // default false
   enableResourceView?:    boolean; // Pro, default false
   enableBaselines?:       boolean; // Pro, default false
