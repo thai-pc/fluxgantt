@@ -1,5 +1,6 @@
 export {
   DEFAULT_CALENDAR,
+  normalizeDate,
   isWorkingDay,
   isHoliday,
   addWorkingHours,
