@@ -1,18 +1,18 @@
 ---
-description: Review bảo mật thay đổi hiện tại (hoặc $ARGUMENTS) bằng security-reviewer subagent — checklist XSS/parsing/AI/authZ của FluxGantt.
-argument-hint: [cần review gì, vd "CSV importer" hoặc đường dẫn; trống = thay đổi hiện tại]
+description: Security-review the current change (or $ARGUMENTS) via the security-reviewer subagent — FluxGantt's XSS/parsing/AI/authZ checklist.
+argument-hint: [what to review, e.g. "CSV importer" or a path; empty = current change]
 ---
-Dùng **security-reviewer** subagent để review $ARGUMENTS.
+Use the **security-reviewer** subagent to review $ARGUMENTS.
 
-Nếu $ARGUMENTS trống, review thay đổi chưa commit (`git status` / `git diff`).
+If $ARGUMENTS is empty, review the uncommitted change (`git status` / `git diff`).
 
-Theo `.claude/agents/security-reviewer.md` và checklist `.claude/rules/security.md`, soi theo
-thứ tự rủi ro: XSS render (nội suy `task.name`/`notes`/`meta`/`color` vào SVG/DOM; whitelist
-color; sanitize export), parsing untrusted (validate schema, XXE cho XML, DoS size/depth,
-CSV formula injection, cycle throw), AI/prompt-injection, Cloud authZ (scope tenant + role
-server-side, share token entropy + hash, API key hash, SQL param, webhook HMAC/SSRF, rate
-limit), secret/dependency.
+Per `.claude/agents/security-reviewer.md` and the `.claude/rules/security.md` checklist, go in
+risk order: render XSS (interpolating `task.name`/`notes`/`meta`/`color` into SVG/DOM;
+whitelist color; sanitize export), untrusted parsing (schema validation, XXE for XML, DoS
+size/depth, CSV formula injection, cycle throw), AI/prompt-injection, Cloud authZ (scope by
+tenant + role server-side, share-token entropy + hash, API-key hash, SQL params, webhook
+HMAC/SSRF, rate limit), secrets/dependencies.
 
-Mỗi phát hiện: mức độ + `file:line` + vì sao nguy hiểm + cách sửa. Phân biệt lỗ hổng thật vs
-hardening; nếu an toàn thì nói rõ. Ghi findings đánh số vào `.claude/work/review-<slug>.md`.
-Chỉ review, không tự sửa.
+Each finding: severity + `file:line` + why it's dangerous + how to fix. Distinguish real
+vulnerabilities from hardening; if it's safe, say so. Write numbered findings to
+`.claude/work/review-<slug>.md`. Review only, do not fix.

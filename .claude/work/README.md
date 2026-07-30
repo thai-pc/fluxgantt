@@ -1,11 +1,11 @@
-# .claude/work — artifact bàn giao giữa subagent
+# .claude/work — subagent handoff artifacts
 
-Thư mục làm việc (gitignored) cho pipeline subagent. Mỗi bước ghi một file để bước sau đọc,
-thay vì suy lại diff từ đầu:
+Working directory (gitignored) for the subagent pipeline. Each step writes a file for the
+next step to read, instead of re-deriving the diff from scratch:
 
-- `plan-<slug>.md` — planner: quyết định tier + phạm vi v1.
-- `spec-<slug>.md` — spec-writer: design (API, type, layer, thuật toán, test plan).
-- `review-<slug>.md` — security-reviewer: findings đánh số Blocking/non-blocking cho `/fix`.
+- `plan-<slug>.md` — planner: tier decision + v1 scope.
+- `spec-<slug>.md` — spec-writer: design (API, types, layer, algorithm, test plan).
+- `review-<slug>.md` — security-reviewer: numbered Blocking/non-blocking findings for `/fix`.
 
-Nội dung ở đây **không commit** (chỉ file README này được track). Xem `.claude/agents/README.md`
-cho quy trình đầy đủ.
+Contents here are **not committed** (only this README is tracked). See
+`.claude/agents/README.md` for the full workflow.

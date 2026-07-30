@@ -1,15 +1,15 @@
 ---
-description: Implement một tính năng/fix trong @fluxgantt/core bằng gantt-core-engineer subagent, theo đúng convention repo + test đi kèm.
-argument-hint: <việc cần làm, hoặc slug spec đã có>
+description: Implement a feature/fix in @fluxgantt/core via the gantt-core-engineer subagent, following repo conventions with tests included.
+argument-hint: <what to do, or an existing spec slug>
 ---
-Dùng **gantt-core-engineer** subagent để implement: $ARGUMENTS
+Use the **gantt-core-engineer** subagent to implement: $ARGUMENTS
 
-Nếu đã có `.claude/work/spec-<slug>.md`, đọc nó làm đầu vào.
+If `.claude/work/spec-<slug>.md` already exists, read it as input.
 
-Theo `.claude/agents/gantt-core-engineer.md`: giữ headless-first (store/compute không DOM),
-core không import react/vue/svelte, Temporal cho mọi tính toán date, TypeScript strict +
-branded ID, tree-shakable trong budget, tier-gate đúng chỗ (không nhét Pro/Cloud vào core),
-naming/file-layout theo coding-conventions. Diff gọn, đúng layer. **Viết test đi kèm**, chạy
-`pnpm typecheck` + test liên quan, báo kết quả thật.
+Per `.claude/agents/gantt-core-engineer.md`: keep it headless-first (store/compute no DOM),
+core doesn't import react/vue/svelte, Temporal for all date math, TypeScript strict + branded
+IDs, tree-shakable within budget, tier-gate correctly (no Pro/Cloud code in core),
+naming/file-layout per coding-conventions. Tight diff, correct layer. **Write tests**, run
+`pnpm typecheck` + the relevant tests, report the real results.
 
-Không commit/tag/push — đó là bước người dùng làm.
+Do not commit/tag/push — that's the user's step.
