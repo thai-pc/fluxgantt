@@ -1182,9 +1182,9 @@ fluxgantt/
 
 ## 12. Database Schema (Cloud Tier)
 
-PostgreSQL schema cho bản Cloud hosted. Dùng Drizzle ORM.
+PostgreSQL schema for the hosted Cloud edition. Uses Drizzle ORM.
 
-> **Mapping DB ↔ type:** một số cột đặt tên khác field trong type công khai (§6.2): `tasks.end_at` ↔ `Task.end`, `tasks.constraint_data` ↔ `Task.constraint`, `resources.cost_rate`/`cost_curr` ↔ `Resource.cost`. Lớp ánh xạ nằm trong `@fluxgantt/cloud-sdk`, không để chênh lệch tên rò ra API công khai.
+> **DB ↔ type mapping:** some columns are named differently from the public type fields (§6.2): `tasks.end_at` ↔ `Task.end`, `tasks.constraint_data` ↔ `Task.constraint`, `resources.cost_rate`/`cost_curr` ↔ `Resource.cost`. The mapping layer lives in `@fluxgantt/cloud-sdk`, so the naming difference never leaks into the public API.
 
 ```sql
 -- Organizations (root multi-tenant)
@@ -1208,7 +1208,7 @@ CREATE TABLE users (
   created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- Membership (quan hệ user <-> org nhiều-nhiều)
+-- Membership (many-to-many user <-> org relationship)
 CREATE TABLE memberships (
   id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id     UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -1241,13 +1241,13 @@ CREATE TABLE tasks (
   name        VARCHAR(500) NOT NULL,
   start       TIMESTAMPTZ NOT NULL,
   end_at      TIMESTAMPTZ NOT NULL,
-  duration    INT,                       -- theo working hour
-  progress    NUMERIC(3,2) DEFAULT 0,    -- 0.00 đến 1.00
+  duration    INT,                       -- in working hours
+  progress    NUMERIC(3,2) DEFAULT 0,    -- 0.00 to 1.00
   type        VARCHAR(20) DEFAULT 'task',-- task/summary/milestone/project
   constraint_data JSONB,
   notes       TEXT,
   color       VARCHAR(20),
-  meta        JSONB,                      -- field tùy biến user
+  meta        JSONB,                      -- user's custom field
   sort_order  INT,
   created_by  UUID REFERENCES users(id),
   created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -1277,13 +1277,13 @@ CREATE TABLE resources (
   project_id  UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
   name        VARCHAR(200) NOT NULL,
   type        VARCHAR(50) NOT NULL,        -- person/team/equipment/material
-  capacity    NUMERIC(5,2) DEFAULT 8.0,    -- giờ/ngày
+  capacity    NUMERIC(5,2) DEFAULT 8.0,    -- hours/day
   cost_rate   NUMERIC(10,2),
   cost_curr   VARCHAR(3),
   calendar    JSONB,
   color       VARCHAR(20),
   avatar_url  TEXT,
-  user_id     UUID REFERENCES users(id),   -- link tới user nếu type='person'
+  user_id     UUID REFERENCES users(id),   -- links to a user when type='person'
   created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
@@ -1292,7 +1292,7 @@ CREATE TABLE resource_assignments (
   id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   task_id       UUID NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
   resource_id   UUID NOT NULL REFERENCES resources(id) ON DELETE CASCADE,
-  units         NUMERIC(3,2) DEFAULT 1.0,  -- 0.00 đến 1.00
+  units         NUMERIC(3,2) DEFAULT 1.0,  -- 0.00 to 1.00
   UNIQUE(task_id, resource_id)
 );
 
@@ -1301,7 +1301,7 @@ CREATE TABLE baselines (
   id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   project_id    UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
   name          VARCHAR(200) NOT NULL,
-  snapshot      JSONB NOT NULL,             -- state task lúc capture
+  snapshot      JSONB NOT NULL,             -- task state at capture time
   captured_by   UUID REFERENCES users(id),
   captured_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -1312,7 +1312,7 @@ CREATE TABLE comments (
   task_id     UUID NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
   user_id     UUID NOT NULL REFERENCES users(id),
   content     TEXT NOT NULL,
-  mentions    UUID[],                      -- array user ID được mention
+  mentions    UUID[],                      -- array of mentioned user IDs
   created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at  TIMESTAMPTZ
 );
@@ -1344,13 +1344,13 @@ CREATE TABLE share_links (
   created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- API keys (cho webhook integration)
+-- API keys (for webhook integration)
 CREATE TABLE api_keys (
   id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   org_id      UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
   name        VARCHAR(200) NOT NULL,
   key_hash    VARCHAR(255) NOT NULL,
-  prefix      VARCHAR(10) NOT NULL,         -- prefix hiện để nhận diện
+  prefix      VARCHAR(10) NOT NULL,         -- visible prefix for identification
   scopes      VARCHAR(100)[],
   last_used   TIMESTAMPTZ,
   created_by  UUID REFERENCES users(id),
@@ -1365,16 +1365,16 @@ CREATE TABLE api_keys (
 
 ### 13.1 Critical Path Method (CPM)
 
-Critical path là chuỗi task phụ thuộc dài nhất, quyết định thời gian tối thiểu của project. Task trên critical path có zero slack; bất kỳ delay nào cũng kéo dài trực tiếp ngày kết thúc project.
+The critical path is the longest chain of dependent tasks, which determines the project's minimum duration. Tasks on the critical path have zero slack; any delay directly extends the project's end date.
 
-**Pseudocode (đơn giản hóa):**
+**Pseudocode (simplified):**
 
 ```
 function computeCriticalPath(tasks, dependencies):
-    // 1. Topological sort task theo thứ tự dependency
+    // 1. Topological sort the tasks by dependency order
     sorted = topologicalSort(tasks, dependencies)
 
-    // 2. Forward pass: tính earliest start (ES) và earliest finish (EF)
+    // 2. Forward pass: compute earliest start (ES) and earliest finish (EF)
     for task in sorted:
         predecessors = dependencies.where(d => d.to == task.id)
         if predecessors is empty:
@@ -1383,7 +1383,7 @@ function computeCriticalPath(tasks, dependencies):
             task.ES = max(pred.EF + pred.lag for pred in predecessors)
         task.EF = task.ES + task.duration
 
-    // 3. Backward pass: tính latest start (LS) và latest finish (LF)
+    // 3. Backward pass: compute latest start (LS) and latest finish (LF)
     projectEnd = max(task.EF for task in tasks)
     for task in reversed(sorted):
         successors = dependencies.where(d => d.from == task.id)
@@ -1393,24 +1393,24 @@ function computeCriticalPath(tasks, dependencies):
             task.LF = min(succ.LS - succ.lag for succ in successors)
         task.LS = task.LF - task.duration
 
-    // 4. Slack = LS - ES; critical path = task có slack == 0
+    // 4. Slack = LS - ES; critical path = tasks with slack == 0
     criticalPath = [task for task in tasks if task.LS - task.ES == 0]
 
     return criticalPath
 ```
 
-**Edge case cần xử lý:**
+**Edge cases to handle:**
 
-- Cycle trong dependency (phát hiện, throw error)
-- Task có constraint (override ES/LF tính toán)
-- Working calendar (skip ngày không làm việc)
-- Lag/lead time (dương = chờ, âm = overlap)
+- Cycle in the dependencies (detect, throw an error)
+- Task with a constraint (overrides the computed ES/LF)
+- Working calendar (skip non-working days)
+- Lag/lead time (positive = wait, negative = overlap)
 
 ### 13.2 Resource Leveling
 
-Khi resource bị over-allocated, dịch task để giải quyết conflict trong khi vẫn tôn trọng dependency và constraint.
+When a resource is over-allocated, shift tasks to resolve the conflict while still respecting dependencies and constraints.
 
-**Cách tiếp cận (heuristic-based):**
+**Approach (heuristic-based):**
 
 ```
 function levelResources(tasks, dependencies, resources):
@@ -1418,7 +1418,7 @@ function levelResources(tasks, dependencies, resources):
         conflict = findEarliestOverAllocation(resources)
         candidateTasks = tasksUsing(conflict.resource, conflict.timeWindow)
 
-        // Sort theo priority: priority thấp trước, rồi slack cao trước
+        // Sort by priority: lower priority first, then higher slack first
         candidateTasks.sortBy(t => [t.priority, -t.slack])
 
         for task in candidateTasks:
@@ -1426,7 +1426,7 @@ function levelResources(tasks, dependencies, resources):
                 delayTo(task, conflict.resource.nextAvailable)
                 break
         else:
-            // Không thể resolve mà không vi phạm constraint
+            // Cannot resolve without violating a constraint
             report(conflict)
             break
 
@@ -1435,32 +1435,32 @@ function levelResources(tasks, dependencies, resources):
 
 ### 13.3 AI Auto-Schedule (Cloud Tier)
 
-Dùng LLM để generate schedule ban đầu từ mô tả natural language, sau đó tinh chỉnh bằng constraint solver.
+Use an LLM to generate an initial schedule from a natural-language description, then refine it with a constraint solver.
 
 ```
 function autoSchedule(naturalLanguageInput):
-    // Stage 1: LLM trích xuất task, dependency, duration
+    // Stage 1: the LLM extracts tasks, dependencies, durations
     prompt = `Extract project plan from this description.
               Output JSON with tasks and dependencies.
               ${naturalLanguageInput}`
 
-    structuredPlan = callLLM(prompt, model=config.aiModel)  // model cấu hình được, không hardcode
+    structuredPlan = callLLM(prompt, model=config.aiModel)  // configurable model, not hardcoded
 
-    // Stage 2: Áp dụng working calendar và resource constraint
+    // Stage 2: Apply the working calendar and resource constraints
     tasks = parseTasks(structuredPlan)
     dependencies = parseDependencies(structuredPlan)
 
-    // Stage 3: Chạy topological sort + tính earliest start
+    // Stage 3: Run topological sort + compute earliest start
     scheduledTasks = applyConstraints(tasks, dependencies, calendar, resources)
 
-    // Stage 4: Validate, optimize critical path
+    // Stage 4: Validate, optimize the critical path
     if hasResourceConflicts(scheduledTasks):
         scheduledTasks = levelResources(scheduledTasks, dependencies, resources)
 
     return scheduledTasks
 ```
 
-> **Bảo mật AI:** tách `naturalLanguageInput` (untrusted) khỏi system prompt; **validate lại** `structuredPlan` bằng schema trước khi dùng; AI chỉ *suggest* (user review + revert), không tự ghi đè plan. Chi tiết: `.claude/rules/security.md`.
+> **AI security:** separate `naturalLanguageInput` (untrusted) from the system prompt; **re-validate** `structuredPlan` against a schema before use; the AI only *suggests* (user reviews + reverts), never overwriting the plan automatically. Details: `.claude/rules/security.md`.
 
 ---
 
