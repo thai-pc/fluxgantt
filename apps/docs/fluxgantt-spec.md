@@ -1618,46 +1618,46 @@ A synchronized multi-channel launch:
 
 ### 17.1 Hard Gates (Go/No-Go Decisions)
 
-**Sau Tuần 8 (Free MVP Launch):**
+**After Week 8 (Free MVP Launch):**
 
-| Metric | Target | Nếu dưới target |
+| Metric | Target | If below target |
 |---|---|---|
-| GitHub stars (30 ngày) | 500+ | Audit lại distribution |
-| npm weekly downloads | 1,000+ | DX cần cải thiện |
-| Email waitlist signup | 200+ | Bỏ qua Pro launch |
-| Active discussion (issue) | 20+ | Xây community |
+| GitHub stars (30 days) | 500+ | Re-audit distribution |
+| npm weekly downloads | 1,000+ | DX needs improvement |
+| Email waitlist signups | 200+ | Skip the Pro launch |
+| Active discussion (issues) | 20+ | Build community |
 
 **Action matrix:**
 
-| Số metric pass | Hành động |
+| Metrics passed | Action |
 |---|---|
-| 4/4 pass | Tiếp tục Wave 2 Pro tier như kế hoạch |
-| 3/4 pass | Mở Pro pre-order với cap giảm (30 chỗ) |
-| 2/4 pass | Trì hoãn Pro 4 tuần, ship Wave 1.5 (theo yêu cầu community) |
-| 0–1/4 pass | Dừng kế hoạch monetization; re-evaluate positioning |
+| 4/4 pass | Continue with the Wave 2 Pro tier as planned |
+| 3/4 pass | Open Pro pre-orders with a reduced cap (30 spots) |
+| 2/4 pass | Delay Pro 4 weeks, ship Wave 1.5 (per community requests) |
+| 0–1/4 pass | Halt the monetization plan; re-evaluate positioning |
 
-**Sau Tuần 18 (Pro Tier Launch):**
+**After Week 18 (Pro Tier Launch):**
 
-| Metric | Target | Nếu dưới target |
+| Metric | Target | If below target |
 |---|---|---|
-| Pro license bán được | 50+ | Reposition Pro |
-| Tỷ lệ Pro → active usage | 60%+ | Cải thiện onboarding |
-| Tỷ lệ refund | <5% | Xử lý chất lượng |
-| Support ticket volume | <2/tuần | Cải thiện docs |
+| Pro licenses sold | 50+ | Reposition Pro |
+| Pro → active-usage rate | 60%+ | Improve onboarding |
+| Refund rate | <5% | Address quality |
+| Support ticket volume | <2/week | Improve docs |
 
-**Sau Tháng 6 (Quyết định Cloud Tier):**
+**After Month 6 (Cloud Tier Decision):**
 
-Tín hiệu để tiến hành Cloud:
-- 100+ khách Pro
-- 10+ câu hỏi "có bản hosted không?"
-- $5k+ MRR đủ cover infrastructure
-- Ít nhất 1 inquiry Enterprise
+Signals to proceed with Cloud:
+- 100+ Pro customers
+- 10+ "is there a hosted version?" questions
+- $5k+ MRR to cover infrastructure
+- At least 1 Enterprise inquiry
 
-Tín hiệu để trì hoãn Cloud:
-- Thị trường Pro vẫn đang validate
-- Capacity solo dev đang quá tải
-- Không có budget infrastructure
-- Không có demand rõ ràng từ khách non-dev
+Signals to delay Cloud:
+- The Pro market is still validating
+- Solo-dev capacity is overloaded
+- No infrastructure budget
+- No clear demand from non-dev customers
 
 ---
 
@@ -1665,17 +1665,17 @@ Tín hiệu để trì hoãn Cloud:
 
 ### 18.1 Technical Risks
 
-**Risk:** SVG performance giảm với project lớn (bắt đầu rõ từ ~1.000 task)
-**Mitigation:** Tự chuyển sang Canvas renderer khi vượt **ngưỡng chính thức 2.000 task** (thống nhất §4.1/§5.1). Dùng virtual scrolling. Benchmark liên tục để hiệu chỉnh ngưỡng.
+**Risk:** SVG performance degrades on large projects (noticeable from ~1,000 tasks)
+**Mitigation:** Automatically switch to the Canvas renderer above the **official 2,000-task threshold** (consistent with §4.1/§5.1). Use virtual scrolling. Benchmark continuously to tune the threshold.
 
-**Risk:** Bug thuật toán critical path ở edge case (cycle, constraint)
-**Mitigation:** Test suite mở rộng đối chiếu với output reference từ MS Project. Property-based testing với library fast-check.
+**Risk:** Critical path algorithm bugs in edge cases (cycle, constraint)
+**Mitigation:** An extensive test suite cross-checking against reference output from MS Project. Property-based testing with the fast-check library.
 
-**Risk:** Vấn đề tương thích MS Project XML
-**Mitigation:** Test với 20+ file .xml thực tế từ nhiều version MSP khác nhau. Xây test fixture library do community góp.
+**Risk:** MS Project XML compatibility issues
+**Mitigation:** Test with 20+ real .xml files from various MSP versions. Build a community-contributed test fixture library.
 
-**Risk:** Lỗi xử lý timezone (đặc biệt daylight saving)
-**Mitigation:** Dùng Temporal API xử lý đúng vấn đề này. Tránh native `Date` cho mọi tính toán.
+**Risk:** Timezone handling bugs (especially daylight saving)
+**Mitigation:** Use the Temporal API, which handles this correctly. Avoid native `Date` for all computation.
 
 ### 18.2 Market Risks
 
@@ -1686,56 +1686,56 @@ Tín hiệu để trì hoãn Cloud:
 - **Headless engine** running server-side → unlocks an **MCP server** (`@fluxgantt/mcp`) for AI agents — a qualitatively different AI integration, not an "AI button in the UI".
 - Release velocity + a healthy community + DX (docs, types, StackBlitz examples) as developer-retention advantages.
 
-**Risk:** Đối thủ được VC fund ra sản phẩm tương tự
-**Mitigation:** Tốc độ và tập trung community. Solo + nhận diện brand Flux cho lợi thế 6–12 tháng đầu. Pivot sang niche nếu cần.
+**Risk:** A VC-funded competitor ships a similar product
+**Mitigation:** Speed and community focus. Solo + Flux brand recognition for a 6–12 month early advantage. Pivot to a niche if needed.
 
-**Risk:** AI scheduling không ổn định trong production
-**Mitigation:** Định vị AI là "suggest" không phải "decide". Luôn show reasoning. Cho phép revert dễ dàng. Test kỹ trước khi ship tầng Cloud.
+**Risk:** AI scheduling is unstable in production
+**Mitigation:** Position AI as "suggest", not "decide". Always show reasoning. Make reverts easy. Test thoroughly before shipping the Cloud tier.
 
-**Risk:** Contributor open source fork và tạo sản phẩm cạnh tranh
-**Mitigation:** Community lành mạnh + maintainer phản hồi nhanh giảm động lực fork. Tính năng Pro tier tạo moat commercial.
+**Risk:** An open-source contributor forks and creates a competing product
+**Mitigation:** A healthy community + a responsive maintainer reduce the incentive to fork. Pro tier features create a commercial moat.
 
 ### 18.3 Execution Risks
 
-**Risk:** Solo developer burnout trong sprint 18 tuần
-**Mitigation:** Scope hàng tuần thực tế. Có buffer week. Build-in-public giảm cảm giác cô đơn. Nghỉ ngơi đầy đủ.
+**Risk:** Solo developer burnout during the 18-week sprint
+**Mitigation:** Realistic weekly scope. Have a buffer week. Build-in-public reduces loneliness. Rest adequately.
 
-**Risk:** Pro launch conversion thấp
-**Mitigation:** Free tier vẫn generous để giữ adoption. Email waitlist test demand trước khi xây. Validation gate ngăn over-investment.
+**Risk:** Low Pro launch conversion
+**Mitigation:** Keep the free tier generous to retain adoption. Email the waitlist to test demand before building. Validation gates prevent over-investment.
 
-**Risk:** Support volume vượt quá capacity solo
-**Mitigation:** Docs đầy đủ giảm tải support. Forum community cho peer help. Support qua email only, không SLA, tới khi revenue đủ để hire.
+**Risk:** Support volume exceeds solo capacity
+**Mitigation:** Thorough docs reduce the support load. A community forum for peer help. Email-only support, no SLA, until revenue is enough to hire.
 
-**Risk:** Chi phí infrastructure Cloud tier vượt revenue
-**Mitigation:** Charge công bằng từ đầu. Dùng Cloudflare R2 (storage rẻ), Fly.io (auto-scaling). Set hard limit theo tier.
+**Risk:** Cloud tier infrastructure cost exceeds revenue
+**Mitigation:** Charge fairly from the start. Use Cloudflare R2 (cheap storage), Fly.io (auto-scaling). Set hard limits per tier.
 
 ### 18.4 Legal Risks
 
-**Risk:** Tranh chấp license compliance (dùng commercial của MIT)
-**Mitigation:** License term rõ ràng. FAQ về commercial use. Pro tier cung cấp EULA commercial-friendly cho ai muốn licensing rõ ràng.
+**Risk:** License compliance disputes (commercial use of MIT)
+**Mitigation:** Clear license terms. An FAQ about commercial use. The Pro tier provides a commercial-friendly EULA for those who want explicit licensing.
 
-**Risk:** Khiếu nại patent infringement (thuật toán scheduling)
-**Mitigation:** CPM là public domain (phát triển từ 1957). Implementation clean-room. Tránh copy code hoặc API của dhtmlx nguyên văn.
+**Risk:** Patent infringement claims (scheduling algorithm)
+**Mitigation:** CPM is public domain (developed in 1957). Clean-room implementation. Avoid copying dhtmlx's code or API verbatim.
 
-**Risk:** Tuân thủ GDPR/privacy cho Cloud tier
-**Mitigation:** Privacy-by-design từ đầu. Tùy chọn data residency cho Enterprise. Template DPA chuẩn sẵn sàng.
+**Risk:** GDPR/privacy compliance for the Cloud tier
+**Mitigation:** Privacy-by-design from the start. Data residency option for Enterprise. A standard DPA template ready.
 
 ### 18.5 Security (Library & Cloud)
 
-Threat model kỹ thuật (chi tiết & checklist đầy đủ trong `.claude/rules/security.md`). Vì FluxGantt là **library nhúng render dữ liệu untrusted**, lỗ hổng ở đây ảnh hưởng mọi app dùng nó.
+Technical threat model (full details & checklist in `.claude/rules/security.md`). Because FluxGantt is an **embedded library that renders untrusted data**, a vulnerability here affects every app using it.
 
-**Library (Core/Pro) — chạy trong app khách:**
-- **XSS qua render:** KHÔNG nội suy `task.name`/`notes`/`meta`/`color` vào SVG/DOM bằng `innerHTML`/template — dùng `textContent`/`setAttribute`. Validate `color` theo whitelist. Sanitize SVG khi export.
-- **Parsing untrusted (JSON/CSV/XML):** validate schema trước khi nạp store. **XML (MS Project) phải tắt external entity/DTD → chống XXE**; giới hạn size/độ sâu chống DoS. CSV export chống formula injection. Phát hiện cycle dependency (throw).
-- Tôn trọng CSP của host (không inline script/`eval`).
+**Library (Core/Pro) — runs inside the customer's app:**
+- **XSS via render:** do NOT interpolate `task.name`/`notes`/`meta`/`color` into SVG/DOM via `innerHTML`/templates — use `textContent`/`setAttribute`. Whitelist-validate `color`. Sanitize SVG on export.
+- **Untrusted parsing (JSON/CSV/XML):** validate the schema before loading into the store. **XML (MS Project) must disable external entities/DTD → prevent XXE**; limit size/depth to prevent DoS. CSV export guards against formula injection. Detect dependency cycles (throw).
+- Respect the host's CSP (no inline script/`eval`).
 
 **Cloud (Wave 3):**
-- **AuthZ multi-tenant:** mọi query scope `org_id`/`project_id` + kiểm `membership.role` ở server (chống IDOR).
-- **Share link:** token ≥32 byte entropy; `password_hash` dùng argon2/bcrypt; tôn trọng `expires_at`/`permission`.
-- **API key:** chỉ lưu `key_hash` + `prefix`; hỗ trợ `scopes`/`revoked_at`.
-- SQL param hoá (Drizzle); webhook ký HMAC + chống SSRF; rate limit (đặc biệt endpoint AI tốn phí). Secret không hardcode/log; Stripe webhook verify signature.
+- **Multi-tenant authZ:** scope every query by `org_id`/`project_id` + check `membership.role` on the server (prevents IDOR).
+- **Share link:** token ≥32 bytes of entropy; `password_hash` uses argon2/bcrypt; respects `expires_at`/`permission`.
+- **API key:** store only `key_hash` + `prefix`; support `scopes`/`revoked_at`.
+- Parameterized SQL (Drizzle); HMAC-signed webhooks + SSRF protection; rate limiting (especially costly AI endpoints). Secrets not hardcoded/logged; Stripe webhook signature verified.
 
-**AI:** tách user input khỏi system prompt; validate output LLM bằng schema; AI *suggest* không *decide* (xem §13.3).
+**AI:** separate user input from the system prompt; validate LLM output against a schema; AI *suggests*, doesn't *decide* (see §13.3).
 
 ---
 
