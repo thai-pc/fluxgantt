@@ -187,7 +187,7 @@ Resource view/leveling, MS Project XML I/O, and baselines remain in the Pro tier
 | | |
 |---|---|
 | **Primary domain** | fluxgantt.dev |
-| **Secondary** | fluxgantt.com (redirect về .dev) |
+| **Secondary** | fluxgantt.com (redirects to .dev) |
 | **NPM scope** | `@fluxgantt` |
 | **GitHub** | github.com/fluxtoolkit/fluxgantt |
 | **Twitter/X** | @fluxgantt |
@@ -1773,7 +1773,7 @@ Technical threat model (full details & checklist in `.claude/rules/security.md`)
 }
 ```
 
-**Ví dụ Dependency:**
+**Dependency example:**
 
 ```json
 {
@@ -1814,7 +1814,7 @@ Technical threat model (full details & checklist in `.claude/rules/security.md`)
 
 ## 20. Appendix B: Critical Path Algorithm Pseudocode
 
-Outline đầy đủ cho reference implementation của thuật toán CPM.
+A complete outline for a reference implementation of the CPM algorithm.
 
 ```
 function computeCriticalPath(
@@ -1823,7 +1823,7 @@ function computeCriticalPath(
     calendar: WorkingCalendar
 ): TaskId[] {
 
-    // Step 1: Xây adjacency list
+    // Step 1: Build the adjacency list
     successors: Map<TaskId, Dependency[]> = new Map()
     predecessors: Map<TaskId, Dependency[]> = new Map()
 
@@ -1831,22 +1831,22 @@ function computeCriticalPath(
         successors.get(dep.from).push(dep)
         predecessors.get(dep.to).push(dep)
 
-    // Step 2: Topological sort (phát hiện cycle)
+    // Step 2: Topological sort (detects cycles)
     sorted = topologicalSort(tasks, dependencies)
     if sorted == null:
         throw new Error("Cycle detected in dependencies")
 
-    // Step 3: Forward pass — tính earliest start/finish
+    // Step 3: Forward pass — compute earliest start/finish
     es: Map<TaskId, Date> = new Map()
     ef: Map<TaskId, Date> = new Map()
 
     for task in sorted:
         preds = predecessors.get(task.id) || []
 
-        // NOTE: nếu task.constraint (must-start-on / start-no-earlier-than / ASAP...) tồn tại
-        //       → áp vào ES sau khi tính từ predecessors (constraint override).
+        // NOTE: if task.constraint (must-start-on / start-no-earlier-than / ASAP...) exists
+        //       → apply it to ES after computing from predecessors (constraint override).
         if preds.empty:
-            es.set(task.id, task.start)          // hoặc projectStart nếu ASAP
+            es.set(task.id, task.start)          // or projectStart if ASAP
         else:
             earliest = -Infinity
             for pred in preds:
@@ -1857,10 +1857,10 @@ function computeCriticalPath(
 
         ef.set(task.id, addWorkingHours(es.get(task.id), task.duration, calendar))
 
-    // Step 4: Xác định project end
+    // Step 4: Determine the project end
     projectEnd = max(ef.values())
 
-    // Step 5: Backward pass — tính latest start/finish
+    // Step 5: Backward pass — compute latest start/finish
     ls: Map<TaskId, Date> = new Map()
     lf: Map<TaskId, Date> = new Map()
 
@@ -1879,12 +1879,12 @@ function computeCriticalPath(
 
         ls.set(task.id, subtractWorkingHours(lf.get(task.id), task.duration, calendar))
 
-    // Step 6: Critical path = task có zero slack
+    // Step 6: Critical path = tasks with zero slack
     criticalPath: TaskId[] = []
 
     for task in tasks:
-        // slack = LS - ES ≥ 0; differenceInWorkingHours(from, to) dương khi `to` sau `from`,
-        // nên tham số phải là (es, ls) — KHÔNG phải (ls, es) (sẽ ra dấu âm).
+        // slack = LS - ES ≥ 0; differenceInWorkingHours(from, to) is positive when `to` is
+        // after `from`, so the args must be (es, ls) — NOT (ls, es) (which yields a negative sign).
         slack = differenceInWorkingHours(es.get(task.id), ls.get(task.id), calendar)
         if slack == 0:
             criticalPath.push(task.id)
@@ -1892,8 +1892,8 @@ function computeCriticalPath(
     return criticalPath
 }
 
-// Trả về earliest start cho `succ` do ràng buộc từ MỘT predecessor link.
-// es/ef truyền tường minh (không dùng biến ngoài scope); FF/SF dùng succ.duration (không phải pred).
+// Returns the earliest start for `succ` due to the constraint from ONE predecessor link.
+// es/ef passed explicitly (no out-of-scope variables); FF/SF use succ.duration (not pred's).
 function earliestStartFromPred(
     pred: Task, succ: Task,
     es: Map<TaskId, Date>, ef: Map<TaskId, Date>,
@@ -1912,10 +1912,10 @@ function earliestStartFromPred(
 
 ## 21. Appendix C: Competitor Comparison Matrix
 
-| Tính năng | FluxGantt | dhtmlx PRO | dhtmlx Community | Bryntum Gantt | Frappe Gantt | jsGantt Improved |
+| Feature | FluxGantt | dhtmlx PRO | dhtmlx Community | Bryntum Gantt | Frappe Gantt | jsGantt Improved |
 |---|---|---|---|---|---|---|
 | License | MIT | Comm. | **MIT** | Comm. | MIT | BSD |
-| Giá / dev / năm | $0 | $599+ | $0 | $850+ | $0 | $0 |
+| Price / dev / year | $0 | $599+ | $0 | $850+ | $0 | $0 |
 | **Bundle size (core, gzip)** | **<15kb** ✓ | heavy (monolith) | heavy (monolith) | heavy | ~ medium | ~ |
 | TypeScript native | ✓ | ~ | ~ | ✓ | ✗ | ✗ |
 | Core framework-agnostic | ✓ | ✗ | ✗ | ~ | ~ | ✗ |
@@ -1924,7 +1924,7 @@ function earliestStartFromPred(
 | Vue wrapper | ✓ | ✓ | ~ | ✓ | ✗ | ✗ |
 | Svelte wrapper | ✓* | ✗ | ✗ | ✗ | ✗ | ✗ |
 | Angular wrapper | ✓* | ✓ | ~ | ✓ | ✗ | ✗ |
-| Đủ 4 loại dependency | ✓ | ✓ | ✓ | ✓ | ~ | ✗ |
+| All 4 dependency types | ✓ | ✓ | ✓ | ✓ | ~ | ✗ |
 | Critical path | ✓ | ✓ | ✓ | ✓ | ✗ | ✗ |
 | Resource view | ✓** | ✓ | ✗ | ✓ | ✗ | ✗ |
 | Resource leveling | ✓** | ✓ | ✗ | ✓ | ✗ | ✗ |
@@ -1935,27 +1935,27 @@ function earliestStartFromPred(
 | AI agent via MCP server | ✓*** | ✗ | ✗ | ✗ | ✗ | ✗ |
 | AI risk forecaster | ✓*** | ✗ | ✗ | ✗ | ✗ | ✗ |
 | Real-time multiplayer | ✓*** | ✗ | ✗ | ✗ | ✗ | ✗ |
-| UI hiện đại (2026) | ✓ | ~ | ~ | ✓ | ~ | ✗ |
+| Modern UI (2026) | ✓ | ~ | ~ | ✓ | ~ | ✗ |
 | Accessibility (WCAG AA) | ✓ | ~ | ~ | ✓ | ✗ | ✗ |
 | Dark mode | ✓ | ~ | ~ | ✓ | ~ | ✗ |
-| Maintained tích cực | ✓ | ✓ | ✓ | ✓ | ~ | ✗ |
+| Actively maintained | ✓ | ✓ | ✓ | ✓ | ~ | ✗ |
 
-**Chú thích:**
-`✓` = Có · `✓*` = Có, Wave 2 (Pro tier) · `✓**` = Có, tầng Pro · `✓***` = Có, tầng Cloud · `✗` = Không · `~` = Một phần / hạn chế
+**Legend:**
+`✓` = Yes · `✓*` = Yes, Wave 2 (Pro tier) · `✓**` = Yes, Pro tier · `✓***` = Yes, Cloud tier · `✗` = No · `~` = Partial / limited
 
 `†` **AI auto-schedule is now an industry standard** — no longer an exclusive differentiator for FluxGantt. The real differentiators are **bundle size**, **headless/server-side**, **framework-agnostic core**, and **AI agent via MCP server** (the bold rows / FluxGantt-only). `dhtmlx Community` is derived from the PRO codebase as a funnel strategy: it ships some PRO features but **gates** resource/baseline/PDF to push users toward the paid build.
 
 ---
 
-## Kết
+## Conclusion
 
-Đây là bản spec living document. Khi sản phẩm phát triển, các phần sẽ được cập nhật, và thay đổi lớn sẽ phản ánh qua version number ở đầu tài liệu.
+This spec is a living document. As the product evolves, sections will be updated, and major changes will be reflected in the version number at the top of the document.
 
 **Revision 0.1.2 (competitive response — DHTMLX Community Edition):** added DHTMLX Gantt Community Edition (MIT) to the competitor landscape, split from dhtmlx PRO (§2.1); rewrote the Market Gap now that "MIT" + "AI" are no longer exclusive selling points (§2.2); repositioned the tagline/pitch around measurable architecture — headless, <15kb bundle, agent-native via MCP (§3.2); reduced the weight of AI auto-schedule (now an industry standard) and added the **MCP server** (`@fluxgantt/mcp`) as the Cloud differentiator, same direction as FluxDocs (§9.1, §9.3); marked the "dhtmlx ships an MIT build" risk as **HAS OCCURRED** with a new architecture-moat mitigation (§18.2); added a DHTMLX Community column plus bundle-size/headless/MCP rows to the competitor matrix (§21).
 
-**Revision 0.1.1 (review hoà giải mâu thuẫn):** Temporal là optional peerDependency không tính vào bundle budget (§4.1, §5.2); thêm `DateInput` + `Task.priority`, ID coercion ở boundary (§6); `GanttConfig` flags optional + default (§6.3); thống nhất API flat `exportPng`/`importJson` (§7.8); cascade behavior (§7.2); event `task:progressed` (§7.9, §10.2); a11y giữ ở chế độ Canvas (§8.5); ngưỡng renderer 2.000 (§18.1); mapping DB↔type (§12); AI model cấu hình được (§13.3); sửa lỗi scope `es` + `succ.duration` trong pseudocode CPM (§20); thêm §18.5 Security; export bundle dùng `schemaVersion`.
+**Revision 0.1.1 (conflict-reconciliation review):** Temporal is an optional peerDependency excluded from the bundle budget (§4.1, §5.2); added `DateInput` + `Task.priority`, ID coercion at the boundary (§6); `GanttConfig` flags optional + default (§6.3); unified the flat `exportPng`/`importJson` API (§7.8); cascade behavior (§7.2); the `task:progressed` event (§7.9, §10.2); a11y kept in Canvas mode (§8.5); 2,000 renderer threshold (§18.1); DB↔type mapping (§12); configurable AI model (§13.3); fixed the `es` scope + `succ.duration` bug in the CPM pseudocode (§20); added §18.5 Security; export bundle uses `schemaVersion`.
 
-**Liên hệ:**
+**Contact:**
 
 | | |
 |---|---|
