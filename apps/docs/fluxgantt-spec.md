@@ -1468,42 +1468,42 @@ function autoSchedule(naturalLanguageInput):
 
 ### 14.1 Tier Structure
 
-| Tier | Giá | Đối tượng |
+| Tier | Price | Audience |
 |---|---|---|
-| **Core (MIT)** | $0 | Dự án OSS, evaluation, hobby |
+| **Core (MIT)** | $0 | OSS projects, evaluation, hobby |
 | **Pro Self-host** | $299 one-time | Indie dev, agency (per developer license) |
-| **Pro Team** | $999 one-time | Team dev nhỏ (tới 10 developer) |
-| **Cloud Starter** | $29/tháng | Team nhỏ (Cloud, 5 user) |
-| **Cloud Team** | $99/tháng | Công ty đang phát triển (25 user) |
-| **Cloud Business** | $299/tháng | Mid-market (user không giới hạn) |
-| **Enterprise** | $5k–50k/năm | Tổ chức lớn (SSO, on-prem, SLA) |
+| **Pro Team** | $999 one-time | Small dev team (up to 10 developers) |
+| **Cloud Starter** | $29/month | Small team (Cloud, 5 users) |
+| **Cloud Team** | $99/month | Growing company (25 users) |
+| **Cloud Business** | $299/month | Mid-market (unlimited users) |
+| **Enterprise** | $5k–50k/year | Large org (SSO, on-prem, SLA) |
 
 ### 14.2 Feature Matrix
 
-| Tính năng | Core | Pro | Cloud | Ent |
+| Feature | Core | Pro | Cloud | Ent |
 |---|---|---|---|---|
 | Task CRUD | ✓ | ✓ | ✓ | ✓ |
 | Dependencies (FS/SS/FF/SF) | ✓ | ✓ | ✓ | ✓ |
-| Tính toán critical path | ✓ | ✓ | ✓ | ✓ |
-| Wrapper React/Vue | ✓ | ✓ | ✓ | ✓ |
+| Critical path computation | ✓ | ✓ | ✓ | ✓ |
+| React/Vue wrappers | ✓ | ✓ | ✓ | ✓ |
 | Export PNG/SVG/JSON | ✓ | ✓ | ✓ | ✓ |
 | Resource view | – | ✓ | ✓ | ✓ |
 | Resource leveling | – | ✓ | ✓ | ✓ |
 | Baselines | – | ✓ | ✓ | ✓ |
 | Task constraints | – | ✓ | ✓ | ✓ |
 | MS Project XML I/O | – | ✓ | ✓ | ✓ |
-| Export PDF có branding | – | ✓ | ✓ | ✓ |
+| Export PDF with branding | – | ✓ | ✓ | ✓ |
 | Custom columns | – | ✓ | ✓ | ✓ |
-| Wrapper Svelte/Angular | – | ✓ | ✓ | ✓ |
-| Bỏ watermark | – | ✓ | ✓ | ✓ |
+| Svelte/Angular wrappers | – | ✓ | ✓ | ✓ |
+| Remove watermark | – | ✓ | ✓ | ✓ |
 | Email support | – | ✓ | ✓ | ✓ |
 | Real-time multiplayer | – | – | ✓ | ✓ |
 | Comment + @mention | – | – | ✓ | ✓ |
 | Activity feed | – | – | ✓ | ✓ |
 | AI auto-schedule | – | – | ✓ | ✓ |
 | AI risk forecaster | – | – | ✓ | ✓ |
-| Share link có permission | – | – | ✓ | ✓ |
-| Integration Slack/Email | – | – | ✓ | ✓ |
+| Share link with permissions | – | – | ✓ | ✓ |
+| Slack/Email integration | – | – | ✓ | ✓ |
 | Webhooks | – | – | ✓ | ✓ |
 | Priority support | – | – | ✓ | ✓ |
 | SSO (SAML, OIDC) | – | – | – | ✓ |
@@ -1513,104 +1513,104 @@ function autoSchedule(naturalLanguageInput):
 | SLA 99.9% uptime | – | – | – | ✓ |
 | Dedicated success manager | – | – | – | ✓ |
 
-### 14.3 Vì sao Pro là One-Time
+### 14.3 Why Pro Is One-Time
 
-Developer thiên về thanh toán license one-time cho thư viện:
+Developers prefer one-time license payments for libraries:
 
-- Component library là infrastructure, không phải workflow tool
-- "Subscription fatigue" là thật; developer hạn chế chi phí recurring
-- Thanh toán one-time loại bỏ rủi ro churn cho mình, giảm lo lắng cho khách
-- License key dễ validate và renew update lifetime
-- Stripe Checkout one-time = integration đơn giản, không cần state subscription
+- A component library is infrastructure, not a workflow tool
+- "Subscription fatigue" is real; developers limit recurring costs
+- A one-time payment removes churn risk for us and reduces anxiety for the customer
+- License keys are easy to validate and renew for lifetime updates
+- One-time Stripe Checkout = simple integration, no subscription state needed
 
-### 14.4 Vì Sao Cloud là Recurring
+### 14.4 Why Cloud Is Recurring
 
-Tầng Cloud hợp lý với subscription vì:
+The Cloud tier fits a subscription because:
 
-- Hosting, bandwidth, storage là chi phí ongoing
-- Multiplayer cần chạy server liên tục
-- Tính năng AI có chi phí per-call
-- Khách hàng mong đợi uptime, update, support
-- Recurring revenue tài trợ cho phát triển ongoing
+- Hosting, bandwidth, and storage are ongoing costs
+- Multiplayer needs a continuously running server
+- AI features have per-call costs
+- Customers expect uptime, updates, and support
+- Recurring revenue funds ongoing development
 
 ---
 
 ## 15. Distribution & Launch Strategy
 
-### 15.1 Pre-Launch (Tuần 7–8)
+### 15.1 Pre-Launch (Weeks 7–8)
 
-- Landing page live tại fluxgantt.dev
-- Form đăng ký waitlist nổi bật
-- 3 GIF demo: drag task / dependency cascade / AI scheduling
-- Tweet thread sneak peek tới dev community
-- GitHub repo public với README chỉn chu
+- Landing page live at fluxgantt.dev
+- Prominent waitlist sign-up form
+- 3 demo GIFs: drag task / dependency cascade / AI scheduling
+- Sneak-peek tweet thread to the dev community
+- Public GitHub repo with a polished README
 
-### 15.2 Launch Day (Tuần 8)
+### 15.2 Launch Day (Week 8)
 
-Launch đa kênh đồng bộ:
+A synchronized multi-channel launch:
 
-- **Show HN post** (thứ Ba, 8h sáng PT là tối ưu):
+- **Show HN post** (Tuesday, 8am PT is optimal):
   *"Show HN: FluxGantt — MIT-licensed Gantt chart library with AI scheduling"*
 
-- **Product Hunt launch** (thứ Ba–Năm): chuẩn bị maker comment, screenshot, gallery, video
+- **Product Hunt launch** (Tue–Thu): prepare maker comment, screenshots, gallery, video
 
 - **Reddit posts:**
-  - r/webdev (chung)
-  - r/javascript (kỹ thuật)
-  - r/reactjs (community React)
-  - r/vuejs (community Vue)
-  - r/SaaS (nếu nhắm SaaS founder)
+  - r/webdev (general)
+  - r/javascript (technical)
+  - r/reactjs (React community)
+  - r/vuejs (Vue community)
+  - r/SaaS (if targeting SaaS founders)
 
 - **Dev.to article:**
-  *"Why we built another Gantt library (and why it matters)"* — bài kỹ thuật dài giải thích market gap và architecture
+  *"Why we built another Gantt library (and why it matters)"* — a long technical post explaining the market gap and architecture
 
 - **Hashnode + Medium cross-post**
 
-- **Email outreach** tới 50 PM tool startup: message cá nhân hóa kiểu "Built MIT Gantt alternative to dhtmlx with AI scheduling. Want a demo? Happy to help integrate if you're using Frappe or paying dhtmlx."
+- **Email outreach** to 50 PM-tool startups: a personalized message like "Built an MIT Gantt alternative to dhtmlx with AI scheduling. Want a demo? Happy to help integrate if you're using Frappe or paying dhtmlx."
 
-- **Twitter/X build-in-public thread:** GIF tiến độ hàng ngày trước launch
+- **Twitter/X build-in-public thread:** daily progress GIFs before launch
 
 ### 15.3 Post-Launch (Ongoing)
 
-**Nội dung SEO:**
-- "FluxGantt vs dhtmlx Gantt" — nhắm người chuyển từ dhtmlx
-- "FluxGantt vs Bryntum" — nhắm người chuyển từ Bryntum
-- "FluxGantt vs Frappe Gantt" — nhắm path upgrade từ free
-- "How to add Gantt to Next.js" — tutorial SEO
-- "Vue 3 Gantt chart tutorial" — tutorial SEO
+**SEO content:**
+- "FluxGantt vs dhtmlx Gantt" — target people migrating from dhtmlx
+- "FluxGantt vs Bryntum" — target people migrating from Bryntum
+- "FluxGantt vs Frappe Gantt" — target the upgrade path from free
+- "How to add Gantt to Next.js" — SEO tutorial
+- "Vue 3 Gantt chart tutorial" — SEO tutorial
 
-**Discord community:** Mở sau 100+ user. Chung với community FluxFiles.
+**Discord community:** open after 100+ users. Shared with the FluxFiles community.
 
-**Conference talks:** Submit cho React Conf, VueConf, JSConf với talk *"Building a scheduling engine without VC funding"*.
+**Conference talks:** submit to React Conf, VueConf, JSConf with the talk *"Building a scheduling engine without VC funding"*.
 
-**Open source contributions:** Xây wrapper cho OSS PM tool phổ biến (Plane, Vikunja) để tích hợp FluxGantt — distribution tức thì tới user base của họ.
+**Open source contributions:** build wrappers for popular OSS PM tools (Plane, Vikunja) to integrate FluxGantt — instant distribution to their user base.
 
-**YouTube channel:** Tutorial + behind-the-scenes development.
+**YouTube channel:** tutorials + behind-the-scenes development.
 
 ---
 
 ## 16. 18-Week Execution Plan
 
-| Tuần | Phase | Deliverable | Metric chính |
+| Week | Phase | Deliverable | Key metric |
 |---|---|---|---|
 | 1 | Build | Monorepo, core skeleton, task model, SVG renderer | Repo public, CI green |
-| 2 | Build | Drag-resize, zoom level, hierarchy | Demo hoạt động đầu tiên |
-| 3 | Build | Dependencies (đủ 4 loại), arrow routing | Tất cả dep type hoạt động |
-| 4 | Build | Critical path, today line, working calendar | CPM verify với file MS Project |
-| 5 | Build | React wrapper, hook `useFluxGantt`, sample app | npm publish alpha |
-| 6 | Build | Vue wrapper, Composition API, sample app | Cả 2 wrapper ổn định |
-| 7 | Polish | Export PNG/SVG, milestone, docs site, example | Docs site live |
-| 8 | **LAUNCH** | Show HN + Product Hunt + Reddit + email outreach | 500+ GH stars, 1k+ npm download |
-| 9 | Listen | Bug fix, review PR, engagement community | Triage 80% issue |
-| 10 | Listen | Iterate theo feedback, cải thiện docs | DX polish, mở rộng example |
-| 11 | Pre-order | Email blast: "Pro early bird $199, 100 chỗ đầu" | 30–50 pre-order |
-| 12 | Build Pro | Import MS Project XML | Import sạch 20 file .xml mẫu |
-| 13 | Build Pro | Resource view + assignment | UI hoàn chỉnh |
-| 14 | Build Pro | Thuật toán resource leveling | Thuật toán đã validate |
-| 15 | Build Pro | Capture + compare baseline | Visual diff hoạt động |
-| 16 | Build Pro | Constraint, export PDF, custom column | Export pass test Acrobat |
-| 17 | Polish | Pro docs, migration guide, hệ thống license key | Hệ thống license hoạt động |
-| 18 | **LAUNCH Pro** | Pro tier live, email khách pre-order | 50+ Pro license bán = $10k+ revenue |
+| 2 | Build | Drag-resize, zoom levels, hierarchy | First working demo |
+| 3 | Build | Dependencies (all 4 types), arrow routing | All dep types working |
+| 4 | Build | Critical path, today line, working calendar | CPM verified against MS Project files |
+| 5 | Build | React wrapper, `useFluxGantt` hook, sample app | npm publish alpha |
+| 6 | Build | Vue wrapper, Composition API, sample app | Both wrappers stable |
+| 7 | Polish | Export PNG/SVG, milestone, docs site, examples | Docs site live |
+| 8 | **LAUNCH** | Show HN + Product Hunt + Reddit + email outreach | 500+ GH stars, 1k+ npm downloads |
+| 9 | Listen | Bug fixes, review PRs, community engagement | Triage 80% of issues |
+| 10 | Listen | Iterate on feedback, improve docs | DX polish, more examples |
+| 11 | Pre-order | Email blast: "Pro early bird $199, first 100 spots" | 30–50 pre-orders |
+| 12 | Build Pro | Import MS Project XML | Clean import of 20 sample .xml files |
+| 13 | Build Pro | Resource view + assignment | Complete UI |
+| 14 | Build Pro | Resource leveling algorithm | Algorithm validated |
+| 15 | Build Pro | Capture + compare baselines | Visual diff working |
+| 16 | Build Pro | Constraints, export PDF, custom columns | Export passes the Acrobat test |
+| 17 | Polish | Pro docs, migration guide, license key system | License system working |
+| 18 | **LAUNCH Pro** | Pro tier live, email pre-order customers | 50+ Pro licenses sold = $10k+ revenue |
 
 ---
 
