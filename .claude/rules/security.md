@@ -1,51 +1,51 @@
-# Rule: Security (BẮT BUỘC đọc trước khi đụng IO / Auth / Cloud / AI)
+# Rule: Security (MUST read before touching IO / Auth / Cloud / AI)
 
-FluxGantt render dữ liệu do **người khác cung cấp** (task của host app, file import, share link). Mọi input ngoài là **untrusted**.
+FluxGantt renders data **provided by others** (host-app tasks, file imports, share links). Every external input is **untrusted**.
 
-## 1. Rendering & XSS (Core — quan trọng nhất vì là library nhúng)
-- **SVG renderer**: KHÔNG bao giờ nội suy chuỗi người dùng vào markup. Dùng `textContent` / `createElementNS` + `setAttribute`, không `innerHTML`/template string cho `task.name`, `notes`, `meta`, `color`.
-- `task.color` và mọi giá trị đổ vào style/attribute phải **validate whitelist** (hex/CSS color hợp lệ), không cho `url(...)`, `expression`, `javascript:`.
-- Export SVG/PNG/PDF: sanitize trước khi serialize — SVG xuất ra có thể bị mở như HTML.
-- `meta: Record<string, unknown>` là field tự do của user → coi như untrusted khi hiển thị.
-- Tôn trọng CSP của host app: không inline script, không `eval`, không `new Function`.
+## 1. Rendering & XSS (Core — most important, since it's an embedded library)
+- **SVG renderer**: NEVER interpolate user strings into markup. Use `textContent` / `createElementNS` + `setAttribute`, not `innerHTML`/template strings for `task.name`, `notes`, `meta`, `color`.
+- `task.color` and any value that flows into style/attribute must be **whitelist-validated** (valid hex/CSS color), disallowing `url(...)`, `expression`, `javascript:`.
+- Export SVG/PNG/PDF: sanitize before serializing — exported SVG can be opened as HTML.
+- `meta: Record<string, unknown>` is a free-form user field → treat as untrusted when displayed.
+- Respect the host app's CSP: no inline script, no `eval`, no `new Function`.
 
 ## 2. Import / Parsing (IO layer)
-- **JSON/CSV/MS Project XML** = untrusted. Validate schema trước khi nạp vào store (vd zod hoặc validator thủ công). Reject thay vì "best-effort" với dữ liệu sai.
-- **XML (MS Project)**: parser phải **disable external entity / DTD** → chống XXE. Không resolve entity ngoài, không network fetch khi parse. Giới hạn kích thước & độ sâu (chống billion-laughs / entity expansion DoS).
-- CSV: chống **formula injection** — escape cell bắt đầu bằng `= + - @ tab/CR` khi export ra file mở bằng Excel.
-- Giới hạn: số task, độ sâu hierarchy, độ dài chuỗi → tránh DoS qua file độc.
-- Cycle trong dependency phải bị phát hiện và throw, không loop vô hạn (CPM).
+- **JSON/CSV/MS Project XML** = untrusted. Validate the schema before loading into the store (e.g. zod or a hand-written validator). Reject rather than "best-effort" on bad data.
+- **XML (MS Project)**: the parser must **disable external entities / DTD** → prevents XXE. Don't resolve external entities, no network fetch while parsing. Limit size & depth (guards against billion-laughs / entity-expansion DoS).
+- CSV: guard against **formula injection** — escape cells starting with `= + - @ tab/CR` when exporting to a file opened in Excel.
+- Limits: task count, hierarchy depth, string length → avoid DoS via a malicious file.
+- Dependency cycles must be detected and thrown, no infinite loop (CPM).
 
 ## 3. AI layer (Pro/Cloud) — prompt injection
-- Natural-language input của user đi vào LLM = **untrusted**. Đừng nối thẳng vào system prompt; tách rõ system vs user content.
-- Output LLM (task/dep JSON) phải **validate lại bằng schema** trước khi dùng — không tin cấu trúc trả về.
-- AI là **"suggest" không "decide"**: luôn cho user review + revert. Không tự ghi đè plan.
-- Không gửi dữ liệu nhạy cảm của project ra LLM nếu chưa có sự đồng ý / theo tier. Log/redact PII.
+- User natural-language input going into the LLM = **untrusted**. Don't concatenate it straight into the system prompt; separate system vs user content clearly.
+- LLM output (task/dep JSON) must be **re-validated against a schema** before use — don't trust the returned structure.
+- AI **"suggests", doesn't "decide"**: always let the user review + revert. Don't overwrite the plan automatically.
+- Don't send sensitive project data to the LLM without consent / per tier. Log/redact PII.
 
 ## 4. Cloud backend (Wave 3)
-- **AuthZ multi-tenant**: mọi query scope theo `org_id` / `project_id`. Kiểm `membership.role` (owner/admin/editor/viewer) ở **server**, không tin client. IDOR là rủi ro số 1.
-- **Auth**: Better-Auth. Password/secret không log. Session cookie `HttpOnly`, `Secure`, `SameSite`.
-- **Share link**: `token` ngẫu nhiên ≥ 32 byte entropy (lưu unique). `password_hash` dùng **argon2/bcrypt** (cột `password_hash` trong schema — không lưu plaintext). Tôn trọng `expires_at`, `permission` (read/comment/edit), tăng `view_count` an toàn.
-- **API keys**: chỉ lưu `key_hash` (hash, không plaintext) + `prefix` để nhận diện. Hỗ trợ `scopes` + `revoked_at`. Hiển thị key đầy đủ đúng 1 lần lúc tạo.
-- **SQL**: dùng Drizzle param hoá, không string-concat query. JSONB (`meta`, `settings`, `snapshot`) vẫn validate trước khi lưu.
-- **Webhooks**: ký payload (HMAC), verify chữ ký phía nhận. Chống SSRF khi gọi URL do user nhập (chặn IP nội bộ, metadata endpoint).
-- **Rate limiting** trên API + AI endpoint (chi phí per-call). Hard limit theo tier.
-- **Multiplayer (Yjs)**: authZ trước khi join room; không tin update CRDT từ client chưa xác thực.
+- **Multi-tenant authZ**: scope every query by `org_id` / `project_id`. Check `membership.role` (owner/admin/editor/viewer) on the **server**, don't trust the client. IDOR is risk #1.
+- **Auth**: Better-Auth. Don't log passwords/secrets. Session cookie `HttpOnly`, `Secure`, `SameSite`.
+- **Share link**: `token` random ≥ 32 bytes of entropy (stored unique). `password_hash` uses **argon2/bcrypt** (the `password_hash` column in the schema — never store plaintext). Respect `expires_at`, `permission` (read/comment/edit), increment `view_count` safely.
+- **API keys**: store only `key_hash` (a hash, not plaintext) + `prefix` for identification. Support `scopes` + `revoked_at`. Show the full key exactly once at creation.
+- **SQL**: use parameterized Drizzle, no string-concatenated queries. JSONB (`meta`, `settings`, `snapshot`) still validated before storing.
+- **Webhooks**: sign the payload (HMAC), verify the signature on the receiving side. Guard against SSRF when calling a user-provided URL (block internal IPs, the metadata endpoint).
+- **Rate limiting** on API + AI endpoints (per-call cost). Hard limits per tier.
+- **Multiplayer (Yjs)**: authZ before joining a room; don't trust CRDT updates from an unauthenticated client.
 
-## 5. Quản lý secret & dependency
-- Không hardcode secret (Stripe, Resend, DB URL, R2, LLM key). Dùng env, không commit `.env`.
-- Stripe webhook: verify signature. Không tin giá/tier từ client.
-- Tối thiểu hoá dependency (cũng giúp bundle nhỏ). Audit định kỳ (`pnpm audit`), pin version, dùng lockfile.
-- License key (Pro): validate có chữ ký, không để client tự bypass; nhưng đừng "phone home" xâm phạm privacy.
+## 5. Secret & dependency management
+- Don't hardcode secrets (Stripe, Resend, DB URL, R2, LLM key). Use env, don't commit `.env`.
+- Stripe webhook: verify the signature. Don't trust price/tier from the client.
+- Minimize dependencies (also keeps the bundle small). Audit regularly (`pnpm audit`), pin versions, use a lockfile.
+- License key (Pro): validate the signature, don't let the client bypass it; but don't "phone home" in a privacy-invasive way.
 
 ## 6. Privacy (GDPR — Cloud/Enterprise)
-- Privacy-by-design. Cho phép export & xoá dữ liệu user. Data residency option cho Enterprise. Template DPA sẵn sàng.
-- Analytics dùng Plausible (privacy-first), không track PII thừa.
+- Privacy-by-design. Allow exporting & deleting user data. Data-residency option for Enterprise. DPA template ready.
+- Analytics via Plausible (privacy-first), don't track unnecessary PII.
 
-## Checklist nhanh khi viết code đụng input ngoài
-- [ ] Input đã validate schema chưa?
-- [ ] Có nội suy chuỗi user vào DOM/SVG/SQL/prompt không? → sửa.
-- [ ] XML đã tắt external entity chưa?
-- [ ] Query đã scope theo tenant + check role chưa?
-- [ ] Secret có lọt vào log/commit/client không?
-- [ ] Có giới hạn kích thước/độ sâu/rate để chống DoS chưa?
+## Quick checklist when writing code that touches external input
+- [ ] Is the input schema-validated?
+- [ ] Any user string interpolated into DOM/SVG/SQL/prompt? → fix it.
+- [ ] Are XML external entities disabled?
+- [ ] Are queries scoped by tenant + role-checked?
+- [ ] Could a secret leak into logs/commits/client?
+- [ ] Are there size/depth/rate limits to prevent DoS?

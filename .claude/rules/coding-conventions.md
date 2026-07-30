@@ -1,20 +1,20 @@
 # Rule: Coding Conventions
 
 ## Method naming
-Verb + noun, **camelCase**. Tránh prefix `set`/`get` generic (chỉ dùng cho property access đơn giản).
+Verb + noun, **camelCase**. Avoid generic `set`/`get` prefixes (only for simple property access).
 ```ts
-// ✓ Nên
+// ✓ Do
 gantt.addTask(task); gantt.linkTasks(from, to, 'FS'); gantt.computeCriticalPath();
 gantt.exportPng(); gantt.zoomTo('week'); gantt.scrollToTask(id);
-// ✗ Tránh
+// ✗ Avoid
 gantt.task_add(task);            // snake_case
-gantt.createNewTaskInGantt(t);   // dài dòng
-gantt.do('add', task);           // action generic
-gantt.set('zoom', 'week');       // setter generic
+gantt.createNewTaskInGantt(t);   // verbose
+gantt.do('add', task);           // generic action
+gantt.set('zoom', 'week');       // generic setter
 ```
 
 ## Event naming
-Past tense, namespace bằng `:`, lowercase. Đọc như "điều gì đó đã xảy ra".
+Past tense, namespaced with `:`, lowercase. Reads as "something happened".
 ```
 task:added  task:moved  task:resized  task:removed  task:progress
 dependency:added  dependency:removed
@@ -22,31 +22,31 @@ resource:assigned  resource:unassigned
 baseline:saved  selection:changed  viewport:changed
 critical-path:computed  conflict:detected
 ```
-`gantt.on(event, cb)` trả về `UnsubscribeFn`.
+`gantt.on(event, cb)` returns an `UnsubscribeFn`.
 
 ## Type naming
-PascalCase. **Không prefix `I`**. Không suffix `Type` thừa.
+PascalCase. **No `I` prefix**. No redundant `Type` suffix.
 ```ts
 type Task = { ... }           // ✓
-type DependencyType = 'FS'|'SS'|'FF'|'SF'   // ✓ (suffix có nghĩa)
-interface ITask { ... }       // ✗ prefix I lỗi thời
-type TaskType = { ... }       // ✗ suffix thừa
-type taskConfig = { ... }     // ✗ camelCase sai
+type DependencyType = 'FS'|'SS'|'FF'|'SF'   // ✓ (meaningful suffix)
+interface ITask { ... }       // ✗ dated I prefix
+type TaskType = { ... }       // ✗ redundant suffix
+type taskConfig = { ... }     // ✗ wrong camelCase
 ```
 Branded ID: `type TaskId = string & { readonly __brand: 'TaskId' }`.
 
 ## File & folder naming
-| Loại | Convention | Ví dụ |
+| Kind | Convention | Example |
 |---|---|---|
 | Files | kebab-case | `task-store.ts`, `critical-path.ts` |
 | Folders | kebab-case | `store/`, `compute/`, `render/` |
 | Tests | `*.test.ts` | `task-store.test.ts` |
-| Types | `types.ts` | mỗi package/feature folder |
+| Types | `types.ts` | per package/feature folder |
 | Index | `index.ts` | barrel export |
-Component files (React/Vue/Svelte) dùng PascalCase: `FluxGantt.tsx`, `FluxGantt.vue`.
+Component files (React/Vue/Svelte) use PascalCase: `FluxGantt.tsx`, `FluxGantt.vue`.
 
-## CSS (BEM, prefix `fg-`)
-Mọi class prefix `fg-` để không xung đột host app. Custom property prefix `--fg-*`.
+## CSS (BEM, `fg-` prefix)
+Every class is `fg-`-prefixed to avoid clashing with the host app. Custom properties are `--fg-*`-prefixed.
 ```
 .fg-timeline  .fg-timeline__header  .fg-timeline__row
 .fg-task  .fg-task__bar  .fg-task__progress
@@ -55,16 +55,16 @@ Mọi class prefix `fg-` để không xung đột host app. Custom property pref
 ```
 
 ## TypeScript
-- `strict: true`. Không `any` ngầm. Ưu tiên `unknown` + narrow.
-- Strict null checks. Branded ID không ép kiểu tuỳ tiện — tạo qua factory/validator.
-- ESM-first. Export qua barrel `index.ts`. Giữ public surface nhỏ, ổn định.
-- Mọi thứ tree-shakable: tránh side-effect ở top-level module, đánh dấu `"sideEffects": false` trong package.json.
+- `strict: true`. No implicit `any`. Prefer `unknown` + narrow.
+- Strict null checks. Don't cast branded IDs carelessly — create them via factory/validator.
+- ESM-first. Export via the barrel `index.ts`. Keep the public surface small and stable.
+- Everything tree-shakable: avoid top-level module side effects, mark `"sideEffects": false` in package.json.
 
 ## NPM packages
-`@fluxgantt/{core,react,vue,svelte,angular,ai,msproject,cloud-sdk,themes,icons,dev-tools}`. Wrapper chỉ depend core + framework tương ứng.
+`@fluxgantt/{core,react,vue,svelte,angular,ai,msproject,cloud-sdk,themes,icons,dev-tools}`. A wrapper depends only on core + its framework.
 
 ## Design tokens
-Dùng CSS custom properties `--fg-*` (typography, density, spacing, theme light/dark, task/resource colors, grid, dependency, animation). Định nghĩa ở mục 8.2 spec. Màu chủ đạo indigo `#6366f1`; critical path red `#ef4444` **và** phân biệt không-cần-màu (viền dashed) cho a11y.
+Use CSS custom properties `--fg-*` (typography, density, spacing, light/dark theme, task/resource colors, grid, dependency, animation). Defined in §8.2 of the spec. Primary color indigo `#6366f1`; critical path red `#ef4444` **and** a not-color-dependent distinction (dashed outline) for a11y.
 
 ## Commit / release
-Dùng **changesets** trước mỗi thay đổi public. Versioning + changelog tự động. Conventional, súc tích.
+Use **changesets** before every public change. Automated versioning + changelog. Conventional, concise.
