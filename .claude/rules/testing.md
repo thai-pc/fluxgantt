@@ -1,42 +1,42 @@
 # Rule: Testing
 
-## Mọi tính năng mới PHẢI có test. Không có ngoại lệ cho compute layer.
+## Every new feature MUST have tests. No exception for the compute layer.
 
-## Công cụ
-| Loại | Tool | Ở đâu |
+## Tools
+| Kind | Tool | Where |
 |---|---|---|
-| Unit | **vitest** | `packages/*/tests/unit/`, hoặc co-located `*.test.ts` |
+| Unit | **vitest** | `packages/*/tests/unit/`, or co-located `*.test.ts` |
 | Integration | vitest | `packages/*/tests/integration/` |
-| Property-based | **fast-check** | cho thuật toán (CPM, leveling, calendar) |
+| Property-based | **fast-check** | for algorithms (CPM, leveling, calendar) |
 | E2E | **playwright** | `tests/e2e/` |
 | Visual regression | playwright snapshots | `tests/visual/` |
 | Accessibility | playwright + axe | `tests/a11y/` |
 | Performance / benchmark | vitest bench / custom | `tests/performance/` |
 | Wrapper component | **@testing-library** | `packages/{react,vue,...}/tests/` |
-| Fixtures | file dữ liệu mẫu | `packages/*/tests/fixtures/`, `tests/fixtures/`, `packages/msproject/fixtures/` |
+| Fixtures | sample data files | `packages/*/tests/fixtures/`, `tests/fixtures/`, `packages/msproject/fixtures/` |
 
-## Ưu tiên test theo layer
-1. **Compute layer (cao nhất)** — critical-path, resource-leveling, working-calendar, cascade, duration. Headless, thuần hàm → dễ test, bug ở đây tốn nhất.
-   - **Critical path: đối chiếu output với reference từ MS Project thật.** Property-based với fast-check (thêm task/dep ngẫu nhiên, kiểm bất biến: không cycle → có path, slack≥0, projectEnd ổn định).
-   - **Edge case bắt buộc**: cycle (phải throw), constraint override, ngày không làm việc (skip), lag dương (chờ) + lag âm (overlap/lead), DST boundary.
-2. **State layer** — store reactive: subscribe nhận đúng delta, không re-emit thừa, undo/redo.
-3. **IO layer** — round-trip (import→export→import bằng nhau). MS Project: test với **20+ file .xml thực tế** nhiều version. CSV/JSON: malformed input không crash (xem security).
-4. **Render** — visual regression snapshot (SVG + Canvas), chuyển renderer ở ngưỡng 2000 task.
-5. **Interaction** — e2e: drag move/resize, tạo dependency, keyboard nav, touch.
-6. **Wrapper** — @testing-library: prop binding, lifecycle mount/unmount, callback fire đúng.
+## Test priority by layer
+1. **Compute layer (highest)** — critical-path, resource-leveling, working-calendar, cascade, duration. Headless, pure functions → easy to test, bugs here are the costliest.
+   - **Critical path: cross-check output against a real MS Project reference.** Property-based with fast-check (add random tasks/deps, check invariants: no cycle → a path exists, slack≥0, projectEnd stable).
+   - **Required edge cases**: cycle (must throw), constraint override, non-working day (skip), positive lag (wait) + negative lag (overlap/lead), DST boundary.
+2. **State layer** — reactive store: subscriptions receive the correct delta, no redundant re-emits, undo/redo.
+3. **IO layer** — round-trip (import→export→import is equal). MS Project: test with **20+ real .xml files** across versions. CSV/JSON: malformed input doesn't crash (see security).
+4. **Render** — visual regression snapshots (SVG + Canvas), renderer switch at the 2000-task threshold.
+5. **Interaction** — e2e: drag move/resize, create dependency, keyboard nav, touch.
+6. **Wrapper** — @testing-library: prop binding, mount/unmount lifecycle, callbacks fire correctly.
 
-## Quy ước
-- Test phải chạy **headless** (core không cần DOM). Không phụ thuộc network/clock thật — fake timer, inject calendar.
-- Date: test cả nhiều timezone (vd `America/New_York`, `Asia/Ho_Chi_Minh`, `UTC`) và qua mốc DST.
-- Performance budget có test: bundle size (core <30kb gzip, hello world <15kb), render 1000+ task, chuyển Canvas ≥2000.
-- A11y: WCAG 2.1 AA — keyboard reachable, ARIA label, focus indicator, `prefers-reduced-motion`, critical path phân biệt không cần màu.
-- CI phải green trước merge: `lint` + `typecheck` + `test` + `test:e2e` + size-limit.
+## Conventions
+- Tests must run **headless** (core needs no DOM). No dependency on real network/clock — fake timers, inject the calendar.
+- Dates: test multiple timezones (e.g. `America/New_York`, `Asia/Ho_Chi_Minh`, `UTC`) and across DST boundaries.
+- Performance budget is tested: bundle size (core <30kb gzip, hello world <15kb), rendering 1000+ tasks, Canvas switch ≥2000.
+- A11y: WCAG 2.1 AA — keyboard reachable, ARIA labels, focus indicator, `prefers-reduced-motion`, critical path distinguishable without color.
+- CI must be green before merge: `lint` + `typecheck` + `test` + `test:e2e` + size-limit.
 
-## Lệnh
+## Commands
 ```bash
 pnpm -r test            # unit + integration
 pnpm test:e2e           # playwright
 pnpm test:visual        # visual regression
 pnpm test -- --coverage # coverage
 ```
-Mục tiêu coverage compute layer ~100% branch; phần khác hợp lý, không chạy theo con số mù quáng.
+Target ~100% branch coverage for the compute layer; reasonable elsewhere — don't chase a number blindly.
