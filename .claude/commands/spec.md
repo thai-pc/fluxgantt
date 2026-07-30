@@ -1,16 +1,16 @@
 ---
-description: Biến một ý tưởng (đã qua planner) thành design/spec cụ thể bằng spec-writer subagent — public API, type, layer, thuật toán, a11y, test plan, security.
-argument-hint: <ý tưởng hoặc slug plan đã có>
+description: Turn an idea (already through the planner) into a concrete design/spec via the spec-writer subagent — public API, types, layer, algorithm, a11y, test plan, security.
+argument-hint: <idea or an existing plan slug>
 ---
-Dùng **spec-writer** subagent để thiết kế: $ARGUMENTS
+Use the **spec-writer** subagent to design: $ARGUMENTS
 
-Nếu đã có `.claude/work/plan-<slug>.md`, đọc nó làm đầu vào.
+If `.claude/work/plan-<slug>.md` already exists, read it as input.
 
-Theo `.claude/agents/spec-writer.md`: định nghĩa public API (verb+noun method, past-tense
-event), type + branded ID, layer đặt code (xác nhận headless-first + core không import
-framework), tier (Core/Pro/Cloud/plugin), thuật toán + edge case (cycle/constraint/ngày
-nghỉ/lag±/DST), Temporal cho date, a11y nếu render, security nếu input ngoài, và test plan
-cho test-engineer.
+Per `.claude/agents/spec-writer.md`: define the public API (verb+noun methods, past-tense
+events), types + branded IDs, where the code lives (confirm headless-first + core doesn't
+import a framework), tier (Core/Pro/Cloud/plugin), algorithm + edge cases
+(cycle/constraint/non-working-day/lag±/DST), Temporal for dates, a11y if it renders, security
+if it takes external input, and a test plan for test-engineer.
 
-Ghi spec vào `.claude/work/spec-<slug>.md`. Nếu có open question lớn thì hỏi trước khi
-chốt. Chỉ viết docs — không implement.
+Write the spec to `.claude/work/spec-<slug>.md`. If there is a big open question, ask before
+finalizing. Docs only — do not implement.

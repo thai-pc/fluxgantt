@@ -1,14 +1,15 @@
 ---
-description: Áp dụng các finding từ review bằng gantt-core-engineer subagent, rồi chạy lại typecheck + test liên quan.
-argument-hint: [findings hoặc slug; trống = review-*.md mới nhất trong .claude/work/]
+description: Apply the findings from a review via the gantt-core-engineer subagent, then re-run typecheck + the relevant tests.
+argument-hint: [findings or slug; empty = latest review-*.md in .claude/work/]
 ---
-Dùng **gantt-core-engineer** subagent để sửa các finding: $ARGUMENTS
+Use the **gantt-core-engineer** subagent to fix the findings: $ARGUMENTS
 
-Nếu $ARGUMENTS trống, đọc file `.claude/work/review-<slug>.md` mới nhất làm danh sách finding.
+If $ARGUMENTS is empty, read the latest `.claude/work/review-<slug>.md` as the findings list.
 
-Áp dụng mọi finding **Blocking**, cộng các non-blocking rẻ & đúng. Theo grain FluxGantt
-(headless-first, core không import framework, Temporal, branded ID, tree-shakable, tier-gate).
-Chạy lại `pnpm typecheck` + test liên quan cho tới khi xanh. **Báo theo số finding** (đã sửa
-/ bỏ qua + lý do). Nếu phải đổi hành vi để sửa, nói rõ để đưa lại qua security-reviewer.
+Apply every **Blocking** finding, plus the cheap-and-correct non-blocking ones. Follow the
+FluxGantt grain (headless-first, core doesn't import a framework, Temporal, branded IDs,
+tree-shakable, tier-gate). Re-run `pnpm typecheck` + the relevant tests until green. **Report
+by finding number** (fixed / skipped + why). If a behavior change was needed to fix something,
+say so, so it can go back through the security-reviewer.
 
-Không commit/tag/push.
+Do not commit/tag/push.

@@ -1,16 +1,17 @@
 ---
-description: Viết + chạy test cho một thay đổi bằng test-engineer subagent tới khi suite xanh — ưu tiên compute layer (critical path, leveling, calendar).
-argument-hint: [cần test gì, vd "critical path lag âm" hoặc để trống = thay đổi hiện tại]
+description: Write + run tests for a change via the test-engineer subagent until the suite is green — prioritizing the compute layer (critical path, leveling, calendar).
+argument-hint: [what to test, e.g. "critical path negative lag", or empty = current change]
 ---
-Dùng **test-engineer** subagent để test: $ARGUMENTS
+Use the **test-engineer** subagent to test: $ARGUMENTS
 
-Nếu $ARGUMENTS trống, test thay đổi chưa commit (`git status` / `git diff`).
+If $ARGUMENTS is empty, test the uncommitted change (`git status` / `git diff`).
 
-Theo `.claude/agents/test-engineer.md`: ưu tiên **compute layer** (CPM đối chiếu reference
-MS Project, fast-check kiểm bất biến, edge case cycle/constraint/ngày nghỉ/lag±/DST), rồi
-state (delta đúng, không emit thừa, undo/redo), IO round-trip, render visual, e2e
-interaction, a11y WCAG 2.1 AA. Test chạy headless, fake timer, nhiều timezone + DST. Đặt
-test đúng chỗ, file `*.test.ts` kebab-case.
+Per `.claude/agents/test-engineer.md`: prioritize the **compute layer** (CPM cross-checked
+against MS Project reference, fast-check invariants, edge cases
+cycle/constraint/non-working-day/lag±/DST), then state (correct deltas, no extra emits,
+undo/redo), IO round-trip, render visual, e2e interaction, a11y WCAG 2.1 AA. Tests run
+headless, fake timers, multiple timezones + DST. Put tests in the right place, `*.test.ts`
+kebab-case.
 
-**Chạy test thật** (`pnpm -r test` hoặc scope package) và báo kết quả trung thực — fail thì
-dán output, không khẳng định "đã pass" khi chưa chạy.
+**Run the tests for real** (`pnpm -r test` or scoped to the package) and report honestly — if
+they fail, paste the output; never claim "passed" without running.
