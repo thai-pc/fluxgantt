@@ -36,6 +36,10 @@ export type {
 export { createSvgRenderer } from './render/index.js';
 export type { SvgRendererInput, SvgRendererOptions, SvgRendererHandle } from './render/index.js';
 
+// Interaction layer (spec §8.4, spec-drag-move.md)
+export { enableDragMove } from './interaction/index.js';
+export type { DragMoveOptions } from './interaction/index.js';
+
 // ID coercion helpers (spec §6.1)
 export { toTaskId, toResourceId, toDependencyId, toBaselineId, toProjectId } from './types.js';
 
