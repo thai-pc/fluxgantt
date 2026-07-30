@@ -12,47 +12,47 @@ TypeScript-first · headless · framework-agnostic · AI-powered scheduling
 
 ---
 
-FluxGantt là thư viện Gantt chart TypeScript-first, license MIT, nhắm khoảng trống giữa
-commercial đắt đỏ (dhtmlx, Bryntum) và open-source yếu (Frappe Gantt, jsGantt). Core
-headless tách biệt hoàn toàn rendering, render SVG (fallback Canvas khi >2000 task), tính
-ngày giờ bằng Temporal API.
+FluxGantt is a TypeScript-first, MIT-licensed Gantt chart library targeting the gap between
+expensive commercial offerings (dhtmlx, Bryntum) and weak open-source ones (Frappe Gantt,
+jsGantt). Its headless core is fully decoupled from rendering, renders to SVG (Canvas
+fallback above 2000 tasks), and does all date/time math with the Temporal API.
 
 ## Tiers
 
-| Tier | Giá | Gồm |
+| Tier | Price | Includes |
 |---|---|---|
-| **Core** (MIT) | Free | Render, dependencies (FS/SS/FF/SF), hierarchy, critical path, React/Vue, export PNG/SVG/JSON/CSV |
+| **Core** (MIT) | Free | Rendering, dependencies (FS/SS/FF/SF), hierarchy, critical path, React/Vue, export PNG/SVG/JSON/CSV |
 | **Pro** (one-time) | $299/dev | Resource view + leveling, baselines, constraints, MS Project XML I/O, PDF, custom columns, Svelte/Angular |
-| **Cloud** (subscription) | từ $29/tháng | Multiplayer (Yjs), comment/@mention, AI auto-schedule, risk forecast, integrations |
+| **Cloud** (subscription) | from $29/month | Multiplayer (Yjs), comment/@mention, AI auto-schedule, risk forecast, integrations |
 
-## Cấu trúc repo (monorepo — pnpm + turbo)
+## Repo layout (monorepo — pnpm + turbo)
 
 ```
 packages/    core, react, vue, svelte, angular, ai, msproject, cloud-sdk
-examples/    demo cho từng framework + tính năng
+examples/    demos per framework + feature
 apps/        docs (Vocs), landing, playground
 tooling/     eslint-config, tsconfig, scripts
 tests/       e2e, visual, a11y, performance (Playwright)
 ```
 
-## Bắt đầu phát triển
+## Getting started with development
 
 ```bash
 pnpm install
-pnpm build        # turbo build tất cả package
-pnpm test         # unit test (vitest)
+pnpm build        # turbo builds all packages
+pnpm test         # unit tests (vitest)
 pnpm test:e2e     # e2e (playwright)
 pnpm lint && pnpm typecheck
 ```
 
-Yêu cầu: Node >= 20 (khuyến nghị 22), pnpm 10+.
+Requirements: Node >= 20 (22 recommended), pnpm 10+.
 
-## Tài liệu cho AI / contributor
+## Docs for AI / contributors
 
-- [`CLAUDE.md`](./CLAUDE.md) — ngữ cảnh tổng quan + quy tắc vàng
+- [`CLAUDE.md`](./CLAUDE.md) — high-level context + golden rules
 - [`.claude/rules/`](./.claude/rules) — architecture, conventions, testing, **security**
-- [`CONTRIBUTING.md`](./CONTRIBUTING.md) — quy trình đóng góp
+- [`CONTRIBUTING.md`](./CONTRIBUTING.md) — contribution workflow
 
 ## License
 
-Core: [MIT](./LICENSE). Pro & Cloud theo license thương mại riêng.
+Core: [MIT](./LICENSE). Pro & Cloud under a separate commercial license.
