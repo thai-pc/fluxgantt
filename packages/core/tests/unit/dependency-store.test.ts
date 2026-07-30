@@ -26,13 +26,13 @@ describe('DependencyStore — link', () => {
 
   it('throw khi self-link', () => {
     const store = new DependencyStore();
-    expect(() => store.link(A, A)).toThrow(/tự liên kết/);
+    expect(() => store.link(A, A)).toThrow(/cannot self-link/);
   });
 
   it('throw khi trùng cặp from/to', () => {
     const store = new DependencyStore();
     store.link(A, B);
-    expect(() => store.link(A, B)).toThrow(/đã tồn tại/);
+    expect(() => store.link(A, B)).toThrow(/already exists/);
   });
 });
 

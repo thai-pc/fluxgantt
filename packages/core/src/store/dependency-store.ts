@@ -1,5 +1,5 @@
-// DependencyStore — links giữa task (spec §5.1 State Layer, §7.3 Dependency Operations).
-// Headless, reactive qua signal. Ngăn cycle ở thời điểm link (CPM yêu cầu DAG, §13.1/§20).
+// DependencyStore — links between tasks (spec §5.1 State Layer, §7.3 Dependency Operations).
+// Headless, reactive via signals. Prevents cycles at link time (CPM requires a DAG, §13.1/§20).
 import { signal, type ReadonlySignal } from '../signals.js';
 import {
   toDependencyId,
@@ -10,8 +10,8 @@ import {
 } from '../types.js';
 
 export interface LinkOptions {
-  lag?: number; // giờ; âm = lead time
-  /** Cho phép tạo liên kết kể cả khi sinh cycle (mặc định false → throw). */
+  lag?: number; // hours; negative = lead time
+  /** Allow creating a link even if it introduces a cycle (default false → throw). */
   allowCycle?: boolean;
 }
 
@@ -27,7 +27,7 @@ export class DependencyStore {
     }
   }
 
-  /** Signal revision — đọc `.value` trong effect/computed để theo dõi thay đổi. */
+  /** Revision signal — read `.value` inside an effect/computed to track changes. */
   get revision(): ReadonlySignal<number> {
     return this.#rev;
   }
@@ -42,7 +42,7 @@ export class DependencyStore {
 
   // --- Mutations -----------------------------------------------------------
 
-  /** Tạo liên kết `from → to`. Throw nếu self-link, trùng cặp, hoặc tạo cycle. */
+  /** Create a `from → to` link. Throws on a self-link, a duplicate pair, or a cycle. */
   link(
     from: TaskId,
     to: TaskId,
@@ -50,13 +50,13 @@ export class DependencyStore {
     options: LinkOptions = {},
   ): Dependency {
     if (from === to) {
-      throw new Error(`DependencyStore.link: không thể tự liên kết task ${from}`);
+      throw new Error(`DependencyStore.link: cannot self-link task ${from}`);
     }
     if (this.#findByPair(from, to)) {
-      throw new Error(`DependencyStore.link: đã tồn tại liên kết ${from} → ${to}`);
+      throw new Error(`DependencyStore.link: link ${from} → ${to} already exists`);
     }
     if (!options.allowCycle && this.#canReach(to, from)) {
-      throw new Error(`DependencyStore.link: liên kết ${from} → ${to} sẽ tạo cycle`);
+      throw new Error(`DependencyStore.link: link ${from} → ${to} would create a cycle`);
     }
     const dep: Dependency = { id: newDependencyId(), from, to, type, lag: options.lag ?? 0 };
     this.#deps.set(dep.id, dep);
@@ -64,7 +64,7 @@ export class DependencyStore {
     return dep;
   }
 
-  /** Gỡ liên kết theo cặp from/to (mọi loại). */
+  /** Remove the link(s) for a from/to pair (any type). */
   unlink(from: TaskId, to: TaskId): void {
     let removed = false;
     for (const [id, d] of this.#deps) {
@@ -80,7 +80,7 @@ export class DependencyStore {
     if (this.#deps.delete(id)) this.#bump();
   }
 
-  /** Gỡ mọi liên kết tham chiếu tới một task (gọi khi xoá task). */
+  /** Remove every link that references a task (called when a task is deleted). */
   removeForTask(taskId: TaskId): void {
     let removed = false;
     for (const [id, d] of this.#deps) {
@@ -115,19 +115,19 @@ export class DependencyStore {
     return [...this.#deps.values()];
   }
 
-  /** Mọi liên kết chạm tới task (đến hoặc đi). */
+  /** Every link touching a task (incoming or outgoing). */
   of(taskId: TaskId): Dependency[] {
     this.#track();
     return [...this.#deps.values()].filter((d) => d.from === taskId || d.to === taskId);
   }
 
-  /** Liên kết đi vào task (task là `to`) — tức predecessor của task. */
+  /** Links into a task (the task is `to`) — i.e. the task's predecessors. */
   predecessors(taskId: TaskId): Dependency[] {
     this.#track();
     return [...this.#deps.values()].filter((d) => d.to === taskId);
   }
 
-  /** Liên kết đi ra khỏi task (task là `from`) — tức successor của task. */
+  /** Links out of a task (the task is `from`) — i.e. the task's successors. */
   successors(taskId: TaskId): Dependency[] {
     this.#track();
     return [...this.#deps.values()].filter((d) => d.from === taskId);
@@ -138,13 +138,13 @@ export class DependencyStore {
     return this.#findByPair(from, to) !== undefined;
   }
 
-  /** Liên kết `from → to` có tạo cycle không (chưa thêm edge). */
+  /** Whether a `from → to` link would create a cycle (edge not yet added). */
   wouldCreateCycle(from: TaskId, to: TaskId): boolean {
     this.#track();
     return from === to || this.#canReach(to, from);
   }
 
-  /** Đồ thị hiện tại có cycle không (DFS 3 màu). */
+  /** Whether the current graph has a cycle (3-color DFS). */
   hasCycle(): boolean {
     this.#track();
     const adj = this.#successorMap();
@@ -192,7 +192,7 @@ export class DependencyStore {
     return map;
   }
 
-  /** Có đường đi `start → ... → target` theo chiều from→to không. */
+  /** Whether a path `start → ... → target` exists following from→to edges. */
   #canReach(start: TaskId, target: TaskId): boolean {
     const adj = this.#successorMap();
     const seen = new Set<TaskId>();

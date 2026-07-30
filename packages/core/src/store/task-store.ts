@@ -1,20 +1,20 @@
 // TaskStore — reactive task collection (spec §5.1 State Layer, §7.2 Task Operations).
-// Headless: chỉ state + logic, không render. Reactivity qua signal.
+// Headless: state + logic only, no rendering. Reactivity via signals.
 import { signal, type ReadonlySignal } from '../signals.js';
 import { toTaskId, type Task, type TaskId } from '../types.js';
 
-/** Input để tạo task: bỏ field do store tự sinh; `id` tuỳ chọn (auto nếu thiếu). */
+/** Input to create a task: omits store-generated fields; `id` is optional (auto when absent). */
 export type TaskInput = Omit<Task, 'id' | 'createdAt' | 'updatedAt'> & { id?: TaskId };
 
-/** Patch update: không cho đổi `id`/`createdAt`. */
+/** Patch update: cannot change `id`/`createdAt`. */
 export type TaskPatch = Partial<Omit<Task, 'id' | 'createdAt' | 'updatedAt'>>;
 
 const newTaskId = (): TaskId => toTaskId(`task-${globalThis.crypto.randomUUID()}`);
 
 export class TaskStore {
   readonly #tasks = new Map<TaskId, Task>();
-  // Revision coarse-grained cho Wave 1. Fine-grained per-task delta (spec principle 2)
-  // sẽ thêm sau qua event layer.
+  // Coarse-grained revision for Wave 1. Fine-grained per-task deltas (spec principle 2)
+  // will come later via the event layer.
   readonly #rev = signal(0);
 
   constructor(initial?: readonly Task[]) {
@@ -23,7 +23,7 @@ export class TaskStore {
     }
   }
 
-  /** Signal revision — đọc `.value` trong effect/computed để theo dõi mọi thay đổi store. */
+  /** Revision signal — read `.value` inside an effect/computed to track every store change. */
   get revision(): ReadonlySignal<number> {
     return this.#rev;
   }
@@ -32,7 +32,7 @@ export class TaskStore {
     this.#rev.value++;
   }
 
-  /** Đăng ký dependency reactive cho các hàm đọc. */
+  /** Register a reactive dependency for read methods. */
   #track(): void {
     void this.#rev.value;
   }
@@ -50,14 +50,14 @@ export class TaskStore {
 
   update(id: TaskId, patch: TaskPatch): Task {
     const current = this.#tasks.get(id);
-    if (!current) throw new Error(`TaskStore.update: không tìm thấy task ${id}`);
+    if (!current) throw new Error(`TaskStore.update: task ${id} not found`);
     const next: Task = { ...current, ...patch, id, updatedAt: new Date() };
     this.#tasks.set(id, next);
     this.#bump();
     return next;
   }
 
-  /** Xoá task; cascade xoá toàn bộ con cháu trong hierarchy. */
+  /** Remove a task; cascade-removes all descendants in the hierarchy. */
   remove(id: TaskId): void {
     if (!this.#tasks.has(id)) return;
     for (const child of this.#childrenOf(id)) this.remove(child.id);

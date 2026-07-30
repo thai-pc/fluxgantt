@@ -1,7 +1,7 @@
-// Working calendar — số học ngày giờ theo lịch làm việc (spec §5.1 Compute Layer).
-// Dùng Temporal để xử lý timezone/DST đúng (spec §4.1). Mọi tính toán quy về
-// ZonedDateTime trong timezone của lịch; đo khoảng bằng epoch nanoseconds (chính
-// xác tuyệt đối, không lệch DST).
+// Working calendar — date/time arithmetic over a working schedule (spec §5.1 Compute Layer).
+// Uses Temporal to handle timezone/DST correctly (spec §4.1). Every computation is done in
+// ZonedDateTime within the calendar's timezone; intervals are measured in epoch nanoseconds
+// (exact, no DST drift).
 import type { Temporal } from '@js-temporal/polyfill';
 import { getTemporal, type TemporalApi } from '../internal/temporal.js';
 import type { DateInput, WeekdayCode, WorkingCalendar } from '../types.js';
@@ -43,7 +43,7 @@ export function isHoliday(date: DateInput, cal: WorkingCalendar): boolean {
   return holidaySet(cal, api).has(zdt.toPlainDate().toString());
 }
 
-/** Cộng `hours` giờ làm việc kể từ `start`, bỏ qua ngoài giờ/cuối tuần/holiday. */
+/** Add `hours` working hours from `start`, skipping off-hours/weekends/holidays. */
 export function addWorkingHours(start: DateInput, hours: number, cal: WorkingCalendar): ZDT {
   const api = getTemporal();
   if (hours < 0) return subtractWorkingHours(start, -hours, cal);
@@ -77,7 +77,7 @@ export function addWorkingHours(start: DateInput, hours: number, cal: WorkingCal
   return cur;
 }
 
-/** Trừ `hours` giờ làm việc kể từ `start` (đi ngược). */
+/** Subtract `hours` working hours from `start` (going backwards). */
 export function subtractWorkingHours(start: DateInput, hours: number, cal: WorkingCalendar): ZDT {
   const api = getTemporal();
   if (hours < 0) return addWorkingHours(start, -hours, cal);
@@ -111,7 +111,7 @@ export function subtractWorkingHours(start: DateInput, hours: number, cal: Worki
   return cur;
 }
 
-/** Số giờ làm việc từ `from` tới `to` (dương nếu `to` sau `from`, âm nếu ngược lại). */
+/** Working hours from `from` to `to` (positive if `to` is after `from`, negative otherwise). */
 export function differenceInWorkingHours(
   from: DateInput,
   to: DateInput,
@@ -189,7 +189,7 @@ function windowsFor(day: PlainDate, cal: WorkingCalendar, api: T): Array<{ start
 function parseTime(hhmm: string, api: T): Temporal.PlainTime {
   const m = /^(\d{2}):(\d{2})$/.exec(hhmm);
   if (!m || m[1] === undefined || m[2] === undefined) {
-    throw new Error(`workingHours không hợp lệ (cần "HH:MM"): ${hhmm}`);
+    throw new Error(`invalid workingHours (expected "HH:MM"): ${hhmm}`);
   }
   return api.PlainTime.from({ hour: Number(m[1]), minute: Number(m[2]) });
 }
@@ -232,14 +232,14 @@ function normalize(input: DateInput, tz: string, api: T): ZDT {
   }
   if (input instanceof api.ZonedDateTime) return input.withTimeZone(tz);
   if (input instanceof api.PlainDate) return input.toZonedDateTime({ timeZone: tz });
-  throw new Error('DateInput không hỗ trợ');
+  throw new Error('unsupported DateInput');
 }
 
 function parseString(s: string, tz: string, api: T): ZDT {
   try {
     return api.Instant.from(s).toZonedDateTimeISO(tz);
   } catch {
-    /* không phải instant tuyệt đối (thiếu offset/Z) → thử wall-clock */
+    /* not an absolute instant (missing offset/Z) → try wall-clock */
   }
   if (s.length <= 10) return api.PlainDate.from(s).toZonedDateTime({ timeZone: tz });
   return api.PlainDateTime.from(s).toZonedDateTime(tz);
