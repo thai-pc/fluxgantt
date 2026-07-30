@@ -22,6 +22,7 @@ File này là điểm vào ngữ cảnh cho AI. Chi tiết được tách thành
 6. **Tier-gate đúng chỗ** — Pro (resource/baseline/MSProject), Cloud (multiplayer/AI). Đừng nhét code Pro/Cloud vào `core`.
 7. **Mọi tính năng mới đi kèm test.** Xem `.claude/rules/testing.md`.
 8. **Security**: validate mọi input ngoài (import file, share link, API). Xem `.claude/rules/security.md`.
+9. **Ngôn ngữ**: chat với user bằng **tiếng Việt**; nhưng **mọi code, comment, tên định danh, docs, commit message và PR đều viết bằng tiếng Anh** (chuẩn OSS quốc tế, chuyên nghiệp). Không dịch ngược file cũ trừ khi được yêu cầu.
 
 ## Tech stack chốt
 TypeScript 5.4+ strict · ESM-first (tsup dual) · ES2022 · pnpm workspaces + turbo · changesets ·
