@@ -21,6 +21,16 @@ const NS_PER_HOUR = 3_600_000_000_000n;
 
 // --- Public API ------------------------------------------------------------
 
+/**
+ * Public wrapper around the internal `normalize()` — resolves `TemporalApi` via
+ * `getTemporal()` itself so callers outside this file (render/interaction layer) never
+ * need to touch `getTemporal()`/`TemporalApi` directly. Does not change `normalize`'s
+ * behaviour or signature — additive export only (spec-svg-renderer.md §3.1).
+ */
+export function normalizeDate(input: DateInput, timezone: string): Temporal.ZonedDateTime {
+  return normalize(input, timezone, getTemporal());
+}
+
 export function isWorkingDay(date: DateInput, cal: WorkingCalendar): boolean {
   const api = getTemporal();
   const zdt = normalize(date, cal.timezone, api);

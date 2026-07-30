@@ -86,6 +86,14 @@ export interface WorkingCalendar {
   timezone: string; // IANA, e.g. "America/New_York"
 }
 
+// Render/view vocabulary (spec §6.3, §8). Placed here (not render-local) because it is
+// shared future vocabulary for `GanttConfig` (facade, not yet written) as well as the
+// render layer — avoids a duplicate definition when the facade lands. NOT a `Viewport`
+// type name on purpose: that name is reserved for a future reactive `ViewportStore`
+// (pan/zoom state), which does not exist yet — see render/renderer-base.ts `TimeRange`.
+export type ViewMode = 'day' | 'week' | 'month' | 'quarter' | 'year';
+export type Density = 'compact' | 'default' | 'comfortable';
+
 // Critical Path (CPM) result types (spec §13.1, §20 Appendix B). Placed here (not
 // co-located in compute/critical-path.ts) because the render layer also needs
 // `TaskSchedule` per-task to paint `.fg-task--critical` (dashed outline, spec §8.5).
