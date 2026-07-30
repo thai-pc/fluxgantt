@@ -14,21 +14,21 @@
 
 ## Overview
 
-FluxGantt là thư viện Gantt chart TypeScript-first, license MIT, nhắm vào khoảng trống giữa hai cực: giải pháp commercial đắt đỏ (dhtmlx Gantt $599–1,599/dev/năm, Bryntum $850+/dev/năm) và các lựa chọn open-source yếu (Frappe Gantt, jsGantt Improved — đều thiếu tính năng, không có TypeScript, không có framework wrapper hiện đại).
+FluxGantt is a TypeScript-first, MIT-licensed Gantt chart library targeting the gap between two extremes: expensive commercial solutions (dhtmlx Gantt $599–1,599/dev/year, Bryntum $850+/dev/year) and weak open-source options (Frappe Gantt, jsGantt Improved — all lacking features, TypeScript, and modern framework wrappers).
 
-Sản phẩm thuộc họ Flux (cùng với FluxFiles — file manager), dùng chung brand để giảm chi phí marketing và tạo trải nghiệm developer nhất quán.
+The product is part of the Flux family (alongside FluxFiles — a file manager), sharing a brand to reduce marketing cost and create a consistent developer experience.
 
-**Ba tầng monetization:**
+**Three monetization tiers:**
 
-- **Core (MIT, free)** — render Gantt đầy đủ, dependencies, hierarchy
-- **Pro (one-time)** — resource view, baselines, MS Project I/O, không AI
-- **Cloud (subscription)** — multiplayer hosted, AI auto-scheduling, integrations
+- **Core (MIT, free)** — full Gantt rendering, dependencies, hierarchy
+- **Pro (one-time)** — resource view, baselines, MS Project I/O, no AI
+- **Cloud (subscription)** — hosted multiplayer, AI auto-scheduling, integrations
 
-Đối tượng chính là **developer** nhúng Gantt vào ứng dụng web của họ, không phải end-user trực tiếp — định hướng này chi phối mọi quyết định từ API design đến pricing.
+The primary audience is the **developer** embedding a Gantt into their web app, not the direct end user — this orientation drives every decision from API design to pricing.
 
-**Kiến trúc cốt lõi:** headless engine (state + logic) tách biệt hoàn toàn với rendering layer, render bằng SVG (fallback Canvas khi >2,000 tasks), state quản lý bằng reactive signal tự viết (không phụ thuộc React/Vue), tính toán ngày giờ dùng Temporal API để xử lý timezone/DST chính xác.
+**Core architecture:** a headless engine (state + logic) fully decoupled from the rendering layer, rendering to SVG (Canvas fallback above 2,000 tasks), state managed by a hand-rolled reactive signal (no React/Vue dependency), and date/time computation using the Temporal API for correct timezone/DST handling.
 
-**Roadmap 3 wave:** Wave 1 (tuần 1–8) ship Core MIT MVP để thu hút GitHub stars; Wave 2 (tuần 11–18) thêm Pro tier (resource leveling, baseline, MS Project XML); Wave 3 (tháng 6+) xây Cloud tier với real-time multiplayer và AI auto-schedule.
+**3-wave roadmap:** Wave 1 (weeks 1–8) ships the Core MIT MVP to attract GitHub stars; Wave 2 (weeks 11–18) adds the Pro tier (resource leveling, baseline, MS Project XML); Wave 3 (month 6+) builds the Cloud tier with real-time multiplayer and AI auto-schedule.
 
 ---
 
@@ -60,17 +60,17 @@ Sản phẩm thuộc họ Flux (cùng với FluxFiles — file manager), dùng c
 
 ## 1. Executive Summary
 
-FluxGantt là thư viện Gantt chart TypeScript-first, license MIT, nhắm vào khoảng trống giữa các giải pháp commercial đắt đỏ (dhtmlx Gantt $599–1,599/developer/năm, Bryntum $850+/developer/năm) và các lựa chọn open-source yếu (Frappe Gantt, jsGantt-improved, các plugin jQuery cũ).
+FluxGantt is a TypeScript-first, MIT-licensed Gantt chart library targeting the gap between expensive commercial solutions (dhtmlx Gantt $599–1,599/developer/year, Bryntum $850+/developer/year) and weak open-source options (Frappe Gantt, jsGantt-improved, old jQuery plugins).
 
-Sản phẩm là một phần của họ Flux dành cho công cụ web hiện đại, cùng với FluxFiles (file manager). Brand chung giúp giảm chi phí marketing, xây dựng moat dài hạn qua trải nghiệm developer nhất quán, và cho phép cross-promotion giữa các sản phẩm.
+The product is part of the Flux family of modern web tools, alongside FluxFiles (a file manager). The shared brand reduces marketing cost, builds a long-term moat through a consistent developer experience, and enables cross-promotion between products.
 
-Ba tầng monetization được lên kế hoạch:
+Three monetization tiers are planned:
 
-- **Core (MIT, free):** Render Gantt đầy đủ, dependencies, hierarchy
-- **Pro (one-time):** Resource view, baselines, MS Project I/O, không có AI
-- **Cloud (subscription):** Multiplayer hosted, AI auto-scheduling, integrations
+- **Core (MIT, free):** Full Gantt rendering, dependencies, hierarchy
+- **Pro (one-time):** Resource view, baselines, MS Project I/O, no AI
+- **Cloud (subscription):** Hosted multiplayer, AI auto-scheduling, integrations
 
-Sản phẩm nhắm đến developer nhúng tính năng Gantt vào ứng dụng web của riêng họ, không phải end-user trực tiếp. Định hướng này chi phối mọi quyết định, từ thiết kế API đến mô hình giá.
+The product targets developers embedding Gantt features into their own web apps, not direct end users. This orientation drives every decision, from API design to the pricing model.
 
 ---
 
@@ -83,16 +83,16 @@ Sản phẩm nhắm đến developer nhúng tính năng Gantt vào ứng dụng 
 | Product | License | Pricing | Stack | Strengths | Weaknesses |
 |---|---|---|---|---|---|
 | **dhtmlx Gantt PRO** | Commercial | $599/dev/yr (Standard)<br>$1,599/dev/yr (Enterprise) | JavaScript, no native TypeScript | Feature-complete, mature, MS Project parity | Dated API, expensive, heavy bundle |
-| **Bryntum Gantt** | Commercial | $850+/dev/năm | JavaScript, có framework wrapper | UI hiện đại, hỗ trợ React/Vue tốt | Giá cao, mô hình licensing sales-driven |
-| **Highcharts Gantt** | Commercial (bundle với Highcharts) | Khóa trong Highcharts license ($1,295+) | JavaScript | Hệ sinh thái charts | License hạn chế, không chuyên về Gantt |
+| **Bryntum Gantt** | Commercial | $850+/dev/yr | JavaScript, has framework wrappers | Modern UI, good React/Vue support | High price, sales-driven licensing model |
+| **Highcharts Gantt** | Commercial (bundled with Highcharts) | Locked in the Highcharts license ($1,295+) | JavaScript | Charts ecosystem | Restrictive license, not Gantt-focused |
 
 **Open Source:**
 
 | Product | License | Stars | Stack | Status | Weaknesses |
 |---|---|---|---|---|---|
 | **DHTMLX Gantt Community Edition** | MIT | newly released (2026) | JavaScript, based on the dhtmlx PRO codebase | Maintained by DHTMLX — commercial backing | **Most dangerous competitor:** same MIT license as FluxGantt, ships a fair amount of PRO features (all dependency types, critical path, MS Project I/O). But: still JS, no native TypeScript; core not framework-agnostic; **heavy bundle** (inherits the PRO monolith architecture); dated API; no first-class React/Vue wrappers; no AI/MCP. The Community edition is a funnel strategy toward PRO — intentional feature gating |
-| **Frappe Gantt** | MIT | ~12k GitHub | Vanilla JS, không TypeScript | Maintained nhưng chậm (~3 tháng/commit) | Không resource view, không critical path, dependency chỉ Finish-to-Start, không MS Project import, không TypeScript, không framework wrapper, visual cũ |
-| **jsGantt Improved** | BSD | — | jQuery | Legacy | jQuery-based, gần như bỏ hoang, không hỗ trợ framework hiện đại |
+| **Frappe Gantt** | MIT | ~12k GitHub | Vanilla JS, no TypeScript | Maintained but slow (~3 months/commit) | No resource view, no critical path, Finish-to-Start dependencies only, no MS Project import, no TypeScript, no framework wrapper, dated visuals |
+| **jsGantt Improved** | BSD | — | jQuery | Legacy | jQuery-based, nearly abandoned, no modern framework support |
 
 ### 2.2 Market Gap
 
@@ -112,34 +112,34 @@ Resource view/leveling, MS Project XML I/O, and baselines remain in the Pro tier
 ### 2.3 Customer Profile
 
 **Primary Customer:**
-- Developer solo/small-team xây dựng vertical SaaS
-- Ví dụ: công cụ quản lý xây dựng, lập kế hoạch sản xuất video, scheduler sản xuất, công cụ PM nội bộ tùy chỉnh
-- Pain point: giá dhtmlx $599–1,599/dev/năm, lo renewal, không có đường migration khỏi format proprietary
-- Mức chi: $199–499 one-time/developer cho Pro license
+- Solo/small-team developers building vertical SaaS
+- Examples: construction management tools, video production planning, manufacturing schedulers, custom internal PM tools
+- Pain point: dhtmlx pricing $599–1,599/dev/year, renewal anxiety, no migration path off the proprietary format
+- Spend: $199–499 one-time/developer for a Pro license
 
 **Secondary Customer:**
-- Agency và consulting xây tool tùy chỉnh cho khách hàng
-- Pain point: dự án khách hàng không đủ lớn để mua site license dhtmlx; xây từ đầu tốn 2–3 tháng
-- Mức chi: $499–999 team license, one-time
+- Agencies and consultancies building custom tools for clients
+- Pain point: client projects aren't big enough to justify a dhtmlx site license; building from scratch takes 2–3 months
+- Spend: $499–999 team license, one-time
 
-**Tertiary Customer (Cloud tier, sau launch):**
-- Team PM nhỏ muốn Gantt hosted mà không cần độ phức tạp như Asana/Monday
-- Pain point: Asana/Monday quá nhiều tính năng dư thừa; Excel dễ vỡ
-- Mức chi: $29–99/tháng/team
+**Tertiary Customer (Cloud tier, post-launch):**
+- Small PM teams wanting a hosted Gantt without the complexity of Asana/Monday
+- Pain point: Asana/Monday have too many superfluous features; Excel is fragile
+- Spend: $29–99/month/team
 
 ### 2.4 Total Addressable Market (TAM) Estimate
 
-**Ước tính lower-bound dựa trên tín hiệu revenue của đối thủ:**
+**Lower-bound estimate based on competitors' revenue signals:**
 
-- Số lượng khách hàng dhtmlx Gantt: ~5,000–10,000 developer (ước tính)
-- Bryntum: cùng order of magnitude
-- Tổng thị trường thư viện Gantt commercial: ~$15–30M/năm
+- dhtmlx Gantt customer count: ~5,000–10,000 developers (estimated)
+- Bryntum: same order of magnitude
+- Total commercial Gantt library market: ~$15–30M/year
 
-**Thị phần khả thi cho FluxGantt:**
+**Feasible market share for FluxGantt:**
 
-- Năm 1: 50–100 Pro license × $299 = $15–30k
-- Năm 2: 300–500 Pro + 50 Cloud sub = $90–180k ARR
-- Năm 3: 1k+ Pro + 200 Cloud + Enterprise sớm = $300–500k ARR
+- Year 1: 50–100 Pro licenses × $299 = $15–30k
+- Year 2: 300–500 Pro + 50 Cloud subs = $90–180k ARR
+- Year 3: 1k+ Pro + 200 Cloud + early Enterprise = $300–500k ARR
 
 ---
 
@@ -151,7 +151,7 @@ Resource view/leveling, MS Project XML I/O, and baselines remain in the Pro tier
 |---|---|
 | **Product Name** | FluxGantt |
 | **Brand Family** | Flux (modern web tooling) |
-| **Family Members** | FluxFiles (file manager, đang ship)<br>FluxGantt (Gantt chart, sản phẩm này)<br>FluxBoard (Kanban, tương lai)<br>FluxData (spreadsheet, tương lai)<br>FluxFlow (workflow editor, tương lai) |
+| **Family Members** | FluxFiles (file manager, shipping)<br>FluxGantt (Gantt chart, this product)<br>FluxBoard (Kanban, future)<br>FluxData (spreadsheet, future)<br>FluxFlow (workflow editor, future) |
 
 ### 3.2 Tagline & Positioning
 
@@ -167,20 +167,20 @@ Resource view/leveling, MS Project XML I/O, and baselines remain in the Pro tier
 
 | | |
 |---|---|
-| **Tone** | Trực tiếp, kỹ thuật, tự tin nhưng không kiêu |
-| **Reference** | Văn phong docs của TanStack, Tiptap, Drizzle ORM |
-| **Tránh** | Marketing sáo rỗng: "revolutionary", "synergy", "next-gen" |
-| **Ưu tiên** | Tuyên bố tính năng cụ thể, benchmark, code sample |
+| **Tone** | Direct, technical, confident but not arrogant |
+| **Reference** | The docs voice of TanStack, Tiptap, Drizzle ORM |
+| **Avoid** | Empty marketing: "revolutionary", "synergy", "next-gen" |
+| **Prefer** | Concrete feature claims, benchmarks, code samples |
 
 ### 3.4 Visual Identity
 
 | | |
 |---|---|
-| **Primary Color** | Indigo `#6366f1` — chuyên nghiệp, điềm tĩnh, khác biệt với màu xanh dhtmlx |
-| **Critical Color** | Red `#ef4444` — chỉ dùng cho critical path |
+| **Primary Color** | Indigo `#6366f1` — professional, calm, distinct from dhtmlx's blue |
+| **Critical Color** | Red `#ef4444` — used only for the critical path |
 | **Background** | Near-black `#0a0a0a` (dark mode), off-white `#fafafa` (light mode) |
 | **Typography** | Inter (UI), JetBrains Mono (code samples) |
-| **Logo Concept** | Bar ngang với arrow dependency dạng cascade, stylized |
+| **Logo Concept** | A horizontal bar with a cascading dependency arrow, stylized |
 
 ### 3.5 Domain & Online Presence
 
@@ -191,7 +191,7 @@ Resource view/leveling, MS Project XML I/O, and baselines remain in the Pro tier
 | **NPM scope** | `@fluxgantt` |
 | **GitHub** | github.com/fluxtoolkit/fluxgantt |
 | **Twitter/X** | @fluxgantt |
-| **Discord** | Flux Toolkit community server (chung với FluxFiles) |
+| **Discord** | Flux Toolkit community server (shared with FluxFiles) |
 
 ---
 
