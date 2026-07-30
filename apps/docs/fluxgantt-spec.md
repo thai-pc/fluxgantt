@@ -514,7 +514,7 @@ gantt.getTasks(): Task[]
 gantt.findTasks(predicate: (t: Task) => boolean): Task[]
 ```
 
-> **Cascade:** `moveTask` / `resizeTask` / `updateTask` mặc định dời các task phụ thuộc theo dependency (FS/SS/FF/SF + lag) và tôn trọng `constraint`, phát `task:moved` cho mọi task bị ảnh hưởng. Tắt bằng scheduling mode `manual`.
+> **Cascade:** `moveTask` / `resizeTask` / `updateTask` by default shift dependent tasks along their dependencies (FS/SS/FF/SF + lag) and respect `constraint`, emitting `task:moved` for every affected task. Disable via the `manual` scheduling mode.
 
 ### 7.3 Dependency Operations
 
@@ -655,20 +655,20 @@ const handleTaskChange = (task) => saveToBackend(task);
 
 ### 8.1 Visual Philosophy
 
-FluxGantt là công cụ business chuyên nghiệp. Aesthetic phải truyền tải "enterprise-grade software" nhưng vẫn dễ tiếp cận. Chủ động tránh:
+FluxGantt is a professional business tool. The aesthetic must convey "enterprise-grade software" while staying approachable. Deliberately avoid:
 
-- Style hand-drawn / sketchy (kiểu Excalidraw)
-- Illustration playful
-- Gradient nặng hoặc neumorphism
-- Icon cartoon
+- Hand-drawn / sketchy style (Excalidraw-like)
+- Playful illustration
+- Heavy gradients or neumorphism
+- Cartoon icons
 
-Ưu tiên:
+Prefer:
 
-- Hình khối geometric sạch
-- Whitespace rộng ở density comfortable
-- Thông tin dày đặc ở density compact (cho power user)
-- Shadow tinh tế, không nặng
-- System font và Inter cho khả năng đọc đa ngôn ngữ
+- Clean geometric shapes
+- Generous whitespace at comfortable density
+- Dense information at compact density (for power users)
+- Subtle shadows, not heavy
+- System fonts and Inter for multi-language readability
 
 ### 8.2 Design Tokens
 
@@ -713,13 +713,13 @@ FluxGantt là công cụ business chuyên nghiệp. Aesthetic phải truyền t�
   --fg-task-default-hover:  #4f46e5;
   --fg-task-critical:       #ef4444;   /* red — critical path */
   --fg-task-completed:      #10b981;   /* emerald */
-  --fg-task-baseline:       #94a3b8;   /* slate — baseline kế hoạch */
-  --fg-task-milestone:      #f59e0b;   /* amber — marker hình thoi */
+  --fg-task-baseline:       #94a3b8;   /* slate — plan baseline */
+  --fg-task-milestone:      #f59e0b;   /* amber — diamond marker */
 
   /* Resource colors */
   --fg-resource-normal:     #10b981;
   --fg-resource-overload:   #fb923c;   /* orange — over-allocated */
-  --fg-resource-critical:   #dc2626;   /* dark red — over nghiêm trọng */
+  --fg-resource-critical:   #dc2626;   /* dark red — severely over-allocated */
 
   /* Grid */
   --fg-grid-line:           #e5e7eb;
@@ -760,7 +760,7 @@ FluxGantt là công cụ business chuyên nghiệp. Aesthetic phải truyền t�
 │  └─────────────────────┘ │  └───────────────────────────────┘    │
 │                          │                                       │
 ├──────────────────────────────────────────────────────────────────┤
-│  Detail panel (khi task được chọn)                               │
+│  Detail panel (when a task is selected)                          │
 │  Name: ...   Resource: ...   Progress: 50%   [Edit] [Delete]     │
 └──────────────────────────────────────────────────────────────────┘
 ```
@@ -769,44 +769,44 @@ FluxGantt là công cụ business chuyên nghiệp. Aesthetic phải truyền t�
 
 **Direct manipulation:**
 
-| Hành động | Kết quả |
+| Action | Result |
 |---|---|
-| Click + drag giữa bar | Di chuyển task |
-| Click + drag cạnh bar | Resize task |
-| Click + drag handle | Tạo dependency tới task khác |
-| Double click bar | Mở detail edit |
-| Right click | Mở context menu |
+| Click + drag on the bar | Move the task |
+| Click + drag the bar edge | Resize the task |
+| Click + drag the handle | Create a dependency to another task |
+| Double click the bar | Open detail edit |
+| Right click | Open the context menu |
 
 **Keyboard:**
 
-| Phím | Hành động |
+| Key | Action |
 |---|---|
-| Arrow keys | Di chuyển selection giữa các task |
-| Tab | Di chuyển giữa cell trong task list |
+| Arrow keys | Move the selection between tasks |
+| Tab | Move between cells in the task list |
 | Space | Select / deselect |
 | Cmd/Ctrl + D | Duplicate task |
 | Cmd/Ctrl + Z / Shift+Z | Undo / redo |
 | Cmd/Ctrl + +/- | Zoom in / out |
-| Delete | Xóa task đã chọn |
-| Enter | Edit inline tên task đã chọn |
+| Delete | Delete the selected task |
+| Enter | Inline-edit the selected task's name |
 
 **Zoom:**
 
-| Hành động | Kết quả |
+| Action | Result |
 |---|---|
 | Mouse wheel + Ctrl | Zoom in/out |
-| Pinch gesture | Zoom trên touch device |
+| Pinch gesture | Zoom on a touch device |
 
 ### 8.5 Accessibility
 
-- Đạt chuẩn tối thiểu WCAG 2.1 AA
-- Mọi interaction đều keyboard-accessible
-- ARIA label cho screen reader
-- Màu sắc được test với color blindness
-- Critical path phân biệt được không cần màu (viền dashed)
-- Focus indicator trên mọi phần tử tương tác
-- Tôn trọng `prefers-reduced-motion`
-- **Chế độ Canvas (≥2.000 task)** vẫn giữ a11y: một lớp DOM ẩn (offscreen) chứa ARIA grid + row focusable chạy song song với Canvas vẽ bar, để keyboard navigation và screen reader không bị mất khi đổi renderer (xem §5.1). WCAG AA áp dụng cho cả hai renderer.
+- Meets at least WCAG 2.1 AA
+- Every interaction is keyboard-accessible
+- ARIA labels for screen readers
+- Colors tested for color blindness
+- Critical path distinguishable without color (dashed outline)
+- Focus indicator on every interactive element
+- Respects `prefers-reduced-motion`
+- **Canvas mode (≥2,000 tasks)** keeps a11y: a hidden (offscreen) DOM layer with an ARIA grid + focusable rows runs alongside the Canvas that draws the bars, so keyboard navigation and screen readers aren't lost when the renderer switches (see §5.1). WCAG AA applies to both renderers.
 
 ---
 
