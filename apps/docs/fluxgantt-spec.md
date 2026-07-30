@@ -812,114 +812,114 @@ Prefer:
 
 ## 9. Feature Roadmap (3 Waves)
 
-### 9.1 Wave 1 — Free MVP (Tier: Core MIT, Tuần 1–8)
+### 9.1 Wave 1 — Free MVP (Tier: Core MIT, Weeks 1–8)
 
 **Goal:** Ship a solid MIT-licensed Gantt that beats Frappe Gantt **and DHTMLX Community Edition** on developer experience and **bundle size** (core <15kb gzip vs hundreds of KB for dhtmlx), enough to attract early users and GitHub stars. Since both MIT competitors are heavy / not TypeScript-first, "small-bundle headless engine + strict types" is the main selling angle of Wave 1 — not AI (which doesn't ship until later).
 
-**Tuần 1–2: Foundation**
-- Setup monorepo (pnpm + turbo + changesets)
+**Weeks 1–2: Foundation**
+- Set up the monorepo (pnpm + turbo + changesets)
 - Core package skeleton
-- Data model Task + TaskStore (reactive)
-- SVG timeline renderer cơ bản
-- Zoom level: day / week / month / quarter / year
+- Task data model + TaskStore (reactive)
+- Basic SVG timeline renderer
+- Zoom levels: day / week / month / quarter / year
 - Today line marker
-- Chuyển theme light/dark
+- Light/dark theme switching
 
-**Tuần 3–4: Interactions**
-- Drag để move task
-- Drag cạnh để resize
-- Hierarchy (parent/child) với auto-rollup duration
-- Click selection (single + multi với Shift/Ctrl)
+**Weeks 3–4: Interactions**
+- Drag to move a task
+- Drag the edge to resize
+- Hierarchy (parent/child) with auto-rollup duration
+- Click selection (single + multi with Shift/Ctrl)
 - Keyboard navigation
-- Working calendar (ngày làm việc, holiday)
+- Working calendar (working days, holidays)
 
-**Tuần 5: Dependencies & Critical Path**
-- Dependencies: đủ 4 loại (FS, SS, FF, SF)
-- Hỗ trợ lag/lead time
-- Arrow auto-routing giữa các bar
-- Drag handle để tạo dependency mới
-- Tính toán critical path (thuật toán CPM)
-- Highlight visual cho critical path
+**Week 5: Dependencies & Critical Path**
+- Dependencies: all 4 types (FS, SS, FF, SF)
+- Lag/lead time support
+- Arrow auto-routing between bars
+- Drag handle to create a new dependency
+- Critical path computation (CPM algorithm)
+- Visual highlight for the critical path
 
-**Tuần 6: Framework Wrappers**
-- `@fluxgantt/react` với hooks
-- `@fluxgantt/vue` với Composition API
-- Sample app cho mỗi framework
+**Week 6: Framework Wrappers**
+- `@fluxgantt/react` with hooks
+- `@fluxgantt/vue` with the Composition API
+- Sample app per framework
 
-**Tuần 7: Polish & Export**
+**Week 7: Polish & Export**
 - Export PNG / SVG
 - Import/export JSON / CSV
-- Milestone (marker hình thoi)
+- Milestone (diamond marker)
 - Read-only mode
-- Scaffold i18n (chỉ English lúc launch, structure sẵn sàng mở rộng)
+- Scaffold i18n (English-only at launch, structure ready to extend)
 - Responsive mobile
 
-**Tuần 8: Documentation & Launch Prep**
+**Week 8: Documentation & Launch Prep**
 - Documentation site (Vocs)
-- 10+ example live trên StackBlitz
-- Landing page với 3 GIF demo
-- README với quick start
+- 10+ live examples on StackBlitz
+- Landing page with 3 demo GIFs
+- README with a quick start
 - Comparison page (vs dhtmlx PRO, dhtmlx Community Edition, Bryntum, Frappe) — emphasizing the **bundle size** benchmark + TypeScript DX
-- Draft bài Show HN
-- Asset cho Product Hunt
+- Draft the Show HN post
+- Assets for Product Hunt
 
-### 9.2 Wave 2 — Pro Tier (Tuần 11–18, sau khi validate)
+### 9.2 Wave 2 — Pro Tier (Weeks 11–18, after validation)
 
-**Mục tiêu:** Thêm tính năng developer chịu trả $199–499 one-time.
+**Goal:** Add features developers will pay $199–499 one-time for.
 
-**Tuần 11–12: MS Project Compatibility**
+**Weeks 11–12: MS Project Compatibility**
 - Import MS Project XML (.xml format)
 - Export MS Project XML
-- Migration guide từ dhtmlx
-- Test với 20 file MS Project thực tế
+- Migration guide from dhtmlx
+- Test with 20 real MS Project files
 
-**Tuần 13–14: Resource View**
-- Data model Resource + ResourceStore
-- Gán resource cho task
-- Chart workload resource (panel riêng)
-- Override calendar resource
-- Cảnh báo visual khi over-allocation
-- Thuật toán resource leveling
+**Weeks 13–14: Resource View**
+- Resource data model + ResourceStore
+- Assign resources to tasks
+- Resource workload chart (separate panel)
+- Override a resource's calendar
+- Visual warning on over-allocation
+- Resource leveling algorithm
 
-**Tuần 15–16: Baselines & Constraints**
-- Capture baseline (snapshot)
-- So sánh multi-baseline
+**Weeks 15–16: Baselines & Constraints**
+- Capture a baseline (snapshot)
+- Multi-baseline comparison
 - Visual diff (planned vs actual)
-- Task constraint (must-start-on, ASAP, ALAP, v.v.)
-- Custom column trong task list
-- Filter nâng cao
+- Task constraints (must-start-on, ASAP, ALAP, etc.)
+- Custom columns in the task list
+- Advanced filters
 
-**Tuần 17: Advanced Export**
-- Export PDF với header/footer tùy chỉnh
+**Week 17: Advanced Export**
+- Export PDF with a custom header/footer
 - Print preview
-- Export multi-page cho project lớn
-- Bỏ watermark (chỉ Pro)
+- Multi-page export for large projects
+- Remove watermark (Pro only)
 
-**Tuần 18: Polish & Pro Launch**
-- Hệ thống validate license key
-- Tích hợp Stripe Checkout (one-time payment)
+**Week 18: Polish & Pro Launch**
+- License key validation system
+- Stripe Checkout integration (one-time payment)
 - Pro documentation
 - Pro tier landing page
-- Email blast cho waitlist
+- Email blast to the waitlist
 - Public Pro launch
 
-### 9.3 Wave 3 — Cloud + AI Tier (Tháng 6+)
+### 9.3 Wave 3 — Cloud + AI Tier (Month 6+)
 
-**Mục tiêu:** Recurring revenue qua hosted multiplayer Gantt với tính năng AI.
+**Goal:** Recurring revenue via a hosted multiplayer Gantt with AI features.
 
-**Tháng 6–7: Cloud Foundation**
+**Months 6–7: Cloud Foundation**
 - Backend API (Hono + Postgres)
-- Auth user + model organization
-- Quản lý project + workspace
+- User auth + organization model
+- Project + workspace management
 - Stripe subscription
 - Cloud SDK package
 
-**Tháng 8–9: Real-time Multiplayer**
-- Tích hợp Yjs
-- Presence (live cursor, indicator selection)
-- Comment và @mention cho mỗi task
+**Months 8–9: Real-time Multiplayer**
+- Yjs integration
+- Presence (live cursors, selection indicators)
+- Comments and @mentions per task
 - Activity feed / audit log
-- Share link với password và expiry
+- Share link with password and expiry
 
 **Month 10–11: AI Features**
 
@@ -932,11 +932,11 @@ Prefer:
 - Natural-language task entry
 - AI-generated postmortem when a project ends
 
-**Tháng 12: Integrations**
-- Webhook (task thay đổi, đạt milestone)
-- Slack notification
-- Email digest (tiến độ hàng tuần)
-- Connector Zapier
+**Month 12: Integrations**
+- Webhooks (task changed, milestone reached)
+- Slack notifications
+- Email digest (weekly progress)
+- Zapier connector
 - Sync Jira / Linear / Asana
 
 ---
@@ -945,9 +945,9 @@ Prefer:
 
 ### 10.1 Method Naming
 
-Verb + noun, camelCase. Tránh prefix "set"/"get" chung cho action; chỉ dùng cho property access đơn giản.
+Verb + noun, camelCase. Avoid generic "set"/"get" prefixes for actions; use them only for simple property access.
 
-**Nên dùng:**
+**Do:**
 ```typescript
 gantt.addTask(task)
 gantt.linkTasks(fromId, toId, 'FS')
@@ -957,17 +957,17 @@ gantt.zoomTo('week')
 gantt.scrollToTask(taskId)
 ```
 
-**Tránh:**
+**Avoid:**
 ```typescript
 gantt.task_add(task)                  // snake_case
-gantt.createNewTaskInGantt(task)      // dài dòng
-gantt.do('add', task)                 // action generic
-gantt.set('zoom', 'week')             // setter generic
+gantt.createNewTaskInGantt(task)      // verbose
+gantt.do('add', task)                 // generic action
+gantt.set('zoom', 'week')             // generic setter
 ```
 
 ### 10.2 Event Naming
 
-Thì past tense, namespace bằng dấu hai chấm, lowercase. Đọc như "điều gì đó đã xảy ra".
+Past tense, namespaced with a colon, lowercase. Reads as "something happened".
 
 ```
 task:added
@@ -988,9 +988,9 @@ conflict:detected
 
 ### 10.3 CSS Class Naming (BEM)
 
-Prefix mọi class với `fg-` để tránh xung đột với host application.
+Prefix every class with `fg-` to avoid clashing with the host application.
 
-| Loại | Ví dụ |
+| Kind | Example |
 |---|---|
 | **Block** | `.fg-task` |
 | **Element** | `.fg-task__bar`, `.fg-task__label` |
@@ -1014,9 +1014,9 @@ CSS custom property prefix: `--fg-*`
 
 ### 10.4 Type Naming
 
-PascalCase, không prefix "I" (convention cũ), suffix mô tả chỉ khi cần.
+PascalCase, no "I" prefix (dated convention), a descriptive suffix only when needed.
 
-**Nên dùng:**
+**Do:**
 ```typescript
 type Task = { ... }
 type Dependency = { ... }
@@ -1026,11 +1026,11 @@ type GanttInstance = { ... }
 type ResourceAssignment = { ... }
 ```
 
-**Tránh:**
+**Avoid:**
 ```typescript
-interface ITask { ... }            // prefix I lỗi thời
-type TaskType = { ... }            // suffix Type dư thừa
-type taskConfig = { ... }          // camelCase sai
+interface ITask { ... }            // dated I prefix
+type TaskType = { ... }            // redundant Type suffix
+type taskConfig = { ... }          // wrong camelCase
 ```
 
 **Branded ID:**
@@ -1041,27 +1041,27 @@ type ResourceId = string & { readonly __brand: 'ResourceId' }
 
 ### 10.5 File & Folder Naming
 
-| Loại | Convention | Ví dụ |
+| Kind | Convention | Example |
 |---|---|---|
 | Files | kebab-case | `task-store.ts`, `critical-path.ts` |
 | Folders | kebab-case | `store/`, `compute/`, `render/` |
 | Tests | `*.test.ts` | `task-store.test.ts` |
-| Types | `types.ts` | mỗi package hoặc feature folder |
+| Types | `types.ts` | per package or feature folder |
 | Index | `index.ts` | barrel export |
 
 ### 10.6 NPM Package Names
 
-| Package | Mô tả |
+| Package | Description |
 |---|---|
 | `@fluxgantt/core` | Headless engine (Wave 1) |
 | `@fluxgantt/react` | React wrapper (Wave 1) |
 | `@fluxgantt/vue` | Vue wrapper (Wave 1) |
 | `@fluxgantt/svelte` | Svelte wrapper (Wave 2) |
 | `@fluxgantt/angular` | Angular wrapper (Wave 2) |
-| `@fluxgantt/ai` | Tính năng AI scheduling (Pro) |
+| `@fluxgantt/ai` | AI scheduling features (Pro) |
 | `@fluxgantt/msproject` | MS Project import/export (Pro) |
 | `@fluxgantt/cloud-sdk` | Cloud API client (Wave 3) |
-| `@fluxgantt/themes` | Theme dựng sẵn (community) |
+| `@fluxgantt/themes` | Prebuilt themes (community) |
 | `@fluxgantt/icons` | Icon set |
 | `@fluxgantt/dev-tools` | Browser devtools extension |
 
@@ -1076,7 +1076,7 @@ fluxgantt/
 ├── packages/
 │   ├── core/                       # @fluxgantt/core
 │   │   ├── src/
-│   │   │   ├── gantt.ts            # Entry chính: createGantt()
+│   │   │   ├── gantt.ts            # Main entry: createGantt()
 │   │   │   ├── store/
 │   │   │   │   ├── task-store.ts
 │   │   │   │   ├── dependency-store.ts
@@ -1115,7 +1115,7 @@ fluxgantt/
 │   │   │   │   ├── export-svg.ts
 │   │   │   │   └── export-pdf.ts
 │   │   │   ├── events.ts
-│   │   │   ├── signals.ts           # Reactive primitive tự viết
+│   │   │   ├── signals.ts           # Hand-rolled reactive primitive
 │   │   │   ├── types.ts
 │   │   │   ├── constants.ts
 │   │   │   └── index.ts
@@ -1159,8 +1159,8 @@ fluxgantt/
 │
 ├── apps/
 │   ├── docs/                       # Documentation site (Vocs)
-│   ├── landing/                    # Landing page marketing (Next.js hoặc Astro)
-│   └── playground/                 # Playground tương tác (StackBlitz host)
+│   ├── landing/                    # Marketing landing page (Next.js or Astro)
+│   └── playground/                 # Interactive playground (StackBlitz host)
 │
 ├── tooling/
 │   ├── eslint-config/
