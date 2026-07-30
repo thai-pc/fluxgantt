@@ -1,16 +1,17 @@
-// Interaction layer — drag-move (spec-drag-move.md, plan-drag-move.md). Kéo một task bar
-// bằng Pointer Events để đổi `start`/`end` của MỘT task, commit một lần khi thả chuột qua
-// callback `onTaskMoved`. Không cascade, không resize, không tạo dependency, không
-// keyboard-nav (v1, plan §5). KHÔNG import TaskStore — nhận `getTasks()` duck-typed để
-// tránh coupling vào state layer cụ thể (spec §1).
+// Interaction layer — drag-move (spec-drag-move.md, plan-drag-move.md). Drag a task bar
+// with Pointer Events to change ONE task's `start`/`end`, committing once on drop via the
+// `onTaskMoved` callback. No cascade, no resize, no create-dependency, no keyboard-nav
+// (v1, plan §5). Does NOT import TaskStore — takes `getTasks()` duck-typed to avoid coupling
+// to a specific state layer (spec §1).
 //
-// ĐÃ ĐỤNG DOM (Pointer Events thuần) — đây là layer duy nhất trong core được phép, theo
-// architecture.md "Interaction". `@fluxgantt/core` vẫn KHÔNG import react/vue/svelte.
+// TOUCHES THE DOM (raw Pointer Events) — this is the only layer in core allowed to, per
+// architecture.md "Interaction". `@fluxgantt/core` still does NOT import react/vue/svelte.
 //
-// CHỐT Q4 (main session, spec §10 — override §4.3 gốc): commit dùng lịch Temporal
-// (`normalizeDate(...).add({ days: N })`), KHÔNG dùng `timeScale.xToDate`/elapsed-nanosecond
-// cho phần commit — cách cũ lệch giờ-trong-ngày ~1h khi kéo băng qua mốc DST. `.add({days})`
-// giữ nguyên wall-clock time-of-day + duration, an toàn DST (xem test DST bên dưới).
+// DECISION Q4 (main session, spec §10 — overrides the original §4.3): the commit uses
+// calendar arithmetic (`normalizeDate(...).add({ days: N })`), NOT `timeScale.xToDate`/
+// elapsed-nanoseconds — the old way drifts the time-of-day by ~1h when dragging across a DST
+// boundary. `.add({days})` preserves the wall-clock time-of-day + duration, DST-safe (see the
+// DST test below).
 import { normalizeDate } from '../compute/working-calendar.js';
 import type { SvgRendererHandle, TimeScale } from '../render/index.js';
 import type { DateInput, Task, TaskId } from '../types.js';
@@ -19,25 +20,25 @@ import type { Temporal } from '@js-temporal/polyfill';
 
 export interface DragMoveOptions {
   /**
-   * Gọi ĐÚNG MỘT LẦN khi một thao tác kéo đã vượt ngưỡng (`dragThresholdPx`) được thả
-   * (`pointerup`) — KHÔNG gọi cho một cú click thường (chưa vượt ngưỡng) hay một lần kéo
-   * bị huỷ (Escape/`pointercancel`/disposer giữa lúc kéo). Đây là cơ chế commit DUY NHẤT
-   * — `enableDragMove` KHÔNG tự ghi vào `TaskStore` hay bất kỳ store nào. Nếu muốn cập
-   * nhật `TaskStore`, gọi `taskStore.update(taskId, { start: newStart, end: newEnd })`
-   * bên trong callback này.
+   * Called EXACTLY ONCE when a drag that exceeded the threshold (`dragThresholdPx`) is
+   * released (`pointerup`) — NOT for a plain click (below threshold) or a cancelled drag
+   * (Escape/`pointercancel`/disposer mid-drag). This is the ONLY commit mechanism —
+   * `enableDragMove` does NOT write to `TaskStore` or any store itself. To update
+   * `TaskStore`, call `taskStore.update(taskId, { start: newStart, end: newEnd })` inside
+   * this callback.
    */
   onTaskMoved(taskId: TaskId, newStart: Temporal.ZonedDateTime, newEnd: Temporal.ZonedDateTime): void;
 
   /**
-   * Ngưỡng di chuyển (px, toạ độ client) trước khi một pointerdown được coi là kéo thay
-   * vì click. Default 4.
+   * Movement threshold (px, client coordinates) before a pointerdown is treated as a drag
+   * rather than a click. Default 4.
    */
   dragThresholdPx?: number;
 
   /**
-   * Gọi trên MỖI `pointermove` hợp lệ sau khi đã vượt ngưỡng, với start/end TẠM THỜI
-   * (chưa commit) — tuỳ chọn, dành cho UI live (vd tooltip hiển thị ngày dưới con trỏ).
-   * Không bao giờ dùng để commit — chỉ `onTaskMoved` mới commit.
+   * Called on EACH valid `pointermove` after the threshold is exceeded, with the TENTATIVE
+   * start/end (not committed) — optional, for live UI (e.g. a tooltip showing the date under
+   * the cursor). Never used to commit — only `onTaskMoved` commits.
    */
   onDragging?(
     taskId: TaskId,
@@ -61,23 +62,25 @@ const MAX_DRAG_DAYS = 366_000;
 interface DragState {
   readonly taskId: TaskId;
   readonly groupEl: SVGGElement;
-  /** Element thật nhận pointerdown (có thể là con của `groupEl`, vd `.fg-task__bar`) —
-   *  dùng để gọi `releasePointerCapture` đúng cặp với `setPointerCapture` gốc. */
+  /** The actual element that received pointerdown (may be a child of `groupEl`, e.g.
+   *  `.fg-task__bar`) — used to call `releasePointerCapture` paired with the original
+   *  `setPointerCapture`. */
   readonly captureEl: Element;
   readonly originalStart: DateInput;
   readonly originalEnd: DateInput;
   readonly startClientX: number;
   readonly pointerId: number;
-  /** Chụp MỘT LẦN tại pointerdown (Q5) — không đọc lại `handle.getTimeScale()` mỗi
-   *  pointermove, để một `setOptions()` giữa chừng không đổi ý nghĩa delta đang tích luỹ. */
+  /** Captured ONCE at pointerdown (Q5) — not re-read from `handle.getTimeScale()` on every
+   *  pointermove, so a `setOptions()` mid-drag doesn't change the meaning of the accumulating
+   *  delta. */
   readonly timeScale: TimeScale;
   exceededThreshold: boolean;
 }
 
 /**
- * Snap delta pixel về số ngày nguyên gần nhất (theo `timeScale.pixelsPerDay`) — đúng yêu
- * cầu "snap tối thiểu về ranh giới ngày, không snap theo working-calendar" (plan §5).
- * Trả về SỐ NGÀY (N), không phải pixel — chốt Q4.
+ * Snap a pixel delta to the nearest whole day (by `timeScale.pixelsPerDay`) — matches the
+ * "snap minimally to the day boundary, not to the working-calendar" requirement (plan §5).
+ * Returns the NUMBER OF DAYS (N), not pixels — decision Q4.
  */
 export function snapDeltaToDay(dxPixels: number, timeScale: TimeScale): number {
   if (!Number.isFinite(dxPixels) || !Number.isFinite(timeScale.pixelsPerDay) || timeScale.pixelsPerDay === 0) {
@@ -90,12 +93,13 @@ export function snapDeltaToDay(dxPixels: number, timeScale: TimeScale): number {
 }
 
 /**
- * Tính start/end mới bằng lịch Temporal — chốt Q4 (main session §10): cộng `deltaDays`
- * NGÀY LỊCH vào `originalStart`/`originalEnd` đã normalize theo timezone của `timeScale`
- * (`timeScale.range.start.timeZoneId` — cùng timezone mà renderer dùng để dựng scale này,
- * không cần truyền `WorkingCalendar` riêng). Giữ nguyên giờ-trong-ngày (wall-clock) +
- * duration, an toàn qua mốc DST — KHÔNG dùng `timeScale.xToDate`/elapsed-nanosecond
- * (cách đó lệch ~1h khi băng qua DST, xem spec §4.3 — bị override bởi §10 Q4).
+ * Computes the new start/end with calendar arithmetic — decision Q4 (main session §10): add
+ * `deltaDays` CALENDAR DAYS to `originalStart`/`originalEnd` normalized to the `timeScale`'s
+ * timezone (`timeScale.range.start.timeZoneId` — the same timezone the renderer used to build
+ * this scale, so no separate `WorkingCalendar` needs to be passed). Preserves the wall-clock
+ * time-of-day + duration, DST-safe across a boundary — does NOT use
+ * `timeScale.xToDate`/elapsed-nanoseconds (that drifts ~1h across DST, see spec §4.3 —
+ * overridden by §10 Q4).
  */
 export function computeDraggedDates(
   timeScale: TimeScale,
@@ -110,16 +114,17 @@ export function computeDraggedDates(
 }
 
 /**
- * Gắn drag-move vào một `SvgRendererHandle` đã mount. Uỷ quyền sự kiện: một listener
- * `pointerdown` DUY NHẤT trên `handle.svg` (không phải trên từng `.fg-task`) — bắt buộc vì
- * `update()` full-repaint xoá/dựng lại toàn bộ `.fg-task` mỗi lần gọi; listener gắn trực
- * tiếp trên từng task-bar sẽ mất sau lần repaint đầu tiên. `pointermove`/`pointerup`/
- * `pointercancel`/`keydown` gắn TẠM THỜI trên `window` trong khoảng thời gian có một lần
- * kéo đang diễn ra (gắn ở pointerdown, gỡ ở pointerup/cancel/Escape/disposer) — không bao
- * giờ tích luỹ vô hạn qua nhiều lần kéo (security.md "không leak listener").
+ * Attaches drag-move to a mounted `SvgRendererHandle`. Event delegation: a SINGLE
+ * `pointerdown` listener on `handle.svg` (not on each `.fg-task`) — required because
+ * `update()` full-repaints, removing/rebuilding every `.fg-task` on each call; a listener
+ * attached directly to a task-bar would be lost after the first repaint.
+ * `pointermove`/`pointerup`/`pointercancel`/`keydown` are attached TEMPORARILY to `window`
+ * for the duration of an active drag (added on pointerdown, removed on
+ * pointerup/cancel/Escape/disposer) — never accumulating unbounded across drags (security.md
+ * "no leaked listeners").
  *
- * Trả về disposer — gỡ toàn bộ listener. Gọi disposer khi đang kéo dở = huỷ kéo đó (không
- * commit), tương đương Escape. Gọi disposer nhiều lần = no-op an toàn.
+ * Returns a disposer — removes all listeners. Calling the disposer mid-drag cancels that drag
+ * (no commit), equivalent to Escape. Calling the disposer multiple times is a safe no-op.
  */
 export function enableDragMove(
   handle: SvgRendererHandle,
@@ -161,8 +166,8 @@ export function enableDragMove(
     // (its window listeners persist but its pointerId no longer matches any handler).
     if (disposed || state) return;
     if (!(event.target instanceof Element)) return;
-    // Không phải kéo trên một task bar — trả sớm, KHÔNG preventDefault/stopPropagation
-    // (spec §6 — không chặn click/selection tương lai trên grid/header/khoảng trống).
+    // Not a drag on a task bar — return early, do NOT preventDefault/stopPropagation
+    // (spec §6 — don't block future click/selection on grid/header/empty space).
     const groupEl = event.target.closest('.fg-task[data-task-id]');
     if (!groupEl) return;
 
@@ -170,11 +175,11 @@ export function enableDragMove(
     if (taskIdAttr === null) return;
     const taskId = toTaskId(taskIdAttr);
     const task = getTasks().find((t) => t.id === taskId);
-    // Race giữa DOM đã render và `tasks` mới nhất — bỏ qua, không throw (spec §7).
+    // Race between the rendered DOM and the latest `tasks` — skip, don't throw (spec §7).
     if (!task) return;
 
-    // Toạ độ pointer là input số không tin cậy (security.md/spec §7) — bỏ qua ngay từ
-    // pointerdown nếu đã hỏng, đừng khởi tạo một gesture kéo trên dữ liệu rác.
+    // Pointer coordinates are untrusted numeric input (security.md/spec §7) — bail at
+    // pointerdown if already corrupt; don't start a drag gesture on garbage data.
     if (!Number.isFinite(event.clientX) || !Number.isFinite(event.clientY)) return;
 
     const captureEl = event.target;
@@ -193,8 +198,8 @@ export function enableDragMove(
     try {
       captureEl.setPointerCapture?.(event.pointerId);
     } catch {
-      // Best-effort — jsdom và một số môi trường không cài đặt pointer capture thật
-      // (spec §7/§9). Không bao giờ để lỗi này làm vỡ luồng kéo chính.
+      // Best-effort — jsdom and some environments don't implement real pointer capture
+      // (spec §7/§9). Never let this error break the main drag flow.
     }
 
     window.addEventListener('pointermove', onPointerMove);
@@ -214,25 +219,25 @@ export function enableDragMove(
       return;
     }
     if (!Number.isFinite(event.clientX) || !Number.isFinite(event.clientY)) {
-      // Toạ độ rác giữa chừng — bỏ qua event này, giữ nguyên trạng thái (spec §7).
+      // Garbage coordinates mid-drag — ignore this event, keep the state (spec §7).
       return;
     }
 
     const dxRaw = event.clientX - s.startClientX;
 
     if (!s.exceededThreshold) {
-      if (Math.abs(dxRaw) < dragThresholdPx) return; // tiềm năng click, chưa làm gì
+      if (Math.abs(dxRaw) < dragThresholdPx) return; // potential click, do nothing yet
       s.exceededThreshold = true;
       s.groupEl.classList.add(DRAGGING_CLASS);
       document.body.style.cursor = 'grabbing';
-      // Chặn text-selection khi kéo bằng chuột — chỉ sau khi chắc chắn đây là kéo.
+      // Block text-selection while dragging with a mouse — only once this is confirmed a drag.
       event.preventDefault();
     }
 
     const deltaDays = snapDeltaToDay(dxRaw, s.timeScale);
     const pixelDx = deltaDays * s.timeScale.pixelsPerDay;
-    // Phản hồi trực quan trong lúc kéo: chỉ dịch transform, KHÔNG gọi handle.update()/
-    // taskStore.update() mỗi frame (lý do hiệu năng, plan §3 — renderer full-repaint).
+    // Visual feedback during the drag: only shift the transform, do NOT call handle.update()/
+    // taskStore.update() per frame (performance, plan §3 — renderer full-repaints).
     s.groupEl.setAttribute('transform', `translate(${pixelDx} 0)`);
 
     if (options.onDragging) {
@@ -247,10 +252,10 @@ export function enableDragMove(
     teardown(s);
     state = null;
 
-    if (!s.exceededThreshold) return; // click thường — không commit, chưa từng set transform
+    if (!s.exceededThreshold) return; // plain click — no commit, transform was never set
 
     if (!Number.isFinite(event.clientX) || !Number.isFinite(event.clientY)) {
-      // Toạ độ rác ở event thả cuối cùng — không commit dữ liệu từ toạ độ hỏng.
+      // Garbage coordinates on the final release event — don't commit data from corrupt coords.
       revertVisual(s);
       return;
     }
@@ -282,8 +287,8 @@ export function enableDragMove(
     cancelDrag(s);
   }
 
-  /** Huỷ một lần kéo đang diễn ra: gỡ listener, revert transform, KHÔNG commit. Dùng
-   *  chung cho pointercancel/Escape/disposer-giữa-lúc-kéo. */
+  /** Cancel an in-progress drag: remove listeners, revert the transform, do NOT commit. Shared
+   *  by pointercancel/Escape/disposer-mid-drag. */
   function cancelDrag(s: DragState): void {
     teardown(s);
     state = null;
@@ -298,12 +303,12 @@ export function enableDragMove(
     try {
       s.captureEl.releasePointerCapture?.(s.pointerId);
     } catch {
-      // Best-effort, xem ghi chú ở setPointerCapture.
+      // Best-effort, see the note at setPointerCapture.
     }
   }
 
   function revertVisual(s: DragState): void {
-    if (!s.exceededThreshold) return; // chưa từng set transform/class — không gì để gỡ
+    if (!s.exceededThreshold) return; // transform/class were never set — nothing to undo
     s.groupEl.removeAttribute('transform');
     s.groupEl.classList.remove(DRAGGING_CLASS);
     document.body.style.cursor = '';
