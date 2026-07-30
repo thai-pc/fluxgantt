@@ -25,6 +25,7 @@ import {
   type GridColumn,
   type RowLayout,
   type TaskBarLayout,
+  type TimeScale,
 } from './renderer-base.js';
 import type {
   CriticalPathResult,
@@ -69,6 +70,14 @@ export interface SvgRendererHandle {
   /** Removes all DOM the renderer created from `container`. `update()`/`setOptions()`
    *  after `destroy()` are a no-op. */
   destroy(): void;
+  /**
+   * `TimeScale` of the most recent render — used by the interaction layer (drag-move,
+   * later drag-resize/drag-create-dep) to convert pixel deltas to dates without
+   * re-deriving the range/viewMode/calendar defaults a second time
+   * (spec-drag-move.md §0). A new object every time `update()`/`setOptions()` runs; the
+   * same object for the duration of one render.
+   */
+  getTimeScale(): TimeScale;
 }
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
@@ -102,6 +111,9 @@ export function createSvgRenderer(
   let currentInput = input;
   let currentOptions: SvgRendererOptions = { ...options };
   let destroyed = false;
+  // Assigned inside render(), which always runs synchronously below before the handle is
+  // returned — never read while unassigned (definite-assignment asserted).
+  let currentTimeScale!: TimeScale;
 
   const svg = document.createElementNS(SVG_NS, 'svg') as SVGSVGElement;
   svg.setAttribute('class', 'fg-timeline');
@@ -131,6 +143,11 @@ export function createSvgRenderer(
       destroyed = true;
       svg.remove();
     },
+    getTimeScale(): TimeScale {
+      // No `destroyed` guard needed — returns the last render's TimeScale (harmless, pure
+      // data) even after destroy(), same non-throwing spirit as the rest of this handle.
+      return currentTimeScale;
+    },
   };
 
   function render(): void {
@@ -149,6 +166,7 @@ export function createSvgRenderer(
       : deriveTimeRange(currentInput.tasks, viewMode, calendar);
 
     const timeScale = createTimeScale(range, viewMode, calendar);
+    currentTimeScale = timeScale;
     const rowHeight = ROW_HEIGHT[density];
     const rows = layoutRows(currentInput.tasks, density);
 
