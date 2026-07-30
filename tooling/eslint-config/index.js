@@ -11,14 +11,14 @@ export default tseslint.config(
   ...tseslint.configs.recommended,
   {
     rules: {
-      // Branded ID + strict types: cấm any rò rỉ
+      // Branded IDs + strict types: forbid leaking any
       '@typescript-eslint/no-explicit-any': 'error',
       '@typescript-eslint/consistent-type-imports': 'error',
       '@typescript-eslint/no-unused-vars': [
         'error',
         { argsIgnorePattern: '^_', varsIgnorePattern: '^_' },
       ],
-      // Core headless: cảnh báo sớm khi import sai layer được cấu hình ở từng package
+      // Core headless: warn early on wrong-layer imports, configured per package
       'no-restricted-imports': 'off',
     },
   },

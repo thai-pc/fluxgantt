@@ -65,7 +65,7 @@ function dep(from: TaskId, to: TaskId, type: DependencyType = 'FS', lag = 0): De
 }
 
 describe('computeCriticalPath — simple FS chain', () => {
-  it('2 task, lag 0: ES/EF/LS/LF đúng, cả hai critical, projectEnd đúng', () => {
+  it('2 tasks, lag 0: ES/EF/LS/LF correct, both critical, projectEnd correct', () => {
     const A = task('A', '2026-01-05T09:00', 8); // Mon 09:00-17:00
     const B = task('B', '2026-01-05T09:00', 8);
     const deps = [dep(A.id, B.id, 'FS', 0)];
@@ -104,7 +104,7 @@ describe('computeCriticalPath — simple FS chain', () => {
   });
 });
 
-describe('computeCriticalPath — 4 dependency types × lag dương/âm (§6.4 formulas)', () => {
+describe('computeCriticalPath — 4 dependency types × positive/negative lag (§6.4 formulas)', () => {
   const predStart = '2026-01-05T09:00'; // Mon 09:00
   const predDuration = 8; // EF = Mon 17:00
   const succDuration = 4;
@@ -120,7 +120,7 @@ describe('computeCriticalPath — 4 dependency types × lag dương/âm (§6.4 f
     { type: 'SF', lag: -2 },
   ];
 
-  it.each(cases)('$type lag=$lag: ES/EF succ đúng theo công thức', ({ type, lag }) => {
+  it.each(cases)('$type lag=$lag: successor ES/EF match the formula', ({ type, lag }) => {
     const pred = task('pred', predStart, predDuration);
     const succ = task('succ', predStart, succDuration);
     const deps = [dep(pred.id, succ.id, type, lag)];
@@ -151,18 +151,18 @@ describe('computeCriticalPath — 4 dependency types × lag dương/âm (§6.4 f
   });
 });
 
-describe('computeCriticalPath — multiple predecessors: ES = muộn nhất', () => {
-  it('lấy candidate muộn nhất (không phải đầu tiên/cuối cùng trong mảng)', () => {
+describe('computeCriticalPath — multiple predecessors: ES = latest', () => {
+  it('picks the latest candidate (not the first/last in the array)', () => {
     const A = task('A', '2026-01-05T09:00', 8); // EF Mon 17:00
     const B = task('B', '2026-01-05T09:00', 2); // EF Mon 11:00
     const C = task('C', '2026-01-05T09:00', 1); // EF Mon 10:00
     const target = task('target', '2026-01-05T09:00', 1);
 
-    // B ở giữa mảng — nếu implementation nhầm lấy candidate đầu (A) hoặc cuối (C) thay
-    // vì max thật sự, test này sẽ fail.
+    // B is in the middle of the array — if the implementation wrongly picks the first (A)
+    // or last (C) candidate instead of the true max, this test fails.
     const deps = [
       dep(A.id, target.id, 'FS', 0), // candidate = Mon 17:00
-      dep(B.id, target.id, 'FS', 10), // candidate = Tue 13:00 (muộn nhất)
+      dep(B.id, target.id, 'FS', 10), // candidate = Tue 13:00 (latest)
       dep(C.id, target.id, 'SS', 1), // candidate = Mon 10:00
     ];
 
@@ -174,14 +174,14 @@ describe('computeCriticalPath — multiple predecessors: ES = muộn nhất', ()
   });
 });
 
-describe('computeCriticalPath — multiple successors: LF = sớm nhất', () => {
-  it('lấy candidate sớm nhất (không phải đầu tiên/cuối cùng trong mảng)', () => {
+describe('computeCriticalPath — multiple successors: LF = earliest', () => {
+  it('picks the earliest candidate (not the first/last in the array)', () => {
     const X = task('X', '2026-01-05T09:00', 4); // ES Mon09:00, EF Mon13:00
     const D = task('D', '2026-01-05T09:00', 8);
     const E = task('E', '2026-01-05T09:00', 2);
     const F = task('F', '2026-01-05T09:00', 1);
 
-    // D ở giữa mảng — candidate đúng (sớm nhất) đến từ D, không phải E (đầu) hay F (cuối).
+    // D is in the middle — the correct (earliest) candidate comes from D, not E (first) or F (last).
     const deps = [
       dep(X.id, E.id, 'SS', 6),
       dep(X.id, D.id, 'FS', 0),
@@ -199,7 +199,7 @@ describe('computeCriticalPath — multiple successors: LF = sớm nhất', () =>
 });
 
 describe('computeCriticalPath — diamond dependency (A→B, A→C, B→D, C→D)', () => {
-  it('nhánh dài hơn (B) critical; nhánh ngắn hơn (C) slack = chênh lệch duration', () => {
+  it('the longer branch (B) is critical; the shorter branch (C) slack = duration difference', () => {
     const A = task('A', '2026-01-05T09:00', 2); // ES Mon09:00, EF Mon11:00
     const B = task('B', '2026-01-05T09:00', 6);
     const C = task('C', '2026-01-05T09:00', 2);
@@ -231,7 +231,7 @@ describe('computeCriticalPath — diamond dependency (A→B, A→C, B→D, C→D
 });
 
 describe('computeCriticalPath — milestone', () => {
-  it('duration 0 (start === end, không set duration): ES === EF, không lỗi', () => {
+  it('duration 0 (start === end, no duration set): ES === EF, no error', () => {
     const M = taskFromRange('M', '2026-01-05T09:00', '2026-01-05T09:00', { type: 'milestone' });
     const result = computeCriticalPath([M], [], cal);
     const m = result.schedule.get(M.id)!;
@@ -243,7 +243,7 @@ describe('computeCriticalPath — milestone', () => {
 });
 
 describe('computeCriticalPath — root task', () => {
-  it('task không predecessor: ES = task.start normalize đúng', () => {
+  it('task with no predecessor: ES = normalized task.start', () => {
     const A = task('A', '2026-01-05T10:30', 4);
     const result = computeCriticalPath([A], [], cal);
     const a = result.schedule.get(A.id)!;
@@ -252,8 +252,8 @@ describe('computeCriticalPath — root task', () => {
 });
 
 describe('computeCriticalPath — non-working day / holiday skip', () => {
-  it('predecessor EF = Fri 16:00, FS lag 2 → successor ES nhảy qua cuối tuần tới Mon 10:00', () => {
-    // Tái dùng chính fixture của working-calendar.test.ts ("nhảy qua cuối tuần").
+  it('predecessor EF = Fri 16:00, FS lag 2 → successor ES jumps over the weekend to Mon 10:00', () => {
+    // Reuses the working-calendar.test.ts fixture ("jumps over the weekend").
     const P = task('P', '2026-01-02T09:00', 7); // Fri 09:00 + 7h = Fri 16:00
     const S = task('S', '2026-01-02T09:00', 3);
     const deps = [dep(P.id, S.id, 'FS', 2)];
@@ -266,7 +266,7 @@ describe('computeCriticalPath — non-working day / holiday skip', () => {
     expect(wall(s.earlyStart)).toBe('2026-01-05T10:00:00');
   });
 
-  it('cùng case nhưng Mon nghỉ (holiday) → nhảy tới Tue 10:00', () => {
+  it('same case but Mon is a holiday → jumps to Tue 10:00', () => {
     const withHoliday: WorkingCalendar = { ...cal, holidays: ['2026-01-05'] };
     const P = task('P', '2026-01-02T09:00', 7);
     const S = task('S', '2026-01-02T09:00', 3);
@@ -280,7 +280,7 @@ describe('computeCriticalPath — non-working day / holiday skip', () => {
 });
 
 describe('computeCriticalPath — DST boundary (America/New_York, spring-forward 2026-03-08)', () => {
-  it('cộng qua cuối tuần chứa DST vẫn đúng wall-clock (Fri 16:00 + lag2 → Mon 10:00)', () => {
+  it('adding across a DST weekend stays wall-clock correct (Fri 16:00 + lag2 → Mon 10:00)', () => {
     const ny: WorkingCalendar = { ...cal, timezone: 'America/New_York' };
     // 2026-03-06 = Fri, 03-08 = Sun (DST), 03-09 = Mon.
     const P = task('P', '2026-03-06T09:00', 7);
@@ -298,7 +298,7 @@ describe('computeCriticalPath — DST boundary (America/New_York, spring-forward
 describe('computeCriticalPath — multi-timezone', () => {
   const timezones = ['UTC', 'America/New_York', 'Asia/Ho_Chi_Minh'];
 
-  it.each(timezones)('%s: chuỗi FS 2 task lag 0 → cả hai critical', (timezone) => {
+  it.each(timezones)('%s: FS chain of 2 tasks lag 0 → both critical', (timezone) => {
     const zoned: WorkingCalendar = { ...cal, timezone };
     const A = task('A', '2026-01-05T09:00', 8);
     const B = task('B', '2026-01-05T09:00', 4);
@@ -314,25 +314,25 @@ describe('computeCriticalPath — multi-timezone', () => {
   });
 });
 
-describe('computeCriticalPath — edge cases bắt buộc', () => {
-  it('throw khi tasks rỗng', () => {
+describe('computeCriticalPath — required edge cases', () => {
+  it('throws when tasks is empty', () => {
     expect(() => computeCriticalPath([], [], cal)).toThrow(/must not be empty/);
   });
 
-  it('throw khi trùng task id', () => {
+  it('throws on duplicate task id', () => {
     const A1 = task('dup', '2026-01-05T09:00', 4);
     const A2 = task('dup', '2026-01-06T09:00', 4);
     expect(() => computeCriticalPath([A1, A2], [], cal)).toThrow(/duplicate task id/);
   });
 
-  it('throw khi dependency tham chiếu task không tồn tại', () => {
+  it('throws when a dependency references a non-existent task', () => {
     const A = task('A', '2026-01-05T09:00', 4);
     const ghost = toTaskId('ghost');
     const deps = [dep(A.id, ghost)];
     expect(() => computeCriticalPath([A], deps, cal)).toThrow(/does not exist/);
   });
 
-  it('throw khi duration âm (end trước start, không set duration)', () => {
+  it('throws on negative duration (end before start, no duration set)', () => {
     const A = taskFromRange('A', '2026-01-06T09:00', '2026-01-05T09:00');
     expect(() => computeCriticalPath([A], [], cal)).toThrow(/end before its start/);
   });
@@ -343,7 +343,7 @@ describe('computeCriticalPath — edge cases bắt buộc', () => {
     expect(() => computeCriticalPath([A], deps, cal)).toThrow(CyclicDependencyError);
   });
 
-  it('throw CyclicDependencyError khi cycle trực tiếp (A→B, B→A), taskIds đúng', () => {
+  it('throws CyclicDependencyError on a direct cycle (A→B, B→A), taskIds correct', () => {
     const A = task('A', '2026-01-05T09:00', 4);
     const B = task('B', '2026-01-05T09:00', 4);
     const deps = [dep(A.id, B.id), dep(B.id, A.id)];
@@ -357,7 +357,7 @@ describe('computeCriticalPath — edge cases bắt buộc', () => {
     }
   });
 
-  it('throw CyclicDependencyError khi cycle gián tiếp (A→B→C→A), không loop vô hạn', () => {
+  it('throws CyclicDependencyError on an indirect cycle (A→B→C→A), no infinite loop', () => {
     const A = task('A', '2026-01-05T09:00', 4);
     const B = task('B', '2026-01-05T09:00', 4);
     const C = task('C', '2026-01-05T09:00', 4);
@@ -368,32 +368,32 @@ describe('computeCriticalPath — edge cases bắt buộc', () => {
 });
 
 describe('computeCriticalPath — N1: explicit task.duration / dependency.lag validation (security review)', () => {
-  it('throw khi task.duration explicit âm', () => {
+  it('throws when explicit task.duration is negative', () => {
     const A = task('A', '2026-01-05T09:00', -5);
     expect(() => computeCriticalPath([A], [], cal)).toThrow(/invalid duration.*must be >= 0/);
   });
 
-  it('throw khi task.duration explicit là NaN', () => {
+  it('throws when explicit task.duration is NaN', () => {
     const A = task('A', '2026-01-05T09:00', Number.NaN);
     expect(() => computeCriticalPath([A], [], cal)).toThrow(/invalid duration.*must be a finite number/);
   });
 
-  it('throw khi task.duration explicit là Infinity', () => {
+  it('throws when explicit task.duration is Infinity', () => {
     const A = task('A', '2026-01-05T09:00', Number.POSITIVE_INFINITY);
     expect(() => computeCriticalPath([A], [], cal)).toThrow(/invalid duration.*must be a finite number/);
   });
 
-  it('throw khi task.duration explicit là -Infinity', () => {
+  it('throws when explicit task.duration is -Infinity', () => {
     const A = task('A', '2026-01-05T09:00', Number.NEGATIVE_INFINITY);
     expect(() => computeCriticalPath([A], [], cal)).toThrow(/invalid duration.*must be a finite number/);
   });
 
-  it('throw khi task.duration explicit vượt MAX_CPM_HOURS', () => {
+  it('throws when explicit task.duration exceeds MAX_CPM_HOURS', () => {
     const A = task('A', '2026-01-05T09:00', MAX_CPM_HOURS + 1);
     expect(() => computeCriticalPath([A], [], cal)).toThrow(/invalid duration.*exceeds the maximum/);
   });
 
-  it('KHÔNG throw khi task.duration explicit = 0 hoặc = MAX_CPM_HOURS (boundary hợp lệ)', () => {
+  it('does NOT throw when explicit task.duration = 0 or = MAX_CPM_HOURS (valid boundary)', () => {
     const zero = task('zero', '2026-01-05T09:00', 0);
     expect(() => computeCriticalPath([zero], [], cal)).not.toThrow();
 
@@ -401,28 +401,28 @@ describe('computeCriticalPath — N1: explicit task.duration / dependency.lag va
     expect(() => computeCriticalPath([atMax], [], cal)).not.toThrow();
   });
 
-  it('throw khi dependency.lag là NaN', () => {
+  it('throws when dependency.lag is NaN', () => {
     const A = task('A', '2026-01-05T09:00', 4);
     const B = task('B', '2026-01-05T09:00', 4);
     const deps = [dep(A.id, B.id, 'FS', Number.NaN)];
     expect(() => computeCriticalPath([A, B], deps, cal)).toThrow(/invalid lag.*must be a finite number/);
   });
 
-  it('throw khi dependency.lag là Infinity', () => {
+  it('throws when dependency.lag is Infinity', () => {
     const A = task('A', '2026-01-05T09:00', 4);
     const B = task('B', '2026-01-05T09:00', 4);
     const deps = [dep(A.id, B.id, 'FS', Number.POSITIVE_INFINITY)];
     expect(() => computeCriticalPath([A, B], deps, cal)).toThrow(/invalid lag.*must be a finite number/);
   });
 
-  it('throw khi dependency.lag là -Infinity', () => {
+  it('throws when dependency.lag is -Infinity', () => {
     const A = task('A', '2026-01-05T09:00', 4);
     const B = task('B', '2026-01-05T09:00', 4);
     const deps = [dep(A.id, B.id, 'FS', Number.NEGATIVE_INFINITY)];
     expect(() => computeCriticalPath([A, B], deps, cal)).toThrow(/invalid lag.*must be a finite number/);
   });
 
-  it('throw khi dependency.lag vượt magnitude MAX_CPM_HOURS (cả dương lẫn âm)', () => {
+  it('throws when dependency.lag exceeds MAX_CPM_HOURS magnitude (both positive and negative)', () => {
     const A = task('A', '2026-01-05T09:00', 4);
     const B = task('B', '2026-01-05T09:00', 4);
     const C = task('C', '2026-01-05T09:00', 4);
@@ -432,7 +432,7 @@ describe('computeCriticalPath — N1: explicit task.duration / dependency.lag va
     expect(() => computeCriticalPath([A, C], depsNeg, cal)).toThrow(/invalid lag.*exceeds the maximum magnitude/);
   });
 
-  it('KHÔNG throw khi dependency.lag = ±MAX_CPM_HOURS (boundary hợp lệ)', () => {
+  it('does NOT throw when dependency.lag = ±MAX_CPM_HOURS (valid boundary)', () => {
     const A = task('A', '2026-01-05T09:00', 4);
     const B = task('B', '2026-01-05T09:00', 4);
     const deps = [dep(A.id, B.id, 'FS', MAX_CPM_HOURS)];
@@ -440,7 +440,7 @@ describe('computeCriticalPath — N1: explicit task.duration / dependency.lag va
   });
 });
 
-describe('computeCriticalPath — constraint inert (Core v1, BẮT BUỘC cả 8 kind)', () => {
+describe('computeCriticalPath — constraint inert (Core v1, ALL 8 kinds required)', () => {
   const A = task('A', '2026-01-05T09:00', 8);
   const B = task('B', '2026-01-05T09:00', 4);
   const deps = [dep(A.id, B.id, 'FS', 2)];
@@ -458,7 +458,7 @@ describe('computeCriticalPath — constraint inert (Core v1, BẮT BUỘC cả 8
   ];
 
   it.each(constraints)(
-    'constraint $kind trên task giữa chuỗi dependency vẫn cho kết quả ASAP, không throw',
+    'constraint $kind on a mid-chain task still yields ASAP, no throw',
     (constraint) => {
       const bWithConstraint: Task = { ...B, constraint };
       expect(() => computeCriticalPath([A, bWithConstraint], deps, cal)).not.toThrow();
@@ -478,7 +478,7 @@ describe('computeCriticalPath — constraint inert (Core v1, BẮT BUỘC cả 8
 });
 
 describe('computeCriticalPath — seam: options.resolveConstraint', () => {
-  it('được gọi đúng 1 lần/task, với (task, computedEarlyStart, {calendar, taskDuration}); giá trị trả về lan xuống EF/backward/slack', () => {
+  it('called exactly once per task, with (task, computedEarlyStart, {calendar, taskDuration}); the return value propagates to EF/backward/slack', () => {
     const A = task('A', '2026-01-05T09:00', 8); // EF Mon 17:00
     const B = task('B', '2026-01-05T09:00', 4);
     const deps = [dep(A.id, B.id, 'FS', 0)];
@@ -516,7 +516,7 @@ describe('computeCriticalPath — seam: options.resolveConstraint', () => {
     expect(a.isCritical).toBe(false);
   });
 
-  it('ASAP_ONLY_RESOLVER cho kết quả giống hệt không truyền options', () => {
+  it('ASAP_ONLY_RESOLVER produces identical results to passing no options', () => {
     const A = task('A', '2026-01-05T09:00', 8);
     const B = task('B', '2026-01-05T09:00', 4);
     const deps = [dep(A.id, B.id, 'FS', 2)];

@@ -2,7 +2,7 @@ import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
   test: {
-    environment: 'node', // headless: core không cần DOM
+    environment: 'node', // headless: core doesn't need a DOM
     setupFiles: ['./tests/setup/temporal.ts'],
     include: ['tests/**/*.test.ts', 'src/**/*.test.ts'],
     coverage: {

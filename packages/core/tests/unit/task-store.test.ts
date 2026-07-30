@@ -12,7 +12,7 @@ const base: TaskInput = {
 };
 
 describe('TaskStore — CRUD', () => {
-  it('add sinh id + timestamps và lưu task', () => {
+  it('add generates id + timestamps and stores the task', () => {
     const store = new TaskStore();
     const t = store.add(base);
     expect(t.id).toMatch(/^task-/);
@@ -21,13 +21,13 @@ describe('TaskStore — CRUD', () => {
     expect(store.get(t.id)).toEqual(t);
   });
 
-  it('add tôn trọng id cho sẵn', () => {
+  it('add respects a provided id', () => {
     const store = new TaskStore();
     const t = store.add({ ...base, id: 'task-fixed' as never });
     expect(t.id).toBe('task-fixed');
   });
 
-  it('update merge patch và bump updatedAt, giữ nguyên createdAt', () => {
+  it('update merges the patch and bumps updatedAt, keeping createdAt', () => {
     const store = new TaskStore();
     const t = store.add(base);
     const updated = store.update(t.id, { name: 'Renamed', progress: 0.5 });
@@ -36,12 +36,12 @@ describe('TaskStore — CRUD', () => {
     expect(updated.createdAt).toEqual(t.createdAt);
   });
 
-  it('update task không tồn tại thì throw', () => {
+  it('update throws for a non-existent task', () => {
     const store = new TaskStore();
     expect(() => store.update('task-x' as never, { name: 'x' })).toThrow();
   });
 
-  it('remove xoá task', () => {
+  it('remove deletes the task', () => {
     const store = new TaskStore();
     const t = store.add(base);
     store.remove(t.id);
@@ -51,7 +51,7 @@ describe('TaskStore — CRUD', () => {
 });
 
 describe('TaskStore — hierarchy', () => {
-  it('children + roots phân loại theo parent', () => {
+  it('children + roots classify by parent', () => {
     const store = new TaskStore();
     const parent = store.add({ ...base, type: 'summary', name: 'Parent' });
     const child = store.add({ ...base, name: 'Child', parent: parent.id });
@@ -59,11 +59,11 @@ describe('TaskStore — hierarchy', () => {
     expect(store.roots().map((t) => t.id)).toEqual([parent.id]);
   });
 
-  it('remove cascade xoá con cháu', () => {
+  it('remove cascade-deletes descendants', () => {
     const store = new TaskStore();
     const parent = store.add({ ...base, type: 'summary' });
     const child = store.add({ ...base, parent: parent.id });
-    store.add({ ...base, parent: child.id }); // cháu
+    store.add({ ...base, parent: child.id }); // grandchild
     expect(store.size).toBe(3);
     store.remove(parent.id);
     expect(store.size).toBe(0);
@@ -71,7 +71,7 @@ describe('TaskStore — hierarchy', () => {
 });
 
 describe('TaskStore — reactivity', () => {
-  it('effect chạy lại khi store đổi qua revision signal', () => {
+  it('effect re-runs when the store changes via the revision signal', () => {
     const store = new TaskStore();
     let runs = 0;
     const stop = effect(() => {

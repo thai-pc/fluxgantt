@@ -1,9 +1,9 @@
 import { test, expect } from '@playwright/test';
 
-// Sanity: xác nhận harness Playwright + browser chạy được.
-// Khi @fluxgantt/core có SVG renderer + mount(), thay page.setContent bằng
-// page.goto(demo) rồi test thật: drag move/resize task, tạo dependency, keyboard nav.
-test('harness render được DOM cơ bản', async ({ page }) => {
+// Sanity: confirm the Playwright harness + browser run.
+// Once @fluxgantt/core has an SVG renderer + mount(), replace page.setContent with
+// page.goto(demo) and test for real: drag move/resize task, create dependency, keyboard nav.
+test('harness renders basic DOM', async ({ page }) => {
   await page.setContent(`
     <div class="fg-timeline">
       <svg role="img" aria-label="gantt">
