@@ -1,7 +1,7 @@
 # Contributing to FluxGantt
 
-Cảm ơn bạn đã quan tâm! Tài liệu này tóm tắt quy trình. Quy ước chi tiết nằm trong
-[`.claude/rules/`](./.claude/rules).
+Thanks for your interest! This document summarizes the workflow. Detailed conventions live
+in [`.claude/rules/`](./.claude/rules).
 
 ## Setup
 
@@ -11,32 +11,33 @@ pnpm build
 pnpm test
 ```
 
-Node >= 20 (khuyến nghị 22, xem `.nvmrc`), pnpm 10+.
+Node >= 20 (22 recommended, see `.nvmrc`), pnpm 10+.
 
-## Nguyên tắc bắt buộc
+## Non-negotiable principles
 
-- **Headless first** — code trong `core/src/{store,compute}` không import DOM/framework.
-- **Framework-agnostic core** — `@fluxgantt/core` không import react/vue/svelte.
-- **Temporal API** cho mọi tính toán ngày giờ, không native `Date`.
-- **TypeScript strict**, branded ID, không `any`.
-- **Tree-shakable** — không side-effect top-level; giữ bundle budget (core <30kb, hello-world <15kb gzip).
-- **Mọi tính năng mới đi kèm test** (xem `.claude/rules/testing.md`).
-- **Security** — validate mọi input ngoài (xem `.claude/rules/security.md`).
+- **Headless first** — code in `core/src/{store,compute}` must not import DOM/framework APIs.
+- **Framework-agnostic core** — `@fluxgantt/core` must not import react/vue/svelte.
+- **Temporal API** for all date/time math, never native `Date`.
+- **TypeScript strict**, branded IDs, no `any`.
+- **Tree-shakable** — no top-level side effects; respect the bundle budget (core <30kb, hello-world <15kb gzip).
+- **Every new feature ships with tests** (see `.claude/rules/testing.md`).
+- **Security** — validate every external input (see `.claude/rules/security.md`).
+- **Language** — chat/discussion may be in Vietnamese, but all code, comments, docs, commit messages, and PRs are written in English.
 
-## Quy trình PR
+## PR workflow
 
-1. Tạo branch từ `main`.
-2. Code + test. Chạy `pnpm lint && pnpm typecheck && pnpm test`.
-3. `pnpm changeset` — mô tả thay đổi (bump version + changelog tự động).
-4. Mở PR. CI phải green (lint, typecheck, test, e2e, size-limit).
+1. Branch off `main`.
+2. Write code + tests. Run `pnpm lint && pnpm typecheck && pnpm test`.
+3. `pnpm changeset` — describe the change (version bump + changelog are automated).
+4. Open a PR. CI must be green (lint, typecheck, test, e2e, size-limit).
 
 ## Code style
 
-- File kebab-case (`task-store.ts`), component PascalCase (`FluxGantt.tsx`).
-- Method: verb + noun camelCase. Event: past-tense `noun:verb`. Type: PascalCase, không prefix `I`.
-- CSS: BEM với prefix `fg-`, custom property `--fg-*`.
-- Prettier + ESLint (config dùng chung trong `tooling/`).
+- Files kebab-case (`task-store.ts`), components PascalCase (`FluxGantt.tsx`).
+- Methods: verb + noun camelCase. Events: past-tense `noun:verb`. Types: PascalCase, no `I` prefix.
+- CSS: BEM with the `fg-` prefix, custom properties `--fg-*`.
+- Prettier + ESLint (shared config in `tooling/`).
 
-## Báo lỗi bảo mật
+## Reporting security issues
 
-Không mở issue công khai cho lỗ hổng bảo mật. Email: security@fluxgantt.dev.
+Do not open a public issue for a security vulnerability. Email: security@fluxgantt.dev.

@@ -1,11 +1,12 @@
 # Changesets
 
-Thư mục này chứa các changeset — mô tả thay đổi để tự sinh changelog và bump version.
+This directory holds changesets — descriptions of changes used to auto-generate the
+changelog and bump versions.
 
-Tạo changeset trước khi merge thay đổi public:
+Create a changeset before merging a public change:
 
 ```bash
 pnpm changeset
 ```
 
-Xem thêm: https://github.com/changesets/changesets
+Learn more: https://github.com/changesets/changesets

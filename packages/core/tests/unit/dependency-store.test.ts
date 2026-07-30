@@ -9,7 +9,7 @@ const B = id('task-b');
 const C = id('task-c');
 
 describe('DependencyStore — link', () => {
-  it('tạo liên kết với default FS lag 0', () => {
+  it('creates a link with default FS lag 0', () => {
     const store = new DependencyStore();
     const dep = store.link(A, B);
     expect(dep.id).toMatch(/^dep-/);
@@ -17,7 +17,7 @@ describe('DependencyStore — link', () => {
     expect(store.size).toBe(1);
   });
 
-  it('nhận type và lag tuỳ chỉnh', () => {
+  it('accepts a custom type and lag', () => {
     const store = new DependencyStore();
     const dep = store.link(A, B, 'SS', { lag: -4 });
     expect(dep.type).toBe('SS');
@@ -26,31 +26,31 @@ describe('DependencyStore — link', () => {
 
   it('throw khi self-link', () => {
     const store = new DependencyStore();
-    expect(() => store.link(A, A)).toThrow(/tự liên kết/);
+    expect(() => store.link(A, A)).toThrow(/cannot self-link/);
   });
 
-  it('throw khi trùng cặp from/to', () => {
+  it('throws on a duplicate from/to pair', () => {
     const store = new DependencyStore();
     store.link(A, B);
-    expect(() => store.link(A, B)).toThrow(/đã tồn tại/);
+    expect(() => store.link(A, B)).toThrow(/already exists/);
   });
 });
 
 describe('DependencyStore — cycle', () => {
-  it('throw khi liên kết tạo cycle trực tiếp (B→A sau A→B)', () => {
+  it('throws when a link creates a direct cycle (B→A after A→B)', () => {
     const store = new DependencyStore();
     store.link(A, B);
     expect(() => store.link(B, A)).toThrow(/cycle/);
   });
 
-  it('throw khi liên kết tạo cycle gián tiếp (C→A sau A→B→C)', () => {
+  it('throws when a link creates an indirect cycle (C→A after A→B→C)', () => {
     const store = new DependencyStore();
     store.link(A, B);
     store.link(B, C);
     expect(() => store.link(C, A)).toThrow(/cycle/);
   });
 
-  it('wouldCreateCycle dự đoán đúng mà không thêm edge', () => {
+  it('wouldCreateCycle predicts correctly without adding an edge', () => {
     const store = new DependencyStore();
     store.link(A, B);
     store.link(B, C);
@@ -59,7 +59,7 @@ describe('DependencyStore — cycle', () => {
     expect(store.size).toBe(2);
   });
 
-  it('allowCycle: true bỏ qua kiểm tra; hasCycle phát hiện', () => {
+  it('allowCycle: true skips the check; hasCycle detects it', () => {
     const store = new DependencyStore();
     store.link(A, B);
     expect(store.hasCycle()).toBe(false);
@@ -87,7 +87,7 @@ describe('DependencyStore — queries', () => {
 });
 
 describe('DependencyStore — remove', () => {
-  it('unlink theo cặp', () => {
+  it('unlink by pair', () => {
     const store = new DependencyStore();
     store.link(A, B);
     store.unlink(A, B);
@@ -102,7 +102,7 @@ describe('DependencyStore — remove', () => {
     expect(store.size).toBe(0);
   });
 
-  it('removeForTask gỡ mọi liên kết chạm task', () => {
+  it('removeForTask removes every link touching the task', () => {
     const store = new DependencyStore();
     store.link(A, B);
     store.link(B, C);
@@ -112,7 +112,7 @@ describe('DependencyStore — remove', () => {
 });
 
 describe('DependencyStore — reactivity', () => {
-  it('effect chạy lại khi store đổi', () => {
+  it('effect re-runs when the store changes', () => {
     const store = new DependencyStore();
     let runs = 0;
     const stop = effect(() => {

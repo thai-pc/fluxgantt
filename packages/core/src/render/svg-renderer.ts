@@ -91,7 +91,7 @@ const LABEL_PADDING_PX = 8;
 const ARROWHEAD_MARKER_ID = 'fg-dep-arrowhead';
 
 /** Defensive string-length cap applied to any task field folded into an `aria-label`
- *  attribute value (security.md "giới hạn độ dài chuỗi"). */
+ *  attribute value (security.md "limit string length"). */
 const MAX_ARIA_NAME_LENGTH = 200;
 
 const DEFAULT_VIEW_MODE: ViewMode = 'week';

@@ -9,7 +9,7 @@
 // Every date computation calls back into `compute/working-calendar.ts`
 // (`normalizeDate`, `isWorkingDay`, `isHoliday`) — this file never reimplements
 // calendar/timezone/DST arithmetic with native `Date` (architecture.md "Temporal API
-// cho mọi tính toán ngày giờ").
+// for all date/time computation").
 import type { Temporal } from '@js-temporal/polyfill';
 import { getTemporal } from '../internal/temporal.js';
 import { normalizeDate, isWorkingDay, isHoliday } from '../compute/working-calendar.js';
@@ -351,8 +351,8 @@ export interface GridColumn {
 }
 
 /**
- * Safety guard against a pathologically large `TimeRange` (security.md — "giới hạn
- * kích thước ... tránh DoS"). 20,000 days ≈ 54 years, comfortably beyond any real
+ * Safety guard against a pathologically large `TimeRange` (security.md — "limit
+ * size ... avoid DoS"). 20,000 days ≈ 54 years, comfortably beyond any real
  * project timeline; a caller-supplied `options.timeRange` spanning centuries would
  * otherwise allocate an unbounded number of `<rect>`/`<text>` nodes.
  */
@@ -369,7 +369,7 @@ const GRID_LABEL_OPTIONS: Readonly<Record<ViewMode, Intl.DateTimeFormatOptions>>
 /**
  * Header/grid columns, one per calendar day across `timeScale.range` (spec §5.6 —
  * v1 deliberately steps by day for every `viewMode`, only `pixelsPerDay`/label format
- * change; see spec note re: not gộp cột tuần/tháng thật in v1).
+ * change; see spec note re: not merging real week/month columns in v1).
  * `isWeekend`/`isHoliday` are computed by calling back into
  * `compute/working-calendar.ts` (`isWorkingDay`/`isHoliday`) — never re-derived here.
  * `now` is an injected parameter (not `Temporal.Now` read internally) so this function

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 //
-// DOM + security tests for the SVG renderer (spec-svg-renderer.md §9.2, chốt Q3/Q6).
+// DOM + security tests for the SVG renderer (spec-svg-renderer.md §9.2, decisions Q3/Q6).
 // Runs under jsdom (per-file override; the rest of core stays `environment: 'node'`).
 // Visual regression (§9.3) and Playwright axe a11y (§9.4) are a separate follow-up
 // ticket (spec §11 Q6) and intentionally NOT here.
@@ -50,7 +50,7 @@ afterEach(() => {
 });
 
 describe('createSvgRenderer — structure', () => {
-  it('mount một <svg class="fg-timeline"> với role/aria-label', () => {
+  it('mounts an <svg class="fg-timeline"> with role/aria-label', () => {
     const h = createSvgRenderer(container, { tasks: baseTasks, dependencies: baseDeps });
     expect(h.svg.tagName.toLowerCase()).toBe('svg');
     expect(h.svg.getAttribute('class')).toBe('fg-timeline');
@@ -59,27 +59,27 @@ describe('createSvgRenderer — structure', () => {
     expect(container.querySelectorAll('svg.fg-timeline')).toHaveLength(1);
   });
 
-  it('đúng số .fg-task theo task count, đủ 4 class type + dependency', () => {
+  it('correct .fg-task count per task count, all 4 type classes + dependencies', () => {
     const h = createSvgRenderer(container, { tasks: baseTasks, dependencies: baseDeps });
     expect(h.svg.querySelectorAll('.fg-task')).toHaveLength(4);
     expect(h.svg.querySelectorAll('.fg-task--summary')).toHaveLength(1);
     expect(h.svg.querySelectorAll('.fg-task--milestone')).toHaveLength(1);
     expect(h.svg.querySelectorAll('.fg-dependency')).toHaveLength(3);
-    // label thụt lề theo depth: child 'b' có x lớn hơn root 'a'
+    // label indents by depth: child 'b' has a larger x than root 'a'
     const rows = [...h.svg.querySelectorAll('.fg-timeline__row-label')] as SVGTextElement[];
     expect(rows[0]!.textContent).toBe('a');
     expect(Number(rows[1]!.getAttribute('x'))).toBeGreaterThan(Number(rows[0]!.getAttribute('x')));
   });
 
-  it('milestone bar có transform rotate(45 ...)', () => {
+  it('milestone bar has transform rotate(45 ...)', () => {
     const h = createSvgRenderer(container, { tasks: baseTasks, dependencies: baseDeps });
     const m = h.svg.querySelector('.fg-task--milestone .fg-task__bar');
     expect(m!.getAttribute('transform')).toMatch(/rotate\(45 /);
   });
 });
 
-describe('critical path — a11y "phân biệt không cần màu"', () => {
-  it('.fg-task--critical có stroke-dasharray khác rỗng (không chỉ đổi màu)', () => {
+describe('critical path — a11y "distinguishable without color"', () => {
+  it('.fg-task--critical has a non-empty stroke-dasharray (not color alone)', () => {
     const cp = computeCriticalPath(baseTasks, baseDeps, cal);
     const h = createSvgRenderer(container, {
       tasks: baseTasks,
@@ -95,7 +95,7 @@ describe('critical path — a11y "phân biệt không cần màu"', () => {
     }
   });
 
-  it('không truyền criticalPath → không có .fg-task--critical', () => {
+  it('no criticalPath passed → no .fg-task--critical', () => {
     const h = createSvgRenderer(container, { tasks: baseTasks, dependencies: baseDeps });
     expect(h.svg.querySelectorAll('.fg-task--critical')).toHaveLength(0);
   });
@@ -109,23 +109,23 @@ describe('SECURITY — XSS qua task.name (untrusted)', () => {
     'javascript:alert(1)',
   ];
 
-  it.each(payloads)('render %s như text node, KHÔNG thành markup thật', (payload) => {
+  it.each(payloads)('renders %s as a text node, NOT real markup', (payload) => {
     const t = task('evil', '2026-01-05T09:00', '2026-01-07T17:00', { name: payload });
     const h = createSvgRenderer(container, { tasks: [t], dependencies: [] });
 
-    // (a) text hiển thị đúng literal string gốc → chứng minh nó là TEXT NODE inert,
-    //     không phải markup bị parse (đây là assertion cốt lõi của XSS-safety).
+    // (a) the text shows the exact original literal → proves it is an inert TEXT NODE,
+    //     not parsed markup (this is the core XSS-safety assertion).
     const label = h.svg.querySelector('.fg-timeline__row-label');
     expect(label!.textContent).toBe(payload);
 
-    // (b) kiểm tra dựa trên DOM: nếu payload bị parse thành markup, sẽ có element/attribute
-    //     thật. Vì là text đã escape → 0. (KHÔNG grep chuỗi serialize: text/attribute đã
-    //     escape vẫn chứa substring "onload=" một cách vô hại → false positive.)
+    // (b) DOM-based check: if the payload were parsed as markup, real elements/attributes
+    //     would exist. Since it is escaped text → 0. (Do NOT grep the serialized string:
+    //     escaped text/attributes still harmlessly contain the substring "onload=" → false positive.)
     expect(container.querySelectorAll('script, img')).toHaveLength(0);
     expect(container.querySelectorAll('[onerror], [onload]')).toHaveLength(0);
   });
 
-  it('aria-label chứa name cũng không tạo markup (attribute value, escaped)', () => {
+  it('aria-label containing name also creates no markup (attribute value, escaped)', () => {
     const t = task('x', '2026-01-05T09:00', '2026-01-07T17:00', { name: '"><script>alert(1)</script>' });
     createSvgRenderer(container, { tasks: [t], dependencies: [] });
     expect(container.querySelector('script')).toBeNull();
@@ -138,7 +138,7 @@ describe('SECURITY — color injection', () => {
     'expression(alert(1))',
     'red; } * { display:none',
     '<script>alert(1)</script>',
-  ])('task.color độc %s → fallback token, không chứa input gốc', (evil) => {
+  ])('malicious task.color %s → fallback token, does not contain the original input', (evil) => {
     const t = task('x', '2026-01-05T09:00', '2026-01-07T17:00', { color: evil });
     const h = createSvgRenderer(container, { tasks: [t], dependencies: [] });
     const bar = h.svg.querySelector('.fg-task__bar') as SVGElement;
@@ -149,7 +149,7 @@ describe('SECURITY — color injection', () => {
     expect(fill).toContain('var(--fg-task-default');
   });
 
-  it('task.color hợp lệ (#hex) được dùng nguyên', () => {
+  it('valid task.color (#hex) is used as-is', () => {
     const t = task('x', '2026-01-05T09:00', '2026-01-07T17:00', { color: '#abcdef' });
     const h = createSvgRenderer(container, { tasks: [t], dependencies: [] });
     const bar = h.svg.querySelector('.fg-task__bar') as SVGElement;
@@ -158,18 +158,18 @@ describe('SECURITY — color injection', () => {
 });
 
 describe('SECURITY — enum whitelist (N3/N5, CSS-token spoofing)', () => {
-  it('task.type lạ (lách TS) → class fallback fg-task--task, không inject token thừa', () => {
+  it('unknown task.type (bypassing TS) → falls back to class fg-task--task, no extra token injected', () => {
     const evil = task('x', '2026-01-05T09:00', '2026-01-07T17:00', {
       type: 'foo fg-task--critical' as unknown as Task['type'],
     });
     const h = createSvgRenderer(container, { tasks: [evil], dependencies: [] });
     const wrapper = h.svg.querySelector('.fg-task') as SVGElement;
     expect(wrapper.getAttribute('class')).toBe('fg-task fg-task--task');
-    // không bị nhuộm critical bằng cách nhồi type
+    // not marked critical by stuffing the type
     expect(h.svg.querySelectorAll('.fg-task--critical')).toHaveLength(0);
   });
 
-  it('dependency.type lạ → bị skip (không render, không crash)', () => {
+  it('unknown dependency.type → skipped (not rendered, no crash)', () => {
     const t1 = task('a', '2026-01-05T09:00', '2026-01-07T17:00');
     const t2 = task('b', '2026-01-08T09:00', '2026-01-10T17:00');
     const deps = [
@@ -182,12 +182,12 @@ describe('SECURITY — enum whitelist (N3/N5, CSS-token spoofing)', () => {
       },
     ];
     const h = createSvgRenderer(container, { tasks: [t1, t2], dependencies: deps });
-    expect(h.svg.querySelectorAll('.fg-dependency')).toHaveLength(1); // chỉ FS hợp lệ
+    expect(h.svg.querySelectorAll('.fg-dependency')).toHaveLength(1); // only the valid FS
   });
 });
 
-describe('end < start — clamp + console.warn (chốt Q5)', () => {
-  it('không crash, bar width 0, phát đúng MỘT console.warn/render', () => {
+describe('end < start — clamp + console.warn (decision Q5)', () => {
+  it('no crash, bar width 0, emits exactly ONE console.warn per render', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const bad = task('bad', '2026-01-20T09:00', '2026-01-10T09:00');
     const h = createSvgRenderer(container, { tasks: [bad], dependencies: [] });
@@ -199,27 +199,27 @@ describe('end < start — clamp + console.warn (chốt Q5)', () => {
 });
 
 describe('update / setOptions / destroy — idempotent (spec §9.2)', () => {
-  it('update() cùng input 2 lần → DOM giống hệt (không leak node)', () => {
+  it('update() with the same input twice → identical DOM (no leaked nodes)', () => {
     const h = createSvgRenderer(container, { tasks: baseTasks, dependencies: baseDeps });
     const before = h.svg.querySelectorAll('.fg-task').length;
     h.update({ tasks: baseTasks, dependencies: baseDeps });
     expect(h.svg.querySelectorAll('.fg-task')).toHaveLength(before);
   });
 
-  it('update() với input khác → số .fg-task khớp count mới, không orphan node cũ', () => {
+  it('update() with a different input → .fg-task count matches the new count, no orphaned old nodes', () => {
     const h = createSvgRenderer(container, { tasks: baseTasks, dependencies: baseDeps });
     h.update({ tasks: [baseTasks[0]!], dependencies: [] });
     expect(h.svg.querySelectorAll('.fg-task')).toHaveLength(1);
     expect(h.svg.querySelectorAll('.fg-dependency')).toHaveLength(0);
   });
 
-  it('setOptions({density}) repaint với input đã lưu', () => {
+  it('setOptions({density}) repaints with the stored input', () => {
     const h = createSvgRenderer(container, { tasks: baseTasks, dependencies: baseDeps });
     h.setOptions({ density: 'compact' });
     expect(h.svg.querySelectorAll('.fg-task')).toHaveLength(4);
   });
 
-  it('destroy() gỡ hết DOM; update()/destroy() sau đó là no-op', () => {
+  it('destroy() removes all DOM; update()/destroy() afterwards are no-ops', () => {
     const h = createSvgRenderer(container, { tasks: baseTasks, dependencies: baseDeps });
     h.destroy();
     expect(container.children).toHaveLength(0);

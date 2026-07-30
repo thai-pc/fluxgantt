@@ -2,14 +2,14 @@ import { describe, it, expect } from 'vitest';
 import { signal, computed, effect, batch, untracked } from '../../src/signals.js';
 
 describe('signal', () => {
-  it('đọc/ghi giá trị qua .value', () => {
+  it('reads/writes value via .value', () => {
     const s = signal(1);
     expect(s.value).toBe(1);
     s.value = 2;
     expect(s.value).toBe(2);
   });
 
-  it('peek() không đăng ký dependency', () => {
+  it('peek() does not register a dependency', () => {
     const s = signal(1);
     let runs = 0;
     effect(() => {
@@ -21,7 +21,7 @@ describe('signal', () => {
     expect(runs).toBe(1);
   });
 
-  it('không notify khi giá trị không đổi (Object.is)', () => {
+  it('does not notify when the value is unchanged (Object.is)', () => {
     const s = signal(1);
     let runs = 0;
     effect(() => {
@@ -34,7 +34,7 @@ describe('signal', () => {
 });
 
 describe('computed', () => {
-  it('dẫn xuất và cập nhật khi dependency đổi', () => {
+  it('derives and updates when a dependency changes', () => {
     const a = signal(2);
     const b = signal(3);
     const sum = computed(() => a.value + b.value);
@@ -43,7 +43,7 @@ describe('computed', () => {
     expect(sum.value).toBe(13);
   });
 
-  it('memoized — chỉ tính lại khi dirty', () => {
+  it('memoized — only recomputes when dirty', () => {
     const a = signal(1);
     let calls = 0;
     const c = computed(() => {
@@ -51,7 +51,7 @@ describe('computed', () => {
       return a.value * 2;
     });
     expect(c.value).toBe(2);
-    expect(c.value).toBe(2); // đọc lại không tính lại
+    expect(c.value).toBe(2); // reading again does not recompute
     expect(calls).toBe(1);
     a.value = 5;
     expect(c.value).toBe(10);
@@ -60,7 +60,7 @@ describe('computed', () => {
 });
 
 describe('effect', () => {
-  it('chạy ngay và chạy lại khi dependency đổi; dispose dừng', () => {
+  it('runs immediately and re-runs when a dependency changes; dispose stops it', () => {
     const s = signal(1);
     let runs = 0;
     const stop = effect(() => {
@@ -75,7 +75,7 @@ describe('effect', () => {
     expect(runs).toBe(2);
   });
 
-  it('chạy lại khi computed phụ thuộc đổi', () => {
+  it('re-runs when a dependent computed changes', () => {
     const n = signal(1);
     const dbl = computed(() => n.value * 2);
     let seen = -1;
@@ -89,7 +89,7 @@ describe('effect', () => {
 });
 
 describe('batch', () => {
-  it('gộp nhiều write thành một lần chạy effect', () => {
+  it('batches multiple writes into a single effect run', () => {
     const a = signal(1);
     let runs = 0;
     effect(() => {
@@ -108,7 +108,7 @@ describe('batch', () => {
 });
 
 describe('untracked', () => {
-  it('đọc bên trong không đăng ký dependency', () => {
+  it('reading inside does not register a dependency', () => {
     const a = signal(1);
     let runs = 0;
     effect(() => {

@@ -107,7 +107,7 @@ function boundarySatisfied(boundary: Temporal.ZonedDateTime, actual: Temporal.Zo
 }
 
 describe('computeCriticalPath — property-based invariants', () => {
-  it('không throw trên đồ thị phi chu trình theo cấu trúc', () => {
+  it('does not throw on a structurally acyclic graph', () => {
     fc.assert(
       fc.property(graphArbitrary, (spec) => {
         const { tasks, dependencies } = buildGraph(spec);
@@ -116,7 +116,7 @@ describe('computeCriticalPath — property-based invariants', () => {
     );
   });
 
-  it('slack luôn >= -epsilon; isCritical nhất quán với slackHours', () => {
+  it('slack is always >= -epsilon; isCritical is consistent with slackHours', () => {
     fc.assert(
       fc.property(graphArbitrary, (spec) => {
         const { tasks, dependencies } = buildGraph(spec);
@@ -129,7 +129,7 @@ describe('computeCriticalPath — property-based invariants', () => {
     );
   });
 
-  it('slackHours khớp với differenceInWorkingHours(es, ls) tính độc lập', () => {
+  it('slackHours matches an independently computed differenceInWorkingHours(es, ls)', () => {
     fc.assert(
       fc.property(graphArbitrary, (spec) => {
         const { tasks, dependencies } = buildGraph(spec);
@@ -142,7 +142,7 @@ describe('computeCriticalPath — property-based invariants', () => {
     );
   });
 
-  it('luôn tồn tại ít nhất 1 task critical (trong miền well-behaved — xem comment wellBehavedGraphArbitrary)', () => {
+  it('at least 1 critical task always exists (in the well-behaved domain — see wellBehavedGraphArbitrary comment)', () => {
     fc.assert(
       fc.property(wellBehavedGraphArbitrary, (spec) => {
         const { tasks, dependencies } = buildGraph(spec);
@@ -152,7 +152,7 @@ describe('computeCriticalPath — property-based invariants', () => {
     );
   });
 
-  it('projectEnd bằng earlyFinish muộn nhất trong schedule (tính lại độc lập)', () => {
+  it('projectEnd equals the latest earlyFinish in the schedule (recomputed independently)', () => {
     fc.assert(
       fc.property(graphArbitrary, (spec) => {
         const { tasks, dependencies } = buildGraph(spec);
@@ -166,7 +166,7 @@ describe('computeCriticalPath — property-based invariants', () => {
     );
   });
 
-  it('mọi dependency thoả bất đẳng thức forward-pass tương ứng (FS/SS/FF/SF)', () => {
+  it('every dependency satisfies its forward-pass inequality (FS/SS/FF/SF)', () => {
     fc.assert(
       fc.property(graphArbitrary, (spec) => {
         const { tasks, dependencies } = buildGraph(spec);
@@ -204,13 +204,13 @@ describe('computeCriticalPath — property-based invariants', () => {
     );
   });
 
-  it('thêm 1 task cô lập KHÔNG kéo dài hơn projectEnd hiện có → projectEnd và criticalTaskIds của phần đồ thị gốc không đổi', () => {
-    // NOTE: nếu task cô lập có EF muộn hơn projectEnd hiện có, nó tất yếu TRỞ THÀNH
-    // projectEnd mới (đúng định nghĩa CPM: projectEnd = max EF trên mọi task) — khi đó
-    // các leaf task cũ (LF = projectEnd) sẽ nhận thêm slack và có thể mất critical. Vì
-    // vậy bất biến "criticalTaskIds cũ không đổi" chỉ đúng khi task cô lập không vượt
-    // quá projectEnd cũ — ràng buộc `extraDuration` bằng cách này để bất biến thực sự
-    // đúng, thay vì đúng "hầu hết trường hợp" rồi flaky.
+  it('adding an isolated task that does NOT extend past the current projectEnd → the original graph projectEnd and criticalTaskIds stay unchanged', () => {
+    // NOTE: if the isolated task has an EF later than the current projectEnd, it necessarily
+    // BECOMES the new projectEnd (by the CPM definition: projectEnd = max EF over all tasks) —
+    // in which case the old leaf tasks (LF = projectEnd) gain extra slack and may lose critical
+    // status. So the "old criticalTaskIds unchanged" invariant only holds when the isolated task
+    // does not exceed the old projectEnd — constrain `extraDuration` this way so the invariant is
+    // genuinely true, rather than true "most of the time" and flaky.
     fc.assert(
       fc.property(graphArbitrary, fc.integer({ min: 1, max: 40 }), (spec, extraDuration) => {
         const { tasks, dependencies } = buildGraph(spec);

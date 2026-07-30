@@ -1,5 +1,5 @@
 // @fluxgantt/core — public entry (spec §7)
-// Stub Wave 1: API surface sẽ mở rộng (createGantt, mount, on, ...).
+// Stub Wave 1: the API surface will grow (createGantt, mount, on, ...).
 
 export const VERSION = '0.0.0';
 

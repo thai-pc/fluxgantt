@@ -1,10 +1,10 @@
 import { defineConfig, devices } from '@playwright/test';
 
-// Playwright config cho UI test của FluxGantt.
-// Hiện chưa có app/renderer → chưa khai báo `webServer`. Khi `examples/plain-html-demo`
-// hoặc SVG renderer của @fluxgantt/core có mount(), thêm:
+// Playwright config for FluxGantt UI tests.
+// No app/renderer yet → no `webServer` declared. Once `examples/plain-html-demo`
+// or @fluxgantt/core's SVG renderer has mount(), add:
 //   webServer: { command: 'pnpm --filter plain-html-demo dev', url: 'http://localhost:5173', reuseExistingServer: !process.env.CI }
-// rồi điều hướng bằng page.goto thay cho page.setContent.
+// then navigate with page.goto instead of page.setContent.
 export default defineConfig({
   fullyParallel: true,
   forbidOnly: !!process.env.CI,

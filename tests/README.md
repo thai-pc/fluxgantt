@@ -1,27 +1,27 @@
 # Tests (cross-package)
 
-Test cấp workspace chạy bằng **Playwright** (config: `playwright.config.ts` ở gốc).
-Unit/integration của từng package nằm trong `packages/*/tests` (vitest).
+Workspace-level tests run with **Playwright** (config: `playwright.config.ts` at the root).
+Per-package unit/integration tests live in `packages/*/tests` (vitest).
 
-| Thư mục | Mục đích | Trạng thái |
+| Directory | Purpose | Status |
 |---|---|---|
-| `e2e/` | Tương tác UI thật (drag, dependency, keyboard) | Có sanity test; test thật chờ SVG renderer |
-| `visual/` | Visual regression (screenshot) | Mẫu đang `skip`; bật khi renderer ổn định |
-| `a11y/` | Kiểm WCAG (Playwright + axe) | Chờ renderer |
-| `performance/` | Benchmark render 1000+ task, ngưỡng Canvas 2.000 | Chờ renderer |
-| `fixtures/` | Dữ liệu mẫu dùng chung | — |
+| `e2e/` | Real UI interaction (drag, dependency, keyboard) | Sanity test present; real tests await the SVG renderer |
+| `visual/` | Visual regression (screenshots) | Sample is `skip`ped; enable once the renderer is stable |
+| `a11y/` | WCAG checks (Playwright + axe) | Awaiting the renderer |
+| `performance/` | Benchmark rendering 1000+ tasks, the 2,000-task Canvas threshold | Awaiting the renderer |
+| `fixtures/` | Shared sample data | — |
 
-## Chạy
+## Running
 
 ```bash
-pnpm exec playwright install chromium   # lần đầu: tải browser
-pnpm test:e2e                           # project e2e
-pnpm test:visual                        # project visual
-pnpm test:visual --update-snapshots     # sinh/cập nhật baseline screenshot
+pnpm exec playwright install chromium   # first time: download the browser
+pnpm test:e2e                           # e2e project
+pnpm test:visual                        # visual project
+pnpm test:visual --update-snapshots     # generate/update baseline screenshots
 ```
 
-## Khi renderer xong
-1. Thêm `webServer` vào `playwright.config.ts` trỏ tới `examples/plain-html-demo`.
-2. Thay `page.setContent(...)` bằng `page.goto(...)` trong các spec.
-3. Bỏ `.skip` ở `visual/timeline.spec.ts`, sinh baseline trên image CI.
-4. Bổ sung a11y (axe) + performance theo `.claude/rules/testing.md`.
+## Once the renderer is done
+1. Add a `webServer` to `playwright.config.ts` pointing at `examples/plain-html-demo`.
+2. Replace `page.setContent(...)` with `page.goto(...)` in the specs.
+3. Remove `.skip` in `visual/timeline.spec.ts`, generate the baseline on the CI image.
+4. Add a11y (axe) + performance per `.claude/rules/testing.md`.

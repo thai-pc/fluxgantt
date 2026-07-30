@@ -48,28 +48,28 @@ function task(id: string, start: string, end: string, extra: Partial<Task> = {})
 // deriveTimeRange
 // ---------------------------------------------------------------------------------------
 describe('deriveTimeRange', () => {
-  it('bao trọn min(start)..max(end) + padding theo viewMode', () => {
+  it('spans min(start)..max(end) + viewMode padding', () => {
     const tasks = [
       task('a', '2026-01-05T09:00', '2026-01-07T17:00'),
       task('b', '2026-01-06T09:00', '2026-01-10T17:00'),
     ];
     const range = deriveTimeRange(tasks, 'week', cal);
-    // padding week = 7 ngày mỗi bên
+    // week padding = 7 days each side
     expect(range.start.toPlainDate().toString()).toBe('2025-12-29'); // 2026-01-05 − 7d
     expect(range.end.toPlainDate().toString()).toBe('2026-01-17'); // 2026-01-10 + 7d
-    // start luôn trước end
+    // start is always before end
     expect(T.ZonedDateTime.compare(range.start, range.end)).toBeLessThan(0);
   });
 
-  it('throw khi tasks rỗng (không có gì để suy viewport)', () => {
+  it('throws when tasks is empty (nothing to infer a viewport from)', () => {
     expect(() => deriveTimeRange([], 'week', cal)).toThrow(/must not be empty/);
   });
 
-  it('padding khác nhau theo viewMode (day < week < month)', () => {
+  it('padding differs by viewMode (day < week < month)', () => {
     const tasks = [task('a', '2026-06-15T09:00', '2026-06-15T17:00')];
     const dayStart = deriveTimeRange(tasks, 'day', cal).start.toPlainDate();
     const monthStart = deriveTimeRange(tasks, 'month', cal).start.toPlainDate();
-    // month padding (30) sớm hơn day padding (3)
+    // month padding (30) is earlier than day padding (3)
     expect(T.PlainDate.compare(monthStart, dayStart)).toBeLessThan(0);
   });
 });
@@ -83,7 +83,7 @@ describe('createTimeScale', () => {
     end: normalizeDate('2026-02-01T00:00', cal.timezone),
   };
 
-  it('dateToX(start) === 0, tăng đơn điệu theo ngày, totalWidth > 0', () => {
+  it('dateToX(start) === 0, monotonically increasing by day, totalWidth > 0', () => {
     const ts = createTimeScale(range, 'week', cal);
     expect(ts.dateToX(range.start)).toBeCloseTo(0, 6);
     expect(ts.totalWidth).toBeGreaterThan(0);
@@ -91,7 +91,7 @@ describe('createTimeScale', () => {
     expect(ts.pixelsPerDay).toBe(PIXELS_PER_DAY.week);
   });
 
-  it('xToDate(dateToX(d)) round-trip trong sai số < 1 giờ', () => {
+  it('xToDate(dateToX(d)) round-trips within < 1 hour', () => {
     const ts = createTimeScale(range, 'day', cal);
     const d = normalizeDate('2026-01-15T13:37', cal.timezone);
     const back = ts.xToDate(ts.dateToX(d));
@@ -100,9 +100,9 @@ describe('createTimeScale', () => {
     expect(Math.abs(diffHours)).toBeLessThan(1);
   });
 
-  it('không NaN/Infinity khi range băng qua mốc DST (America/New_York, tháng 3)', () => {
+  it('no NaN/Infinity when the range crosses a DST boundary (America/New_York, March)', () => {
     const dstCal: WorkingCalendar = { ...cal, timezone: 'America/New_York' };
-    // 2026-03-08 02:00 là DST spring-forward ở New York
+    // 2026-03-08 02:00 is the DST spring-forward in New York
     const dstRange = {
       start: normalizeDate('2026-03-06T00:00', dstCal.timezone),
       end: normalizeDate('2026-03-10T00:00', dstCal.timezone),
@@ -115,7 +115,7 @@ describe('createTimeScale', () => {
   });
 
   it.each(['UTC', 'America/New_York', 'Asia/Ho_Chi_Minh'])(
-    'totalWidth hữu hạn & dương ở timezone %s',
+    'totalWidth is finite & positive in timezone %s',
     (tz) => {
       const c: WorkingCalendar = { ...cal, timezone: tz };
       const r = {
@@ -128,7 +128,7 @@ describe('createTimeScale', () => {
     },
   );
 
-  it('property: tasks hợp lệ → totalWidth hữu hạn, không NaN', () => {
+  it('property: valid tasks → totalWidth finite, not NaN', () => {
     fc.assert(
       fc.property(
         fc.integer({ min: 0, max: 300 }),
@@ -150,7 +150,7 @@ describe('createTimeScale', () => {
 // layoutRows — depth, pre-order, cycle throw, dangling parent
 // ---------------------------------------------------------------------------------------
 describe('layoutRows', () => {
-  it('depth đúng + pre-order giữ thứ tự sibling + y tăng theo ROW_HEIGHT', () => {
+  it('correct depth + pre-order keeps sibling order + y increases by ROW_HEIGHT', () => {
     const tasks = [
       task('root', '2026-01-05T09:00', '2026-01-05T17:00', { type: 'summary' }),
       task('c1', '2026-01-05T09:00', '2026-01-05T17:00', { parent: toTaskId('root') }),
@@ -162,7 +162,7 @@ describe('layoutRows', () => {
     expect(rows.map((r) => r.y)).toEqual([0, ROW_HEIGHT.default, ROW_HEIGHT.default * 2]);
   });
 
-  it('parent không tồn tại (dangling) → task là root depth 0, không throw', () => {
+  it('non-existent parent (dangling) → task is a root at depth 0, no throw', () => {
     const tasks = [task('x', '2026-01-05T09:00', '2026-01-05T17:00', { parent: toTaskId('ghost') })];
     const rows = layoutRows(tasks, 'default');
     expect(rows).toHaveLength(1);
@@ -177,7 +177,7 @@ describe('layoutRows', () => {
     expect(() => layoutRows(tasks, 'default')).toThrow(/cyclic parent chain/);
   });
 
-  it('cycle parent-chain dài (a→b→c→a) → throw', () => {
+  it('long parent-chain cycle (a→b→c→a) → throws', () => {
     const tasks = [
       task('a', '2026-01-05T09:00', '2026-01-05T17:00', { parent: toTaskId('c') }),
       task('b', '2026-01-05T09:00', '2026-01-05T17:00', { parent: toTaskId('a') }),
@@ -186,8 +186,8 @@ describe('layoutRows', () => {
     expect(() => layoutRows(tasks, 'default')).toThrow(/cyclic parent chain/);
   });
 
-  it('chain acyclic sâu hơn MAX_HIERARCHY_DEPTH → throw có kiểm soát, không stack overflow (N1)', () => {
-    // t0 ← t1 ← t2 ← ... : mỗi task parent là task trước → chain tuyến tính (không cycle).
+  it('acyclic chain deeper than MAX_HIERARCHY_DEPTH → controlled throw, no stack overflow (N1)', () => {
+    // t0 ← t1 ← t2 ← ... : each task's parent is the previous one → a linear chain (no cycle).
     const deep: Task[] = [];
     for (let i = 0; i <= MAX_HIERARCHY_DEPTH + 1; i++) {
       deep.push(
@@ -199,12 +199,12 @@ describe('layoutRows', () => {
 });
 
 describe('enum whitelist guards (N3/N5)', () => {
-  it('isKnownTaskKind: chỉ true cho 4 TaskKind hợp lệ', () => {
+  it('isKnownTaskKind: true only for the 4 valid TaskKinds', () => {
     for (const k of ['task', 'summary', 'milestone', 'project']) expect(isKnownTaskKind(k)).toBe(true);
     for (const k of ['', 'evil', 'fg-task--x foo', '__proto__']) expect(isKnownTaskKind(k)).toBe(false);
   });
 
-  it('isKnownDependencyType: chỉ true cho FS/SS/FF/SF', () => {
+  it('isKnownDependencyType: true only for FS/SS/FF/SF', () => {
     for (const t of ['FS', 'SS', 'FF', 'SF']) expect(isKnownDependencyType(t)).toBe(true);
     for (const t of ['', 'XX', 'toString', 'constructor']) expect(isKnownDependencyType(t)).toBe(false);
   });
@@ -222,26 +222,26 @@ describe('layoutTaskBar', () => {
   const rowHeight = ROW_HEIGHT.default;
   const row = { task: task('_', '2026-01-01', '2026-01-01'), depth: 0, rowIndex: 0, y: 0 };
 
-  it('milestone: width === height (hình vuông cho diamond)', () => {
+  it('milestone: width === height (square for the diamond)', () => {
     const m = task('m', '2026-01-10T00:00', '2026-01-10T00:00', { type: 'milestone' });
     const bar = layoutTaskBar(m, ts, row, rowHeight);
     expect(bar.width).toBe(bar.height);
     expect(bar.width).toBeGreaterThan(0);
   });
 
-  it('end < start → clamp width về 0, KHÔNG throw', () => {
+  it('end < start → clamps width to 0, does NOT throw', () => {
     const bad = task('bad', '2026-01-20T00:00', '2026-01-10T00:00');
     const bar = layoutTaskBar(bad, ts, row, rowHeight);
     expect(bar.width).toBe(0);
   });
 
-  it('width tỉ lệ thuận khoảng cách ngày (task 10 ngày rộng gấp ~2 task 5 ngày)', () => {
+  it('width is proportional to the day span (a 10-day task is ~2× a 5-day task)', () => {
     const short = layoutTaskBar(task('s', '2026-01-05T00:00', '2026-01-10T00:00'), ts, row, rowHeight);
     const long = layoutTaskBar(task('l', '2026-01-05T00:00', '2026-01-15T00:00'), ts, row, rowHeight);
     expect(long.width).toBeCloseTo(short.width * 2, 4);
   });
 
-  it('property: width luôn ≥ 0 và hữu hạn với start/end bất kỳ', () => {
+  it('property: width is always ≥ 0 and finite for any start/end', () => {
     fc.assert(
       fc.property(fc.integer({ min: 0, max: 30 }), fc.integer({ min: 0, max: 30 }), (s, e) => {
         const t = task(
@@ -263,7 +263,7 @@ describe('layoutTaskBar', () => {
 });
 
 // ---------------------------------------------------------------------------------------
-// layoutDependencyPath — 4 loại anchor edge
+// layoutDependencyPath — 4 anchor-edge types
 // ---------------------------------------------------------------------------------------
 describe('layoutDependencyPath', () => {
   const from: TaskBarLayout = { task: task('a', '', ''), x: 10, y: 0, width: 40, height: 20 };
@@ -299,13 +299,13 @@ describe('layoutDependencyPath', () => {
     expect(p.points[p.points.length - 1]).toEqual({ x: 140, y: 50 });
   });
 
-  it('cùng hàng (same y) → đường thẳng 2 điểm', () => {
+  it('same row (same y) → straight 2-point line', () => {
     const sameRow: TaskBarLayout = { task: task('b', '', ''), x: 100, y: 0, width: 40, height: 20 };
     const p = layoutDependencyPath(dep('FS'), from, sameRow, 20);
     expect(p.points).toHaveLength(2);
   });
 
-  it('property: mọi điểm hữu hạn (không NaN) với rect ngẫu nhiên', () => {
+  it('property: all points finite (no NaN) for random rects', () => {
     fc.assert(
       fc.property(
         fc.record({
@@ -329,12 +329,12 @@ describe('layoutDependencyPath', () => {
 });
 
 // ---------------------------------------------------------------------------------------
-// computeGridColumns — gọi lại working-calendar, guard MAX_GRID_COLUMNS
+// computeGridColumns — delegates to working-calendar, MAX_GRID_COLUMNS guard
 // ---------------------------------------------------------------------------------------
 describe('computeGridColumns', () => {
   const now = normalizeDate('2026-01-15T12:00', cal.timezone);
 
-  it('isWeekend/isHoliday khớp CHÍNH XÁC isWorkingDay/isHoliday của working-calendar (không tự đoán lịch)', () => {
+  it('isWeekend/isHoliday EXACTLY match working-calendar isWorkingDay/isHoliday (no calendar guessing)', () => {
     const range = {
       start: normalizeDate('2026-01-05T00:00', cal.timezone), // Mon
       end: normalizeDate('2026-01-11T00:00', cal.timezone), // Sun
@@ -343,16 +343,16 @@ describe('computeGridColumns', () => {
     const cols = computeGridColumns(ts, 'week', cal, 'en', now);
     expect(cols.length).toBe(7);
     for (const col of cols) {
-      // tái tính độc lập bằng chính hàm compute → assert renderer không lệch
+      // recompute independently with the same compute fn → assert the renderer does not drift
       const d = ts.xToDate(col.x).toPlainDate();
       expect(col.isWeekend).toBe(!isWorkingDay(d, cal));
       expect(col.isHoliday).toBe(isHoliday(d, cal));
     }
-    // Mon-Fri là ngày làm việc → 2 cuối tuần
+    // Mon-Fri are working days → 2 weekend days
     expect(cols.filter((c) => c.isWeekend)).toHaveLength(2);
   });
 
-  it('holiday giữa range được đánh dấu isHoliday', () => {
+  it('a holiday inside the range is marked isHoliday', () => {
     const holidayCal: WorkingCalendar = { ...cal, holidays: ['2026-01-07'] };
     const range = {
       start: normalizeDate('2026-01-05T00:00', cal.timezone),
@@ -363,7 +363,7 @@ describe('computeGridColumns', () => {
     expect(cols.filter((c) => c.isHoliday)).toHaveLength(1);
   });
 
-  it('isToday đúng cột chứa `now`', () => {
+  it('isToday on the column containing `now`', () => {
     const range = {
       start: normalizeDate('2026-01-14T00:00', cal.timezone),
       end: normalizeDate('2026-01-16T00:00', cal.timezone),
@@ -373,7 +373,7 @@ describe('computeGridColumns', () => {
     expect(cols.filter((c) => c.isToday)).toHaveLength(1);
   });
 
-  it('throw khi range vượt MAX_GRID_COLUMNS (chống DoS)', () => {
+  it('throws when the range exceeds MAX_GRID_COLUMNS (anti-DoS)', () => {
     const start = normalizeDate('2000-01-01T00:00', cal.timezone);
     const range = { start, end: start.add({ days: MAX_GRID_COLUMNS + 10 }) };
     const ts = createTimeScale(range, 'year', cal);
@@ -386,7 +386,7 @@ describe('computeGridColumns', () => {
 // ---------------------------------------------------------------------------------------
 describe('validateTaskColor', () => {
   it.each(['#fff', '#ffff', '#6366f1', '#6366f1ff', 'rgb(1,2,3)', 'rgba(1, 2, 3, 0.5)', 'hsl(210,50%,50%)', 'hsla(210, 50%, 50%, 1)'])(
-    'chấp nhận màu hợp lệ %s',
+    'accepts valid color %s',
     (c) => {
       expect(validateTaskColor(c)).toBe(c);
     },
@@ -401,9 +401,9 @@ describe('validateTaskColor', () => {
     '<script>alert(1)</script>',
     '#6366f1; background:url(x)',
     'red; } * { display:none',
-    '#12345', // 5 hex — không hợp lệ
+    '#12345', // 5 hex — invalid
     '',
-  ])('reject màu nguy hiểm/không hợp lệ %s', (c) => {
+  ])('rejects dangerous/invalid color %s', (c) => {
     expect(validateTaskColor(c)).toBeUndefined();
   });
 
@@ -411,7 +411,7 @@ describe('validateTaskColor', () => {
     expect(validateTaskColor(undefined)).toBeUndefined();
   });
 
-  it('không dùng partial-match: chuỗi bắt đầu hợp lệ nhưng có đuôi độc → reject', () => {
+  it('no partial-match: a string that starts valid but has a malicious tail → reject', () => {
     expect(validateTaskColor('#6366f1 url(javascript:alert(1))')).toBeUndefined();
   });
 });
