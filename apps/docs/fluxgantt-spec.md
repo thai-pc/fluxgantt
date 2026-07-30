@@ -14,21 +14,21 @@
 
 ## Overview
 
-FluxGantt là thư viện Gantt chart TypeScript-first, license MIT, nhắm vào khoảng trống giữa hai cực: giải pháp commercial đắt đỏ (dhtmlx Gantt $599–1,599/dev/năm, Bryntum $850+/dev/năm) và các lựa chọn open-source yếu (Frappe Gantt, jsGantt Improved — đều thiếu tính năng, không có TypeScript, không có framework wrapper hiện đại).
+FluxGantt is a TypeScript-first, MIT-licensed Gantt chart library targeting the gap between two extremes: expensive commercial solutions (dhtmlx Gantt $599–1,599/dev/year, Bryntum $850+/dev/year) and weak open-source options (Frappe Gantt, jsGantt Improved — all lacking features, TypeScript, and modern framework wrappers).
 
-Sản phẩm thuộc họ Flux (cùng với FluxFiles — file manager), dùng chung brand để giảm chi phí marketing và tạo trải nghiệm developer nhất quán.
+The product is part of the Flux family (alongside FluxFiles — a file manager), sharing a brand to reduce marketing cost and create a consistent developer experience.
 
-**Ba tầng monetization:**
+**Three monetization tiers:**
 
-- **Core (MIT, free)** — render Gantt đầy đủ, dependencies, hierarchy
-- **Pro (one-time)** — resource view, baselines, MS Project I/O, không AI
-- **Cloud (subscription)** — multiplayer hosted, AI auto-scheduling, integrations
+- **Core (MIT, free)** — full Gantt rendering, dependencies, hierarchy
+- **Pro (one-time)** — resource view, baselines, MS Project I/O, no AI
+- **Cloud (subscription)** — hosted multiplayer, AI auto-scheduling, integrations
 
-Đối tượng chính là **developer** nhúng Gantt vào ứng dụng web của họ, không phải end-user trực tiếp — định hướng này chi phối mọi quyết định từ API design đến pricing.
+The primary audience is the **developer** embedding a Gantt into their web app, not the direct end user — this orientation drives every decision from API design to pricing.
 
-**Kiến trúc cốt lõi:** headless engine (state + logic) tách biệt hoàn toàn với rendering layer, render bằng SVG (fallback Canvas khi >2,000 tasks), state quản lý bằng reactive signal tự viết (không phụ thuộc React/Vue), tính toán ngày giờ dùng Temporal API để xử lý timezone/DST chính xác.
+**Core architecture:** a headless engine (state + logic) fully decoupled from the rendering layer, rendering to SVG (Canvas fallback above 2,000 tasks), state managed by a hand-rolled reactive signal (no React/Vue dependency), and date/time computation using the Temporal API for correct timezone/DST handling.
 
-**Roadmap 3 wave:** Wave 1 (tuần 1–8) ship Core MIT MVP để thu hút GitHub stars; Wave 2 (tuần 11–18) thêm Pro tier (resource leveling, baseline, MS Project XML); Wave 3 (tháng 6+) xây Cloud tier với real-time multiplayer và AI auto-schedule.
+**3-wave roadmap:** Wave 1 (weeks 1–8) ships the Core MIT MVP to attract GitHub stars; Wave 2 (weeks 11–18) adds the Pro tier (resource leveling, baseline, MS Project XML); Wave 3 (month 6+) builds the Cloud tier with real-time multiplayer and AI auto-schedule.
 
 ---
 
@@ -60,17 +60,17 @@ Sản phẩm thuộc họ Flux (cùng với FluxFiles — file manager), dùng c
 
 ## 1. Executive Summary
 
-FluxGantt là thư viện Gantt chart TypeScript-first, license MIT, nhắm vào khoảng trống giữa các giải pháp commercial đắt đỏ (dhtmlx Gantt $599–1,599/developer/năm, Bryntum $850+/developer/năm) và các lựa chọn open-source yếu (Frappe Gantt, jsGantt-improved, các plugin jQuery cũ).
+FluxGantt is a TypeScript-first, MIT-licensed Gantt chart library targeting the gap between expensive commercial solutions (dhtmlx Gantt $599–1,599/developer/year, Bryntum $850+/developer/year) and weak open-source options (Frappe Gantt, jsGantt-improved, old jQuery plugins).
 
-Sản phẩm là một phần của họ Flux dành cho công cụ web hiện đại, cùng với FluxFiles (file manager). Brand chung giúp giảm chi phí marketing, xây dựng moat dài hạn qua trải nghiệm developer nhất quán, và cho phép cross-promotion giữa các sản phẩm.
+The product is part of the Flux family of modern web tools, alongside FluxFiles (a file manager). The shared brand reduces marketing cost, builds a long-term moat through a consistent developer experience, and enables cross-promotion between products.
 
-Ba tầng monetization được lên kế hoạch:
+Three monetization tiers are planned:
 
-- **Core (MIT, free):** Render Gantt đầy đủ, dependencies, hierarchy
-- **Pro (one-time):** Resource view, baselines, MS Project I/O, không có AI
-- **Cloud (subscription):** Multiplayer hosted, AI auto-scheduling, integrations
+- **Core (MIT, free):** Full Gantt rendering, dependencies, hierarchy
+- **Pro (one-time):** Resource view, baselines, MS Project I/O, no AI
+- **Cloud (subscription):** Hosted multiplayer, AI auto-scheduling, integrations
 
-Sản phẩm nhắm đến developer nhúng tính năng Gantt vào ứng dụng web của riêng họ, không phải end-user trực tiếp. Định hướng này chi phối mọi quyết định, từ thiết kế API đến mô hình giá.
+The product targets developers embedding Gantt features into their own web apps, not direct end users. This orientation drives every decision, from API design to the pricing model.
 
 ---
 
@@ -83,16 +83,16 @@ Sản phẩm nhắm đến developer nhúng tính năng Gantt vào ứng dụng 
 | Product | License | Pricing | Stack | Strengths | Weaknesses |
 |---|---|---|---|---|---|
 | **dhtmlx Gantt PRO** | Commercial | $599/dev/yr (Standard)<br>$1,599/dev/yr (Enterprise) | JavaScript, no native TypeScript | Feature-complete, mature, MS Project parity | Dated API, expensive, heavy bundle |
-| **Bryntum Gantt** | Commercial | $850+/dev/năm | JavaScript, có framework wrapper | UI hiện đại, hỗ trợ React/Vue tốt | Giá cao, mô hình licensing sales-driven |
-| **Highcharts Gantt** | Commercial (bundle với Highcharts) | Khóa trong Highcharts license ($1,295+) | JavaScript | Hệ sinh thái charts | License hạn chế, không chuyên về Gantt |
+| **Bryntum Gantt** | Commercial | $850+/dev/yr | JavaScript, has framework wrappers | Modern UI, good React/Vue support | High price, sales-driven licensing model |
+| **Highcharts Gantt** | Commercial (bundled with Highcharts) | Locked in the Highcharts license ($1,295+) | JavaScript | Charts ecosystem | Restrictive license, not Gantt-focused |
 
 **Open Source:**
 
 | Product | License | Stars | Stack | Status | Weaknesses |
 |---|---|---|---|---|---|
 | **DHTMLX Gantt Community Edition** | MIT | newly released (2026) | JavaScript, based on the dhtmlx PRO codebase | Maintained by DHTMLX — commercial backing | **Most dangerous competitor:** same MIT license as FluxGantt, ships a fair amount of PRO features (all dependency types, critical path, MS Project I/O). But: still JS, no native TypeScript; core not framework-agnostic; **heavy bundle** (inherits the PRO monolith architecture); dated API; no first-class React/Vue wrappers; no AI/MCP. The Community edition is a funnel strategy toward PRO — intentional feature gating |
-| **Frappe Gantt** | MIT | ~12k GitHub | Vanilla JS, không TypeScript | Maintained nhưng chậm (~3 tháng/commit) | Không resource view, không critical path, dependency chỉ Finish-to-Start, không MS Project import, không TypeScript, không framework wrapper, visual cũ |
-| **jsGantt Improved** | BSD | — | jQuery | Legacy | jQuery-based, gần như bỏ hoang, không hỗ trợ framework hiện đại |
+| **Frappe Gantt** | MIT | ~12k GitHub | Vanilla JS, no TypeScript | Maintained but slow (~3 months/commit) | No resource view, no critical path, Finish-to-Start dependencies only, no MS Project import, no TypeScript, no framework wrapper, dated visuals |
+| **jsGantt Improved** | BSD | — | jQuery | Legacy | jQuery-based, nearly abandoned, no modern framework support |
 
 ### 2.2 Market Gap
 
@@ -112,34 +112,34 @@ Resource view/leveling, MS Project XML I/O, and baselines remain in the Pro tier
 ### 2.3 Customer Profile
 
 **Primary Customer:**
-- Developer solo/small-team xây dựng vertical SaaS
-- Ví dụ: công cụ quản lý xây dựng, lập kế hoạch sản xuất video, scheduler sản xuất, công cụ PM nội bộ tùy chỉnh
-- Pain point: giá dhtmlx $599–1,599/dev/năm, lo renewal, không có đường migration khỏi format proprietary
-- Mức chi: $199–499 one-time/developer cho Pro license
+- Solo/small-team developers building vertical SaaS
+- Examples: construction management tools, video production planning, manufacturing schedulers, custom internal PM tools
+- Pain point: dhtmlx pricing $599–1,599/dev/year, renewal anxiety, no migration path off the proprietary format
+- Spend: $199–499 one-time/developer for a Pro license
 
 **Secondary Customer:**
-- Agency và consulting xây tool tùy chỉnh cho khách hàng
-- Pain point: dự án khách hàng không đủ lớn để mua site license dhtmlx; xây từ đầu tốn 2–3 tháng
-- Mức chi: $499–999 team license, one-time
+- Agencies and consultancies building custom tools for clients
+- Pain point: client projects aren't big enough to justify a dhtmlx site license; building from scratch takes 2–3 months
+- Spend: $499–999 team license, one-time
 
-**Tertiary Customer (Cloud tier, sau launch):**
-- Team PM nhỏ muốn Gantt hosted mà không cần độ phức tạp như Asana/Monday
-- Pain point: Asana/Monday quá nhiều tính năng dư thừa; Excel dễ vỡ
-- Mức chi: $29–99/tháng/team
+**Tertiary Customer (Cloud tier, post-launch):**
+- Small PM teams wanting a hosted Gantt without the complexity of Asana/Monday
+- Pain point: Asana/Monday have too many superfluous features; Excel is fragile
+- Spend: $29–99/month/team
 
 ### 2.4 Total Addressable Market (TAM) Estimate
 
-**Ước tính lower-bound dựa trên tín hiệu revenue của đối thủ:**
+**Lower-bound estimate based on competitors' revenue signals:**
 
-- Số lượng khách hàng dhtmlx Gantt: ~5,000–10,000 developer (ước tính)
-- Bryntum: cùng order of magnitude
-- Tổng thị trường thư viện Gantt commercial: ~$15–30M/năm
+- dhtmlx Gantt customer count: ~5,000–10,000 developers (estimated)
+- Bryntum: same order of magnitude
+- Total commercial Gantt library market: ~$15–30M/year
 
-**Thị phần khả thi cho FluxGantt:**
+**Feasible market share for FluxGantt:**
 
-- Năm 1: 50–100 Pro license × $299 = $15–30k
-- Năm 2: 300–500 Pro + 50 Cloud sub = $90–180k ARR
-- Năm 3: 1k+ Pro + 200 Cloud + Enterprise sớm = $300–500k ARR
+- Year 1: 50–100 Pro licenses × $299 = $15–30k
+- Year 2: 300–500 Pro + 50 Cloud subs = $90–180k ARR
+- Year 3: 1k+ Pro + 200 Cloud + early Enterprise = $300–500k ARR
 
 ---
 
@@ -151,7 +151,7 @@ Resource view/leveling, MS Project XML I/O, and baselines remain in the Pro tier
 |---|---|
 | **Product Name** | FluxGantt |
 | **Brand Family** | Flux (modern web tooling) |
-| **Family Members** | FluxFiles (file manager, đang ship)<br>FluxGantt (Gantt chart, sản phẩm này)<br>FluxBoard (Kanban, tương lai)<br>FluxData (spreadsheet, tương lai)<br>FluxFlow (workflow editor, tương lai) |
+| **Family Members** | FluxFiles (file manager, shipping)<br>FluxGantt (Gantt chart, this product)<br>FluxBoard (Kanban, future)<br>FluxData (spreadsheet, future)<br>FluxFlow (workflow editor, future) |
 
 ### 3.2 Tagline & Positioning
 
@@ -167,20 +167,20 @@ Resource view/leveling, MS Project XML I/O, and baselines remain in the Pro tier
 
 | | |
 |---|---|
-| **Tone** | Trực tiếp, kỹ thuật, tự tin nhưng không kiêu |
-| **Reference** | Văn phong docs của TanStack, Tiptap, Drizzle ORM |
-| **Tránh** | Marketing sáo rỗng: "revolutionary", "synergy", "next-gen" |
-| **Ưu tiên** | Tuyên bố tính năng cụ thể, benchmark, code sample |
+| **Tone** | Direct, technical, confident but not arrogant |
+| **Reference** | The docs voice of TanStack, Tiptap, Drizzle ORM |
+| **Avoid** | Empty marketing: "revolutionary", "synergy", "next-gen" |
+| **Prefer** | Concrete feature claims, benchmarks, code samples |
 
 ### 3.4 Visual Identity
 
 | | |
 |---|---|
-| **Primary Color** | Indigo `#6366f1` — chuyên nghiệp, điềm tĩnh, khác biệt với màu xanh dhtmlx |
-| **Critical Color** | Red `#ef4444` — chỉ dùng cho critical path |
+| **Primary Color** | Indigo `#6366f1` — professional, calm, distinct from dhtmlx's blue |
+| **Critical Color** | Red `#ef4444` — used only for the critical path |
 | **Background** | Near-black `#0a0a0a` (dark mode), off-white `#fafafa` (light mode) |
 | **Typography** | Inter (UI), JetBrains Mono (code samples) |
-| **Logo Concept** | Bar ngang với arrow dependency dạng cascade, stylized |
+| **Logo Concept** | A horizontal bar with a cascading dependency arrow, stylized |
 
 ### 3.5 Domain & Online Presence
 
@@ -191,7 +191,7 @@ Resource view/leveling, MS Project XML I/O, and baselines remain in the Pro tier
 | **NPM scope** | `@fluxgantt` |
 | **GitHub** | github.com/fluxtoolkit/fluxgantt |
 | **Twitter/X** | @fluxgantt |
-| **Discord** | Flux Toolkit community server (chung với FluxFiles) |
+| **Discord** | Flux Toolkit community server (shared with FluxFiles) |
 
 ---
 
@@ -202,13 +202,13 @@ Resource view/leveling, MS Project XML I/O, and baselines remain in the Pro tier
 | Layer | Choice |
 |---|---|
 | **Language** | TypeScript 5.4+, strict mode |
-| **Module format** | ESM-first, fallback CJS qua tsup dual output |
-| **Target** | ES2022 (browser hiện đại, Node 20+) |
-| **Architecture** | Headless core (state + logic) tách biệt với rendering |
-| **State management** | Reactive store dựa trên signal tự viết, theo semantics của Preact Signals, zero dependency với React/Vue |
-| **Rendering** | SVG chính (sạch, vector, accessible, export được); fallback Canvas tự động khi task count > 2,000 |
-| **Date arithmetic** | Temporal API qua lớp adapter nội bộ. Dùng `globalThis.Temporal` native nếu runtime có; `@js-temporal/polyfill` là **optional peerDependency** (consumer tự cài khi cần, KHÔNG bundle vào core → không tính vào bundle budget). `date-fns` chỉ cho ergonomics phụ. Lý do: Temporal xử lý timezone/DST đúng, native `Date` không đáng tin |
-| **Multiplayer** | Yjs (CRDT) — chỉ Pro/Cloud. Reference: tldraw, BlockNote dùng Yjs thành công |
+| **Module format** | ESM-first, CJS fallback via tsup dual output |
+| **Target** | ES2022 (modern browsers, Node 20+) |
+| **Architecture** | Headless core (state + logic) decoupled from rendering |
+| **State management** | Reactive store built on a hand-rolled signal, following Preact Signals semantics, zero dependency on React/Vue |
+| **Rendering** | SVG primary (clean, vector, accessible, exportable); automatic Canvas fallback when task count > 2,000 |
+| **Date arithmetic** | Temporal API via an internal adapter layer. Uses native `globalThis.Temporal` when the runtime provides it; `@js-temporal/polyfill` is an **optional peerDependency** (the consumer installs it when needed, NOT bundled into core → not counted against the bundle budget). `date-fns` only for minor ergonomics. Reason: Temporal handles timezone/DST correctly, native `Date` is not trustworthy |
+| **Multiplayer** | Yjs (CRDT) — Pro/Cloud only. Reference: tldraw, BlockNote use Yjs successfully |
 | **Build tooling** | tsup (library packages), vite (demo apps), changesets (versioning + changelog) |
 | **Testing** | vitest (unit), playwright (e2e + visual regression), @testing-library (framework wrappers) |
 | **Monorepo** | pnpm workspaces, turbo cho task orchestration |
@@ -226,7 +226,7 @@ Resource view/leveling, MS Project XML I/O, and baselines remain in the Pro tier
 **Community-driven:**
 - `@fluxgantt/solid` — SolidJS
 - `@fluxgantt/qwik` — Qwik
-- `@fluxgantt/preact` — Preact (có thể trivial qua React compat)
+- `@fluxgantt/preact` — Preact (possibly trivial via React compat)
 
 ### 4.3 Cloud Backend (Wave 3)
 
@@ -237,10 +237,10 @@ Resource view/leveling, MS Project XML I/O, and baselines remain in the Pro tier
 | **Database** | PostgreSQL 16 |
 | **ORM** | Drizzle (type-safe migration, lightweight) |
 | **Real-time sync** | Yjs + y-websocket |
-| **Auth** | Better-Auth (hiện đại, self-hostable, OAuth + email) |
-| **Storage** | Cloudflare R2 (S3-compatible, rẻ) |
+| **Auth** | Better-Auth (modern, self-hostable, OAuth + email) |
+| **Storage** | Cloudflare R2 (S3-compatible, cheap) |
 | **CDN** | Cloudflare (free tier) |
-| **Hosting** | Fly.io (chính) hoặc Railway (thay thế) |
+| **Hosting** | Fly.io (primary) or Railway (alternative) |
 | **Email** | Resend (transactional) |
 | **Payments** | Stripe (Pro one-time + Cloud subscription) |
 | **Analytics** | Plausible (privacy-first) |
@@ -249,10 +249,10 @@ Resource view/leveling, MS Project XML I/O, and baselines remain in the Pro tier
 
 | | |
 |---|---|
-| **Framework** | Vocs (Vite-based, dùng bởi Wagmi) |
-| **Hosting** | Vercel hoặc Cloudflare Pages |
-| **Search** | Built-in (Vocs tự xử lý) |
-| **Code examples** | StackBlitz embed, edit trực tiếp |
+| **Framework** | Vocs (Vite-based, used by Wagmi) |
+| **Hosting** | Vercel or Cloudflare Pages |
+| **Search** | Built-in (handled by Vocs) |
+| **Code examples** | StackBlitz embed, edit directly |
 
 ---
 
@@ -270,8 +270,8 @@ Resource view/leveling, MS Project XML I/O, and baselines remain in the Pro tier
 ┌───────────────────────────────────────────────────────────┐
 │  Framework Wrapper Layer                                  │
 │  @fluxgantt/react │ @fluxgantt/vue │ @fluxgantt/svelte    │
-│  - Component API idiomatic theo từng framework            │
-│  - Tích hợp lifecycle                                     │
+│  - Idiomatic component API per framework                  │
+│  - Lifecycle integration                                  │
 │  - Prop bindings type-safe                                │
 └───────────────────────────────────────────────────────────┘
                               │
@@ -285,23 +285,23 @@ Resource view/leveling, MS Project XML I/O, and baselines remain in the Pro tier
 │  ┌───────────────────────────────────────────────────────┐│
 │  │  State Layer                                          ││
 │  │  - TaskStore       (reactive task collection)          ││
-│  │  - DependencyStore (links giữa task)                   ││
+│  │  - DependencyStore (links between tasks)               ││
 │  │  - ResourceStore   (Pro: assignee, allocation)         ││
-│  │  - BaselineStore   (Pro: snapshot của plan)            ││
+│  │  - BaselineStore   (Pro: plan snapshot)                ││
 │  │  - ViewportStore   (zoom, scroll, selection)           ││
 │  └───────────────────────────────────────────────────────┘│
 │  ┌───────────────────────────────────────────────────────┐│
 │  │  Compute Layer                                        ││
-│  │  - Critical Path (thuật toán CPM)                      ││
+│  │  - Critical Path (CPM algorithm)                       ││
 │  │  - Resource Leveling (Pro)                             ││
-│  │  - Auto-Schedule (AI, tầng Cloud)                       ││
-│  │  - Working Calendar (ngày làm việc, holiday)           ││
+│  │  - Auto-Schedule (AI, Cloud tier)                      ││
+│  │  - Working Calendar (working days, holidays)           ││
 │  └───────────────────────────────────────────────────────┘│
 │  ┌───────────────────────────────────────────────────────┐│
 │  │  Render Layer                                         ││
-│  │  - SVG renderer (chính, <2000 task)                   ││
-│  │  - Canvas renderer (fallback, ≥2000 task)              ││
-│  │  - Tự động chuyển dựa trên task count                  ││
+│  │  - SVG renderer (primary, <2000 tasks)                ││
+│  │  - Canvas renderer (fallback, ≥2000 tasks)             ││
+│  │  - Switches automatically by task count                ││
 │  └───────────────────────────────────────────────────────┘│
 │  ┌───────────────────────────────────────────────────────┐│
 │  │  Interaction Layer                                    ││
@@ -317,7 +317,7 @@ Resource view/leveling, MS Project XML I/O, and baselines remain in the Pro tier
 │  │  - PNG / SVG / PDF export                              ││
 │  └───────────────────────────────────────────────────────┘│
 │  ┌───────────────────────────────────────────────────────┐│
-│  │  Sync Layer (chỉ Cloud)                                ││
+│  │  Sync Layer (Cloud only)                               ││
 │  │  - Yjs adapter                                         ││
 │  │  - Presence (cursor, selection)                        ││
 │  │  - Conflict resolution                                 ││
@@ -327,19 +327,19 @@ Resource view/leveling, MS Project XML I/O, and baselines remain in the Pro tier
 
 ### 5.2 Design Principles
 
-1. **Headless first** — Core engine dùng được hoàn toàn không cần render. State và compute có thể chạy server-side hoặc trong test mà không cần DOM.
+1. **Headless first** — the core engine is fully usable without rendering. State and compute can run server-side or in tests without a DOM.
 
-2. **Reactive subscription, không full re-render** — Consumer subscribe vào delta cụ thể (task X di chuyển, dependency Y được thêm) thay vì nhận full state snapshot. Cho phép UI update chính xác và performance tốt với 1000+ task.
+2. **Reactive subscription, no full re-render** — consumers subscribe to a specific delta (task X moved, dependency Y added) instead of receiving a full state snapshot. This enables precise UI updates and good performance with 1000+ tasks.
 
-3. **Plugin system cho tính năng non-core** — MS Project import, AI scheduling, custom calendar đều là plugin. Giữ core bundle dưới 30kb gzip.
+3. **Plugin system for non-core features** — MS Project import, AI scheduling, and custom calendars are all plugins. Keep the core bundle under 30kb gzip.
 
-4. **Tree-shakable mọi thứ** — Chỉ import module cần dùng. Một Gantt "hello world" chỉ render task nên dưới 15kb gzip. Budget core (<30kb) / hello-world (<15kb) **không bao gồm Temporal polyfill** (optional peerDependency, xem §4.1).
+4. **Tree-shakable everything** — import only the modules you use. A "hello world" Gantt that only renders tasks should be under 15kb gzip. The core (<30kb) / hello-world (<15kb) budget **excludes the Temporal polyfill** (optional peerDependency, see §4.1).
 
-5. **Core framework-agnostic, wrapper opinionated** — Core không có opinion về UI framework. Wrapper cung cấp API idiomatic cho mỗi framework (hooks cho React, composable cho Vue, runes cho Svelte...).
+5. **Framework-agnostic core, opinionated wrappers** — the core has no opinion about the UI framework. Wrappers provide an idiomatic API per framework (hooks for React, composables for Vue, runes for Svelte, ...).
 
-6. **Type safety end-to-end** — Branded type cho ID ngăn việc truyền nhầm `TaskId` vào chỗ cần `ResourceId`. Strict null check ở mọi nơi.
+6. **Type safety end-to-end** — branded ID types prevent passing a `TaskId` where a `ResourceId` is expected. Strict null checks everywhere.
 
-7. **Server-friendly** — Core chạy được trong Node.js (hoặc Workers) không cần DOM. Cho phép server-side rendering, validation server-side, và test headless.
+7. **Server-friendly** — the core runs in Node.js (or Workers) without a DOM. This enables server-side rendering, server-side validation, and headless tests.
 
 ---
 
@@ -348,7 +348,7 @@ Resource view/leveling, MS Project XML I/O, and baselines remain in the Pro tier
 ### 6.1 Branded ID Types
 
 ```typescript
-// Ngăn việc trộn lẫn ID type ở compile time
+// Prevent mixing up ID types at compile time
 type Brand<T, B> = T & { readonly __brand: B };
 
 type TaskId       = Brand<string, 'TaskId'>;
@@ -358,50 +358,50 @@ type BaselineId   = Brand<string, 'BaselineId'>;
 type ProjectId    = Brand<string, 'ProjectId'>;
 ```
 
-> **Coercion ở boundary:** API công khai nhận `string` cho ID (xem ví dụ §7.1); core tự brand nội bộ qua helper `toTaskId(s: string): TaskId`. Người dùng KHÔNG phải tự viết `as TaskId`. Branded type chỉ ràng buộc nội bộ giữa các hàm core để tránh trộn `TaskId`/`ResourceId`.
+> **Coercion at the boundary:** the public API accepts a `string` for IDs (see the §7.1 example); the core brands them internally via the `toTaskId(s: string): TaskId` helper. Users do NOT write `as TaskId` themselves. Branded types only constrain the internals between core functions to avoid mixing `TaskId`/`ResourceId`.
 
 ### 6.2 Core Entity Types
 
 ```typescript
-// Mọi mốc lịch trình nhận nhiều dạng ở input, chuẩn hoá về Temporal nội bộ
+// Schedule instants accept several input shapes; normalized to Temporal internally
 type DateInput = string | Date | Temporal.ZonedDateTime | Temporal.PlainDate;
 
 type Task = {
   id:          TaskId;
   name:        string;
-  start:       DateInput;          // string ISO | Date | Temporal; chuẩn hoá về Temporal nội bộ
-  end:         DateInput;          // như trên
-  duration?:   number;             // working hour; derive từ start/end nếu thiếu
+  start:       DateInput;          // ISO string | Date | Temporal; normalized to Temporal internally
+  end:         DateInput;          // as above
+  duration?:   number;             // working hours; derived from start/end when omitted
   progress:    number;             // 0..1
-  priority?:   number;             // số nhỏ = ưu tiên cao; dùng cho resource leveling (§13.2)
-  parent?:     TaskId;             // parent trong hierarchy
+  priority?:   number;             // lower = higher priority; used by resource leveling (§13.2)
+  parent?:     TaskId;             // parent in the hierarchy
   type:        'task' | 'summary' | 'milestone' | 'project';
   constraint?: TaskConstraint;
   resources?:  ResourceAssignment[];
   notes?:      string;
-  color?:      string;             // override màu mặc định
-  meta?:       Record<string, unknown>;  // field tùy biến của user
+  color?:      string;             // overrides the default color
+  meta?:       Record<string, unknown>;  // user's custom field
   createdAt:   Date;
   updatedAt:   Date;
 };
 
 type DependencyType =
-  | 'FS'   // Finish-to-Start  (mặc định; B bắt đầu sau khi A kết thúc)
-  | 'SS'   // Start-to-Start   (B bắt đầu khi A bắt đầu)
-  | 'FF'   // Finish-to-Finish (B kết thúc khi A kết thúc)
-  | 'SF';  // Start-to-Finish  (B kết thúc khi A bắt đầu; hiếm dùng)
+  | 'FS'   // Finish-to-Start  (default; B starts after A finishes)
+  | 'SS'   // Start-to-Start   (B starts when A starts)
+  | 'FF'   // Finish-to-Finish (B finishes when A finishes)
+  | 'SF';  // Start-to-Finish  (B finishes when A starts; rarely used)
 
 type Dependency = {
   id:    DependencyId;
   from:  TaskId;
   to:    TaskId;
   type:  DependencyType;
-  lag?:  number;        // giờ; âm = lead time
+  lag?:  number;        // hours; negative = lead time
 };
 
 type TaskConstraint =
-  | { kind: 'asap' }                           // càng sớm càng tốt
-  | { kind: 'alap' }                           // càng muộn càng tốt
+  | { kind: 'asap' }                           // as soon as possible
+  | { kind: 'alap' }                           // as late as possible
   | { kind: 'must-start-on'; date: DateInput }
   | { kind: 'must-finish-on'; date: DateInput }
   | { kind: 'start-no-earlier-than'; date: DateInput }
@@ -413,9 +413,9 @@ type Resource = {
   id:           ResourceId;
   name:         string;
   type:         'person' | 'team' | 'equipment' | 'material';
-  capacity:     number;          // giờ/ngày có thể làm
+  capacity:     number;          // working hours/day
   cost?:        { rate: number; currency: string };
-  calendar?:    WorkingCalendar; // override working calendar mặc định
+  calendar?:    WorkingCalendar; // overrides the default working calendar
   color?:       string;
   avatar?:      string;
 };
@@ -427,16 +427,16 @@ type ResourceAssignment = {
 
 type Baseline = {
   id:        BaselineId;
-  name:      string;             // ví dụ "v1.0 — Initial plan"
+  name:      string;             // e.g. "v1.0 — Initial plan"
   capturedAt: Date;
   tasks:     Map<TaskId, { start: Date; end: Date; duration: number }>;
 };
 
 type WorkingCalendar = {
   workingDays:   ('mon'|'tue'|'wed'|'thu'|'fri'|'sat'|'sun')[];
-  workingHours:  { start: string; end: string }[];   // ví dụ "09:00"–"17:00"
+  workingHours:  { start: string; end: string }[];   // e.g. "09:00"–"17:00"
   holidays:      DateInput[];
-  timezone:      string;         // IANA timezone, ví dụ "America/New_York"
+  timezone:      string;         // IANA timezone, e.g. "America/New_York"
 };
 ```
 
@@ -444,13 +444,13 @@ type WorkingCalendar = {
 
 ```typescript
 type GanttConfig = {
-  // Dữ liệu khởi tạo
+  // Initial data
   tasks?:        Task[];
   dependencies?: Dependency[];
   resources?:    Resource[];      // Pro
   baselines?:    Baseline[];      // Pro
 
-  // Hiển thị (đều optional + có default; thường chỉ cần set viewMode)
+  // Display (all optional + have defaults; usually you only set viewMode)
   viewMode?:     'day' | 'week' | 'month' | 'quarter' | 'year';  // default 'week'
   density?:      'compact' | 'default' | 'comfortable';          // default 'default'
   theme?:        'light' | 'dark' | 'auto';                      // default 'auto'
@@ -460,7 +460,7 @@ type GanttConfig = {
   // Calendar
   calendar?:     WorkingCalendar;
 
-  // Tính năng (optional; default false trừ khi ghi chú)
+  // Features (optional; default false unless noted)
   enableCriticalPath?:    boolean; // default false
   enableResourceView?:    boolean; // Pro, default false
   enableBaselines?:       boolean; // Pro, default false
@@ -514,7 +514,7 @@ gantt.getTasks(): Task[]
 gantt.findTasks(predicate: (t: Task) => boolean): Task[]
 ```
 
-> **Cascade:** `moveTask` / `resizeTask` / `updateTask` mặc định dời các task phụ thuộc theo dependency (FS/SS/FF/SF + lag) và tôn trọng `constraint`, phát `task:moved` cho mọi task bị ảnh hưởng. Tắt bằng scheduling mode `manual`.
+> **Cascade:** `moveTask` / `resizeTask` / `updateTask` by default shift dependent tasks along their dependencies (FS/SS/FF/SF + lag) and respect `constraint`, emitting `task:moved` for every affected task. Disable via the `manual` scheduling mode.
 
 ### 7.3 Dependency Operations
 
@@ -655,20 +655,20 @@ const handleTaskChange = (task) => saveToBackend(task);
 
 ### 8.1 Visual Philosophy
 
-FluxGantt là công cụ business chuyên nghiệp. Aesthetic phải truyền tải "enterprise-grade software" nhưng vẫn dễ tiếp cận. Chủ động tránh:
+FluxGantt is a professional business tool. The aesthetic must convey "enterprise-grade software" while staying approachable. Deliberately avoid:
 
-- Style hand-drawn / sketchy (kiểu Excalidraw)
-- Illustration playful
-- Gradient nặng hoặc neumorphism
-- Icon cartoon
+- Hand-drawn / sketchy style (Excalidraw-like)
+- Playful illustration
+- Heavy gradients or neumorphism
+- Cartoon icons
 
-Ưu tiên:
+Prefer:
 
-- Hình khối geometric sạch
-- Whitespace rộng ở density comfortable
-- Thông tin dày đặc ở density compact (cho power user)
-- Shadow tinh tế, không nặng
-- System font và Inter cho khả năng đọc đa ngôn ngữ
+- Clean geometric shapes
+- Generous whitespace at comfortable density
+- Dense information at compact density (for power users)
+- Subtle shadows, not heavy
+- System fonts and Inter for multi-language readability
 
 ### 8.2 Design Tokens
 
@@ -713,13 +713,13 @@ FluxGantt là công cụ business chuyên nghiệp. Aesthetic phải truyền t�
   --fg-task-default-hover:  #4f46e5;
   --fg-task-critical:       #ef4444;   /* red — critical path */
   --fg-task-completed:      #10b981;   /* emerald */
-  --fg-task-baseline:       #94a3b8;   /* slate — baseline kế hoạch */
-  --fg-task-milestone:      #f59e0b;   /* amber — marker hình thoi */
+  --fg-task-baseline:       #94a3b8;   /* slate — plan baseline */
+  --fg-task-milestone:      #f59e0b;   /* amber — diamond marker */
 
   /* Resource colors */
   --fg-resource-normal:     #10b981;
   --fg-resource-overload:   #fb923c;   /* orange — over-allocated */
-  --fg-resource-critical:   #dc2626;   /* dark red — over nghiêm trọng */
+  --fg-resource-critical:   #dc2626;   /* dark red — severely over-allocated */
 
   /* Grid */
   --fg-grid-line:           #e5e7eb;
@@ -760,7 +760,7 @@ FluxGantt là công cụ business chuyên nghiệp. Aesthetic phải truyền t�
 │  └─────────────────────┘ │  └───────────────────────────────┘    │
 │                          │                                       │
 ├──────────────────────────────────────────────────────────────────┤
-│  Detail panel (khi task được chọn)                               │
+│  Detail panel (when a task is selected)                          │
 │  Name: ...   Resource: ...   Progress: 50%   [Edit] [Delete]     │
 └──────────────────────────────────────────────────────────────────┘
 ```
@@ -769,157 +769,157 @@ FluxGantt là công cụ business chuyên nghiệp. Aesthetic phải truyền t�
 
 **Direct manipulation:**
 
-| Hành động | Kết quả |
+| Action | Result |
 |---|---|
-| Click + drag giữa bar | Di chuyển task |
-| Click + drag cạnh bar | Resize task |
-| Click + drag handle | Tạo dependency tới task khác |
-| Double click bar | Mở detail edit |
-| Right click | Mở context menu |
+| Click + drag on the bar | Move the task |
+| Click + drag the bar edge | Resize the task |
+| Click + drag the handle | Create a dependency to another task |
+| Double click the bar | Open detail edit |
+| Right click | Open the context menu |
 
 **Keyboard:**
 
-| Phím | Hành động |
+| Key | Action |
 |---|---|
-| Arrow keys | Di chuyển selection giữa các task |
-| Tab | Di chuyển giữa cell trong task list |
+| Arrow keys | Move the selection between tasks |
+| Tab | Move between cells in the task list |
 | Space | Select / deselect |
 | Cmd/Ctrl + D | Duplicate task |
 | Cmd/Ctrl + Z / Shift+Z | Undo / redo |
 | Cmd/Ctrl + +/- | Zoom in / out |
-| Delete | Xóa task đã chọn |
-| Enter | Edit inline tên task đã chọn |
+| Delete | Delete the selected task |
+| Enter | Inline-edit the selected task's name |
 
 **Zoom:**
 
-| Hành động | Kết quả |
+| Action | Result |
 |---|---|
 | Mouse wheel + Ctrl | Zoom in/out |
-| Pinch gesture | Zoom trên touch device |
+| Pinch gesture | Zoom on a touch device |
 
 ### 8.5 Accessibility
 
-- Đạt chuẩn tối thiểu WCAG 2.1 AA
-- Mọi interaction đều keyboard-accessible
-- ARIA label cho screen reader
-- Màu sắc được test với color blindness
-- Critical path phân biệt được không cần màu (viền dashed)
-- Focus indicator trên mọi phần tử tương tác
-- Tôn trọng `prefers-reduced-motion`
-- **Chế độ Canvas (≥2.000 task)** vẫn giữ a11y: một lớp DOM ẩn (offscreen) chứa ARIA grid + row focusable chạy song song với Canvas vẽ bar, để keyboard navigation và screen reader không bị mất khi đổi renderer (xem §5.1). WCAG AA áp dụng cho cả hai renderer.
+- Meets at least WCAG 2.1 AA
+- Every interaction is keyboard-accessible
+- ARIA labels for screen readers
+- Colors tested for color blindness
+- Critical path distinguishable without color (dashed outline)
+- Focus indicator on every interactive element
+- Respects `prefers-reduced-motion`
+- **Canvas mode (≥2,000 tasks)** keeps a11y: a hidden (offscreen) DOM layer with an ARIA grid + focusable rows runs alongside the Canvas that draws the bars, so keyboard navigation and screen readers aren't lost when the renderer switches (see §5.1). WCAG AA applies to both renderers.
 
 ---
 
 ## 9. Feature Roadmap (3 Waves)
 
-### 9.1 Wave 1 — Free MVP (Tier: Core MIT, Tuần 1–8)
+### 9.1 Wave 1 — Free MVP (Tier: Core MIT, Weeks 1–8)
 
 **Goal:** Ship a solid MIT-licensed Gantt that beats Frappe Gantt **and DHTMLX Community Edition** on developer experience and **bundle size** (core <15kb gzip vs hundreds of KB for dhtmlx), enough to attract early users and GitHub stars. Since both MIT competitors are heavy / not TypeScript-first, "small-bundle headless engine + strict types" is the main selling angle of Wave 1 — not AI (which doesn't ship until later).
 
-**Tuần 1–2: Foundation**
-- Setup monorepo (pnpm + turbo + changesets)
+**Weeks 1–2: Foundation**
+- Set up the monorepo (pnpm + turbo + changesets)
 - Core package skeleton
-- Data model Task + TaskStore (reactive)
-- SVG timeline renderer cơ bản
-- Zoom level: day / week / month / quarter / year
+- Task data model + TaskStore (reactive)
+- Basic SVG timeline renderer
+- Zoom levels: day / week / month / quarter / year
 - Today line marker
-- Chuyển theme light/dark
+- Light/dark theme switching
 
-**Tuần 3–4: Interactions**
-- Drag để move task
-- Drag cạnh để resize
-- Hierarchy (parent/child) với auto-rollup duration
-- Click selection (single + multi với Shift/Ctrl)
+**Weeks 3–4: Interactions**
+- Drag to move a task
+- Drag the edge to resize
+- Hierarchy (parent/child) with auto-rollup duration
+- Click selection (single + multi with Shift/Ctrl)
 - Keyboard navigation
-- Working calendar (ngày làm việc, holiday)
+- Working calendar (working days, holidays)
 
-**Tuần 5: Dependencies & Critical Path**
-- Dependencies: đủ 4 loại (FS, SS, FF, SF)
-- Hỗ trợ lag/lead time
-- Arrow auto-routing giữa các bar
-- Drag handle để tạo dependency mới
-- Tính toán critical path (thuật toán CPM)
-- Highlight visual cho critical path
+**Week 5: Dependencies & Critical Path**
+- Dependencies: all 4 types (FS, SS, FF, SF)
+- Lag/lead time support
+- Arrow auto-routing between bars
+- Drag handle to create a new dependency
+- Critical path computation (CPM algorithm)
+- Visual highlight for the critical path
 
-**Tuần 6: Framework Wrappers**
-- `@fluxgantt/react` với hooks
-- `@fluxgantt/vue` với Composition API
-- Sample app cho mỗi framework
+**Week 6: Framework Wrappers**
+- `@fluxgantt/react` with hooks
+- `@fluxgantt/vue` with the Composition API
+- Sample app per framework
 
-**Tuần 7: Polish & Export**
+**Week 7: Polish & Export**
 - Export PNG / SVG
 - Import/export JSON / CSV
-- Milestone (marker hình thoi)
+- Milestone (diamond marker)
 - Read-only mode
-- Scaffold i18n (chỉ English lúc launch, structure sẵn sàng mở rộng)
+- Scaffold i18n (English-only at launch, structure ready to extend)
 - Responsive mobile
 
-**Tuần 8: Documentation & Launch Prep**
+**Week 8: Documentation & Launch Prep**
 - Documentation site (Vocs)
-- 10+ example live trên StackBlitz
-- Landing page với 3 GIF demo
-- README với quick start
+- 10+ live examples on StackBlitz
+- Landing page with 3 demo GIFs
+- README with a quick start
 - Comparison page (vs dhtmlx PRO, dhtmlx Community Edition, Bryntum, Frappe) — emphasizing the **bundle size** benchmark + TypeScript DX
-- Draft bài Show HN
-- Asset cho Product Hunt
+- Draft the Show HN post
+- Assets for Product Hunt
 
-### 9.2 Wave 2 — Pro Tier (Tuần 11–18, sau khi validate)
+### 9.2 Wave 2 — Pro Tier (Weeks 11–18, after validation)
 
-**Mục tiêu:** Thêm tính năng developer chịu trả $199–499 one-time.
+**Goal:** Add features developers will pay $199–499 one-time for.
 
-**Tuần 11–12: MS Project Compatibility**
+**Weeks 11–12: MS Project Compatibility**
 - Import MS Project XML (.xml format)
 - Export MS Project XML
-- Migration guide từ dhtmlx
-- Test với 20 file MS Project thực tế
+- Migration guide from dhtmlx
+- Test with 20 real MS Project files
 
-**Tuần 13–14: Resource View**
-- Data model Resource + ResourceStore
-- Gán resource cho task
-- Chart workload resource (panel riêng)
-- Override calendar resource
-- Cảnh báo visual khi over-allocation
-- Thuật toán resource leveling
+**Weeks 13–14: Resource View**
+- Resource data model + ResourceStore
+- Assign resources to tasks
+- Resource workload chart (separate panel)
+- Override a resource's calendar
+- Visual warning on over-allocation
+- Resource leveling algorithm
 
-**Tuần 15–16: Baselines & Constraints**
-- Capture baseline (snapshot)
-- So sánh multi-baseline
+**Weeks 15–16: Baselines & Constraints**
+- Capture a baseline (snapshot)
+- Multi-baseline comparison
 - Visual diff (planned vs actual)
-- Task constraint (must-start-on, ASAP, ALAP, v.v.)
-- Custom column trong task list
-- Filter nâng cao
+- Task constraints (must-start-on, ASAP, ALAP, etc.)
+- Custom columns in the task list
+- Advanced filters
 
-**Tuần 17: Advanced Export**
-- Export PDF với header/footer tùy chỉnh
+**Week 17: Advanced Export**
+- Export PDF with a custom header/footer
 - Print preview
-- Export multi-page cho project lớn
-- Bỏ watermark (chỉ Pro)
+- Multi-page export for large projects
+- Remove watermark (Pro only)
 
-**Tuần 18: Polish & Pro Launch**
-- Hệ thống validate license key
-- Tích hợp Stripe Checkout (one-time payment)
+**Week 18: Polish & Pro Launch**
+- License key validation system
+- Stripe Checkout integration (one-time payment)
 - Pro documentation
 - Pro tier landing page
-- Email blast cho waitlist
+- Email blast to the waitlist
 - Public Pro launch
 
-### 9.3 Wave 3 — Cloud + AI Tier (Tháng 6+)
+### 9.3 Wave 3 — Cloud + AI Tier (Month 6+)
 
-**Mục tiêu:** Recurring revenue qua hosted multiplayer Gantt với tính năng AI.
+**Goal:** Recurring revenue via a hosted multiplayer Gantt with AI features.
 
-**Tháng 6–7: Cloud Foundation**
+**Months 6–7: Cloud Foundation**
 - Backend API (Hono + Postgres)
-- Auth user + model organization
-- Quản lý project + workspace
+- User auth + organization model
+- Project + workspace management
 - Stripe subscription
 - Cloud SDK package
 
-**Tháng 8–9: Real-time Multiplayer**
-- Tích hợp Yjs
-- Presence (live cursor, indicator selection)
-- Comment và @mention cho mỗi task
+**Months 8–9: Real-time Multiplayer**
+- Yjs integration
+- Presence (live cursors, selection indicators)
+- Comments and @mentions per task
 - Activity feed / audit log
-- Share link với password và expiry
+- Share link with password and expiry
 
 **Month 10–11: AI Features**
 
@@ -932,11 +932,11 @@ FluxGantt là công cụ business chuyên nghiệp. Aesthetic phải truyền t�
 - Natural-language task entry
 - AI-generated postmortem when a project ends
 
-**Tháng 12: Integrations**
-- Webhook (task thay đổi, đạt milestone)
-- Slack notification
-- Email digest (tiến độ hàng tuần)
-- Connector Zapier
+**Month 12: Integrations**
+- Webhooks (task changed, milestone reached)
+- Slack notifications
+- Email digest (weekly progress)
+- Zapier connector
 - Sync Jira / Linear / Asana
 
 ---
@@ -945,9 +945,9 @@ FluxGantt là công cụ business chuyên nghiệp. Aesthetic phải truyền t�
 
 ### 10.1 Method Naming
 
-Verb + noun, camelCase. Tránh prefix "set"/"get" chung cho action; chỉ dùng cho property access đơn giản.
+Verb + noun, camelCase. Avoid generic "set"/"get" prefixes for actions; use them only for simple property access.
 
-**Nên dùng:**
+**Do:**
 ```typescript
 gantt.addTask(task)
 gantt.linkTasks(fromId, toId, 'FS')
@@ -957,17 +957,17 @@ gantt.zoomTo('week')
 gantt.scrollToTask(taskId)
 ```
 
-**Tránh:**
+**Avoid:**
 ```typescript
 gantt.task_add(task)                  // snake_case
-gantt.createNewTaskInGantt(task)      // dài dòng
-gantt.do('add', task)                 // action generic
-gantt.set('zoom', 'week')             // setter generic
+gantt.createNewTaskInGantt(task)      // verbose
+gantt.do('add', task)                 // generic action
+gantt.set('zoom', 'week')             // generic setter
 ```
 
 ### 10.2 Event Naming
 
-Thì past tense, namespace bằng dấu hai chấm, lowercase. Đọc như "điều gì đó đã xảy ra".
+Past tense, namespaced with a colon, lowercase. Reads as "something happened".
 
 ```
 task:added
@@ -988,9 +988,9 @@ conflict:detected
 
 ### 10.3 CSS Class Naming (BEM)
 
-Prefix mọi class với `fg-` để tránh xung đột với host application.
+Prefix every class with `fg-` to avoid clashing with the host application.
 
-| Loại | Ví dụ |
+| Kind | Example |
 |---|---|
 | **Block** | `.fg-task` |
 | **Element** | `.fg-task__bar`, `.fg-task__label` |
@@ -1014,9 +1014,9 @@ CSS custom property prefix: `--fg-*`
 
 ### 10.4 Type Naming
 
-PascalCase, không prefix "I" (convention cũ), suffix mô tả chỉ khi cần.
+PascalCase, no "I" prefix (dated convention), a descriptive suffix only when needed.
 
-**Nên dùng:**
+**Do:**
 ```typescript
 type Task = { ... }
 type Dependency = { ... }
@@ -1026,11 +1026,11 @@ type GanttInstance = { ... }
 type ResourceAssignment = { ... }
 ```
 
-**Tránh:**
+**Avoid:**
 ```typescript
-interface ITask { ... }            // prefix I lỗi thời
-type TaskType = { ... }            // suffix Type dư thừa
-type taskConfig = { ... }          // camelCase sai
+interface ITask { ... }            // dated I prefix
+type TaskType = { ... }            // redundant Type suffix
+type taskConfig = { ... }          // wrong camelCase
 ```
 
 **Branded ID:**
@@ -1041,27 +1041,27 @@ type ResourceId = string & { readonly __brand: 'ResourceId' }
 
 ### 10.5 File & Folder Naming
 
-| Loại | Convention | Ví dụ |
+| Kind | Convention | Example |
 |---|---|---|
 | Files | kebab-case | `task-store.ts`, `critical-path.ts` |
 | Folders | kebab-case | `store/`, `compute/`, `render/` |
 | Tests | `*.test.ts` | `task-store.test.ts` |
-| Types | `types.ts` | mỗi package hoặc feature folder |
+| Types | `types.ts` | per package or feature folder |
 | Index | `index.ts` | barrel export |
 
 ### 10.6 NPM Package Names
 
-| Package | Mô tả |
+| Package | Description |
 |---|---|
 | `@fluxgantt/core` | Headless engine (Wave 1) |
 | `@fluxgantt/react` | React wrapper (Wave 1) |
 | `@fluxgantt/vue` | Vue wrapper (Wave 1) |
 | `@fluxgantt/svelte` | Svelte wrapper (Wave 2) |
 | `@fluxgantt/angular` | Angular wrapper (Wave 2) |
-| `@fluxgantt/ai` | Tính năng AI scheduling (Pro) |
+| `@fluxgantt/ai` | AI scheduling features (Pro) |
 | `@fluxgantt/msproject` | MS Project import/export (Pro) |
 | `@fluxgantt/cloud-sdk` | Cloud API client (Wave 3) |
-| `@fluxgantt/themes` | Theme dựng sẵn (community) |
+| `@fluxgantt/themes` | Prebuilt themes (community) |
 | `@fluxgantt/icons` | Icon set |
 | `@fluxgantt/dev-tools` | Browser devtools extension |
 
@@ -1076,7 +1076,7 @@ fluxgantt/
 ├── packages/
 │   ├── core/                       # @fluxgantt/core
 │   │   ├── src/
-│   │   │   ├── gantt.ts            # Entry chính: createGantt()
+│   │   │   ├── gantt.ts            # Main entry: createGantt()
 │   │   │   ├── store/
 │   │   │   │   ├── task-store.ts
 │   │   │   │   ├── dependency-store.ts
@@ -1115,7 +1115,7 @@ fluxgantt/
 │   │   │   │   ├── export-svg.ts
 │   │   │   │   └── export-pdf.ts
 │   │   │   ├── events.ts
-│   │   │   ├── signals.ts           # Reactive primitive tự viết
+│   │   │   ├── signals.ts           # Hand-rolled reactive primitive
 │   │   │   ├── types.ts
 │   │   │   ├── constants.ts
 │   │   │   └── index.ts
@@ -1159,8 +1159,8 @@ fluxgantt/
 │
 ├── apps/
 │   ├── docs/                       # Documentation site (Vocs)
-│   ├── landing/                    # Landing page marketing (Next.js hoặc Astro)
-│   └── playground/                 # Playground tương tác (StackBlitz host)
+│   ├── landing/                    # Marketing landing page (Next.js or Astro)
+│   └── playground/                 # Interactive playground (StackBlitz host)
 │
 ├── tooling/
 │   ├── eslint-config/
@@ -1182,9 +1182,9 @@ fluxgantt/
 
 ## 12. Database Schema (Cloud Tier)
 
-PostgreSQL schema cho bản Cloud hosted. Dùng Drizzle ORM.
+PostgreSQL schema for the hosted Cloud edition. Uses Drizzle ORM.
 
-> **Mapping DB ↔ type:** một số cột đặt tên khác field trong type công khai (§6.2): `tasks.end_at` ↔ `Task.end`, `tasks.constraint_data` ↔ `Task.constraint`, `resources.cost_rate`/`cost_curr` ↔ `Resource.cost`. Lớp ánh xạ nằm trong `@fluxgantt/cloud-sdk`, không để chênh lệch tên rò ra API công khai.
+> **DB ↔ type mapping:** some columns are named differently from the public type fields (§6.2): `tasks.end_at` ↔ `Task.end`, `tasks.constraint_data` ↔ `Task.constraint`, `resources.cost_rate`/`cost_curr` ↔ `Resource.cost`. The mapping layer lives in `@fluxgantt/cloud-sdk`, so the naming difference never leaks into the public API.
 
 ```sql
 -- Organizations (root multi-tenant)
@@ -1208,7 +1208,7 @@ CREATE TABLE users (
   created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- Membership (quan hệ user <-> org nhiều-nhiều)
+-- Membership (many-to-many user <-> org relationship)
 CREATE TABLE memberships (
   id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id     UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -1241,13 +1241,13 @@ CREATE TABLE tasks (
   name        VARCHAR(500) NOT NULL,
   start       TIMESTAMPTZ NOT NULL,
   end_at      TIMESTAMPTZ NOT NULL,
-  duration    INT,                       -- theo working hour
-  progress    NUMERIC(3,2) DEFAULT 0,    -- 0.00 đến 1.00
+  duration    INT,                       -- in working hours
+  progress    NUMERIC(3,2) DEFAULT 0,    -- 0.00 to 1.00
   type        VARCHAR(20) DEFAULT 'task',-- task/summary/milestone/project
   constraint_data JSONB,
   notes       TEXT,
   color       VARCHAR(20),
-  meta        JSONB,                      -- field tùy biến user
+  meta        JSONB,                      -- user's custom field
   sort_order  INT,
   created_by  UUID REFERENCES users(id),
   created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -1277,13 +1277,13 @@ CREATE TABLE resources (
   project_id  UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
   name        VARCHAR(200) NOT NULL,
   type        VARCHAR(50) NOT NULL,        -- person/team/equipment/material
-  capacity    NUMERIC(5,2) DEFAULT 8.0,    -- giờ/ngày
+  capacity    NUMERIC(5,2) DEFAULT 8.0,    -- hours/day
   cost_rate   NUMERIC(10,2),
   cost_curr   VARCHAR(3),
   calendar    JSONB,
   color       VARCHAR(20),
   avatar_url  TEXT,
-  user_id     UUID REFERENCES users(id),   -- link tới user nếu type='person'
+  user_id     UUID REFERENCES users(id),   -- links to a user when type='person'
   created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
@@ -1292,7 +1292,7 @@ CREATE TABLE resource_assignments (
   id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   task_id       UUID NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
   resource_id   UUID NOT NULL REFERENCES resources(id) ON DELETE CASCADE,
-  units         NUMERIC(3,2) DEFAULT 1.0,  -- 0.00 đến 1.00
+  units         NUMERIC(3,2) DEFAULT 1.0,  -- 0.00 to 1.00
   UNIQUE(task_id, resource_id)
 );
 
@@ -1301,7 +1301,7 @@ CREATE TABLE baselines (
   id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   project_id    UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
   name          VARCHAR(200) NOT NULL,
-  snapshot      JSONB NOT NULL,             -- state task lúc capture
+  snapshot      JSONB NOT NULL,             -- task state at capture time
   captured_by   UUID REFERENCES users(id),
   captured_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -1312,7 +1312,7 @@ CREATE TABLE comments (
   task_id     UUID NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
   user_id     UUID NOT NULL REFERENCES users(id),
   content     TEXT NOT NULL,
-  mentions    UUID[],                      -- array user ID được mention
+  mentions    UUID[],                      -- array of mentioned user IDs
   created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at  TIMESTAMPTZ
 );
@@ -1344,13 +1344,13 @@ CREATE TABLE share_links (
   created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- API keys (cho webhook integration)
+-- API keys (for webhook integration)
 CREATE TABLE api_keys (
   id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   org_id      UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
   name        VARCHAR(200) NOT NULL,
   key_hash    VARCHAR(255) NOT NULL,
-  prefix      VARCHAR(10) NOT NULL,         -- prefix hiện để nhận diện
+  prefix      VARCHAR(10) NOT NULL,         -- visible prefix for identification
   scopes      VARCHAR(100)[],
   last_used   TIMESTAMPTZ,
   created_by  UUID REFERENCES users(id),
@@ -1365,16 +1365,16 @@ CREATE TABLE api_keys (
 
 ### 13.1 Critical Path Method (CPM)
 
-Critical path là chuỗi task phụ thuộc dài nhất, quyết định thời gian tối thiểu của project. Task trên critical path có zero slack; bất kỳ delay nào cũng kéo dài trực tiếp ngày kết thúc project.
+The critical path is the longest chain of dependent tasks, which determines the project's minimum duration. Tasks on the critical path have zero slack; any delay directly extends the project's end date.
 
-**Pseudocode (đơn giản hóa):**
+**Pseudocode (simplified):**
 
 ```
 function computeCriticalPath(tasks, dependencies):
-    // 1. Topological sort task theo thứ tự dependency
+    // 1. Topological sort the tasks by dependency order
     sorted = topologicalSort(tasks, dependencies)
 
-    // 2. Forward pass: tính earliest start (ES) và earliest finish (EF)
+    // 2. Forward pass: compute earliest start (ES) and earliest finish (EF)
     for task in sorted:
         predecessors = dependencies.where(d => d.to == task.id)
         if predecessors is empty:
@@ -1383,7 +1383,7 @@ function computeCriticalPath(tasks, dependencies):
             task.ES = max(pred.EF + pred.lag for pred in predecessors)
         task.EF = task.ES + task.duration
 
-    // 3. Backward pass: tính latest start (LS) và latest finish (LF)
+    // 3. Backward pass: compute latest start (LS) and latest finish (LF)
     projectEnd = max(task.EF for task in tasks)
     for task in reversed(sorted):
         successors = dependencies.where(d => d.from == task.id)
@@ -1393,24 +1393,24 @@ function computeCriticalPath(tasks, dependencies):
             task.LF = min(succ.LS - succ.lag for succ in successors)
         task.LS = task.LF - task.duration
 
-    // 4. Slack = LS - ES; critical path = task có slack == 0
+    // 4. Slack = LS - ES; critical path = tasks with slack == 0
     criticalPath = [task for task in tasks if task.LS - task.ES == 0]
 
     return criticalPath
 ```
 
-**Edge case cần xử lý:**
+**Edge cases to handle:**
 
-- Cycle trong dependency (phát hiện, throw error)
-- Task có constraint (override ES/LF tính toán)
-- Working calendar (skip ngày không làm việc)
-- Lag/lead time (dương = chờ, âm = overlap)
+- Cycle in the dependencies (detect, throw an error)
+- Task with a constraint (overrides the computed ES/LF)
+- Working calendar (skip non-working days)
+- Lag/lead time (positive = wait, negative = overlap)
 
 ### 13.2 Resource Leveling
 
-Khi resource bị over-allocated, dịch task để giải quyết conflict trong khi vẫn tôn trọng dependency và constraint.
+When a resource is over-allocated, shift tasks to resolve the conflict while still respecting dependencies and constraints.
 
-**Cách tiếp cận (heuristic-based):**
+**Approach (heuristic-based):**
 
 ```
 function levelResources(tasks, dependencies, resources):
@@ -1418,7 +1418,7 @@ function levelResources(tasks, dependencies, resources):
         conflict = findEarliestOverAllocation(resources)
         candidateTasks = tasksUsing(conflict.resource, conflict.timeWindow)
 
-        // Sort theo priority: priority thấp trước, rồi slack cao trước
+        // Sort by priority: lower priority first, then higher slack first
         candidateTasks.sortBy(t => [t.priority, -t.slack])
 
         for task in candidateTasks:
@@ -1426,7 +1426,7 @@ function levelResources(tasks, dependencies, resources):
                 delayTo(task, conflict.resource.nextAvailable)
                 break
         else:
-            // Không thể resolve mà không vi phạm constraint
+            // Cannot resolve without violating a constraint
             report(conflict)
             break
 
@@ -1435,32 +1435,32 @@ function levelResources(tasks, dependencies, resources):
 
 ### 13.3 AI Auto-Schedule (Cloud Tier)
 
-Dùng LLM để generate schedule ban đầu từ mô tả natural language, sau đó tinh chỉnh bằng constraint solver.
+Use an LLM to generate an initial schedule from a natural-language description, then refine it with a constraint solver.
 
 ```
 function autoSchedule(naturalLanguageInput):
-    // Stage 1: LLM trích xuất task, dependency, duration
+    // Stage 1: the LLM extracts tasks, dependencies, durations
     prompt = `Extract project plan from this description.
               Output JSON with tasks and dependencies.
               ${naturalLanguageInput}`
 
-    structuredPlan = callLLM(prompt, model=config.aiModel)  // model cấu hình được, không hardcode
+    structuredPlan = callLLM(prompt, model=config.aiModel)  // configurable model, not hardcoded
 
-    // Stage 2: Áp dụng working calendar và resource constraint
+    // Stage 2: Apply the working calendar and resource constraints
     tasks = parseTasks(structuredPlan)
     dependencies = parseDependencies(structuredPlan)
 
-    // Stage 3: Chạy topological sort + tính earliest start
+    // Stage 3: Run topological sort + compute earliest start
     scheduledTasks = applyConstraints(tasks, dependencies, calendar, resources)
 
-    // Stage 4: Validate, optimize critical path
+    // Stage 4: Validate, optimize the critical path
     if hasResourceConflicts(scheduledTasks):
         scheduledTasks = levelResources(scheduledTasks, dependencies, resources)
 
     return scheduledTasks
 ```
 
-> **Bảo mật AI:** tách `naturalLanguageInput` (untrusted) khỏi system prompt; **validate lại** `structuredPlan` bằng schema trước khi dùng; AI chỉ *suggest* (user review + revert), không tự ghi đè plan. Chi tiết: `.claude/rules/security.md`.
+> **AI security:** separate `naturalLanguageInput` (untrusted) from the system prompt; **re-validate** `structuredPlan` against a schema before use; the AI only *suggests* (user reviews + reverts), never overwriting the plan automatically. Details: `.claude/rules/security.md`.
 
 ---
 
@@ -1468,42 +1468,42 @@ function autoSchedule(naturalLanguageInput):
 
 ### 14.1 Tier Structure
 
-| Tier | Giá | Đối tượng |
+| Tier | Price | Audience |
 |---|---|---|
-| **Core (MIT)** | $0 | Dự án OSS, evaluation, hobby |
+| **Core (MIT)** | $0 | OSS projects, evaluation, hobby |
 | **Pro Self-host** | $299 one-time | Indie dev, agency (per developer license) |
-| **Pro Team** | $999 one-time | Team dev nhỏ (tới 10 developer) |
-| **Cloud Starter** | $29/tháng | Team nhỏ (Cloud, 5 user) |
-| **Cloud Team** | $99/tháng | Công ty đang phát triển (25 user) |
-| **Cloud Business** | $299/tháng | Mid-market (user không giới hạn) |
-| **Enterprise** | $5k–50k/năm | Tổ chức lớn (SSO, on-prem, SLA) |
+| **Pro Team** | $999 one-time | Small dev team (up to 10 developers) |
+| **Cloud Starter** | $29/month | Small team (Cloud, 5 users) |
+| **Cloud Team** | $99/month | Growing company (25 users) |
+| **Cloud Business** | $299/month | Mid-market (unlimited users) |
+| **Enterprise** | $5k–50k/year | Large org (SSO, on-prem, SLA) |
 
 ### 14.2 Feature Matrix
 
-| Tính năng | Core | Pro | Cloud | Ent |
+| Feature | Core | Pro | Cloud | Ent |
 |---|---|---|---|---|
 | Task CRUD | ✓ | ✓ | ✓ | ✓ |
 | Dependencies (FS/SS/FF/SF) | ✓ | ✓ | ✓ | ✓ |
-| Tính toán critical path | ✓ | ✓ | ✓ | ✓ |
-| Wrapper React/Vue | ✓ | ✓ | ✓ | ✓ |
+| Critical path computation | ✓ | ✓ | ✓ | ✓ |
+| React/Vue wrappers | ✓ | ✓ | ✓ | ✓ |
 | Export PNG/SVG/JSON | ✓ | ✓ | ✓ | ✓ |
 | Resource view | – | ✓ | ✓ | ✓ |
 | Resource leveling | – | ✓ | ✓ | ✓ |
 | Baselines | – | ✓ | ✓ | ✓ |
 | Task constraints | – | ✓ | ✓ | ✓ |
 | MS Project XML I/O | – | ✓ | ✓ | ✓ |
-| Export PDF có branding | – | ✓ | ✓ | ✓ |
+| Export PDF with branding | – | ✓ | ✓ | ✓ |
 | Custom columns | – | ✓ | ✓ | ✓ |
-| Wrapper Svelte/Angular | – | ✓ | ✓ | ✓ |
-| Bỏ watermark | – | ✓ | ✓ | ✓ |
+| Svelte/Angular wrappers | – | ✓ | ✓ | ✓ |
+| Remove watermark | – | ✓ | ✓ | ✓ |
 | Email support | – | ✓ | ✓ | ✓ |
 | Real-time multiplayer | – | – | ✓ | ✓ |
 | Comment + @mention | – | – | ✓ | ✓ |
 | Activity feed | – | – | ✓ | ✓ |
 | AI auto-schedule | – | – | ✓ | ✓ |
 | AI risk forecaster | – | – | ✓ | ✓ |
-| Share link có permission | – | – | ✓ | ✓ |
-| Integration Slack/Email | – | – | ✓ | ✓ |
+| Share link with permissions | – | – | ✓ | ✓ |
+| Slack/Email integration | – | – | ✓ | ✓ |
 | Webhooks | – | – | ✓ | ✓ |
 | Priority support | – | – | ✓ | ✓ |
 | SSO (SAML, OIDC) | – | – | – | ✓ |
@@ -1513,104 +1513,104 @@ function autoSchedule(naturalLanguageInput):
 | SLA 99.9% uptime | – | – | – | ✓ |
 | Dedicated success manager | – | – | – | ✓ |
 
-### 14.3 Vì sao Pro là One-Time
+### 14.3 Why Pro Is One-Time
 
-Developer thiên về thanh toán license one-time cho thư viện:
+Developers prefer one-time license payments for libraries:
 
-- Component library là infrastructure, không phải workflow tool
-- "Subscription fatigue" là thật; developer hạn chế chi phí recurring
-- Thanh toán one-time loại bỏ rủi ro churn cho mình, giảm lo lắng cho khách
-- License key dễ validate và renew update lifetime
-- Stripe Checkout one-time = integration đơn giản, không cần state subscription
+- A component library is infrastructure, not a workflow tool
+- "Subscription fatigue" is real; developers limit recurring costs
+- A one-time payment removes churn risk for us and reduces anxiety for the customer
+- License keys are easy to validate and renew for lifetime updates
+- One-time Stripe Checkout = simple integration, no subscription state needed
 
-### 14.4 Vì Sao Cloud là Recurring
+### 14.4 Why Cloud Is Recurring
 
-Tầng Cloud hợp lý với subscription vì:
+The Cloud tier fits a subscription because:
 
-- Hosting, bandwidth, storage là chi phí ongoing
-- Multiplayer cần chạy server liên tục
-- Tính năng AI có chi phí per-call
-- Khách hàng mong đợi uptime, update, support
-- Recurring revenue tài trợ cho phát triển ongoing
+- Hosting, bandwidth, and storage are ongoing costs
+- Multiplayer needs a continuously running server
+- AI features have per-call costs
+- Customers expect uptime, updates, and support
+- Recurring revenue funds ongoing development
 
 ---
 
 ## 15. Distribution & Launch Strategy
 
-### 15.1 Pre-Launch (Tuần 7–8)
+### 15.1 Pre-Launch (Weeks 7–8)
 
-- Landing page live tại fluxgantt.dev
-- Form đăng ký waitlist nổi bật
-- 3 GIF demo: drag task / dependency cascade / AI scheduling
-- Tweet thread sneak peek tới dev community
-- GitHub repo public với README chỉn chu
+- Landing page live at fluxgantt.dev
+- Prominent waitlist sign-up form
+- 3 demo GIFs: drag task / dependency cascade / AI scheduling
+- Sneak-peek tweet thread to the dev community
+- Public GitHub repo with a polished README
 
-### 15.2 Launch Day (Tuần 8)
+### 15.2 Launch Day (Week 8)
 
-Launch đa kênh đồng bộ:
+A synchronized multi-channel launch:
 
-- **Show HN post** (thứ Ba, 8h sáng PT là tối ưu):
+- **Show HN post** (Tuesday, 8am PT is optimal):
   *"Show HN: FluxGantt — MIT-licensed Gantt chart library with AI scheduling"*
 
-- **Product Hunt launch** (thứ Ba–Năm): chuẩn bị maker comment, screenshot, gallery, video
+- **Product Hunt launch** (Tue–Thu): prepare maker comment, screenshots, gallery, video
 
 - **Reddit posts:**
-  - r/webdev (chung)
-  - r/javascript (kỹ thuật)
-  - r/reactjs (community React)
-  - r/vuejs (community Vue)
-  - r/SaaS (nếu nhắm SaaS founder)
+  - r/webdev (general)
+  - r/javascript (technical)
+  - r/reactjs (React community)
+  - r/vuejs (Vue community)
+  - r/SaaS (if targeting SaaS founders)
 
 - **Dev.to article:**
-  *"Why we built another Gantt library (and why it matters)"* — bài kỹ thuật dài giải thích market gap và architecture
+  *"Why we built another Gantt library (and why it matters)"* — a long technical post explaining the market gap and architecture
 
 - **Hashnode + Medium cross-post**
 
-- **Email outreach** tới 50 PM tool startup: message cá nhân hóa kiểu "Built MIT Gantt alternative to dhtmlx with AI scheduling. Want a demo? Happy to help integrate if you're using Frappe or paying dhtmlx."
+- **Email outreach** to 50 PM-tool startups: a personalized message like "Built an MIT Gantt alternative to dhtmlx with AI scheduling. Want a demo? Happy to help integrate if you're using Frappe or paying dhtmlx."
 
-- **Twitter/X build-in-public thread:** GIF tiến độ hàng ngày trước launch
+- **Twitter/X build-in-public thread:** daily progress GIFs before launch
 
 ### 15.3 Post-Launch (Ongoing)
 
-**Nội dung SEO:**
-- "FluxGantt vs dhtmlx Gantt" — nhắm người chuyển từ dhtmlx
-- "FluxGantt vs Bryntum" — nhắm người chuyển từ Bryntum
-- "FluxGantt vs Frappe Gantt" — nhắm path upgrade từ free
-- "How to add Gantt to Next.js" — tutorial SEO
-- "Vue 3 Gantt chart tutorial" — tutorial SEO
+**SEO content:**
+- "FluxGantt vs dhtmlx Gantt" — target people migrating from dhtmlx
+- "FluxGantt vs Bryntum" — target people migrating from Bryntum
+- "FluxGantt vs Frappe Gantt" — target the upgrade path from free
+- "How to add Gantt to Next.js" — SEO tutorial
+- "Vue 3 Gantt chart tutorial" — SEO tutorial
 
-**Discord community:** Mở sau 100+ user. Chung với community FluxFiles.
+**Discord community:** open after 100+ users. Shared with the FluxFiles community.
 
-**Conference talks:** Submit cho React Conf, VueConf, JSConf với talk *"Building a scheduling engine without VC funding"*.
+**Conference talks:** submit to React Conf, VueConf, JSConf with the talk *"Building a scheduling engine without VC funding"*.
 
-**Open source contributions:** Xây wrapper cho OSS PM tool phổ biến (Plane, Vikunja) để tích hợp FluxGantt — distribution tức thì tới user base của họ.
+**Open source contributions:** build wrappers for popular OSS PM tools (Plane, Vikunja) to integrate FluxGantt — instant distribution to their user base.
 
-**YouTube channel:** Tutorial + behind-the-scenes development.
+**YouTube channel:** tutorials + behind-the-scenes development.
 
 ---
 
 ## 16. 18-Week Execution Plan
 
-| Tuần | Phase | Deliverable | Metric chính |
+| Week | Phase | Deliverable | Key metric |
 |---|---|---|---|
 | 1 | Build | Monorepo, core skeleton, task model, SVG renderer | Repo public, CI green |
-| 2 | Build | Drag-resize, zoom level, hierarchy | Demo hoạt động đầu tiên |
-| 3 | Build | Dependencies (đủ 4 loại), arrow routing | Tất cả dep type hoạt động |
-| 4 | Build | Critical path, today line, working calendar | CPM verify với file MS Project |
-| 5 | Build | React wrapper, hook `useFluxGantt`, sample app | npm publish alpha |
-| 6 | Build | Vue wrapper, Composition API, sample app | Cả 2 wrapper ổn định |
-| 7 | Polish | Export PNG/SVG, milestone, docs site, example | Docs site live |
-| 8 | **LAUNCH** | Show HN + Product Hunt + Reddit + email outreach | 500+ GH stars, 1k+ npm download |
-| 9 | Listen | Bug fix, review PR, engagement community | Triage 80% issue |
-| 10 | Listen | Iterate theo feedback, cải thiện docs | DX polish, mở rộng example |
-| 11 | Pre-order | Email blast: "Pro early bird $199, 100 chỗ đầu" | 30–50 pre-order |
-| 12 | Build Pro | Import MS Project XML | Import sạch 20 file .xml mẫu |
-| 13 | Build Pro | Resource view + assignment | UI hoàn chỉnh |
-| 14 | Build Pro | Thuật toán resource leveling | Thuật toán đã validate |
-| 15 | Build Pro | Capture + compare baseline | Visual diff hoạt động |
-| 16 | Build Pro | Constraint, export PDF, custom column | Export pass test Acrobat |
-| 17 | Polish | Pro docs, migration guide, hệ thống license key | Hệ thống license hoạt động |
-| 18 | **LAUNCH Pro** | Pro tier live, email khách pre-order | 50+ Pro license bán = $10k+ revenue |
+| 2 | Build | Drag-resize, zoom levels, hierarchy | First working demo |
+| 3 | Build | Dependencies (all 4 types), arrow routing | All dep types working |
+| 4 | Build | Critical path, today line, working calendar | CPM verified against MS Project files |
+| 5 | Build | React wrapper, `useFluxGantt` hook, sample app | npm publish alpha |
+| 6 | Build | Vue wrapper, Composition API, sample app | Both wrappers stable |
+| 7 | Polish | Export PNG/SVG, milestone, docs site, examples | Docs site live |
+| 8 | **LAUNCH** | Show HN + Product Hunt + Reddit + email outreach | 500+ GH stars, 1k+ npm downloads |
+| 9 | Listen | Bug fixes, review PRs, community engagement | Triage 80% of issues |
+| 10 | Listen | Iterate on feedback, improve docs | DX polish, more examples |
+| 11 | Pre-order | Email blast: "Pro early bird $199, first 100 spots" | 30–50 pre-orders |
+| 12 | Build Pro | Import MS Project XML | Clean import of 20 sample .xml files |
+| 13 | Build Pro | Resource view + assignment | Complete UI |
+| 14 | Build Pro | Resource leveling algorithm | Algorithm validated |
+| 15 | Build Pro | Capture + compare baselines | Visual diff working |
+| 16 | Build Pro | Constraints, export PDF, custom columns | Export passes the Acrobat test |
+| 17 | Polish | Pro docs, migration guide, license key system | License system working |
+| 18 | **LAUNCH Pro** | Pro tier live, email pre-order customers | 50+ Pro licenses sold = $10k+ revenue |
 
 ---
 
@@ -1618,46 +1618,46 @@ Launch đa kênh đồng bộ:
 
 ### 17.1 Hard Gates (Go/No-Go Decisions)
 
-**Sau Tuần 8 (Free MVP Launch):**
+**After Week 8 (Free MVP Launch):**
 
-| Metric | Target | Nếu dưới target |
+| Metric | Target | If below target |
 |---|---|---|
-| GitHub stars (30 ngày) | 500+ | Audit lại distribution |
-| npm weekly downloads | 1,000+ | DX cần cải thiện |
-| Email waitlist signup | 200+ | Bỏ qua Pro launch |
-| Active discussion (issue) | 20+ | Xây community |
+| GitHub stars (30 days) | 500+ | Re-audit distribution |
+| npm weekly downloads | 1,000+ | DX needs improvement |
+| Email waitlist signups | 200+ | Skip the Pro launch |
+| Active discussion (issues) | 20+ | Build community |
 
 **Action matrix:**
 
-| Số metric pass | Hành động |
+| Metrics passed | Action |
 |---|---|
-| 4/4 pass | Tiếp tục Wave 2 Pro tier như kế hoạch |
-| 3/4 pass | Mở Pro pre-order với cap giảm (30 chỗ) |
-| 2/4 pass | Trì hoãn Pro 4 tuần, ship Wave 1.5 (theo yêu cầu community) |
-| 0–1/4 pass | Dừng kế hoạch monetization; re-evaluate positioning |
+| 4/4 pass | Continue with the Wave 2 Pro tier as planned |
+| 3/4 pass | Open Pro pre-orders with a reduced cap (30 spots) |
+| 2/4 pass | Delay Pro 4 weeks, ship Wave 1.5 (per community requests) |
+| 0–1/4 pass | Halt the monetization plan; re-evaluate positioning |
 
-**Sau Tuần 18 (Pro Tier Launch):**
+**After Week 18 (Pro Tier Launch):**
 
-| Metric | Target | Nếu dưới target |
+| Metric | Target | If below target |
 |---|---|---|
-| Pro license bán được | 50+ | Reposition Pro |
-| Tỷ lệ Pro → active usage | 60%+ | Cải thiện onboarding |
-| Tỷ lệ refund | <5% | Xử lý chất lượng |
-| Support ticket volume | <2/tuần | Cải thiện docs |
+| Pro licenses sold | 50+ | Reposition Pro |
+| Pro → active-usage rate | 60%+ | Improve onboarding |
+| Refund rate | <5% | Address quality |
+| Support ticket volume | <2/week | Improve docs |
 
-**Sau Tháng 6 (Quyết định Cloud Tier):**
+**After Month 6 (Cloud Tier Decision):**
 
-Tín hiệu để tiến hành Cloud:
-- 100+ khách Pro
-- 10+ câu hỏi "có bản hosted không?"
-- $5k+ MRR đủ cover infrastructure
-- Ít nhất 1 inquiry Enterprise
+Signals to proceed with Cloud:
+- 100+ Pro customers
+- 10+ "is there a hosted version?" questions
+- $5k+ MRR to cover infrastructure
+- At least 1 Enterprise inquiry
 
-Tín hiệu để trì hoãn Cloud:
-- Thị trường Pro vẫn đang validate
-- Capacity solo dev đang quá tải
-- Không có budget infrastructure
-- Không có demand rõ ràng từ khách non-dev
+Signals to delay Cloud:
+- The Pro market is still validating
+- Solo-dev capacity is overloaded
+- No infrastructure budget
+- No clear demand from non-dev customers
 
 ---
 
@@ -1665,17 +1665,17 @@ Tín hiệu để trì hoãn Cloud:
 
 ### 18.1 Technical Risks
 
-**Risk:** SVG performance giảm với project lớn (bắt đầu rõ từ ~1.000 task)
-**Mitigation:** Tự chuyển sang Canvas renderer khi vượt **ngưỡng chính thức 2.000 task** (thống nhất §4.1/§5.1). Dùng virtual scrolling. Benchmark liên tục để hiệu chỉnh ngưỡng.
+**Risk:** SVG performance degrades on large projects (noticeable from ~1,000 tasks)
+**Mitigation:** Automatically switch to the Canvas renderer above the **official 2,000-task threshold** (consistent with §4.1/§5.1). Use virtual scrolling. Benchmark continuously to tune the threshold.
 
-**Risk:** Bug thuật toán critical path ở edge case (cycle, constraint)
-**Mitigation:** Test suite mở rộng đối chiếu với output reference từ MS Project. Property-based testing với library fast-check.
+**Risk:** Critical path algorithm bugs in edge cases (cycle, constraint)
+**Mitigation:** An extensive test suite cross-checking against reference output from MS Project. Property-based testing with the fast-check library.
 
-**Risk:** Vấn đề tương thích MS Project XML
-**Mitigation:** Test với 20+ file .xml thực tế từ nhiều version MSP khác nhau. Xây test fixture library do community góp.
+**Risk:** MS Project XML compatibility issues
+**Mitigation:** Test with 20+ real .xml files from various MSP versions. Build a community-contributed test fixture library.
 
-**Risk:** Lỗi xử lý timezone (đặc biệt daylight saving)
-**Mitigation:** Dùng Temporal API xử lý đúng vấn đề này. Tránh native `Date` cho mọi tính toán.
+**Risk:** Timezone handling bugs (especially daylight saving)
+**Mitigation:** Use the Temporal API, which handles this correctly. Avoid native `Date` for all computation.
 
 ### 18.2 Market Risks
 
@@ -1686,56 +1686,56 @@ Tín hiệu để trì hoãn Cloud:
 - **Headless engine** running server-side → unlocks an **MCP server** (`@fluxgantt/mcp`) for AI agents — a qualitatively different AI integration, not an "AI button in the UI".
 - Release velocity + a healthy community + DX (docs, types, StackBlitz examples) as developer-retention advantages.
 
-**Risk:** Đối thủ được VC fund ra sản phẩm tương tự
-**Mitigation:** Tốc độ và tập trung community. Solo + nhận diện brand Flux cho lợi thế 6–12 tháng đầu. Pivot sang niche nếu cần.
+**Risk:** A VC-funded competitor ships a similar product
+**Mitigation:** Speed and community focus. Solo + Flux brand recognition for a 6–12 month early advantage. Pivot to a niche if needed.
 
-**Risk:** AI scheduling không ổn định trong production
-**Mitigation:** Định vị AI là "suggest" không phải "decide". Luôn show reasoning. Cho phép revert dễ dàng. Test kỹ trước khi ship tầng Cloud.
+**Risk:** AI scheduling is unstable in production
+**Mitigation:** Position AI as "suggest", not "decide". Always show reasoning. Make reverts easy. Test thoroughly before shipping the Cloud tier.
 
-**Risk:** Contributor open source fork và tạo sản phẩm cạnh tranh
-**Mitigation:** Community lành mạnh + maintainer phản hồi nhanh giảm động lực fork. Tính năng Pro tier tạo moat commercial.
+**Risk:** An open-source contributor forks and creates a competing product
+**Mitigation:** A healthy community + a responsive maintainer reduce the incentive to fork. Pro tier features create a commercial moat.
 
 ### 18.3 Execution Risks
 
-**Risk:** Solo developer burnout trong sprint 18 tuần
-**Mitigation:** Scope hàng tuần thực tế. Có buffer week. Build-in-public giảm cảm giác cô đơn. Nghỉ ngơi đầy đủ.
+**Risk:** Solo developer burnout during the 18-week sprint
+**Mitigation:** Realistic weekly scope. Have a buffer week. Build-in-public reduces loneliness. Rest adequately.
 
-**Risk:** Pro launch conversion thấp
-**Mitigation:** Free tier vẫn generous để giữ adoption. Email waitlist test demand trước khi xây. Validation gate ngăn over-investment.
+**Risk:** Low Pro launch conversion
+**Mitigation:** Keep the free tier generous to retain adoption. Email the waitlist to test demand before building. Validation gates prevent over-investment.
 
-**Risk:** Support volume vượt quá capacity solo
-**Mitigation:** Docs đầy đủ giảm tải support. Forum community cho peer help. Support qua email only, không SLA, tới khi revenue đủ để hire.
+**Risk:** Support volume exceeds solo capacity
+**Mitigation:** Thorough docs reduce the support load. A community forum for peer help. Email-only support, no SLA, until revenue is enough to hire.
 
-**Risk:** Chi phí infrastructure Cloud tier vượt revenue
-**Mitigation:** Charge công bằng từ đầu. Dùng Cloudflare R2 (storage rẻ), Fly.io (auto-scaling). Set hard limit theo tier.
+**Risk:** Cloud tier infrastructure cost exceeds revenue
+**Mitigation:** Charge fairly from the start. Use Cloudflare R2 (cheap storage), Fly.io (auto-scaling). Set hard limits per tier.
 
 ### 18.4 Legal Risks
 
-**Risk:** Tranh chấp license compliance (dùng commercial của MIT)
-**Mitigation:** License term rõ ràng. FAQ về commercial use. Pro tier cung cấp EULA commercial-friendly cho ai muốn licensing rõ ràng.
+**Risk:** License compliance disputes (commercial use of MIT)
+**Mitigation:** Clear license terms. An FAQ about commercial use. The Pro tier provides a commercial-friendly EULA for those who want explicit licensing.
 
-**Risk:** Khiếu nại patent infringement (thuật toán scheduling)
-**Mitigation:** CPM là public domain (phát triển từ 1957). Implementation clean-room. Tránh copy code hoặc API của dhtmlx nguyên văn.
+**Risk:** Patent infringement claims (scheduling algorithm)
+**Mitigation:** CPM is public domain (developed in 1957). Clean-room implementation. Avoid copying dhtmlx's code or API verbatim.
 
-**Risk:** Tuân thủ GDPR/privacy cho Cloud tier
-**Mitigation:** Privacy-by-design từ đầu. Tùy chọn data residency cho Enterprise. Template DPA chuẩn sẵn sàng.
+**Risk:** GDPR/privacy compliance for the Cloud tier
+**Mitigation:** Privacy-by-design from the start. Data residency option for Enterprise. A standard DPA template ready.
 
 ### 18.5 Security (Library & Cloud)
 
-Threat model kỹ thuật (chi tiết & checklist đầy đủ trong `.claude/rules/security.md`). Vì FluxGantt là **library nhúng render dữ liệu untrusted**, lỗ hổng ở đây ảnh hưởng mọi app dùng nó.
+Technical threat model (full details & checklist in `.claude/rules/security.md`). Because FluxGantt is an **embedded library that renders untrusted data**, a vulnerability here affects every app using it.
 
-**Library (Core/Pro) — chạy trong app khách:**
-- **XSS qua render:** KHÔNG nội suy `task.name`/`notes`/`meta`/`color` vào SVG/DOM bằng `innerHTML`/template — dùng `textContent`/`setAttribute`. Validate `color` theo whitelist. Sanitize SVG khi export.
-- **Parsing untrusted (JSON/CSV/XML):** validate schema trước khi nạp store. **XML (MS Project) phải tắt external entity/DTD → chống XXE**; giới hạn size/độ sâu chống DoS. CSV export chống formula injection. Phát hiện cycle dependency (throw).
-- Tôn trọng CSP của host (không inline script/`eval`).
+**Library (Core/Pro) — runs inside the customer's app:**
+- **XSS via render:** do NOT interpolate `task.name`/`notes`/`meta`/`color` into SVG/DOM via `innerHTML`/templates — use `textContent`/`setAttribute`. Whitelist-validate `color`. Sanitize SVG on export.
+- **Untrusted parsing (JSON/CSV/XML):** validate the schema before loading into the store. **XML (MS Project) must disable external entities/DTD → prevent XXE**; limit size/depth to prevent DoS. CSV export guards against formula injection. Detect dependency cycles (throw).
+- Respect the host's CSP (no inline script/`eval`).
 
 **Cloud (Wave 3):**
-- **AuthZ multi-tenant:** mọi query scope `org_id`/`project_id` + kiểm `membership.role` ở server (chống IDOR).
-- **Share link:** token ≥32 byte entropy; `password_hash` dùng argon2/bcrypt; tôn trọng `expires_at`/`permission`.
-- **API key:** chỉ lưu `key_hash` + `prefix`; hỗ trợ `scopes`/`revoked_at`.
-- SQL param hoá (Drizzle); webhook ký HMAC + chống SSRF; rate limit (đặc biệt endpoint AI tốn phí). Secret không hardcode/log; Stripe webhook verify signature.
+- **Multi-tenant authZ:** scope every query by `org_id`/`project_id` + check `membership.role` on the server (prevents IDOR).
+- **Share link:** token ≥32 bytes of entropy; `password_hash` uses argon2/bcrypt; respects `expires_at`/`permission`.
+- **API key:** store only `key_hash` + `prefix`; support `scopes`/`revoked_at`.
+- Parameterized SQL (Drizzle); HMAC-signed webhooks + SSRF protection; rate limiting (especially costly AI endpoints). Secrets not hardcoded/logged; Stripe webhook signature verified.
 
-**AI:** tách user input khỏi system prompt; validate output LLM bằng schema; AI *suggest* không *decide* (xem §13.3).
+**AI:** separate user input from the system prompt; validate LLM output against a schema; AI *suggests*, doesn't *decide* (see §13.3).
 
 ---
 
