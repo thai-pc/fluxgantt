@@ -202,13 +202,13 @@ Resource view/leveling, MS Project XML I/O, and baselines remain in the Pro tier
 | Layer | Choice |
 |---|---|
 | **Language** | TypeScript 5.4+, strict mode |
-| **Module format** | ESM-first, fallback CJS qua tsup dual output |
-| **Target** | ES2022 (browser hiện đại, Node 20+) |
-| **Architecture** | Headless core (state + logic) tách biệt với rendering |
-| **State management** | Reactive store dựa trên signal tự viết, theo semantics của Preact Signals, zero dependency với React/Vue |
-| **Rendering** | SVG chính (sạch, vector, accessible, export được); fallback Canvas tự động khi task count > 2,000 |
-| **Date arithmetic** | Temporal API qua lớp adapter nội bộ. Dùng `globalThis.Temporal` native nếu runtime có; `@js-temporal/polyfill` là **optional peerDependency** (consumer tự cài khi cần, KHÔNG bundle vào core → không tính vào bundle budget). `date-fns` chỉ cho ergonomics phụ. Lý do: Temporal xử lý timezone/DST đúng, native `Date` không đáng tin |
-| **Multiplayer** | Yjs (CRDT) — chỉ Pro/Cloud. Reference: tldraw, BlockNote dùng Yjs thành công |
+| **Module format** | ESM-first, CJS fallback via tsup dual output |
+| **Target** | ES2022 (modern browsers, Node 20+) |
+| **Architecture** | Headless core (state + logic) decoupled from rendering |
+| **State management** | Reactive store built on a hand-rolled signal, following Preact Signals semantics, zero dependency on React/Vue |
+| **Rendering** | SVG primary (clean, vector, accessible, exportable); automatic Canvas fallback when task count > 2,000 |
+| **Date arithmetic** | Temporal API via an internal adapter layer. Uses native `globalThis.Temporal` when the runtime provides it; `@js-temporal/polyfill` is an **optional peerDependency** (the consumer installs it when needed, NOT bundled into core → not counted against the bundle budget). `date-fns` only for minor ergonomics. Reason: Temporal handles timezone/DST correctly, native `Date` is not trustworthy |
+| **Multiplayer** | Yjs (CRDT) — Pro/Cloud only. Reference: tldraw, BlockNote use Yjs successfully |
 | **Build tooling** | tsup (library packages), vite (demo apps), changesets (versioning + changelog) |
 | **Testing** | vitest (unit), playwright (e2e + visual regression), @testing-library (framework wrappers) |
 | **Monorepo** | pnpm workspaces, turbo cho task orchestration |
@@ -226,7 +226,7 @@ Resource view/leveling, MS Project XML I/O, and baselines remain in the Pro tier
 **Community-driven:**
 - `@fluxgantt/solid` — SolidJS
 - `@fluxgantt/qwik` — Qwik
-- `@fluxgantt/preact` — Preact (có thể trivial qua React compat)
+- `@fluxgantt/preact` — Preact (possibly trivial via React compat)
 
 ### 4.3 Cloud Backend (Wave 3)
 
@@ -237,10 +237,10 @@ Resource view/leveling, MS Project XML I/O, and baselines remain in the Pro tier
 | **Database** | PostgreSQL 16 |
 | **ORM** | Drizzle (type-safe migration, lightweight) |
 | **Real-time sync** | Yjs + y-websocket |
-| **Auth** | Better-Auth (hiện đại, self-hostable, OAuth + email) |
-| **Storage** | Cloudflare R2 (S3-compatible, rẻ) |
+| **Auth** | Better-Auth (modern, self-hostable, OAuth + email) |
+| **Storage** | Cloudflare R2 (S3-compatible, cheap) |
 | **CDN** | Cloudflare (free tier) |
-| **Hosting** | Fly.io (chính) hoặc Railway (thay thế) |
+| **Hosting** | Fly.io (primary) or Railway (alternative) |
 | **Email** | Resend (transactional) |
 | **Payments** | Stripe (Pro one-time + Cloud subscription) |
 | **Analytics** | Plausible (privacy-first) |
@@ -249,10 +249,10 @@ Resource view/leveling, MS Project XML I/O, and baselines remain in the Pro tier
 
 | | |
 |---|---|
-| **Framework** | Vocs (Vite-based, dùng bởi Wagmi) |
-| **Hosting** | Vercel hoặc Cloudflare Pages |
-| **Search** | Built-in (Vocs tự xử lý) |
-| **Code examples** | StackBlitz embed, edit trực tiếp |
+| **Framework** | Vocs (Vite-based, used by Wagmi) |
+| **Hosting** | Vercel or Cloudflare Pages |
+| **Search** | Built-in (handled by Vocs) |
+| **Code examples** | StackBlitz embed, edit directly |
 
 ---
 
@@ -270,8 +270,8 @@ Resource view/leveling, MS Project XML I/O, and baselines remain in the Pro tier
 ┌───────────────────────────────────────────────────────────┐
 │  Framework Wrapper Layer                                  │
 │  @fluxgantt/react │ @fluxgantt/vue │ @fluxgantt/svelte    │
-│  - Component API idiomatic theo từng framework            │
-│  - Tích hợp lifecycle                                     │
+│  - Idiomatic component API per framework                  │
+│  - Lifecycle integration                                  │
 │  - Prop bindings type-safe                                │
 └───────────────────────────────────────────────────────────┘
                               │
@@ -285,23 +285,23 @@ Resource view/leveling, MS Project XML I/O, and baselines remain in the Pro tier
 │  ┌───────────────────────────────────────────────────────┐│
 │  │  State Layer                                          ││
 │  │  - TaskStore       (reactive task collection)          ││
-│  │  - DependencyStore (links giữa task)                   ││
+│  │  - DependencyStore (links between tasks)               ││
 │  │  - ResourceStore   (Pro: assignee, allocation)         ││
-│  │  - BaselineStore   (Pro: snapshot của plan)            ││
+│  │  - BaselineStore   (Pro: plan snapshot)                ││
 │  │  - ViewportStore   (zoom, scroll, selection)           ││
 │  └───────────────────────────────────────────────────────┘│
 │  ┌───────────────────────────────────────────────────────┐│
 │  │  Compute Layer                                        ││
-│  │  - Critical Path (thuật toán CPM)                      ││
+│  │  - Critical Path (CPM algorithm)                       ││
 │  │  - Resource Leveling (Pro)                             ││
-│  │  - Auto-Schedule (AI, tầng Cloud)                       ││
-│  │  - Working Calendar (ngày làm việc, holiday)           ││
+│  │  - Auto-Schedule (AI, Cloud tier)                      ││
+│  │  - Working Calendar (working days, holidays)           ││
 │  └───────────────────────────────────────────────────────┘│
 │  ┌───────────────────────────────────────────────────────┐│
 │  │  Render Layer                                         ││
-│  │  - SVG renderer (chính, <2000 task)                   ││
-│  │  - Canvas renderer (fallback, ≥2000 task)              ││
-│  │  - Tự động chuyển dựa trên task count                  ││
+│  │  - SVG renderer (primary, <2000 tasks)                ││
+│  │  - Canvas renderer (fallback, ≥2000 tasks)             ││
+│  │  - Switches automatically by task count                ││
 │  └───────────────────────────────────────────────────────┘│
 │  ┌───────────────────────────────────────────────────────┐│
 │  │  Interaction Layer                                    ││
@@ -317,7 +317,7 @@ Resource view/leveling, MS Project XML I/O, and baselines remain in the Pro tier
 │  │  - PNG / SVG / PDF export                              ││
 │  └───────────────────────────────────────────────────────┘│
 │  ┌───────────────────────────────────────────────────────┐│
-│  │  Sync Layer (chỉ Cloud)                                ││
+│  │  Sync Layer (Cloud only)                               ││
 │  │  - Yjs adapter                                         ││
 │  │  - Presence (cursor, selection)                        ││
 │  │  - Conflict resolution                                 ││
@@ -327,19 +327,19 @@ Resource view/leveling, MS Project XML I/O, and baselines remain in the Pro tier
 
 ### 5.2 Design Principles
 
-1. **Headless first** — Core engine dùng được hoàn toàn không cần render. State và compute có thể chạy server-side hoặc trong test mà không cần DOM.
+1. **Headless first** — the core engine is fully usable without rendering. State and compute can run server-side or in tests without a DOM.
 
-2. **Reactive subscription, không full re-render** — Consumer subscribe vào delta cụ thể (task X di chuyển, dependency Y được thêm) thay vì nhận full state snapshot. Cho phép UI update chính xác và performance tốt với 1000+ task.
+2. **Reactive subscription, no full re-render** — consumers subscribe to a specific delta (task X moved, dependency Y added) instead of receiving a full state snapshot. This enables precise UI updates and good performance with 1000+ tasks.
 
-3. **Plugin system cho tính năng non-core** — MS Project import, AI scheduling, custom calendar đều là plugin. Giữ core bundle dưới 30kb gzip.
+3. **Plugin system for non-core features** — MS Project import, AI scheduling, and custom calendars are all plugins. Keep the core bundle under 30kb gzip.
 
-4. **Tree-shakable mọi thứ** — Chỉ import module cần dùng. Một Gantt "hello world" chỉ render task nên dưới 15kb gzip. Budget core (<30kb) / hello-world (<15kb) **không bao gồm Temporal polyfill** (optional peerDependency, xem §4.1).
+4. **Tree-shakable everything** — import only the modules you use. A "hello world" Gantt that only renders tasks should be under 15kb gzip. The core (<30kb) / hello-world (<15kb) budget **excludes the Temporal polyfill** (optional peerDependency, see §4.1).
 
-5. **Core framework-agnostic, wrapper opinionated** — Core không có opinion về UI framework. Wrapper cung cấp API idiomatic cho mỗi framework (hooks cho React, composable cho Vue, runes cho Svelte...).
+5. **Framework-agnostic core, opinionated wrappers** — the core has no opinion about the UI framework. Wrappers provide an idiomatic API per framework (hooks for React, composables for Vue, runes for Svelte, ...).
 
-6. **Type safety end-to-end** — Branded type cho ID ngăn việc truyền nhầm `TaskId` vào chỗ cần `ResourceId`. Strict null check ở mọi nơi.
+6. **Type safety end-to-end** — branded ID types prevent passing a `TaskId` where a `ResourceId` is expected. Strict null checks everywhere.
 
-7. **Server-friendly** — Core chạy được trong Node.js (hoặc Workers) không cần DOM. Cho phép server-side rendering, validation server-side, và test headless.
+7. **Server-friendly** — the core runs in Node.js (or Workers) without a DOM. This enables server-side rendering, server-side validation, and headless tests.
 
 ---
 
