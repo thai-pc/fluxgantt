@@ -1,7 +1,17 @@
 // @fluxgantt/core — public entry (spec §7)
-// Stub Wave 1: the API surface will grow (createGantt, mount, on, ...).
 
 export const VERSION = '0.0.0';
+
+// Public facade (spec §7)
+export { createGantt } from './gantt.js';
+export type {
+  GanttConfig,
+  GanttInstance,
+  GanttEventMap,
+  GanttEventName,
+  UnsubscribeFn,
+  DependencyInput,
+} from './gantt.js';
 
 // Reactive primitives (spec §4.1, §5.2)
 export { signal, computed, effect, batch, untracked, Signal } from './signals.js';
