@@ -32,6 +32,8 @@ import { getTemporal } from './internal/temporal.js';
 import { createSvgRenderer } from './render/svg-renderer.js';
 import type { SvgRendererHandle, SvgRendererInput, SvgRendererOptions } from './render/svg-renderer.js';
 import { enableDragMove } from './interaction/drag-move.js';
+import { exportJson as exportJsonFn, exportCsv as exportCsvFn } from './io/index.js';
+import type { ExportBundle, ExportCsvOptions, ExportJsonOptions } from './io/index.js';
 import type {
   CriticalPathResult,
   DateInput,
@@ -140,6 +142,16 @@ export interface GanttInstance {
 
   // --- Computation -------------------------------------------------------------------------
   computeCriticalPath(): CriticalPathResult;
+
+  // --- IO (read-only export, spec §7.8, security.md §2) -----------------------------------
+  /** Thin delegation over `getTasks()`/`getDependencies()` + the pure `exportJson()`
+   *  function — same post-`destroy()` posture as those two getters (returns an
+   *  empty-but-valid bundle rather than throwing; see spec-io-json-csv.md §1.2). Defaults
+   *  `options.timezone` to the instance's own calendar timezone, not `'UTC'`. */
+  exportJson(options?: ExportJsonOptions): ExportBundle;
+  /** Thin delegation over `getTasks()` + the pure `exportCsv()` function. Same posture as
+   *  `exportJson()` above. */
+  exportCsv(options?: ExportCsvOptions): string;
 
   // --- Events --------------------------------------------------------------------------------
   on<E extends GanttEventName>(
@@ -347,6 +359,22 @@ class Gantt implements GanttInstance {
     this.#lastCriticalIds = result.criticalTaskIds;
     this.#emit('critical-path:computed', result.criticalTaskIds);
     return result;
+  }
+
+  // --- IO (read-only export) --------------------------------------------------------------
+
+  exportJson(options?: ExportJsonOptions): ExportBundle {
+    // No #assertAlive here — deliberately mirrors getTasks()/getDependencies()'s own
+    // post-destroy() posture (returns an empty-but-valid result rather than throwing), since
+    // this is a thin read-only delegation over exactly those two getters (spec §1.2).
+    return exportJsonFn(this.getTasks(), this.getDependencies(), {
+      timezone: this.#calendar.timezone,
+      ...options,
+    });
+  }
+
+  exportCsv(options?: ExportCsvOptions): string {
+    return exportCsvFn(this.getTasks(), { timezone: this.#calendar.timezone, ...options });
   }
 
   // --- Events ----------------------------------------------------------------------------------

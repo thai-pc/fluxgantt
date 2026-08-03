@@ -50,6 +50,24 @@ export type { SvgRendererInput, SvgRendererOptions, SvgRendererHandle } from './
 export { enableDragMove } from './interaction/index.js';
 export type { DragMoveOptions } from './interaction/index.js';
 
+// IO layer (spec §7.8, security.md §2)
+export { exportJson, importJson, exportCsv, importCsv, DEFAULT_CSV_COLUMNS } from './io/index.js';
+export { IoValidationError } from './io/index.js';
+export type {
+  ExportBundle,
+  ExportedTask,
+  ExportedDependency,
+  ExportedTaskConstraint,
+  ExportJsonOptions,
+  ExportCsvOptions,
+  ImportJsonOptions,
+  ImportCsvOptions,
+  ImportLimits,
+  ImportResult,
+  ImportCsvResult,
+  CsvColumn,
+} from './io/index.js';
+
 // ID coercion helpers (spec §6.1)
 export { toTaskId, toResourceId, toDependencyId, toBaselineId, toProjectId } from './types.js';
 
