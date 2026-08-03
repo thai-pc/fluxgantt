@@ -70,6 +70,36 @@ describe('mount() — initial render', () => {
     expect(container.querySelector('svg')).not.toBeNull();
     expect(container.querySelectorAll('.fg-task')).toHaveLength(0);
   });
+
+  it('mounting with 0 tasks then adding the FIRST task does not throw (empty -> populated transition, regression)', () => {
+    // Regression: `#renderNow` used to call `setTimeRange()` (whose `setOptions` triggers an
+    // immediate `render()` against the renderer's STALE, still-empty internal task list)
+    // BEFORE `handle.update()` had pushed the new task — `deriveTimeRange` throws when both
+    // `timeRange` is unset AND `tasks` is empty. `#renderNow` must order the two calls so
+    // the renderer's internal state is never observed with an unset `timeRange` and an
+    // empty task list at the same time, in either transition direction.
+    const gantt = createGantt({ tasks: [] });
+    gantt.mount(container);
+    expect(container.querySelectorAll('.fg-task')).toHaveLength(0);
+
+    expect(() =>
+      gantt.addTask(taskInput('a', '2026-01-05T09:00', '2026-01-06T09:00')),
+    ).not.toThrow();
+    expect(container.querySelectorAll('.fg-task')).toHaveLength(1);
+  });
+
+  it('removing the LAST task then adding a new one does not throw (populated -> empty -> populated, regression)', () => {
+    const gantt = createGantt({ tasks: [taskInput('a', '2026-01-05T09:00', '2026-01-06T09:00')] });
+    gantt.mount(container);
+
+    gantt.removeTask(toTaskId('a'));
+    expect(container.querySelectorAll('.fg-task')).toHaveLength(0);
+
+    expect(() =>
+      gantt.addTask(taskInput('b', '2026-01-06T09:00', '2026-01-07T09:00')),
+    ).not.toThrow();
+    expect(container.querySelectorAll('.fg-task')).toHaveLength(1);
+  });
 });
 
 describe('reactive re-render (the store -> render effect)', () => {
