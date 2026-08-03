@@ -576,6 +576,58 @@ describe('computeCriticalPath()', () => {
   });
 });
 
+describe('exportJson() / exportCsv() — thin IO facade delegation', () => {
+  it('exportJson() mirrors getTasks()/getDependencies() and defaults timezone to the instance calendar', () => {
+    const gantt = createGantt({
+      tasks: [taskInput('a', '2026-01-05T09:00', '2026-01-06T09:00')],
+      calendar: {
+        workingDays: ['mon', 'tue', 'wed', 'thu', 'fri'],
+        workingHours: [{ start: '09:00', end: '17:00' }],
+        holidays: [],
+        timezone: 'America/New_York',
+      },
+    });
+    const bundle = gantt.exportJson();
+    expect(bundle.fluxgantt.schemaVersion).toBe('1.0');
+    expect(bundle.tasks).toHaveLength(1);
+    expect(bundle.tasks[0]!.id).toBe('a');
+    // The instant is what matters (not a particular offset string) — assert it round-trips
+    // to the same instant as the live task's own start.
+    const live = gantt.getTasks()[0]!;
+    expect(normalizeDate(bundle.tasks[0]!.start, 'UTC').epochNanoseconds).toBe(
+      normalizeDate(live.start, 'America/New_York').epochNanoseconds,
+    );
+  });
+
+  it('exportCsv() produces a header + one row per task', () => {
+    const gantt = createGantt({
+      tasks: [
+        taskInput('a', '2026-01-05T09:00', '2026-01-06T09:00'),
+        taskInput('b', '2026-01-06T09:00', '2026-01-07T09:00'),
+      ],
+    });
+    const csv = gantt.exportCsv();
+    const lines = csv.split('\r\n');
+    expect(lines[0]).toBe('id,name,start,end,duration,progress,type,parent,notes,color');
+    expect(lines).toHaveLength(3); // header + 2 tasks
+  });
+
+  it('an explicit options.timezone overrides the instance calendar default', () => {
+    const gantt = createGantt({ tasks: [taskInput('a', '2026-01-05T09:00', '2026-01-06T09:00')] });
+    expect(() => gantt.exportJson({ timezone: 'Asia/Ho_Chi_Minh' })).not.toThrow();
+  });
+
+  it('after destroy(), exportJson()/exportCsv() return an empty-but-valid result (same posture as getTasks/getDependencies), not a throw', () => {
+    const gantt = createGantt({ tasks: [taskInput('a', '2026-01-05T09:00', '2026-01-06T09:00')] });
+    gantt.destroy();
+    const bundle = gantt.exportJson();
+    expect(bundle.tasks).toEqual([]);
+    expect(bundle.dependencies).toEqual([]);
+    const csv = gantt.exportCsv();
+    expect(csv).toBe('id,name,start,end,duration,progress,type,parent,notes,color');
+  });
+});
+
 describe('lifecycle without a DOM', () => {
   it('unmount()/destroy()/refresh() on a never-mounted headless instance are safe no-ops (pure node, no DOM APIs referenced)', () => {
     const gantt = createGantt({ tasks: [taskInput('a', '2026-01-05T09:00', '2026-01-06T09:00')] });
