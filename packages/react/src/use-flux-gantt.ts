@@ -109,8 +109,10 @@ export function useFluxGantt(config: UseFluxGanttConfig): UseFluxGanttResult {
     if (!node) return; // container div is always rendered unconditionally by the consumer in
     // the same render — should not happen in practice.
 
-    instance.mount(node);
-
+    // Subscribe BEFORE mount(): mount() runs the renderer's reactive effect synchronously,
+    // which emits the INITIAL `critical-path:computed` for any initial tasks. Subscribing
+    // first ensures that first emit is delivered to `onCriticalPathComputed` (on() works
+    // headless, pre-mount).
     const unsubs = [
       instance.on('task:added', (task) => configRef.current.onTaskAdded?.(task)),
       instance.on('task:moved', (task, prevStart) => configRef.current.onTaskMoved?.(task, prevStart)),
@@ -125,6 +127,8 @@ export function useFluxGantt(config: UseFluxGanttConfig): UseFluxGanttResult {
       instance.on('dependency:removed', (depId) => configRef.current.onDependencyRemoved?.(depId)),
       instance.on('critical-path:computed', (ids) => configRef.current.onCriticalPathComputed?.(ids)),
     ];
+
+    instance.mount(node);
 
     return () => {
       for (const unsub of unsubs) unsub();

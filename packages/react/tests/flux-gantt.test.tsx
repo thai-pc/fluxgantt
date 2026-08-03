@@ -63,6 +63,14 @@ describe('<FluxGantt>', () => {
       };
     }
 
+    it('onCriticalPathComputed receives the INITIAL mount-time emit (review #1: subscribe before mount)', () => {
+      // setup() mounts with one initial task, so mount()'s synchronous render effect emits
+      // the initial critical-path:computed. Subscribing before mount() delivers it.
+      const { onCriticalPathComputed } = setup();
+      expect(onCriticalPathComputed).toHaveBeenCalledTimes(1);
+      expect(onCriticalPathComputed).toHaveBeenCalledWith([toTaskId('a')]);
+    });
+
     it('onTaskAdded fires on addTask', () => {
       const { ref, onTaskAdded } = setup();
       const task = ref.current!.addTask(taskInput('b', '2026-01-06T09:00', '2026-01-07T09:00'));
