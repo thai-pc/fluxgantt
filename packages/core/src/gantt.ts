@@ -553,13 +553,37 @@ class Gantt implements GanttInstance {
     // `Partial<SvgRendererOptions>`-typed literal, so this goes through `setTimeRange`,
     // typed against render/'s own `Partial<SvgRendererOptions>` via a narrow, explicit
     // helper type instead of fighting the literal-freshness check inline.
-    setTimeRange(handle, tasks.length === 0 ? this.#emptyStateTimeRange() : undefined);
-    handle.update({
-      tasks,
-      dependencies,
-      calendar: this.#calendar,
-      ...(criticalPath !== undefined ? { criticalPath } : {}),
-    });
+    //
+    // ORDER MATTERS (bugfix): `handle.update()` and `handle.setOptions()` (which
+    // `setTimeRange` calls) each trigger a full synchronous `render()` independently — one
+    // using the freshly-passed argument, the other still reading the renderer's OTHER,
+    // not-yet-updated internal field (`currentInput.tasks` vs `currentOptions.timeRange`).
+    // `render()` throws (`deriveTimeRange: tasks must not be empty`) iff BOTH `timeRange` is
+    // unset AND `tasks` is empty at the same instant — so the two calls below are ordered to
+    // never expose that combination, regardless of which state (empty <-> non-empty) the
+    // renderer is transitioning from:
+    //  - Going TO empty (`tasks.length === 0`): set the fallback `timeRange` FIRST — its
+    //    intermediate `render()` pass (still using the OLD, possibly non-empty task list) is
+    //    always safe once `timeRange` is set; the following `update({tasks: []})` pass then
+    //    also has a real `timeRange` already in place.
+    //  - Going TO non-empty (`tasks.length > 0`): push the new `tasks` FIRST — its
+    //    intermediate `render()` pass (still using the OLD `timeRange`, whatever it was) is
+    //    always safe once `tasks` is non-empty; the following `setTimeRange(undefined)` pass
+    //    then derives the range from the already-pushed, non-empty `tasks`.
+    // Reordering unconditionally (either direction, always) reintroduces the crash for the
+    // opposite transition — this must stay tasks.length-conditional.
+    if (tasks.length === 0) {
+      setTimeRange(handle, this.#emptyStateTimeRange());
+      handle.update({ tasks, dependencies, calendar: this.#calendar });
+    } else {
+      handle.update({
+        tasks,
+        dependencies,
+        calendar: this.#calendar,
+        ...(criticalPath !== undefined ? { criticalPath } : {}),
+      });
+      setTimeRange(handle, undefined);
+    }
   }
 
   #emptyStateTimeRange(): { start: Temporal.ZonedDateTime; end: Temporal.ZonedDateTime } {

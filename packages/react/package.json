@@ -1,0 +1,56 @@
+{
+  "name": "@fluxgantt/react",
+  "version": "0.0.0",
+  "description": "FluxGantt React wrapper — <FluxGantt> component + useFluxGantt hook.",
+  "license": "MIT",
+  "type": "module",
+  "sideEffects": false,
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "clean": "rimraf dist .turbo"
+  },
+  "dependencies": {
+    "@fluxgantt/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@fluxgantt/core": "workspace:*",
+    "@fluxgantt/eslint-config": "workspace:*",
+    "@fluxgantt/tsconfig": "workspace:*",
+    "@js-temporal/polyfill": "^0.5.1",
+    "@testing-library/jest-dom": "^6.6.3",
+    "@testing-library/react": "^16.1.0",
+    "@types/react": "^19.0.2",
+    "@vitest/coverage-v8": "2.1.9",
+    "jsdom": "^25.0.1",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "tsup": "^8.3.5",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  },
+  "peerDependencies": {
+    "react": "^18.2.0 || ^19.0.0",
+    "react-dom": "^18.2.0 || ^19.0.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}
