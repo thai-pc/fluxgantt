@@ -94,6 +94,12 @@ export interface WorkingCalendar {
 export type ViewMode = 'day' | 'week' | 'month' | 'quarter' | 'year';
 export type Density = 'compact' | 'default' | 'comfortable';
 
+/** Facade-level scheduling behavior (spec-cascade.md §4.1). `'manual'` (default) = v1's
+ *  original single-task-only behavior — `moveTask`/`resizeTask`/`updateTask`/a drag commit
+ *  affect only the named task. `'auto'` cascades dependent tasks along FS/SS/FF/SF (+lag)
+ *  via `computeCascade`. */
+export type SchedulingMode = 'manual' | 'auto';
+
 // Critical Path (CPM) result types (spec §13.1, §20 Appendix B). Placed here (not
 // co-located in compute/critical-path.ts) because the render layer also needs
 // `TaskSchedule` per-task to paint `.fg-task--critical` (dashed outline, spec §8.5).
