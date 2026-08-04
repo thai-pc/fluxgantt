@@ -55,6 +55,9 @@ export type { DragMoveOptions, DragResizeOptions, DragCreateDepOptions } from '.
 
 // IO layer (spec §7.8, security.md §2)
 export { exportJson, importJson, exportCsv, importCsv, DEFAULT_CSV_COLUMNS } from './io/index.js';
+// SVG/PNG export (spec-export-png-svg.md) — DOM-dependent, browser-only. `exportPng` is a
+// separate named export from `exportSvg` for tree-shaking (see io/export-png.ts's header).
+export { exportSvg, exportPng } from './io/index.js';
 export { IoValidationError } from './io/index.js';
 export type {
   ExportBundle,
@@ -63,6 +66,8 @@ export type {
   ExportedTaskConstraint,
   ExportJsonOptions,
   ExportCsvOptions,
+  ExportSvgOptions,
+  ExportPngOptions,
   ImportJsonOptions,
   ImportCsvOptions,
   ImportLimits,

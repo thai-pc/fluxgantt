@@ -31,8 +31,19 @@ import type { SvgRendererHandle, SvgRendererInput, SvgRendererOptions } from './
 import { enableDragMove } from './interaction/drag-move.js';
 import { enableDragResize } from './interaction/drag-resize.js';
 import { enableDragCreateDep } from './interaction/drag-create-dep.js';
-import { exportJson as exportJsonFn, exportCsv as exportCsvFn } from './io/index.js';
-import type { ExportBundle, ExportCsvOptions, ExportJsonOptions } from './io/index.js';
+import {
+  exportJson as exportJsonFn,
+  exportCsv as exportCsvFn,
+  exportSvg as exportSvgFn,
+  exportPng as exportPngFn,
+} from './io/index.js';
+import type {
+  ExportBundle,
+  ExportCsvOptions,
+  ExportJsonOptions,
+  ExportPngOptions,
+  ExportSvgOptions,
+} from './io/index.js';
 import type {
   CriticalPathResult,
   DateInput,
@@ -159,6 +170,24 @@ export interface GanttInstance {
   /** Thin delegation over `getTasks()` + the pure `exportCsv()` function. Same posture as
    *  `exportJson()` above. */
   exportCsv(options?: ExportCsvOptions): string;
+
+  /**
+   * Serializes the currently-mounted SVG to a self-contained string (XML declaration,
+   * explicit xmlns, resolved computed styles baked in, no interactive-only chrome).
+   * Throws if the instance was never mounted, or has been unmounted/destroyed — unlike
+   * exportJson/exportCsv, there is no sensible empty-but-valid result to fall back to.
+   */
+  exportSvg(options?: ExportSvgOptions): string;
+
+  /**
+   * Rasterizes the currently-mounted chart to a PNG. Internally calls exportSvg() to get a
+   * baked/sanitized SVG string, then draws it onto a canvas. Async because it waits for the
+   * browser to decode the SVG image before it can rasterize. Same throw-if-not-mounted
+   * posture as exportSvg(), but delivered as a REJECTED promise, not a synchronous throw
+   * (implemented as an `async function` specifically so this holds for every validation
+   * error, not just the DOM-not-ready one).
+   */
+  exportPng(options?: ExportPngOptions): Promise<Blob>;
 
   // --- Events --------------------------------------------------------------------------------
   on<E extends GanttEventName>(
@@ -392,6 +421,16 @@ class Gantt implements GanttInstance {
 
   exportCsv(options?: ExportCsvOptions): string {
     return exportCsvFn(this.getTasks(), { timezone: this.#calendar.timezone, ...options });
+  }
+
+  exportSvg(options?: ExportSvgOptions): string {
+    const handle = this.#assertMounted('exportSvg');
+    return exportSvgFn(handle.svg, options);
+  }
+
+  async exportPng(options?: ExportPngOptions): Promise<Blob> {
+    const handle = this.#assertMounted('exportPng');
+    return exportPngFn(handle.svg, options);
   }
 
   // --- Events ----------------------------------------------------------------------------------
@@ -795,6 +834,21 @@ class Gantt implements GanttInstance {
     if (this.#destroyed) {
       throw new Error(`@fluxgantt/core: cannot call ${method} — this gantt instance destroyed`);
     }
+  }
+
+  /**
+   * Guard for `exportSvg`/`exportPng` (spec-export-png-svg.md §1.1) — covers "never mounted",
+   * "unmounted", AND "destroyed" with one check: `destroy()` always tears down `#mount` (via
+   * `#teardownMount()`) before setting `#destroyed = true`, so `!this.#mount` is already the
+   * correct single condition; no separate `#assertAlive` call is needed alongside it.
+   */
+  #assertMounted(method: string): SvgRendererHandle {
+    if (!this.#mount) {
+      throw new Error(
+        `@fluxgantt/core: cannot call ${method} — gantt instance is not mounted (call mount() first)`,
+      );
+    }
+    return this.#mount.rendererHandle;
   }
 }
 

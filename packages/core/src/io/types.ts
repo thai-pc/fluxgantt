@@ -78,6 +78,45 @@ export interface ExportCsvOptions {
   columns?: readonly CsvColumn[];
 }
 
+// --- SVG/PNG export (spec-export-png-svg.md §2) -------------------------------------------
+
+export interface ExportSvgOptions {
+  /**
+   * Bakes each element's browser-RESOLVED `fill`/`stroke`/`stroke-width`/`stroke-dasharray`/
+   * `text-anchor`/`dominant-baseline` value (read via `getComputedStyle` on the LIVE mounted
+   * node) into the exported copy's inline `style`, so the returned string matches the host's
+   * actual rendered theme — including any host override of `--fg-*` custom properties —
+   * rather than only the hardcoded `var(--fg-token, fallback)` defaults. WYSIWYG. Default
+   * `true`.
+   *
+   * Set `false` only to get a smaller, theme-RELATIVE SVG that still carries the original
+   * `var(--fg-token, fallback)` declarations verbatim (e.g. to re-skin the exported file later
+   * by wrapping it in a stylesheet that redefines those custom properties) — accepting that it
+   * will NOT visually match the live page when opened standalone.
+   */
+  readonly inlineComputedStyle?: boolean;
+}
+
+export interface ExportPngOptions {
+  /**
+   * Raster scale multiplier — output pixel size = SVG width/height × `scale`. Pass
+   * `window.devicePixelRatio` from the host for crisp HiDPI output; this module never reads
+   * `window.devicePixelRatio` itself (deterministic default). Must be a finite number > 0.
+   * Default `1`.
+   */
+  readonly scale?: number;
+  /**
+   * Fill painted under the rasterized chart before drawing (the source SVG has no background
+   * rect, so a naive rasterization is transparent). A CSS color string — the `Task.color`
+   * whitelist (hex/rgb()/hsl()) OR a bare CSS keyword (`'white'`/`'black'`/…) — or the literal
+   * `'transparent'` to skip the fill. Default `'#ffffff'`.
+   */
+  readonly background?: string | 'transparent';
+  // NOTE: no `inlineComputedStyle` — PNG rasterizes via an `<img>` in an isolated document with
+  // no access to the host's `--fg-*` custom properties, so styles MUST be baked; exposing the
+  // option would only let a caller silently mis-theme the raster (review B4).
+}
+
 export interface ImportLimits {
   maxTaskCount: number;
   maxDependencyCount: number;
