@@ -12,11 +12,23 @@
 // elapsed-nanoseconds — the old way drifts the time-of-day by ~1h when dragging across a DST
 // boundary. `.add({days})` preserves the wall-clock time-of-day + duration, DST-safe (see the
 // DST test below).
+//
+// REFACTORED onto `pointer-drag.ts` (spec-drag-resize.md §1.4/§1.5) — the shared
+// pointerdown-delegation/window-listener/threshold/B1-B2-B3 mechanics now live in the
+// coordinator; this file only builds ONE `PointerGestureRecognizer<MoveState>` and registers
+// it. BEHAVIOR-PRESERVING: `tests/unit/drag-move.test.ts` passes unedited.
 import { normalizeDate } from '../compute/working-calendar.js';
 import type { SvgRendererHandle, TimeScale } from '../render/index.js';
 import type { DateInput, Task, TaskId } from '../types.js';
 import { toTaskId } from '../types.js';
 import type { Temporal } from '@js-temporal/polyfill';
+import { getPointerDragController, DEFAULT_DRAG_THRESHOLD_PX, snapDeltaToDay } from './pointer-drag.js';
+import type { PointerGestureRecognizer } from './pointer-drag.js';
+
+// Canonical home is now `pointer-drag.ts` — re-exported here (pure re-export, zero behavior
+// change) so `tests/unit/drag-move.test.ts`'s existing
+// `import { ... snapDeltaToDay } from '../../src/interaction/drag-move.js'` keeps resolving.
+export { snapDeltaToDay } from './pointer-drag.js';
 
 export interface DragMoveOptions {
   /**
@@ -47,50 +59,8 @@ export interface DragMoveOptions {
   ): void;
 }
 
-const DEFAULT_DRAG_THRESHOLD_PX = 4;
+const MOVE_PRIORITY = 10;
 const DRAGGING_CLASS = 'fg-task--dragging';
-
-/**
- * Clamp for the snapped day-delta (review B2). `Number.isFinite` alone lets a finite but
- * absurd `clientX` (e.g. 1e8) through, and `ZonedDateTime.add({ days: 1e8 })` throws a
- * `RangeError` (Temporal's representable-instant limit) — which would escape a pointer
- * handler and leave the drag UI wedged. ±366,000 days ≈ 1,000 years: far beyond any real
- * drag, always inside Temporal's range regardless of the task's base date.
- */
-const MAX_DRAG_DAYS = 366_000;
-
-interface DragState {
-  readonly taskId: TaskId;
-  readonly groupEl: SVGGElement;
-  /** The actual element that received pointerdown (may be a child of `groupEl`, e.g.
-   *  `.fg-task__bar`) — used to call `releasePointerCapture` paired with the original
-   *  `setPointerCapture`. */
-  readonly captureEl: Element;
-  readonly originalStart: DateInput;
-  readonly originalEnd: DateInput;
-  readonly startClientX: number;
-  readonly pointerId: number;
-  /** Captured ONCE at pointerdown (Q5) — not re-read from `handle.getTimeScale()` on every
-   *  pointermove, so a `setOptions()` mid-drag doesn't change the meaning of the accumulating
-   *  delta. */
-  readonly timeScale: TimeScale;
-  exceededThreshold: boolean;
-}
-
-/**
- * Snap a pixel delta to the nearest whole day (by `timeScale.pixelsPerDay`) — matches the
- * "snap minimally to the day boundary, not to the working-calendar" requirement (plan §5).
- * Returns the NUMBER OF DAYS (N), not pixels — decision Q4.
- */
-export function snapDeltaToDay(dxPixels: number, timeScale: TimeScale): number {
-  if (!Number.isFinite(dxPixels) || !Number.isFinite(timeScale.pixelsPerDay) || timeScale.pixelsPerDay === 0) {
-    return 0;
-  }
-  const n = Math.round(dxPixels / timeScale.pixelsPerDay);
-  // Clamp a finite-but-absurd delta so the commit path (`.add({ days: n })`) can never
-  // throw a Temporal RangeError (review B2).
-  return Math.max(-MAX_DRAG_DAYS, Math.min(MAX_DRAG_DAYS, n));
-}
 
 /**
  * Computes the new start/end with calendar arithmetic — decision Q4 (main session §10): add
@@ -113,18 +83,21 @@ export function computeDraggedDates(
   return { newStart, newEnd };
 }
 
+interface MoveState {
+  readonly taskId: TaskId;
+  readonly originalStart: DateInput;
+  readonly originalEnd: DateInput;
+}
+
 /**
- * Attaches drag-move to a mounted `SvgRendererHandle`. Event delegation: a SINGLE
- * `pointerdown` listener on `handle.svg` (not on each `.fg-task`) — required because
- * `update()` full-repaints, removing/rebuilding every `.fg-task` on each call; a listener
- * attached directly to a task-bar would be lost after the first repaint.
- * `pointermove`/`pointerup`/`pointercancel`/`keydown` are attached TEMPORARILY to `window`
- * for the duration of an active drag (added on pointerdown, removed on
- * pointerup/cancel/Escape/disposer) — never accumulating unbounded across drags (security.md
- * "no leaked listeners").
+ * Attaches drag-move to a mounted `SvgRendererHandle` — via the shared `pointer-drag.ts`
+ * coordinator (`getPointerDragController(handle).register(...)`), so it can coexist with
+ * `enableDragResize` registered on the same handle (edge-zone claims win, see
+ * `drag-resize.ts`'s `RESIZE_PRIORITY < MOVE_PRIORITY`).
  *
- * Returns a disposer — removes all listeners. Calling the disposer mid-drag cancels that drag
- * (no commit), equivalent to Escape. Calling the disposer multiple times is a safe no-op.
+ * Returns a disposer — unregisters this recognizer. Calling the disposer mid-drag cancels
+ * that drag (no commit), equivalent to Escape. Calling the disposer multiple times is a safe
+ * no-op.
  */
 export function enableDragMove(
   handle: SvgRendererHandle,
@@ -132,185 +105,65 @@ export function enableDragMove(
   options: DragMoveOptions,
 ): () => void {
   const dragThresholdPx = options.dragThresholdPx ?? DEFAULT_DRAG_THRESHOLD_PX;
-  let state: DragState | null = null;
-  let disposed = false;
 
-  handle.svg.addEventListener('pointerdown', onPointerDown);
-
-  // B1 (High): `enableDragMove` and the renderer handle are two independent lifecycles.
-  // If the host calls `handle.destroy()` while a drag gesture is open, `destroy()` only
-  // removes the <svg> — the 4 `window` listeners added at pointerdown would leak (and keep
-  // the detached DOM alive) until some later pointerup/cancel happens to fire. Link them:
-  // wrap `destroy` so tearing down the renderer also disposes drag-move. The disposer
-  // restores the original, so a normal `dispose()` → `destroy()` sequence stays clean.
-  const originalDestroy = handle.destroy;
-  const destroyWithDrag = (): void => {
-    disposeDragMove();
-    originalDestroy.call(handle);
-  };
-  handle.destroy = destroyWithDrag;
-
-  return disposeDragMove;
-
-  function disposeDragMove(): void {
-    if (disposed) return;
-    disposed = true;
-    handle.svg.removeEventListener('pointerdown', onPointerDown);
-    if (handle.destroy === destroyWithDrag) handle.destroy = originalDestroy;
-    if (state) cancelDrag(state);
-  }
-
-  function onPointerDown(event: PointerEvent): void {
-    // B3: ignore a second concurrent pointerdown (e.g. a 2nd finger on a touch screen)
-    // while a gesture is already open — overwriting `state` would orphan the first gesture
-    // (its window listeners persist but its pointerId no longer matches any handler).
-    if (disposed || state) return;
-    if (!(event.target instanceof Element)) return;
-    // Not a drag on a task bar — return early, do NOT preventDefault/stopPropagation
-    // (spec §6 — don't block future click/selection on grid/header/empty space).
-    const groupEl = event.target.closest('.fg-task[data-task-id]');
-    if (!groupEl) return;
-
-    const taskIdAttr = groupEl.getAttribute('data-task-id');
-    if (taskIdAttr === null) return;
-    const taskId = toTaskId(taskIdAttr);
-    const task = getTasks().find((t) => t.id === taskId);
-    // Race between the rendered DOM and the latest `tasks` — skip, don't throw (spec §7).
-    if (!task) return;
-
-    // Pointer coordinates are untrusted numeric input (security.md/spec §7) — bail at
-    // pointerdown if already corrupt; don't start a drag gesture on garbage data.
-    if (!Number.isFinite(event.clientX) || !Number.isFinite(event.clientY)) return;
-
-    const captureEl = event.target;
-    state = {
-      taskId,
-      groupEl: groupEl as unknown as SVGGElement,
-      captureEl,
-      originalStart: task.start,
-      originalEnd: task.end,
-      startClientX: event.clientX,
-      pointerId: event.pointerId,
-      timeScale: handle.getTimeScale(),
-      exceededThreshold: false,
-    };
-
-    try {
-      captureEl.setPointerCapture?.(event.pointerId);
-    } catch {
-      // Best-effort — jsdom and some environments don't implement real pointer capture
-      // (spec §7/§9). Never let this error break the main drag flow.
-    }
-
-    window.addEventListener('pointermove', onPointerMove);
-    window.addEventListener('pointerup', onPointerUp);
-    window.addEventListener('pointercancel', onPointerCancel);
-    window.addEventListener('keydown', onKeyDown);
-  }
-
-  function onPointerMove(event: PointerEvent): void {
-    const s = state;
-    if (!s || event.pointerId !== s.pointerId) return;
-    // Defensive (B1): if the dragged group was detached (renderer removed/repainted
-    // without going through the wrapped destroy), abort the gesture and clean up rather
-    // than keep mutating an orphaned node / holding window listeners.
-    if (!s.groupEl.isConnected) {
-      cancelDrag(s);
-      return;
-    }
-    if (!Number.isFinite(event.clientX) || !Number.isFinite(event.clientY)) {
-      // Garbage coordinates mid-drag — ignore this event, keep the state (spec §7).
-      return;
-    }
-
-    const dxRaw = event.clientX - s.startClientX;
-
-    if (!s.exceededThreshold) {
-      if (Math.abs(dxRaw) < dragThresholdPx) return; // potential click, do nothing yet
-      s.exceededThreshold = true;
-      s.groupEl.classList.add(DRAGGING_CLASS);
+  const recognizer: PointerGestureRecognizer<MoveState> = {
+    name: 'drag-move',
+    priority: MOVE_PRIORITY,
+    dragThresholdPx,
+    hitTest(event, groupEl) {
+      const taskIdAttr = groupEl.getAttribute('data-task-id');
+      if (taskIdAttr === null) return null;
+      const taskId = toTaskId(taskIdAttr);
+      const task = getTasks().find((t) => t.id === taskId);
+      // Race between the rendered DOM and the latest `tasks` — skip, don't throw.
+      if (!task) return null;
+      return { taskId, originalStart: task.start, originalEnd: task.end };
+    },
+    onDragStart(ctx) {
+      ctx.groupEl.classList.add(DRAGGING_CLASS);
       document.body.style.cursor = 'grabbing';
-      // Block text-selection while dragging with a mouse — only once this is confirmed a drag.
-      event.preventDefault();
-    }
+    },
+    onMove(ctx, dxPixels) {
+      const deltaDays = snapDeltaToDay(dxPixels, ctx.timeScale);
+      const pixelDx = deltaDays * ctx.timeScale.pixelsPerDay;
+      // Visual feedback during the drag: only shift the transform, do NOT call
+      // handle.update()/taskStore.update() per frame (performance — renderer full-repaints).
+      ctx.groupEl.setAttribute('transform', `translate(${pixelDx} 0)`);
+      if (options.onDragging) {
+        const { newStart, newEnd } = computeDraggedDates(
+          ctx.timeScale,
+          ctx.state.originalStart,
+          ctx.state.originalEnd,
+          deltaDays,
+        );
+        options.onDragging(ctx.state.taskId, newStart, newEnd);
+      }
+    },
+    onCommit(ctx, dxPixels) {
+      // Reset drag chrome (class + cursor) BEFORE computing/committing (B2): the commit path
+      // is clamped and cannot throw, but resetting first also means a throw from the host's
+      // `onTaskMoved` callback can't leave `grabbing`/`fg-task--dragging` stuck.
+      // The transform is intentionally kept — the bar holds its dragged position until the
+      // caller re-renders with the updated task.
+      ctx.groupEl.classList.remove(DRAGGING_CLASS);
+      document.body.style.cursor = '';
+      const deltaDays = snapDeltaToDay(dxPixels, ctx.timeScale);
+      const { newStart, newEnd } = computeDraggedDates(
+        ctx.timeScale,
+        ctx.state.originalStart,
+        ctx.state.originalEnd,
+        deltaDays,
+      );
+      options.onTaskMoved(ctx.state.taskId, newStart, newEnd);
+    },
+    onCancel(ctx) {
+      // `removeAttribute`/`classList.remove` are already no-ops when nothing was set — safe
+      // to call unconditionally (matches every existing cancellation-path test).
+      ctx.groupEl.removeAttribute('transform');
+      ctx.groupEl.classList.remove(DRAGGING_CLASS);
+      document.body.style.cursor = '';
+    },
+  };
 
-    const deltaDays = snapDeltaToDay(dxRaw, s.timeScale);
-    const pixelDx = deltaDays * s.timeScale.pixelsPerDay;
-    // Visual feedback during the drag: only shift the transform, do NOT call handle.update()/
-    // taskStore.update() per frame (performance, plan §3 — renderer full-repaints).
-    s.groupEl.setAttribute('transform', `translate(${pixelDx} 0)`);
-
-    if (options.onDragging) {
-      const { newStart, newEnd } = computeDraggedDates(s.timeScale, s.originalStart, s.originalEnd, deltaDays);
-      options.onDragging(s.taskId, newStart, newEnd);
-    }
-  }
-
-  function onPointerUp(event: PointerEvent): void {
-    const s = state;
-    if (!s || event.pointerId !== s.pointerId) return;
-    teardown(s);
-    state = null;
-
-    if (!s.exceededThreshold) return; // plain click — no commit, transform was never set
-
-    if (!Number.isFinite(event.clientX) || !Number.isFinite(event.clientY)) {
-      // Garbage coordinates on the final release event — don't commit data from corrupt coords.
-      revertVisual(s);
-      return;
-    }
-
-    // Reset drag chrome (class + cursor) BEFORE computing/committing (B2): the commit path
-    // is now clamped and cannot throw, but resetting first also means a throw from the
-    // host's `onTaskMoved` callback can't leave `grabbing`/`fg-task--dragging` stuck.
-    // The transform is intentionally kept — the bar holds its dragged position until the
-    // caller re-renders with the updated task (spec §4.1).
-    s.groupEl.classList.remove(DRAGGING_CLASS);
-    document.body.style.cursor = '';
-
-    const dxRaw = event.clientX - s.startClientX;
-    const deltaDays = snapDeltaToDay(dxRaw, s.timeScale);
-    const { newStart, newEnd } = computeDraggedDates(s.timeScale, s.originalStart, s.originalEnd, deltaDays);
-    options.onTaskMoved(s.taskId, newStart, newEnd);
-  }
-
-  function onPointerCancel(event: PointerEvent): void {
-    const s = state;
-    if (!s || event.pointerId !== s.pointerId) return;
-    cancelDrag(s);
-  }
-
-  function onKeyDown(event: KeyboardEvent): void {
-    const s = state;
-    if (!s) return;
-    if (event.key !== 'Escape') return;
-    cancelDrag(s);
-  }
-
-  /** Cancel an in-progress drag: remove listeners, revert the transform, do NOT commit. Shared
-   *  by pointercancel/Escape/disposer-mid-drag. */
-  function cancelDrag(s: DragState): void {
-    teardown(s);
-    state = null;
-    revertVisual(s);
-  }
-
-  function teardown(s: DragState): void {
-    window.removeEventListener('pointermove', onPointerMove);
-    window.removeEventListener('pointerup', onPointerUp);
-    window.removeEventListener('pointercancel', onPointerCancel);
-    window.removeEventListener('keydown', onKeyDown);
-    try {
-      s.captureEl.releasePointerCapture?.(s.pointerId);
-    } catch {
-      // Best-effort, see the note at setPointerCapture.
-    }
-  }
-
-  function revertVisual(s: DragState): void {
-    if (!s.exceededThreshold) return; // transform/class were never set — nothing to undo
-    s.groupEl.removeAttribute('transform');
-    s.groupEl.classList.remove(DRAGGING_CLASS);
-    document.body.style.cursor = '';
-  }
+  return getPointerDragController(handle).register(recognizer);
 }

@@ -48,9 +48,9 @@ export type { CascadeResult, CascadeShift } from './compute/index.js';
 export { createSvgRenderer } from './render/index.js';
 export type { SvgRendererInput, SvgRendererOptions, SvgRendererHandle } from './render/index.js';
 
-// Interaction layer (spec §8.4, spec-drag-move.md)
-export { enableDragMove } from './interaction/index.js';
-export type { DragMoveOptions } from './interaction/index.js';
+// Interaction layer (spec §8.4, spec-drag-move.md, spec-drag-resize.md)
+export { enableDragMove, enableDragResize } from './interaction/index.js';
+export type { DragMoveOptions, DragResizeOptions } from './interaction/index.js';
 
 // IO layer (spec §7.8, security.md §2)
 export { exportJson, importJson, exportCsv, importCsv, DEFAULT_CSV_COLUMNS } from './io/index.js';
