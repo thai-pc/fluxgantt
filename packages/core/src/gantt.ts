@@ -29,6 +29,7 @@ import { getTemporal } from './internal/temporal.js';
 import { createSvgRenderer } from './render/svg-renderer.js';
 import type { SvgRendererHandle, SvgRendererInput, SvgRendererOptions } from './render/svg-renderer.js';
 import { enableDragMove } from './interaction/drag-move.js';
+import { enableDragResize } from './interaction/drag-resize.js';
 import { exportJson as exportJsonFn, exportCsv as exportCsvFn } from './io/index.js';
 import type { ExportBundle, ExportCsvOptions, ExportJsonOptions } from './io/index.js';
 import type {
@@ -175,7 +176,8 @@ export interface GanttInstance {
 
 interface MountState {
   readonly rendererHandle: SvgRendererHandle;
-  readonly dragDispose: () => void;
+  readonly dragMoveDispose: () => void;
+  readonly dragResizeDispose: () => void;
   readonly disposeEffect: () => void;
 }
 
@@ -415,14 +417,23 @@ class Gantt implements GanttInstance {
     if (this.#mount) this.#teardownMount(); // implicit remount if already mounted (item A)
 
     const rendererHandle = createSvgRenderer(container, this.#renderInput(), this.#rendererOptions());
-    const dragDispose = this.#config.readOnly
-      ? () => {}
-      : enableDragMove(rendererHandle, () => this.#taskStore.all(), {
-          onTaskMoved: (taskId, newStart, newEnd) => this.#commitDrag(taskId, newStart, newEnd),
-        });
+
+    let dragMoveDispose: () => void = () => {};
+    let dragResizeDispose: () => void = () => {};
+    if (!this.#config.readOnly) {
+      // Registration order is irrelevant to priority (pointer-drag.ts uses an explicit
+      // numeric priority, not call order) — both wire through the SAME coordinator on
+      // `rendererHandle`, so an edge-zone claim always wins over a whole-bar claim.
+      dragResizeDispose = enableDragResize(rendererHandle, () => this.#taskStore.all(), {
+        onTaskResized: (taskId, newEnd) => this.#commitResize(taskId, newEnd),
+      });
+      dragMoveDispose = enableDragMove(rendererHandle, () => this.#taskStore.all(), {
+        onTaskMoved: (taskId, newStart, newEnd) => this.#commitDrag(taskId, newStart, newEnd),
+      });
+    }
     const disposeEffect = effect(() => this.#renderNow(rendererHandle));
 
-    this.#mount = { rendererHandle, dragDispose, disposeEffect };
+    this.#mount = { rendererHandle, dragMoveDispose, dragResizeDispose, disposeEffect };
   }
 
   unmount(): void {
@@ -563,6 +574,18 @@ class Gantt implements GanttInstance {
     this.#maybeCascade(taskId);
   }
 
+  #commitResize(taskId: TaskId, newEnd: Temporal.ZonedDateTime): void {
+    const task = this.#taskStore.get(taskId);
+    if (!task) return; // task removed mid-resize (race) — nothing to commit, mirrors #commitDrag
+    const newDuration = differenceInWorkingHours(task.start, newEnd, this.#calendar);
+    // Reuses the EXISTING resizeTask() pipeline in full: validates newDuration >= 0/finite,
+    // writes end+duration via #applyPatch (→ #diffAndEmit, which correctly fires
+    // task:resized here because a real resize changes the instant span — unlike drag-move's
+    // #commitDrag, no special same-span handling is needed), and calls #maybeCascade. No new
+    // facade method (resolution #7).
+    this.resizeTask(taskId, newDuration);
+  }
+
   /**
    * No-op unless `schedulingMode: 'auto'` (default `'manual'` — see `GanttConfig`, spec-
    * cascade.md §4.1/§4.3). Recomputes `computeCascade` over the CURRENT store state (which
@@ -593,11 +616,15 @@ class Gantt implements GanttInstance {
 
   #teardownMount(): void {
     const m = this.#mount!;
-    // Order matters (drag-move wraps handle.destroy):
+    // Order matters (the shared pointer-drag coordinator wraps handle.destroy):
     // 1. Stop the reactive effect FIRST — no render call may start once teardown begins.
     m.disposeEffect();
-    // 2. Dispose drag-move's own listeners explicitly via its returned disposer.
-    m.dragDispose();
+    // 2. Unregister BOTH recognizers from the shared coordinator explicitly via their
+    //    returned disposers — order between these two doesn't matter; the coordinator only
+    //    detaches its pointerdown listener + unwraps handle.destroy once BOTH have
+    //    unregistered (refcounted, see pointer-drag.ts).
+    m.dragResizeDispose();
+    m.dragMoveDispose();
     // 3. Remove the SVG.
     m.rendererHandle.destroy();
     this.#mount = undefined;
