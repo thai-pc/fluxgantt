@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { DependencyStore } from '../../src/store/dependency-store.js';
+import { DependencyStore, DependencyLinkError } from '../../src/store/dependency-store.js';
 import { effect } from '../../src/signals.js';
 import { toTaskId, type TaskId } from '../../src/types.js';
 
@@ -24,7 +24,7 @@ describe('DependencyStore — link', () => {
     expect(dep.lag).toBe(-4);
   });
 
-  it('throw khi self-link', () => {
+  it('throws on a self-link', () => {
     const store = new DependencyStore();
     expect(() => store.link(A, A)).toThrow(/cannot self-link/);
   });
@@ -33,6 +33,17 @@ describe('DependencyStore — link', () => {
     const store = new DependencyStore();
     store.link(A, B);
     expect(() => store.link(A, B)).toThrow(/already exists/);
+  });
+
+  // review A3: the three expected validation rejections are a DISTINCT error type, so callers
+  // that tolerate a rejected link (drag-create-dependency's silent revert) can catch ONLY this
+  // and let unrelated/programming errors propagate instead of being swallowed by a bare catch.
+  it('raises validation rejections as DependencyLinkError (self / duplicate / cycle)', () => {
+    const store = new DependencyStore();
+    store.link(A, B);
+    expect(() => store.link(A, A)).toThrow(DependencyLinkError); // self
+    expect(() => store.link(A, B)).toThrow(DependencyLinkError); // duplicate
+    expect(() => store.link(B, A)).toThrow(DependencyLinkError); // cycle
   });
 });
 

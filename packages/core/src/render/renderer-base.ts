@@ -298,7 +298,10 @@ export function isKnownDependencyType(type: string): type is DependencyType {
   return Object.prototype.hasOwnProperty.call(DEPENDENCY_EDGES, type);
 }
 
-function anchorOf(bar: TaskBarLayout, edge: BarEdge): { x: number; y: number } {
+/** Exported for `interaction/drag-create-dep.ts` (via `render/svg-renderer.ts`'s
+ *  `renderLinkHandle`) — the connector handle's position must sit exactly where a resulting
+ *  FS/SS/FF/SF arrow would attach, with zero duplicated geometry math. */
+export function anchorOf(bar: TaskBarLayout, edge: BarEdge): { x: number; y: number } {
   return edge === 'start'
     ? { x: bar.x, y: bar.y + bar.height / 2 }
     : { x: bar.x + bar.width, y: bar.y + bar.height / 2 };

@@ -22,6 +22,7 @@ import {
   validateTaskColor,
   isKnownTaskKind,
   isKnownDependencyType,
+  anchorOf,
   type GridColumn,
   type RowLayout,
   type TaskBarLayout,
@@ -57,6 +58,10 @@ export interface SvgRendererOptions {
   readonly locale?: string;
   /** `aria-label` for the root `<svg>`. Default `'Gantt chart'`. */
   readonly ariaLabel?: string;
+  /** Render the `.fg-task__link-handle` connector handles (+ their hover-reveal `<style>`).
+   *  Default `true`. The facade sets this to `false` for a `readOnly` Gantt so a
+   *  non-editable chart shows no interactive link affordance. */
+  readonly showLinkHandles?: boolean;
 }
 
 export interface SvgRendererHandle {
@@ -87,8 +92,42 @@ const HEADER_HEIGHT = 32;
 const LABEL_INDENT_PX = 16;
 const LABEL_PADDING_PX = 8;
 
-/** Compile-time constant — never derived from task/user data (security §8). */
-const ARROWHEAD_MARKER_ID = 'fg-dep-arrowhead';
+/** Compile-time constant — never derived from task/user data (security §8). Exported so
+ *  `interaction/drag-create-dep.ts`'s rubber-band preview can reference the SAME marker id
+ *  string instead of a second hardcoded copy (single source of truth). */
+export const ARROWHEAD_MARKER_ID = 'fg-dep-arrowhead';
+
+// Static CSS text — NEVER derived from task/user data (security.md: nothing here is
+// interpolated; this is a compile-time constant string assigned via .textContent, not
+// innerHTML, not a template literal built from any external input). Provides the pure-CSS
+// hover-reveal for `.fg-task__link-handle` (spec-drag-create-dependency.md §4.1) — there is no
+// base stylesheet file anywhere in `packages/core`, so this is injected as a static inline
+// `<style>` child on every full repaint (same "works with zero required host CSS" posture the
+// rest of this file already keeps via inline `style.setProperty(...)`).
+const LINK_HANDLE_STYLE_TEXT = `
+.fg-task__link-handle {
+  opacity: 0;
+  /* pointer-events none while hidden — an opacity:0 element is STILL hit-testable (unlike
+     display/visibility), so with 'all' the invisible handle sitting on the bar's start/end
+     anchor would shadow drag-resize's edge zone / drag-move and swallow those pointerdowns
+     at priority -10. Only the REVEALED handle (below) is grabbable. */
+  pointer-events: none;
+  transition: opacity var(--fg-transition-fast, 100ms ease-out);
+}
+.fg-task:hover .fg-task__link-handle,
+.fg-task:focus-within .fg-task__link-handle {
+  opacity: 1;
+  pointer-events: all;
+}
+@media (hover: none) {
+  /* No hover concept on touch — reveal (and enable) unconditionally rather than ship a
+     feature that is structurally invisible/undiscoverable there. */
+  .fg-task__link-handle { opacity: 1; pointer-events: all; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .fg-task__link-handle { transition: none; }
+}
+`;
 
 /** Defensive string-length cap applied to any task field folded into an `aria-label`
  *  attribute value (security.md "limit string length"). */
@@ -210,14 +249,17 @@ export function createSvgRenderer(
     svg.setAttribute('viewBox', `0 0 ${totalWidth} ${totalHeight}`);
     svg.setAttribute('aria-label', ariaLabel);
 
+    const showLinkHandles = currentOptions.showLinkHandles ?? true;
+
     svg.appendChild(createArrowheadMarker());
+    if (showLinkHandles) svg.appendChild(createLinkHandleStyle());
     svg.appendChild(renderGrid(gridColumns, offsetX, totalHeight));
     svg.appendChild(renderHeader(gridColumns, offsetX, timeScale.totalWidth));
     svg.appendChild(
       renderDependencies(currentInput.dependencies, barByTaskId, rowHeight, offsetX, offsetY),
     );
     svg.appendChild(
-      renderRows(rows, barByTaskId, criticalIds, rowHeight, calendar, locale, offsetX, offsetY),
+      renderRows(rows, barByTaskId, criticalIds, rowHeight, calendar, locale, offsetX, offsetY, showLinkHandles),
     );
     svg.appendChild(renderLabelDivider(offsetX, totalHeight));
   }
@@ -241,6 +283,12 @@ function createArrowheadMarker(): SVGDefsElement {
   marker.appendChild(arrow);
   defs.appendChild(marker);
   return defs;
+}
+
+function createLinkHandleStyle(): SVGStyleElement {
+  const style = document.createElementNS(SVG_NS, 'style') as SVGStyleElement;
+  style.textContent = LINK_HANDLE_STYLE_TEXT;
+  return style;
 }
 
 function renderGrid(columns: readonly GridColumn[], offsetX: number, totalHeight: number): SVGGElement {
@@ -333,6 +381,7 @@ function renderRows(
   locale: string,
   offsetX: number,
   offsetY: number,
+  showLinkHandles: boolean,
 ): SVGGElement {
   const g = document.createElementNS(SVG_NS, 'g') as SVGGElement;
   g.setAttribute('class', 'fg-timeline__rows');
@@ -357,7 +406,9 @@ function renderRows(
     rowGroup.appendChild(label);
 
     const isCritical = criticalIds.has(row.task.id);
-    rowGroup.appendChild(renderTaskBar(row.task, bar, offsetX, offsetY, isCritical, calendar, locale));
+    rowGroup.appendChild(
+      renderTaskBar(row.task, bar, offsetX, offsetY, isCritical, calendar, locale, showLinkHandles),
+    );
 
     g.appendChild(rowGroup);
   }
@@ -373,6 +424,7 @@ function renderTaskBar(
   isCritical: boolean,
   calendar: WorkingCalendar,
   locale: string,
+  showLinkHandles: boolean,
 ): SVGGElement {
   const wrapper = document.createElementNS(SVG_NS, 'g') as SVGGElement;
   // Whitelist `task.type` before folding it into a class token (review N3): fall back to
@@ -421,7 +473,38 @@ function renderTaskBar(
   }
 
   wrapper.appendChild(shape);
+  if (showLinkHandles) {
+    wrapper.appendChild(renderLinkHandle(bar, offsetX, offsetY, 'start'));
+    wrapper.appendChild(renderLinkHandle(bar, offsetX, offsetY, 'end'));
+  }
   return wrapper;
+}
+
+/** Connector handle for drag-create-dependency (spec-drag-create-dependency.md §4.1) —
+ *  positioned via the shared `anchorOf` geometry helper so it sits exactly where a resulting
+ *  FS/SS/FF/SF arrow would attach. Hidden by default, revealed on `.fg-task:hover` by the
+ *  static `<style>` injected in `render()` (pure CSS, no JS hover tracking). */
+function renderLinkHandle(
+  bar: TaskBarLayout,
+  offsetX: number,
+  offsetY: number,
+  edge: 'start' | 'end',
+): SVGCircleElement {
+  const anchor = anchorOf(bar, edge); // same anchor math committed dependency arrows use
+  const circle = document.createElementNS(SVG_NS, 'circle') as SVGCircleElement;
+  circle.setAttribute('class', 'fg-task__link-handle');
+  circle.setAttribute('data-handle-end', edge);
+  circle.setAttribute('cx', String(anchor.x + offsetX));
+  circle.setAttribute('cy', String(anchor.y + offsetY));
+  // A11y: no keyboard-reachable equivalent exists yet in v1 (same posture as drag-move/
+  // drag-resize, which are also pointer-only today) — hide from AT rather than expose an
+  // affordance that can't actually be operated without a pointer.
+  circle.setAttribute('aria-hidden', 'true');
+  circle.style.setProperty('r', 'var(--fg-link-handle-radius, 4px)');
+  circle.style.setProperty('fill', 'var(--fg-link-handle-fill, #ffffff)');
+  circle.style.setProperty('stroke', 'var(--fg-link-handle-stroke, #6366f1)');
+  circle.style.setProperty('stroke-width', 'var(--fg-link-handle-stroke-width, 1.5px)');
+  return circle;
 }
 
 function buildTaskAriaLabel(
