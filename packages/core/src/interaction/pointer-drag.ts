@@ -70,9 +70,11 @@ export interface PointerGestureRecognizer<TState> {
    *  commit point. */
   onCommit(ctx: PointerGestureContext<TState>, dxPixels: number, event: PointerEvent): void;
   /** Called on cancellation: Escape, `pointercancel`, disposer-mid-drag, a garbage-coord
-   *  `pointerup`, or the gesture's own recognizer being unregistered mid-drag. Called
-   *  UNCONDITIONALLY on every cancellation path (even if the threshold was never exceeded)
-   *  — implementations must be idempotent/harmless no-ops in that case. */
+   *  `pointerup`, or the gesture's own recognizer being unregistered mid-drag. Called ONLY
+   *  for a gesture that had actually STARTED (exceeded `dragThresholdPx`, i.e. `onDragStart`
+   *  ran) — a pre-threshold cancel added no chrome, so `onCancel` is skipped rather than
+   *  clobbering host-owned state (e.g. `document.body.style.cursor`). Reverts the chrome/DOM
+   *  mutations made in `onDragStart`/`onMove`. */
   onCancel(ctx: PointerGestureContext<TState>): void;
 }
 
@@ -177,13 +179,16 @@ function createController(handle: SvgRendererHandle): PointerDragController {
     // would leak (and keep the detached DOM alive) until some later pointerup/cancel
     // happens to fire. Link them: wrap `destroy` so tearing down the renderer also disposes
     // every registered recognizer's open gesture + detaches the coordinator.
-    originalDestroy = handle.destroy;
+    // Close over a STABLE local `original` (captured at wrap time), not the mutable
+    // `originalDestroy` module var — `detach()` clears that var (so a LATER `ensureAttached()`
+    // on the same handle doesn't chain onto a stale reference), and if a third party has
+    // wrapped `handle.destroy` on top of ours and later calls through, re-reading the nulled
+    // var would throw. The local reference stays valid for the lifetime of this wrapper (C4).
+    const original = handle.destroy;
+    originalDestroy = original;
     wrappedDestroy = (): void => {
-      // Capture before `detach()` clears `originalDestroy` (it must be cleared so a LATER
-      // `ensureAttached()` on the same handle doesn't chain onto a stale reference).
-      const original = originalDestroy;
       detach();
-      original!.call(handle);
+      original.call(handle);
     };
     handle.destroy = wrappedDestroy;
   }
@@ -326,7 +331,11 @@ function createController(handle: SvgRendererHandle): PointerDragController {
     if (!s) return;
     teardownListeners(s);
     state = null;
-    s.recognizer.onCancel(s.ctx);
+    // Only revert chrome for a gesture that actually STARTED. A pre-threshold cancel (a touch
+    // that turns into a scroll → `pointercancel`, or Escape without moving) never ran
+    // `onDragStart`/`onMove`, so calling `onCancel` here would clobber host-owned state such
+    // as `document.body.style.cursor` that this gesture never set (regression B1).
+    if (s.exceededThreshold) s.recognizer.onCancel(s.ctx);
   }
 
   function teardownListeners(s: OpenGesture): void {

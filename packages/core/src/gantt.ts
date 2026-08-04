@@ -577,6 +577,20 @@ class Gantt implements GanttInstance {
   #commitResize(taskId: TaskId, newEnd: Temporal.ZonedDateTime): void {
     const task = this.#taskStore.get(taskId);
     if (!task) return; // task removed mid-resize (race) — nothing to commit, mirrors #commitDrag
+    const tz = this.#calendar.timezone;
+    const startNs = normalizeDate(task.start, tz).epochNanoseconds;
+    const endNs = normalizeDate(task.end, tz).epochNanoseconds;
+    const newEndNs = newEnd.epochNanoseconds;
+    // Guard the working-hours round-trip against a mid-gesture race and a no-op commit before
+    // reaching resizeTask (review A4/C3):
+    //  - newEnd at/before the task's CURRENT start (its start advanced past the gesture's
+    //    captured origin via a host/cascade mutation while the pointer was held) →
+    //    differenceInWorkingHours would be negative and resizeTask would THROW, and onCommit
+    //    runs inside the window `pointerup` handler with no catch. Skip.
+    //  - newEnd equal to the current end (day-delta snapped to 0) → a true no-op; recomputing
+    //    the duration would overwrite an explicit task.duration and emit a phantom
+    //    task:resized for a gesture that changed nothing. Skip.
+    if (newEndNs <= startNs || newEndNs === endNs) return;
     const newDuration = differenceInWorkingHours(task.start, newEnd, this.#calendar);
     // Reuses the EXISTING resizeTask() pipeline in full: validates newDuration >= 0/finite,
     // writes end+duration via #applyPatch (→ #diffAndEmit, which correctly fires

@@ -9,11 +9,13 @@
 //
 // Hit-zone (spec §2.2, Resolutions "Flag 1 → ACCEPT"): reads the already-rendered `x`/
 // `width` attributes off the task's `.fg-task__bar` element, plus ONE
-// `handle.svg.getBoundingClientRect().left` to translate into client-coordinate space — NOT
-// `layoutTaskBar`/`handle.getTimeScale()` alone (which don't know the renderer's private
-// `LABEL_COLUMN_WIDTH` offset baked into the rendered `x`) and NOT a per-bar
-// `getBoundingClientRect()` (jsdom has no layout engine — always returns an all-zero
-// `DOMRect`, making a per-bar hit-test untestable). No `render/` change.
+// `handle.svg.getBoundingClientRect()` (`.left` + `.width`, the latter divided by the
+// viewBox width to recover the client-vs-user-unit scale under a CSS-scaled <svg>) to
+// translate into client-coordinate space — NOT `layoutTaskBar`/`handle.getTimeScale()` alone
+// (which don't know the renderer's private `LABEL_COLUMN_WIDTH` offset baked into the
+// rendered `x`) and NOT a per-bar `getBoundingClientRect()` (jsdom has no layout engine —
+// always returns an all-zero `DOMRect`, making a per-bar hit-test untestable). No `render/`
+// change.
 //
 // Registers through the shared `pointer-drag.ts` coordinator with `RESIZE_PRIORITY <
 // MOVE_PRIORITY` so an edge-zone claim always wins over `drag-move.ts`'s whole-bar claim on
@@ -65,8 +67,16 @@ export function computeClampedResizedEnd(
   const start = normalizeDate(originalStart, timezone);
   const end = normalizeDate(originalEnd, timezone);
   const tentativeEnd = end.add({ days: deltaDays });
-  const minEnd = start.add({ days: 1 });
-  return getTemporal().ZonedDateTime.compare(tentativeEnd, minEnd) < 0 ? minEnd : tentativeEnd;
+  // Floor the end so a resize can't invert/over-shrink the bar — but NEVER expand a task that
+  // is naturally shorter than the 1-day snap unit (review A2). The minimum is the EARLIER of
+  // `start + 1 calendar day` and the task's own original end: for a multi-day task this is
+  // `start + 1 day` (day-snap granularity, resolution #3); for a sub-day task it is the
+  // original end, so a zero-day delta leaves it unchanged instead of ballooning it to a full
+  // day (which would then snap back on commit through the working-hours pipeline).
+  const compare = getTemporal().ZonedDateTime.compare;
+  const dayFloor = start.add({ days: 1 });
+  const minEnd = compare(end, dayFloor) < 0 ? end : dayFloor;
+  return compare(tentativeEnd, minEnd) < 0 ? minEnd : tentativeEnd;
 }
 
 interface ResizeState {
@@ -115,18 +125,26 @@ export function enableDragResize(
       const barX = Number(barEl.getAttribute('x'));
       const barWidth = Number(barEl.getAttribute('width'));
       if (!Number.isFinite(barX) || !Number.isFinite(barWidth)) return null;
-      // Narrow-bar fallback: a bar rendered thinner than the hit-zone never claims — move
-      // always wins for very thin/near-zero-width bars (never unmovable).
-      if (barWidth < edgeHitZonePx) return null;
 
-      // 0 under jsdom by construction (no layout engine) — the only real (non-jsdom-blank)
-      // `getBoundingClientRect()` call this design makes, used only to translate the
-      // already-known DOM-attribute-sourced `x`/`width` into client space.
-      const svgLeft = handle.svg.getBoundingClientRect().left;
-      const rightEdgeX = svgLeft + barX + barWidth;
-      // Defensive upper bound only: in production `closest()` already guarantees the
-      // pointerdown landed on `barEl`, so `event.clientX` is already within
-      // `[barX, barX + barWidth]` translated to screen space.
+      // `barX`/`barWidth` are SVG USER units (read off the rendered attributes). The renderer
+      // sets a `viewBox` (svg-renderer.ts), so under any host CSS that scales the <svg> (e.g.
+      // `width: 100%`, a constraining container, browser zoom) one user unit != one client px.
+      // Derive the horizontal scale from the rendered box width vs the viewBox width and
+      // translate the edge into client space before comparing against `event.clientX` (review
+      // E1/E2). jsdom has no layout engine (`getBoundingClientRect()` → all-zero), so the
+      // scale falls back to 1 — preserving the 1:1 behavior the DOM-attribute tests assume.
+      const svgRect = handle.svg.getBoundingClientRect();
+      const vbAttr = handle.svg.getAttribute('viewBox');
+      const vbWidth = vbAttr ? Number(vbAttr.split(/\s+/)[2]) : NaN;
+      const scaleX = svgRect.width > 0 && Number.isFinite(vbWidth) && vbWidth > 0 ? svgRect.width / vbWidth : 1;
+
+      // Narrow-bar fallback in CLIENT px (a bar thinner ON SCREEN than the hit-zone never
+      // claims — move always wins for very thin bars, never unmovable).
+      if (barWidth * scaleX < edgeHitZonePx) return null;
+
+      const rightEdgeX = svgRect.left + (barX + barWidth) * scaleX;
+      // Defensive bound only: in production `closest()` already guarantees the pointerdown
+      // landed on `barEl`, so `event.clientX` is already within the bar's client-space span.
       if (event.clientX < rightEdgeX - edgeHitZonePx || event.clientX > rightEdgeX + edgeHitZonePx) return null;
 
       return {

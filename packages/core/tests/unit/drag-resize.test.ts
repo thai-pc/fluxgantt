@@ -108,7 +108,7 @@ describe('computeClampedResizedEnd — day-snap floor at start + 1 calendar day 
     expect(end.offset).toBe('-04:00');
   });
 
-  it('property: the result is never before start + 1 calendar day, for any integer deltaDays', () => {
+  it('property: for a MULTI-day task the result is never before start + 1 calendar day, for any integer deltaDays', () => {
     fc.assert(
       fc.property(fc.integer({ min: -2000, max: 2000 }), (deltaDays) => {
         const end = computeClampedResizedEnd(ts, '2026-06-10T09:00', '2026-06-12T17:00', deltaDays);
@@ -116,6 +116,30 @@ describe('computeClampedResizedEnd — day-snap floor at start + 1 calendar day 
         expect(getTemporal().ZonedDateTime.compare(end, minEnd)).toBeGreaterThanOrEqual(0);
       }),
     );
+  });
+
+  // --- Review A2: sub-day tasks must NOT balloon to a full day -------------------------------
+  describe('sub-day task (original span < 1 calendar day) — floor is the original end, not start + 1 day', () => {
+    // start 09:00, end 17:00 same day ⇒ originalEnd (17:00) is earlier than start + 1 day
+    // (next-day 09:00), so the floor must be the original end. Weekday-independent (pure
+    // calendar `add`/compare, no working-day lookup).
+    const start = '2026-03-10T09:00';
+    const end = '2026-03-10T17:00';
+
+    it('deltaDays = 0 leaves the sub-day end unchanged (does NOT balloon to start + 1 day)', () => {
+      const result = computeClampedResizedEnd(ts, start, end, 0);
+      expect(result.equals(normalizeDate(end, cal.timezone))).toBe(true);
+    });
+
+    it('shrinking (negative delta) clamps to the original end, never expands past it', () => {
+      const result = computeClampedResizedEnd(ts, start, end, -5);
+      expect(result.equals(normalizeDate(end, cal.timezone))).toBe(true);
+    });
+
+    it('growing still works normally (delta added to the original end)', () => {
+      const result = computeClampedResizedEnd(ts, start, end, 2);
+      expect(result.toString()).toBe(normalizeDate(end, cal.timezone).add({ days: 2 }).toString());
+    });
   });
 });
 
@@ -456,6 +480,22 @@ describe('enableDragResize — DOM interaction', () => {
     expect(onResizing).toHaveBeenCalledTimes(callCountBeforeUp);
     expect(onTaskResized).toHaveBeenCalledTimes(1);
   });
+
+  // --- Review B1: a PRE-threshold cancel must not clobber host-owned body cursor -------------
+  it('pointercancel BEFORE the threshold does not reset document.body.style.cursor (regression B1)', () => {
+    const { handle, groupEl } = setup({ onTaskResized: vi.fn() });
+    const { x, width } = barGeometry(handle, 't1');
+    const rightEdgeX = x + width;
+
+    document.body.style.cursor = 'wait'; // host-owned chrome (e.g. a background load)
+    // pointerdown in the edge zone, then cancel WITHOUT ever moving (a touch that becomes a
+    // scroll fires pointercancel here). onDragStart never ran, so onCancel must be skipped.
+    dispatchPointer(groupEl, 'pointerdown', { pointerId: 1, clientX: rightEdgeX, clientY: 50, bubbles: true });
+    dispatchPointer(window, 'pointercancel', { pointerId: 1, clientX: rightEdgeX, clientY: 50 });
+
+    expect(document.body.style.cursor).toBe('wait'); // untouched — the gesture never started
+    document.body.style.cursor = ''; // clean up for the next test
+  });
 });
 
 // --- Coexistence with enableDragMove (registration order both ways) ------------------------
@@ -514,5 +554,85 @@ describe('enableDragResize + enableDragMove coexisting on the same handle (prior
     dispatchPointer(window, 'pointerup', { pointerId: 2, clientX: middleX + 48, clientY: 50 });
     expect(onTaskMoved).toHaveBeenCalledTimes(1);
     expect(onTaskResized).toHaveBeenCalledTimes(1); // still just the one from above
+  });
+});
+
+// --- Coordinator hardening (review C4 destroy-wrap, E1 viewBox scaling) --------------------
+
+describe('coordinator hardening', () => {
+  let container: HTMLElement;
+  let tasks: Task[];
+
+  beforeEach(() => {
+    container = document.createElement('div');
+    document.body.appendChild(container);
+    tasks = [task('t1', '2026-01-05T09:00', '2026-01-07T09:00')];
+  });
+
+  afterEach(() => {
+    container.remove();
+    vi.restoreAllMocks();
+  });
+
+  function barGeometry(handle: ReturnType<typeof createSvgRenderer>, taskId: string): { x: number; width: number } {
+    const groupEl = handle.svg.querySelector(`.fg-task[data-task-id="${taskId}"]`)!;
+    const barEl = groupEl.querySelector('.fg-task__bar')!;
+    return { x: Number(barEl.getAttribute('x')), width: Number(barEl.getAttribute('width')) };
+  }
+
+  it('third-party wraps handle.destroy AFTER enable, then both disposers run, then the outer destroy fires → no throw, real teardown still runs (C4)', () => {
+    const handle = createSvgRenderer(container, { tasks, dependencies: [] });
+    const disposeResize = enableDragResize(handle, () => tasks, { onTaskResized: vi.fn() });
+    const disposeMove = enableDragMove(handle, () => tasks, { onTaskMoved: vi.fn() });
+
+    // A plugin wraps destroy on top of the coordinator's wrap and captures OUR wrappedDestroy
+    // as its inner original.
+    const innerDestroy = handle.destroy;
+    let outerRan = false;
+    handle.destroy = (): void => {
+      outerRan = true;
+      innerDestroy();
+    };
+
+    // Both recognizers unregister → the coordinator detaches and nulls its `originalDestroy`
+    // module var. Because our wrap is no longer `handle.destroy` (the plugin's is), it is not
+    // restored — the plugin's wrapper still holds a reference to it.
+    disposeResize();
+    disposeMove();
+
+    // The plugin's later teardown calls through our (now-detached) wrappedDestroy. It must use
+    // the closure-captured original renderer destroy, not the nulled module var.
+    expect(() => handle.destroy()).not.toThrow();
+    expect(outerRan).toBe(true);
+    expect(handle.svg.isConnected).toBe(false); // the real renderer destroy actually ran
+  });
+
+  it('right-edge hit-zone honors viewBox scaling: claims at the SCALED edge, declines at the unscaled one (E1)', () => {
+    const handle = createSvgRenderer(container, { tasks, dependencies: [] });
+    const vbAttr = handle.svg.getAttribute('viewBox')!;
+    const vbWidth = Number(vbAttr.split(/\s+/)[2]);
+    const scale = 2;
+    // jsdom has no layout engine — stub a rendered box twice the viewBox width (host CSS
+    // scaled the <svg> to 2×). left = 0 keeps the arithmetic simple.
+    handle.svg.getBoundingClientRect = () =>
+      ({ left: 0, top: 0, width: vbWidth * scale, height: 100, right: vbWidth * scale, bottom: 100, x: 0, y: 0, toJSON() {} }) as DOMRect;
+
+    const { x, width } = barGeometry(handle, 't1'); // SVG user units
+    const onTaskResized = vi.fn();
+    enableDragResize(handle, () => tasks, { onTaskResized });
+    const groupEl = handle.svg.querySelector('.fg-task[data-task-id="t1"]') as SVGGElement;
+
+    // The UNSCALED right edge (x + width) is now far left of the true on-screen edge → decline.
+    dispatchPointer(groupEl, 'pointerdown', { pointerId: 1, clientX: x + width, clientY: 50, bubbles: true });
+    dispatchPointer(window, 'pointermove', { pointerId: 1, clientX: x + width + 48, clientY: 50 });
+    dispatchPointer(window, 'pointerup', { pointerId: 1, clientX: x + width + 48, clientY: 50 });
+    expect(onTaskResized).not.toHaveBeenCalled();
+
+    // The SCALED right edge is where the bar's right edge actually renders → claim.
+    const scaledEdge = (x + width) * scale;
+    dispatchPointer(groupEl, 'pointerdown', { pointerId: 2, clientX: scaledEdge, clientY: 50, bubbles: true });
+    dispatchPointer(window, 'pointermove', { pointerId: 2, clientX: scaledEdge + 48, clientY: 50 });
+    dispatchPointer(window, 'pointerup', { pointerId: 2, clientX: scaledEdge + 48, clientY: 50 });
+    expect(onTaskResized).toHaveBeenCalledTimes(1);
   });
 });

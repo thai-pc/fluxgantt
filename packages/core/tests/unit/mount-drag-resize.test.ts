@@ -199,4 +199,50 @@ describe('resize commit -> facade event wiring', () => {
     const after = gantt.getTask(toTaskId('t1'))!;
     expect(after.start).toBe(before.start);
   });
+
+  // --- Review C3: a no-op resize (day-delta snapped to 0) must not commit ---------------------
+  it('a sub-half-day nudge (past the 4px threshold, snaps to 0 days) is a true no-op: no task:resized, explicit duration untouched', () => {
+    // Explicit duration deliberately != the start/end span, so an accidental recompute would
+    // be observable.
+    const { gantt, groupEl } = mountWithTask({
+      tasks: [taskInput('t1', '2026-01-05T09:00', '2026-01-07T09:00', { duration: 99 })],
+    });
+    const resized = vi.fn();
+    gantt.on('task:resized', resized);
+    const { x, width } = barGeometry(container, 't1');
+    const rightEdgeX = x + width;
+
+    // 5px > 4px threshold ⇒ the gesture starts, but snapDeltaToDay(5, pixelsPerDay=24) rounds
+    // to 0 days ⇒ newEnd === originalEnd. #commitResize must skip (no recompute, no emit).
+    dispatchPointer(groupEl, 'pointerdown', { pointerId: 1, clientX: rightEdgeX, clientY: 50, bubbles: true });
+    dispatchPointer(window, 'pointermove', { pointerId: 1, clientX: rightEdgeX + 5, clientY: 50 });
+    dispatchPointer(window, 'pointerup', { pointerId: 1, clientX: rightEdgeX + 5, clientY: 50 });
+
+    expect(resized).not.toHaveBeenCalled();
+    expect(gantt.getTask(toTaskId('t1'))!.duration).toBe(99); // explicit duration preserved
+  });
+
+  // --- Review A4: task.start advancing past newEnd mid-gesture must not throw out of pointerup -
+  it('start advances past the dragged end mid-gesture (host mutation): commit is skipped, no throw', () => {
+    const { gantt, groupEl } = mountWithTask();
+    const resized = vi.fn();
+    gantt.on('task:resized', resized);
+    const { x, width } = barGeometry(container, 't1');
+    const rightEdgeX = x + width;
+
+    dispatchPointer(groupEl, 'pointerdown', { pointerId: 1, clientX: rightEdgeX, clientY: 50, bubbles: true });
+    dispatchPointer(window, 'pointermove', { pointerId: 1, clientX: rightEdgeX + 48, clientY: 50 }); // newEnd ≈ 01-09
+
+    // Host moves the task so its start (01-20) is now AFTER the gesture's captured/dragged end
+    // (01-09). Without the guard, differenceInWorkingHours(01-20, 01-09) < 0 → resizeTask
+    // throws, and onCommit runs inside the window pointerup handler with no catch.
+    gantt.moveTask(toTaskId('t1'), '2026-01-20T09:00');
+    resized.mockClear(); // ignore any resize the move itself may have implied
+
+    expect(() => {
+      dispatchPointer(window, 'pointerup', { pointerId: 1, clientX: rightEdgeX + 48, clientY: 50 });
+    }).not.toThrow();
+    expect(resized).not.toHaveBeenCalled(); // newEnd <= current start ⇒ commit skipped
+    expect(gantt.getTask(toTaskId('t1'))!.start.toString()).toContain('2026-01-20');
+  });
 });
