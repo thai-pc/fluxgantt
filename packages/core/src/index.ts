@@ -38,6 +38,8 @@ export type {
   ConstraintResolver,
   ConstraintResolverContext,
 } from './compute/index.js';
+export { computeCascade } from './compute/index.js';
+export type { CascadeResult, CascadeShift } from './compute/index.js';
 
 // Render layer (spec §5.1, §8) — SVG renderer public surface only. Layout-math
 // internals (`renderer-base.ts`: TimeScale/RowLayout/layoutRows/...) are NOT re-exported
@@ -92,4 +94,5 @@ export type {
   CriticalPathResult,
   ViewMode,
   Density,
+  SchedulingMode,
 } from './types.js';

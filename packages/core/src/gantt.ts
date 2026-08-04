@@ -9,14 +9,10 @@
 //
 // NO FRAMEWORK IMPORT — this file imports nothing outside `@fluxgantt/core`'s own tree.
 //
-// KNOWN GAP vs spec §7.2 (tracked, prerequisite before 1.0): `moveTask`/`resizeTask`/
-// `updateTask`/`removeTask` in this v1 facade affect ONLY the task(s) you named — dependent
-// tasks along FS/SS/FF/SF links are NOT automatically shifted ("cascade"), unlike what spec
-// §7.2 documents as the default. There is no `schedulingMode` config in v1 (plan Q2) — this
-// is a real behavior gap, not a configurable choice, until `compute/cascade.ts` exists.
-// Follow-up ticket: "compute cascade.ts + facade wiring." When it lands, it must ship
-// **opt-in** first (e.g. `schedulingMode: 'auto'`), not flip v1's current single-task-only
-// default silently.
+// CASCADE (spec-cascade.md): `moveTask`/`resizeTask`/`updateTask` (when start/end/duration
+// changes) and a drag-move commit optionally cascade dependent tasks along FS/SS/FF/SF (+lag)
+// via `computeCascade` — opt-in via `GanttConfig.schedulingMode: 'auto'`. Default remains
+// `'manual'` (= v1's original single-task-only behavior, unchanged) — see `#maybeCascade`.
 import type { Temporal } from '@js-temporal/polyfill';
 import { effect } from './signals.js';
 import { TaskStore, DependencyStore } from './store/index.js';
@@ -28,6 +24,7 @@ import {
   addWorkingHours,
 } from './compute/working-calendar.js';
 import { computeCriticalPath as computeCriticalPathFn } from './compute/critical-path.js';
+import { computeCascade } from './compute/cascade.js';
 import { getTemporal } from './internal/temporal.js';
 import { createSvgRenderer } from './render/svg-renderer.js';
 import type { SvgRendererHandle, SvgRendererInput, SvgRendererOptions } from './render/svg-renderer.js';
@@ -41,6 +38,7 @@ import type {
   Dependency,
   DependencyId,
   DependencyType,
+  SchedulingMode,
   Task,
   TaskId,
   ViewMode,
@@ -92,6 +90,13 @@ export interface GanttConfig {
    *  "any field changed" catch-all — v1 does NOT add a bus-level `task:updated` (Q3).
    *  `onDependencyChange`/`onSelectionChange` are intentionally excluded from v1. */
   readonly onTaskChange?: (task: Task, prev: Task) => void;
+
+  /** Default `'manual'` (= v1's current single-task-only behavior, unchanged). `'auto'`
+   *  makes `moveTask`/`resizeTask`/`updateTask` (when start/end/duration changes) and a
+   *  drag-move commit push dependent tasks later along FS/SS/FF/SF (+lag), per
+   *  `computeCascade` (spec-cascade.md §4.1). Immutable for the life of the instance in
+   *  v1 — no `setSchedulingMode()`, matching `calendar`'s own posture. */
+  readonly schedulingMode?: SchedulingMode;
 }
 
 /** Shape accepted for an initial dependency in `GanttConfig.dependencies` — mirrors what
@@ -229,7 +234,11 @@ class Gantt implements GanttInstance {
   updateTask(id: TaskId, patch: TaskPatch): Task {
     this.#assertAlive('updateTask');
     this.#requireTask(id, 'updateTask');
-    return this.#applyPatch(id, patch);
+    const next = this.#applyPatch(id, patch);
+    if (patch.start !== undefined || patch.end !== undefined || patch.duration !== undefined) {
+      this.#maybeCascade(id);
+    }
+    return next;
   }
 
   moveTask(id: TaskId, newStart: DateInput): Task {
@@ -247,7 +256,9 @@ class Gantt implements GanttInstance {
     // span, matches drag-move's own "same delta on both ends" contract, just using an
     // exact ns delta here instead of a snapped day count (moveTask is a direct API call,
     // not a pixel-drag — no day-snapping to do).
-    return this.#applyPatch(id, { start: nextStart, end: nextEnd });
+    const next = this.#applyPatch(id, { start: nextStart, end: nextEnd });
+    this.#maybeCascade(id);
+    return next;
   }
 
   resizeTask(id: TaskId, newDuration: number): Task {
@@ -263,7 +274,9 @@ class Gantt implements GanttInstance {
     // leave `end` stale → the bar wouldn't move and the schedule/visual would disagree.
     const tz = this.#calendar.timezone;
     const newEnd = addWorkingHours(normalizeDate(prev.start, tz), newDuration, this.#calendar);
-    return this.#applyPatch(id, { end: newEnd, duration: newDuration });
+    const next = this.#applyPatch(id, { end: newEnd, duration: newDuration });
+    this.#maybeCascade(id);
+    return next;
   }
 
   setProgress(id: TaskId, progress: number): Task {
@@ -440,6 +453,25 @@ class Gantt implements GanttInstance {
     return next;
   }
 
+  /**
+   * Apply one cascade shift. A cascade shift is DEFINITIONALLY a pure move — `computeCascade`
+   * preserves the task's working-hours duration (`end = addWorkingHours(start, duration)`) and
+   * never touches progress — so it must emit ONLY `task:moved`, never `task:resized`. It can't
+   * go through `#diffAndEmit`, whose resize detection is INSTANT-span based (end − start ns):
+   * a shift whose new position straddles a different number of weekends/holidays than the old
+   * one changes the instant span while preserving the working-hours duration, which would make
+   * `#diffAndEmit` fire a spurious `task:resized` on what is logically a move (review finding).
+   * `onTaskChange` still fires (it is a change).
+   */
+  #applyCascadeShift(id: TaskId, start: DateInput, end: DateInput): void {
+    const prev = this.#taskStore.get(id)!; // cascade only names tasks that exist
+    const next = this.#taskStore.update(id, { start, end });
+    if (!this.#sameInstant(prev.start, next.start, this.#calendar.timezone)) {
+      this.#emit('task:moved', next, prev.start);
+    }
+    this.#config.onTaskChange?.(next, prev);
+  }
+
   #diffAndEmit(prev: Task, next: Task): void {
     const tz = this.#calendar.timezone;
     if (!this.#sameInstant(prev.start, next.start, tz)) {
@@ -525,6 +557,38 @@ class Gantt implements GanttInstance {
     // always shift by the identical instant delta (drag-move's own contract), so the instant
     // span (end − start) is preserved → #diffAndEmit never fires task:resized from a drag.
     this.#applyPatch(taskId, { start: newStart, end: newEnd });
+    // Drag is the primary interactive path a cascade must cover (spec-cascade.md §9) —
+    // wired the same way as moveTask/resizeTask, so a dragged move cascades exactly like a
+    // programmatic one.
+    this.#maybeCascade(taskId);
+  }
+
+  /**
+   * No-op unless `schedulingMode: 'auto'` (default `'manual'` — see `GanttConfig`, spec-
+   * cascade.md §4.1/§4.3). Recomputes `computeCascade` over the CURRENT store state (which
+   * already reflects `changedId`'s new position, since the caller always applies the direct
+   * mutation via `#applyPatch` BEFORE calling this) and applies each resulting shift through
+   * `#applyCascadeShift`, which emits `task:moved(task, prevStart)` for every shifted task (in
+   * the topological order `computeCascade` resolved) — but NOT `task:resized`, since a cascade
+   * shift preserves the task's working-hours duration (a pure move; see `#applyCascadeShift`).
+   * `computeCascade` already resolves the full transitive closure in one pass, so applying each
+   * shift needs no re-entrancy guard.
+   *
+   * May throw `CyclicDependencyError` (only reachable via `DependencyStore.link(...,
+   * { allowCycle: true })` used directly — `linkTasks` already rejects cycles at
+   * edge-creation time) — propagated, not swallowed, same explicit-call posture as
+   * `computeCriticalPath()`. The direct mutation that triggered this call has already
+   * committed and emitted its own event by the time such a throw happens (partial
+   * application — the mover is never rolled back).
+   */
+  #maybeCascade(changedId: TaskId): void {
+    if (this.#config.schedulingMode !== 'auto') return;
+    const result = computeCascade(this.#taskStore.all(), this.#dependencyStore.all(), this.#calendar, [changedId]);
+    for (const shift of result.shifts) {
+      // Cascade shifts are pure moves (duration preserved) → emit only `task:moved`, never a
+      // spurious `task:resized` from an instant-span change across weekends (review finding).
+      this.#applyCascadeShift(shift.taskId, shift.start, shift.end);
+    }
   }
 
   #teardownMount(): void {

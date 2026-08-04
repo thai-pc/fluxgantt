@@ -160,6 +160,34 @@ describe('drag commit -> facade event wiring', () => {
     expect(after.end.toString()).toContain('2026-01-09');
   });
 
+  it("schedulingMode: 'auto' — a drag-move commit cascades: the dependent successor's task:moved fires (after the mover's own), and its stored start actually shifted (spec-cascade.md §9)", () => {
+    const { gantt, groupEl } = mountWithTask({
+      schedulingMode: 'auto',
+      tasks: [
+        taskInput('t1', '2026-01-05T09:00', '2026-01-07T09:00'),
+        // t2 starts right after t1's original end — comfortably satisfied pre-drag, but the
+        // drag below (t1 +2 days) pushes t1's end past t2's current start, violating the FS
+        // link and forcing t2 to cascade.
+        taskInput('t2', '2026-01-07T10:00', '2026-01-08T10:00'),
+      ],
+      dependencies: [{ from: toTaskId('t1'), to: toTaskId('t2'), type: 'FS' }],
+    });
+    const moved = vi.fn();
+    gantt.on('task:moved', moved);
+    const beforeT2 = gantt.getTask(toTaskId('t2'))!;
+
+    dispatchPointer(groupEl, 'pointerdown', { pointerId: 1, clientX: 100, clientY: 50, bubbles: true });
+    dispatchPointer(window, 'pointermove', { pointerId: 1, clientX: 148, clientY: 50 }); // +2 days
+    dispatchPointer(window, 'pointerup', { pointerId: 1, clientX: 148, clientY: 50 });
+
+    const movedIds = moved.mock.calls.map((c) => (c[0] as Task).id);
+    expect(movedIds[0]).toBe(toTaskId('t1')); // mover's own event fires first
+    expect(movedIds).toContain(toTaskId('t2')); // then the cascaded successor
+
+    const afterT2 = gantt.getTask(toTaskId('t2'))!;
+    expect(afterT2.start).not.toBe(beforeT2.start);
+  });
+
   it('readOnly: true — a synthetic drag never fires task:moved and never mutates the task', () => {
     const { gantt, groupEl } = mountWithTask({ readOnly: true });
     const moved = vi.fn();

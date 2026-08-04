@@ -237,6 +237,164 @@ describe('updateTask / moveTask / resizeTask / setProgress — split events (Q3)
 
 });
 
+describe('schedulingMode — cascade wiring (spec-cascade.md §4)', () => {
+  it("default (schedulingMode unset) + moveTask on a task with an FS successor — successor's task:moved is NEVER fired, getTask(successor) unchanged (v1 behavior preserved)", () => {
+    const gantt = createGantt({
+      tasks: [
+        taskInput('a', '2026-01-05T09:00', '2026-01-05T17:00', { duration: 8 }),
+        taskInput('b', '2026-01-06T09:00', '2026-01-06T17:00', { duration: 8 }),
+      ],
+      dependencies: [{ from: toTaskId('a'), to: toTaskId('b'), type: 'FS' }],
+    });
+    const before = gantt.getTask(toTaskId('b'))!;
+    const moved = vi.fn();
+    gantt.on('task:moved', moved);
+
+    gantt.moveTask(toTaskId('a'), '2026-01-08T09:00'); // pushes A well past B's current start
+
+    expect(moved).toHaveBeenCalledTimes(1); // only the mover itself
+    expect(moved).toHaveBeenCalledWith(expect.objectContaining({ id: toTaskId('a') }), expect.anything());
+    expect(gantt.getTask(toTaskId('b'))).toEqual(before);
+  });
+
+  it("explicit schedulingMode: 'manual' + resizeTask on a task with a successor — no cascade (same as default)", () => {
+    const gantt = createGantt({
+      schedulingMode: 'manual',
+      tasks: [
+        taskInput('a', '2026-01-05T09:00', '2026-01-05T13:00', { duration: 4 }),
+        taskInput('b', '2026-01-05T13:00', '2026-01-05T17:00', { duration: 4 }),
+      ],
+      dependencies: [{ from: toTaskId('a'), to: toTaskId('b'), type: 'FS' }],
+    });
+    const before = gantt.getTask(toTaskId('b'))!;
+    gantt.resizeTask(toTaskId('a'), 40); // massively violates B's FS relationship
+    expect(gantt.getTask(toTaskId('b'))).toEqual(before);
+  });
+
+  it("schedulingMode: 'auto' + moveTask on a task with an FS successor — the successor's task:moved fires with the correct new start, AFTER the mover's own task:moved", () => {
+    const gantt = createGantt({
+      schedulingMode: 'auto',
+      tasks: [
+        taskInput('a', '2026-01-05T09:00', '2026-01-05T17:00', { duration: 8 }),
+        taskInput('b', '2026-01-06T09:00', '2026-01-06T17:00', { duration: 8 }),
+      ],
+      dependencies: [{ from: toTaskId('a'), to: toTaskId('b'), type: 'FS' }],
+    });
+
+    const order: TaskId[] = [];
+    gantt.on('task:moved', (task) => order.push(task.id));
+
+    gantt.moveTask(toTaskId('a'), '2026-01-08T09:00'); // A now EF Thu 17:00 — violates B's FS(0)
+
+    expect(order).toEqual([toTaskId('a'), toTaskId('b')]);
+    const b = gantt.getTask(toTaskId('b'))!;
+    expect(normalizeDate(b.start, 'UTC').toString()).toContain('2026-01-08T17:00');
+  });
+
+  it("schedulingMode: 'auto' — a cascaded successor pushed ACROSS A WEEKEND fires ONLY task:moved, never a spurious task:resized (review finding)", () => {
+    // B (FS successor of A) has a working-hours duration whose instant span will change once
+    // it's pushed to straddle the weekend (working duration preserved, instant span not) —
+    // #diffAndEmit's span-based resize detection would otherwise fire a phantom task:resized.
+    const gantt = createGantt({
+      schedulingMode: 'auto',
+      tasks: [
+        // A: Mon 2026-01-05. B: Tue 01-06 09:00 → Tue 17:00 (8 working hours, no weekend).
+        taskInput('a', '2026-01-05T09:00', '2026-01-05T17:00', { duration: 8 }),
+        taskInput('b', '2026-01-06T09:00', '2026-01-06T17:00', { duration: 8 }),
+      ],
+      dependencies: [{ from: toTaskId('a'), to: toTaskId('b'), type: 'FS' }],
+    });
+    const moved = vi.fn();
+    const resized = vi.fn();
+    gantt.on('task:moved', moved);
+    gantt.on('task:resized', resized);
+
+    // Move A to Fri 01-09 → B must push to start Fri 17:00-ish, its 8 working hours now
+    // spilling across the weekend into Mon — instant span grows, working duration preserved.
+    gantt.moveTask(toTaskId('a'), '2026-01-09T09:00');
+
+    const movedIds = moved.mock.calls.map((c) => (c[0] as Task).id);
+    expect(movedIds).toContain(toTaskId('b')); // B moved
+    // B's duration did not change → no task:resized for B (nor for A, a pure moveTask).
+    const resizedIds = resized.mock.calls.map((c) => (c[0] as Task).id);
+    expect(resizedIds).not.toContain(toTaskId('b'));
+    expect(resized).not.toHaveBeenCalled();
+  });
+
+  it("schedulingMode: 'auto' + resizeTask — an FF successor cascades too", () => {
+    const gantt = createGantt({
+      schedulingMode: 'auto',
+      tasks: [
+        taskInput('a', '2026-01-05T09:00', '2026-01-05T13:00', { duration: 4 }),
+        taskInput('b', '2026-01-05T09:00', '2026-01-05T12:00', { duration: 3 }), // FF: b.EF >= a.EF
+      ],
+      dependencies: [{ from: toTaskId('a'), to: toTaskId('b'), type: 'FF' }],
+    });
+
+    const moved = vi.fn();
+    gantt.on('task:moved', moved);
+    gantt.resizeTask(toTaskId('a'), 20); // a.EF now far later — violates FF(b)
+
+    const calledIds = moved.mock.calls.map((c) => (c[0] as Task).id);
+    expect(calledIds).toContain(toTaskId('b'));
+  });
+
+  it("schedulingMode: 'auto' + updateTask with a progress-only patch — no cascade (progress doesn't touch start/end/duration)", () => {
+    const gantt = createGantt({
+      schedulingMode: 'auto',
+      tasks: [
+        taskInput('a', '2026-01-05T09:00', '2026-01-05T17:00', { duration: 8, progress: 0 }),
+        taskInput('b', '2026-01-06T09:00', '2026-01-06T17:00', { duration: 8 }),
+      ],
+      dependencies: [{ from: toTaskId('a'), to: toTaskId('b'), type: 'FS' }],
+    });
+    const beforeB = gantt.getTask(toTaskId('b'))!;
+    const moved = vi.fn();
+    gantt.on('task:moved', moved);
+
+    gantt.updateTask(toTaskId('a'), { progress: 0.5 });
+
+    expect(moved).not.toHaveBeenCalled();
+    expect(gantt.getTask(toTaskId('b'))).toEqual(beforeB);
+  });
+
+  it("schedulingMode: 'auto' + updateTask with a start-changing patch — cascades, same as moveTask", () => {
+    const gantt = createGantt({
+      schedulingMode: 'auto',
+      tasks: [
+        taskInput('a', '2026-01-05T09:00', '2026-01-05T17:00', { duration: 8 }),
+        taskInput('b', '2026-01-06T09:00', '2026-01-06T17:00', { duration: 8 }),
+      ],
+      dependencies: [{ from: toTaskId('a'), to: toTaskId('b'), type: 'FS' }],
+    });
+    const moved = vi.fn();
+    gantt.on('task:moved', moved);
+
+    gantt.updateTask(toTaskId('a'), { start: '2026-01-08T09:00', end: '2026-01-08T17:00' });
+
+    const calledIds = moved.mock.calls.map((c) => (c[0] as Task).id);
+    expect(calledIds).toEqual([toTaskId('a'), toTaskId('b')]);
+  });
+
+  it("schedulingMode: 'auto' + linkTasks — a newly created link that already conflicts with the tasks' current positions is NOT auto-fixed (documented gap, spec-cascade.md §4.2)", () => {
+    const gantt = createGantt({
+      schedulingMode: 'auto',
+      tasks: [
+        taskInput('a', '2026-01-08T09:00', '2026-01-08T17:00', { duration: 8 }), // later than b
+        taskInput('b', '2026-01-05T09:00', '2026-01-05T17:00', { duration: 8 }), // already violates FS once linked
+      ],
+    });
+    const moved = vi.fn();
+    gantt.on('task:moved', moved);
+    const beforeB = gantt.getTask(toTaskId('b'))!;
+
+    gantt.linkTasks(toTaskId('a'), toTaskId('b'), 'FS');
+
+    expect(moved).not.toHaveBeenCalled();
+    expect(gantt.getTask(toTaskId('b'))).toEqual(beforeB);
+  });
+});
+
 describe('moveTask — span preservation (fast-check)', () => {
   const timezones = ['UTC', 'America/New_York', 'Asia/Ho_Chi_Minh'];
 
