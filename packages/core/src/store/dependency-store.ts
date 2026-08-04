@@ -15,6 +15,17 @@ export interface LinkOptions {
   allowCycle?: boolean;
 }
 
+/** Thrown by {@link DependencyStore.link} for the three EXPECTED validation rejections —
+ *  self-link, duplicate pair, cycle. A distinct type (not a bare `Error`) so callers that
+ *  intentionally tolerate a rejected link (e.g. drag-create-dependency's silent revert) can
+ *  catch ONLY this and let unrelated/programming errors propagate instead of swallowing them. */
+export class DependencyLinkError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'DependencyLinkError';
+  }
+}
+
 const newDependencyId = (): DependencyId => toDependencyId(`dep-${globalThis.crypto.randomUUID()}`);
 
 export class DependencyStore {
@@ -50,13 +61,13 @@ export class DependencyStore {
     options: LinkOptions = {},
   ): Dependency {
     if (from === to) {
-      throw new Error(`DependencyStore.link: cannot self-link task ${from}`);
+      throw new DependencyLinkError(`DependencyStore.link: cannot self-link task ${from}`);
     }
     if (this.#findByPair(from, to)) {
-      throw new Error(`DependencyStore.link: link ${from} → ${to} already exists`);
+      throw new DependencyLinkError(`DependencyStore.link: link ${from} → ${to} already exists`);
     }
     if (!options.allowCycle && this.#canReach(to, from)) {
-      throw new Error(`DependencyStore.link: link ${from} → ${to} would create a cycle`);
+      throw new DependencyLinkError(`DependencyStore.link: link ${from} → ${to} would create a cycle`);
     }
     const dep: Dependency = { id: newDependencyId(), from, to, type, lag: options.lag ?? 0 };
     this.#deps.set(dep.id, dep);

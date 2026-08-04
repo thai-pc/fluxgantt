@@ -279,9 +279,15 @@ function createController(handle: SvgRendererHandle): PointerDragController {
     }
 
     const dxRaw = event.clientX - s.ctx.startClientX;
+    const dyRaw = event.clientY - s.ctx.startClientY;
 
     if (!s.exceededThreshold) {
-      if (Math.abs(dxRaw) < s.recognizer.dragThresholdPx) return; // potential click, do nothing yet
+      // RADIAL threshold (both axes): the horizontal-only `Math.abs(dxRaw)` gate never fired
+      // for a purely VERTICAL gesture — which is the natural motion for drag-create-dependency
+      // (link a task to the one directly below it, same column, dx≈0). Euclidean distance
+      // starts the gesture regardless of direction; horizontal gestures (move/resize) still
+      // cross it exactly as before, and a stationary press still can't start one.
+      if (Math.hypot(dxRaw, dyRaw) < s.recognizer.dragThresholdPx) return; // potential click, do nothing yet
       s.exceededThreshold = true;
       // Block text-selection while dragging with a mouse — only once this is confirmed a
       // drag. Unconditional, coordinator-owned (not per-recognizer).

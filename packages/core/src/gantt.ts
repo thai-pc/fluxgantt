@@ -15,7 +15,7 @@
 // `'manual'` (= v1's original single-task-only behavior, unchanged) — see `#maybeCascade`.
 import type { Temporal } from '@js-temporal/polyfill';
 import { effect } from './signals.js';
-import { TaskStore, DependencyStore } from './store/index.js';
+import { TaskStore, DependencyStore, DependencyLinkError } from './store/index.js';
 import type { TaskInput, TaskPatch } from './store/index.js';
 import {
   DEFAULT_CALENDAR,
@@ -30,6 +30,7 @@ import { createSvgRenderer } from './render/svg-renderer.js';
 import type { SvgRendererHandle, SvgRendererInput, SvgRendererOptions } from './render/svg-renderer.js';
 import { enableDragMove } from './interaction/drag-move.js';
 import { enableDragResize } from './interaction/drag-resize.js';
+import { enableDragCreateDep } from './interaction/drag-create-dep.js';
 import { exportJson as exportJsonFn, exportCsv as exportCsvFn } from './io/index.js';
 import type { ExportBundle, ExportCsvOptions, ExportJsonOptions } from './io/index.js';
 import type {
@@ -178,6 +179,7 @@ interface MountState {
   readonly rendererHandle: SvgRendererHandle;
   readonly dragMoveDispose: () => void;
   readonly dragResizeDispose: () => void;
+  readonly dragCreateDepDispose: () => void;
   readonly disposeEffect: () => void;
 }
 
@@ -420,20 +422,25 @@ class Gantt implements GanttInstance {
 
     let dragMoveDispose: () => void = () => {};
     let dragResizeDispose: () => void = () => {};
+    let dragCreateDepDispose: () => void = () => {};
     if (!this.#config.readOnly) {
       // Registration order is irrelevant to priority (pointer-drag.ts uses an explicit
-      // numeric priority, not call order) — both wire through the SAME coordinator on
-      // `rendererHandle`, so an edge-zone claim always wins over a whole-bar claim.
+      // numeric priority, not call order) — all three wire through the SAME coordinator on
+      // `rendererHandle`, so a handle claim always wins over an edge-zone claim, which
+      // always wins over a whole-bar claim.
       dragResizeDispose = enableDragResize(rendererHandle, () => this.#taskStore.all(), {
         onTaskResized: (taskId, newEnd) => this.#commitResize(taskId, newEnd),
       });
       dragMoveDispose = enableDragMove(rendererHandle, () => this.#taskStore.all(), {
         onTaskMoved: (taskId, newStart, newEnd) => this.#commitDrag(taskId, newStart, newEnd),
       });
+      dragCreateDepDispose = enableDragCreateDep(rendererHandle, () => this.#taskStore.all(), {
+        onDependencyCreated: (fromTaskId, toTaskId) => this.#commitCreateDep(fromTaskId, toTaskId),
+      });
     }
     const disposeEffect = effect(() => this.#renderNow(rendererHandle));
 
-    this.#mount = { rendererHandle, dragMoveDispose, dragResizeDispose, disposeEffect };
+    this.#mount = { rendererHandle, dragMoveDispose, dragResizeDispose, dragCreateDepDispose, disposeEffect };
   }
 
   unmount(): void {
@@ -601,6 +608,34 @@ class Gantt implements GanttInstance {
   }
 
   /**
+   * Commit point for a drag-created dependency (spec-drag-create-dependency.md §2, decision
+   * 2 — silent revert). Reuses the PUBLIC `linkTasks()` in full (same validation, same
+   * `dependency:added` event on success) — no bypass of `DependencyStore.link`'s existing
+   * self-link/duplicate-pair/cycle checks.
+   *
+   * MUST catch: `pointer-drag.ts`'s `onPointerUp` calls `recognizer.onCommit(...)` with NO
+   * surrounding try/catch (unlike `#emit`, which wraps each listener). A `linkTasks()` throw
+   * reaching this call site uncaught would escape into the `window` `pointerup` listener,
+   * i.e. out of the whole gesture pipeline — visibly breaking the page. This is the ONE
+   * place in the whole feature that MUST NOT let `DependencyStore.link`'s throw propagate.
+   */
+  #commitCreateDep(fromTaskId: TaskId, toTaskId: TaskId): void {
+    if (!this.#taskStore.has(fromTaskId) || !this.#taskStore.has(toTaskId)) return; // race: a task removed mid-drag
+    try {
+      this.linkTasks(fromTaskId, toTaskId, 'FS'); // emits dependency:added on success
+    } catch (err) {
+      // Swallow ONLY the expected validation rejections — self-link (defense-in-depth; the
+      // recognizer already filters this out) / duplicate-pair / cycle, all raised as
+      // DependencyLinkError. Silent revert (decision 2): no event, no rethrow, no new
+      // dependency:rejected event in v1. A NON-validation throw (a real bug, e.g. a
+      // #assertAlive race or a future store regression) is rethrown rather than hidden — a
+      // bare `catch {}` here would mask genuine defects as ordinary rejected drops.
+      if (err instanceof DependencyLinkError) return;
+      throw err;
+    }
+  }
+
+  /**
    * No-op unless `schedulingMode: 'auto'` (default `'manual'` — see `GanttConfig`, spec-
    * cascade.md §4.1/§4.3). Recomputes `computeCascade` over the CURRENT store state (which
    * already reflects `changedId`'s new position, since the caller always applies the direct
@@ -633,12 +668,13 @@ class Gantt implements GanttInstance {
     // Order matters (the shared pointer-drag coordinator wraps handle.destroy):
     // 1. Stop the reactive effect FIRST — no render call may start once teardown begins.
     m.disposeEffect();
-    // 2. Unregister BOTH recognizers from the shared coordinator explicitly via their
-    //    returned disposers — order between these two doesn't matter; the coordinator only
-    //    detaches its pointerdown listener + unwraps handle.destroy once BOTH have
+    // 2. Unregister ALL THREE recognizers from the shared coordinator explicitly via their
+    //    returned disposers — order among them doesn't matter; the coordinator only
+    //    detaches its pointerdown listener + unwraps handle.destroy once ALL have
     //    unregistered (refcounted, see pointer-drag.ts).
     m.dragResizeDispose();
     m.dragMoveDispose();
+    m.dragCreateDepDispose();
     // 3. Remove the SVG.
     m.rendererHandle.destroy();
     this.#mount = undefined;
@@ -739,6 +775,10 @@ class Gantt implements GanttInstance {
       ...(this.#config.viewMode !== undefined ? { viewMode: this.#config.viewMode } : {}),
       ...(this.#config.density !== undefined ? { density: this.#config.density } : {}),
       ...(this.#config.locale !== undefined ? { locale: this.#config.locale } : {}),
+      // A readOnly chart must not render the connector handles — they are an interactive
+      // affordance (hover-revealed, always-on for touch) whose recognizer is NOT wired when
+      // readOnly, so rendering them would be a misleading dead control.
+      showLinkHandles: !this.#config.readOnly,
     };
     return this.#taskStore.size === 0 ? { ...opts, timeRange: this.#emptyStateTimeRange() } : opts;
   }
