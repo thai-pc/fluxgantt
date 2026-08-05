@@ -1,0 +1,45 @@
+/* Optional page chrome only. The chart itself needs ZERO host CSS: @fluxgantt/core's SVG
+   renderer bakes every visual property inline with a --fg-* custom-property fallback, so it
+   renders correctly with none of the rules below. These style the surrounding page, not the
+   chart. The --fg-* values mirror the design tokens in apps/docs/fluxgantt-spec.md §8.2. */
+:root {
+  --fg-font-sans: 'Inter', 'Geist', system-ui, sans-serif;
+  --fg-task-default: #6366f1;
+  --fg-bg: #fafafa;
+  --fg-fg: #18181b;
+  --fg-fg-muted: #71717a;
+}
+
+body {
+  margin: 0;
+  font-family: var(--fg-font-sans);
+  background: var(--fg-bg);
+  color: var(--fg-fg);
+}
+
+main {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 2rem 1.5rem;
+}
+
+h1 {
+  font-size: 1.25rem;
+}
+
+h1 code {
+  color: var(--fg-task-default);
+}
+
+p {
+  color: var(--fg-fg-muted);
+  font-size: 0.9rem;
+}
+
+#gantt {
+  height: 420px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #fff;
+  overflow: auto;
+}

@@ -1,0 +1,73 @@
+# Critical Path
+
+The critical path is the chain of tasks with zero slack — delay any of them and the whole
+project finishes later. FluxGantt computes it with the classic CPM (Critical Path Method):
+topological sort → forward pass (early start/finish) → backward pass (late start/finish) →
+slack. It honors dependency type, lag/lead, and the working calendar.
+
+## Computing it
+
+```ts
+const result = gantt.computeCriticalPath(); // CriticalPathResult
+```
+
+`computeCriticalPath()` throws if there are no tasks, and propagates a `CyclicDependencyError`
+if the graph somehow contains a cycle (normal `linkTasks` usage can't create one — see
+[Dependencies](/docs/concepts/dependencies)). Calling it also emits `critical-path:computed`
+with the critical task ids.
+
+## `CriticalPathResult`
+
+```ts
+interface CriticalPathResult {
+  readonly schedule: ReadonlyMap<TaskId, TaskSchedule>;
+  readonly criticalTaskIds: readonly TaskId[]; // in input-task order
+  readonly projectEnd: Temporal.ZonedDateTime;
+}
+```
+
+Each `TaskSchedule` carries the computed timing for one task:
+
+```ts
+interface TaskSchedule {
+  readonly taskId: TaskId;
+  readonly earlyStart: Temporal.ZonedDateTime;
+  readonly earlyFinish: Temporal.ZonedDateTime;
+  readonly lateStart: Temporal.ZonedDateTime;
+  readonly lateFinish: Temporal.ZonedDateTime;
+  readonly slackHours: number;   // working hours, ≥ 0
+  readonly isCritical: boolean;  // true when slack ≈ 0
+}
+```
+
+Example:
+
+```ts
+const { criticalTaskIds, projectEnd, schedule } = gantt.computeCriticalPath();
+
+console.log('project ends:', projectEnd.toString());
+for (const id of criticalTaskIds) {
+  console.log('critical:', gantt.getTask(id)?.name);
+}
+console.log('slack on build:', schedule.get(toTaskId('build'))?.slackHours);
+```
+
+## The `critical-path:computed` event
+
+When mounted, FluxGantt recomputes the critical path reactively as tasks/dependencies change,
+and emits `critical-path:computed` **only when the critical set actually changes** — not on
+every mutation:
+
+```ts
+gantt.on('critical-path:computed', (criticalTaskIds) => {
+  console.log('critical tasks:', criticalTaskIds.length);
+});
+```
+
+## Distinguishable without color
+
+Critical bars are rendered with a **dashed outline** in addition to the critical-path red
+(`--fg-task-critical`, `#ef4444`) — not color alone. That means the critical path stays
+distinguishable under color-blindness and in grayscale print, satisfying WCAG's
+"don't rely on color" guidance. You can tune the dash via the `--fg-task-critical-dash` custom
+property; see [Theming](/docs/theming).

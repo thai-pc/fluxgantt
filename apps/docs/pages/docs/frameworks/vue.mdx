@@ -1,0 +1,126 @@
+# Vue
+
+`@fluxgantt/vue` provides a `<FluxGantt>` Vue 3 component and a `useFluxGantt` composable. This
+is the code from
+[`examples/vue-vite-demo`](https://github.com/thai-pc/fluxgantt/tree/master/examples/vue-vite-demo).
+
+## `<FluxGantt>`
+
+```vue
+<script setup lang="ts">
+import { FluxGantt } from '@fluxgantt/vue';
+import { toTaskId } from '@fluxgantt/core';
+import type { Task, TaskInput, DependencyInput } from '@fluxgantt/vue';
+
+const tasks: TaskInput[] = [
+  { id: toTaskId('design'), name: 'Design', start: '2026-08-03', end: '2026-08-05', progress: 1, type: 'task' },
+  { id: toTaskId('build'), name: 'Build', start: '2026-08-05', end: '2026-08-10', progress: 0.6, type: 'task' },
+  { id: toTaskId('review'), name: 'Review', start: '2026-08-10', end: '2026-08-12', progress: 0, type: 'task' },
+];
+
+const dependencies: DependencyInput[] = [
+  { from: toTaskId('design'), to: toTaskId('build'), type: 'FS' },
+  { from: toTaskId('build'), to: toTaskId('review'), type: 'FS' },
+];
+
+// The template emit surfaces `prevStart` as `unknown` (Vue widens emit payload types).
+function onTaskMoved(task: Task, prevStart: unknown) {
+  console.log(`${task.name} moved from ${prevStart}`);
+}
+</script>
+
+<template>
+  <FluxGantt
+    :tasks="tasks"
+    :dependencies="dependencies"
+    style="height: 420px"
+    @task-moved="onTaskMoved"
+  />
+</template>
+```
+
+## Props
+
+`FluxGanttProps` mirrors the engine's `GanttConfig` one-to-one: `tasks`, `dependencies`,
+`calendar`, `viewMode`, `density`, `locale`, `readOnly`, `schedulingMode`, and the
+`onTaskChange` catch-all. In a template you bind them kebab- or camelCase (`:tasks`,
+`:view-mode`).
+
+Like React, these are **construction-time only** (read once). To change `viewMode` after mount,
+force a remount with `:key`:
+
+```vue
+<FluxGantt :key="viewMode" :view-mode="viewMode" :tasks="tasks" />
+```
+
+### `class` / `style`
+
+`class` and `style` are **not** declared props — Vue's attribute fallthrough merges them onto
+the component's root `<div>` automatically. So `style="height: 420px"` above just works; don't
+look for a `style` prop in the type.
+
+## Emits
+
+The component emits one kebab-case event per engine event. Listen with `@`:
+
+| Emit | Payload |
+|---|---|
+| `@task-added` | `(task)` |
+| `@task-moved` | `(task, prevStart)` |
+| `@task-resized` | `(task, prevDuration)` |
+| `@task-progressed` | `(task, prevProgress)` |
+| `@task-removed` | `(taskId)` |
+| `@dependency-added` | `(dependency)` |
+| `@dependency-removed` | `(dependencyId)` |
+| `@critical-path-computed` | `(criticalTaskIds)` |
+
+Note the events are kebab-case (`@task-moved`, not `@taskMoved`).
+
+## Template ref → the instance
+
+`<FluxGantt ref>` exposes the full `GanttInstance` (every method, pre-bound), so a template ref
+drives it imperatively:
+
+```vue
+<script setup lang="ts">
+import { ref } from 'vue';
+import { FluxGantt } from '@fluxgantt/vue';
+import type { FluxGanttRef } from '@fluxgantt/vue';
+import { toTaskId } from '@fluxgantt/core';
+
+const gantt = ref<FluxGanttRef>();
+
+function addQa() {
+  gantt.value?.addTask({
+    id: toTaskId('qa'), name: 'QA', start: '2026-08-12', end: '2026-08-13', progress: 0, type: 'task',
+  });
+}
+</script>
+
+<template>
+  <button @click="addQa">Add task</button>
+  <FluxGantt ref="gantt" :tasks="tasks" :dependencies="dependencies" />
+</template>
+```
+
+## The `useFluxGantt` composable
+
+```ts
+import { useFluxGantt } from '@fluxgantt/vue';
+
+const { containerRef, instance } = useFluxGantt({ tasks, dependencies });
+// bind containerRef to a <div ref="containerRef">; instance is the full GanttInstance.
+```
+
+## Nuxt / SSR
+
+`<FluxGantt>` mounts into a real DOM node, so it renders nothing meaningful during SSR. Under
+Nuxt, wrap it in `<ClientOnly>`:
+
+```vue
+<ClientOnly>
+  <FluxGantt :tasks="tasks" :dependencies="dependencies" />
+</ClientOnly>
+```
+
+(The example app uses plain Vite — an SPA with no SSR step — so it needs no `<ClientOnly>`.)

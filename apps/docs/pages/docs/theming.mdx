@@ -1,0 +1,122 @@
+# Theming
+
+FluxGantt is styled entirely through CSS custom properties (`--fg-*`) and BEM classes
+(`fg-`-prefixed). Every visual property in the SVG renderer is written inline with a token
+fallback, so **the chart renders correctly with zero required host CSS** — you only add CSS to
+*override* the defaults.
+
+## Design tokens
+
+Override any of these on a container (or `:root`) to retheme. Values below are the defaults
+(from the design system, spec §8.2).
+
+### Typography
+
+```css
+--fg-font-sans: 'Inter', 'Geist', system-ui, sans-serif;
+--fg-font-mono: 'JetBrains Mono', ui-monospace, monospace;
+--fg-font-size-xs: 11px;
+--fg-font-size-sm: 12px;
+--fg-font-size-base: 13px;
+--fg-font-size-lg: 14px;
+```
+
+### Density (row heights)
+
+```css
+--fg-row-height-compact: 24px;
+--fg-row-height-default: 32px;
+--fg-row-height-comfortable: 40px;
+```
+
+### Surfaces (light)
+
+```css
+--fg-bg: #fafafa;
+--fg-bg-subtle: #f3f4f6;
+--fg-fg: #18181b;
+--fg-fg-muted: #71717a;
+--fg-border: #e5e7eb;
+--fg-border-strong: #d4d4d8;
+```
+
+### Surfaces (dark)
+
+```css
+--fg-bg-dark: #0a0a0a;
+--fg-bg-subtle-dark: #18181b;
+--fg-fg-dark: #fafafa;
+--fg-fg-muted-dark: #a1a1aa;
+--fg-border-dark: #27272a;
+```
+
+### Task colors
+
+```css
+--fg-task-default: #6366f1;   /* indigo — the primary accent */
+--fg-task-default-hover: #4f46e5;
+--fg-task-critical: #ef4444;  /* red — critical path */
+--fg-task-completed: #10b981; /* emerald */
+--fg-task-milestone: #f59e0b; /* amber — diamond marker */
+```
+
+### Grid & dependencies
+
+```css
+--fg-grid-line: #e5e7eb;
+--fg-grid-line-strong: #d4d4d8;
+--fg-grid-weekend: #f9fafb;
+--fg-grid-today: #fef3c7;
+--fg-grid-holiday: #fee2e2;
+--fg-dep-line: #64748b;
+--fg-dep-line-critical: #dc2626;
+--fg-dep-arrow-size: 6px;
+```
+
+### Motion
+
+```css
+--fg-transition-fast: 100ms ease-out;
+--fg-transition-default: 150ms ease-out;
+```
+
+## Example: retheme to a teal accent
+
+```css
+.fg-gantt {
+  --fg-task-default: #14b8a6;
+  --fg-task-default-hover: #0d9488;
+}
+```
+
+The `.fg-gantt` class is the container the React/Vue wrappers put on their root element; the
+vanilla renderer applies tokens to the mounted container too.
+
+## BEM class list
+
+The renderer uses BEM classes, all `fg-`-prefixed so they never clash with your app:
+
+```
+.fg-timeline  .fg-timeline__header  .fg-timeline__row
+.fg-task  .fg-task__bar  .fg-task__progress
+.fg-task--critical  .fg-task--selected  .fg-task--milestone
+.fg-dependency  .fg-dependency--fs
+```
+
+## Critical path without color
+
+Critical bars carry a **dashed outline** in addition to the red — controlled by
+`--fg-task-critical-dash` (default `4 2`). That keeps the critical path distinguishable for
+color-blind users and in grayscale, satisfying WCAG's "don't rely on color alone":
+
+```css
+.fg-gantt {
+  --fg-task-critical-dash: 6 3; /* longer dashes */
+}
+```
+
+## Dark mode
+
+Map your app's dark theme onto the `*-dark` tokens (e.g. under a `[data-theme="dark"]`
+selector), or set them on the container when dark mode is active. The tokens above give you
+matched light/dark surface and text colors out of the box.

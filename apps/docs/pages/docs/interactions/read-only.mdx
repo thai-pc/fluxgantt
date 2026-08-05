@@ -1,0 +1,37 @@
+# Read-only Mode
+
+Set `readOnly: true` at construction to render a chart the user cannot drag:
+
+```ts
+const gantt = createGantt({
+  readOnly: true,
+  tasks: [/* … */],
+  dependencies: [/* … */],
+});
+gantt.mount(document.getElementById('gantt')!);
+```
+
+## What it changes
+
+- **`mount()` does not wire the drag gestures.** Move, resize, and create-dependency are all
+  inert — dragging a bar does nothing.
+- **Link handles are not rendered.** They are an interactive affordance whose recognizer isn't
+  wired in read-only mode, so showing them would be a misleading dead control.
+
+## What it does *not* change
+
+`readOnly` governs the **rendered UI's interactivity only**. The full programmatic API still
+works — a host app can keep pushing updates into a read-only view (e.g. from a live server
+subscription):
+
+```ts
+const gantt = createGantt({ readOnly: true, tasks: [/* … */] });
+gantt.mount(el);
+
+// still works — readOnly does not lock the API:
+gantt.addTask({ id: toTaskId('qa'), name: 'QA', start: '2026-08-12', end: '2026-08-13', progress: 0, type: 'task' });
+gantt.moveTask(toTaskId('qa'), '2026-08-13');
+```
+
+This makes `readOnly` the right choice for dashboards and shared/embedded views where the
+viewer should see live changes but not edit the plan by hand.

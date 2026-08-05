@@ -28,7 +28,9 @@ Node >= 20 (22 recommended, see `.nvmrc`), pnpm 10+.
 
 1. Branch off `main`.
 2. Write code + tests. Run `pnpm lint && pnpm typecheck && pnpm test`.
-3. `pnpm changeset` — describe the change (version bump + changelog are automated).
+3. `pnpm changeset` — describe the change (version bump + changelog are automated). Changes
+   scoped entirely to `apps/*` or `examples/*` (docs site, example apps) need **no changeset** —
+   those packages are `"private": true` and never published.
 4. Open a PR. CI must be green (lint, typecheck, test, e2e, size-limit).
 
 ## Code style

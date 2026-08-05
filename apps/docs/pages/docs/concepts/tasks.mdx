@@ -1,0 +1,88 @@
+# Tasks
+
+A task is the fundamental unit of a FluxGantt chart. You describe tasks with a `TaskInput`
+when constructing the chart (or when calling `addTask`); the store stamps the missing
+bookkeeping fields and hands you back a full `Task`.
+
+## `TaskInput` — what you provide
+
+```ts
+import { toTaskId } from '@fluxgantt/core';
+import type { TaskInput } from '@fluxgantt/core';
+
+const input: TaskInput = {
+  id: toTaskId('build'),   // optional — auto-generated when omitted
+  name: 'Build',
+  start: '2026-08-05',     // DateInput: ISO string | Date | Temporal.PlainDate | Temporal.ZonedDateTime
+  end: '2026-08-10',
+  progress: 0.6,           // required, 0..1
+  type: 'task',            // required: 'task' | 'summary' | 'milestone' | 'project'
+};
+```
+
+`TaskInput` is `Omit<Task, 'id' | 'createdAt' | 'updatedAt'> & { id?: TaskId }`. That means:
+
+- **`name`, `start`, `end`, `progress`, `type` are required.** There is no default for `type`
+  or `progress` — you supply them on every task (a milestone still needs `progress` and a
+  `type: 'milestone'`).
+- **`id` is optional.** Omit it and the store generates a `task-<uuid>`. Supply it via
+  `toTaskId('build')` so you can reference the task later (in dependencies, `getTask`, etc.).
+
+### Optional fields
+
+| Field | Type | Notes |
+|---|---|---|
+| `id` | `TaskId` | Auto-generated when omitted. Brand a string with `toTaskId`. |
+| `duration` | `number` | Working hours. Derived from `start`/`end` when omitted. |
+| `priority` | `number` | Lower = higher priority (used by Pro resource leveling). |
+| `parent` | `TaskId` | Groups this task under a summary/parent — see [Hierarchy](/docs/concepts/hierarchy). |
+| `constraint` | `TaskConstraint` | A scheduling constraint, discriminated by `kind`. |
+| `notes` | `string` | Free-form text. Treated as untrusted when rendered. |
+| `color` | `string` | Whitelist-validated (valid CSS color) before it reaches the DOM. |
+| `meta` | `Record<string, unknown>` | Free-form user data. Untrusted when displayed. |
+
+## `Task` — what you get back
+
+`addTask` (and the getters) return a full `Task`, which adds the store-managed fields:
+
+```ts
+const task = gantt.addTask(input);
+task.id;        // TaskId (branded)
+task.createdAt; // Date
+task.updatedAt; // Date
+```
+
+## Task kinds
+
+`type: TaskKind` is one of:
+
+- **`task`** — a normal bar.
+- **`milestone`** — a zero-duration marker (rendered as a diamond); use equal `start`/`end`.
+- **`summary`** — a roll-up bar spanning its children (see [Hierarchy](/docs/concepts/hierarchy)).
+- **`project`** — the top-level roll-up.
+
+## Branded IDs
+
+`TaskId` is `string & { readonly __brand: 'TaskId' }`. A plain string is **not** assignable to
+it, which is what stops you passing a `DependencyId` (or an arbitrary string) where a `TaskId`
+belongs. Create one at the boundary with `toTaskId(string)` — you never write `as TaskId`.
+
+```ts
+import { toTaskId } from '@fluxgantt/core';
+const id = toTaskId('build'); // TaskId
+```
+
+## Mutating tasks
+
+All of these return the updated `Task` and emit the matching event:
+
+```ts
+gantt.addTask(input);                       // → task:added
+gantt.updateTask(id, { name: 'Rebuild' });  // → task:* per changed field
+gantt.moveTask(id, '2026-08-06');           // → task:moved
+gantt.resizeTask(id, 24);                    // 24 working hours → task:resized
+gantt.setProgress(id, 0.75);                 // → task:progressed
+gantt.removeTask(id);                         // → task:removed (cascades descendants)
+```
+
+See the [API Reference](/docs/api) for full signatures.

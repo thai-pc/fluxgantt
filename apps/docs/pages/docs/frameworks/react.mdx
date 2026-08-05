@@ -1,0 +1,118 @@
+# React
+
+`@fluxgantt/react` wraps the engine in a real component and hook. This is the code from
+[`examples/react-vite-demo`](https://github.com/thai-pc/fluxgantt/tree/master/examples/react-vite-demo).
+
+## `<FluxGantt>`
+
+```tsx
+import { FluxGantt } from '@fluxgantt/react';
+import { toTaskId } from '@fluxgantt/core';
+import type { TaskInput, DependencyInput } from '@fluxgantt/core';
+
+// Declare data at MODULE scope — see "Uncontrolled data" below.
+const tasks: TaskInput[] = [
+  { id: toTaskId('design'), name: 'Design', start: '2026-08-03', end: '2026-08-05', progress: 1, type: 'task' },
+  { id: toTaskId('build'), name: 'Build', start: '2026-08-05', end: '2026-08-10', progress: 0.6, type: 'task' },
+  { id: toTaskId('review'), name: 'Review', start: '2026-08-10', end: '2026-08-12', progress: 0, type: 'task' },
+];
+
+const dependencies: DependencyInput[] = [
+  { from: toTaskId('design'), to: toTaskId('build'), type: 'FS' },
+  { from: toTaskId('build'), to: toTaskId('review'), type: 'FS' },
+];
+
+export function App() {
+  return (
+    <FluxGantt
+      tasks={tasks}
+      dependencies={dependencies}
+      style={{ height: 420 }}
+      onTaskMoved={(task, prevStart) => console.log(`${task.name} moved from ${prevStart}`)}
+    />
+  );
+}
+```
+
+## Props
+
+`FluxGanttProps` is the engine's `GanttConfig` plus per-event callbacks and standard DOM props:
+
+| Prop | Type | Notes |
+|---|---|---|
+| `tasks` | `TaskInput[]` | Initial tasks (uncontrolled — read once). |
+| `dependencies` | `DependencyInput[]` | Initial dependencies (uncontrolled). |
+| `calendar` | `WorkingCalendar` | Construction-time only. |
+| `viewMode` | `'day' \| 'week' \| 'month' \| 'quarter' \| 'year'` | Construction-time only. |
+| `density` | `'compact' \| 'default' \| 'comfortable'` | Construction-time only. |
+| `locale` | `string` | Construction-time only. |
+| `readOnly` | `boolean` | Disables drag wiring. |
+| `schedulingMode` | `'manual' \| 'auto'` | `'auto'` cascades dependents. |
+| `className` / `style` | `string` / `CSSProperties` | Applied to the container `<div>`. |
+
+### Event callbacks
+
+One callback per engine event: `onTaskAdded`, `onTaskMoved`, `onTaskResized`,
+`onTaskProgressed`, `onTaskRemoved`, `onDependencyAdded`, `onDependencyRemoved`,
+`onCriticalPathComputed`, plus the catch-all `onTaskChange(task, prev)`. These callbacks stay
+reactive — you can pass fresh inline arrows every render.
+
+## Uncontrolled data (important)
+
+`tasks`/`dependencies`/`calendar`/`viewMode`/`density`/`locale`/`readOnly` are **read once**,
+when the underlying `GanttInstance` is created. The instance is the source of truth afterward —
+there is no prop→store diffing.
+
+Two consequences:
+
+1. **Declare `tasks`/`dependencies` outside the component** (module scope, or `useMemo`/`useState`).
+   A fresh array identity every render doesn't update the chart and triggers a dev-only warning.
+   Mutate through the instance instead (see the ref below).
+2. **To change a construction-time prop** like `viewMode`, force a remount by changing `key`:
+   ```tsx
+   <FluxGantt key={viewMode} viewMode={viewMode} tasks={tasks} />
+   ```
+
+## The imperative handle
+
+`<FluxGantt ref>` exposes the full `GanttInstance`, so you can drive it imperatively:
+
+```tsx
+import { useRef } from 'react';
+import { FluxGantt } from '@fluxgantt/react';
+import type { FluxGanttRef } from '@fluxgantt/react';
+import { toTaskId } from '@fluxgantt/core';
+
+function Toolbar() {
+  const gantt = useRef<FluxGanttRef>(null);
+  return (
+    <>
+      <button onClick={() => gantt.current?.addTask({
+        id: toTaskId('qa'), name: 'QA', start: '2026-08-12', end: '2026-08-13', progress: 0, type: 'task',
+      })}>Add task</button>
+      <FluxGantt ref={gantt} tasks={tasks} dependencies={dependencies} />
+    </>
+  );
+}
+```
+
+## The `useFluxGantt` hook
+
+If you need the container ref and instance directly (to build your own layout), use the hook the
+component is built on:
+
+```tsx
+import { useFluxGantt } from '@fluxgantt/react';
+
+function Chart() {
+  const { ref, instance } = useFluxGantt({ tasks, dependencies });
+  // attach `ref` to your container; `instance` is the full GanttInstance.
+  return <div ref={ref} style={{ height: 420 }} />;
+}
+```
+
+## StrictMode
+
+The wrapper is StrictMode-safe: the instance is created once via lazy ref init and the mount
+effect's cleanup calls `instance.unmount()` (never `destroy()`), so React's dev-only double
+mount/unmount doesn't tear it down permanently.

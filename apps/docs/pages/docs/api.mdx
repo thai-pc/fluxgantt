@@ -1,0 +1,119 @@
+# API Surface
+
+A hand-written reference for `@fluxgantt/core`'s public API. (An auto-generated reference will
+follow once the API stabilizes past 1.0.)
+
+## `createGantt(config)`
+
+```ts
+function createGantt(config: GanttConfig): GanttInstance;
+```
+
+Builds a headless `GanttInstance`. Throws if the initial `tasks`/`dependencies` are invalid
+(duplicate id, self-link, duplicate pair, or cycle).
+
+## `GanttConfig`
+
+| Field | Type | Default | Purpose |
+|---|---|---|---|
+| `tasks` | `readonly TaskInput[]` | `[]` | Initial tasks. |
+| `dependencies` | `readonly DependencyInput[]` | `[]` | Initial dependencies (`{ from, to, type?, lag? }`). |
+| `calendar` | `WorkingCalendar` | `DEFAULT_CALENDAR` | Working days/hours/holidays/timezone. Immutable. |
+| `viewMode` | `ViewMode` | `'week'` | Timeline zoom (`day`/`week`/`month`/`quarter`/`year`). |
+| `density` | `Density` | `'default'` | Row density (`compact`/`default`/`comfortable`). |
+| `locale` | `string` | `'en'` | Renderer locale. |
+| `readOnly` | `boolean` | `false` | When `true`, `mount()` wires no drag gestures. |
+| `schedulingMode` | `SchedulingMode` | `'manual'` | `'auto'` cascades dependents on move/resize. |
+| `onTaskChange` | `(task, prev) => void` | — | Catch-all fired whenever a task field changes. |
+
+## `GanttInstance` methods
+
+### Tasks
+
+| Method | Returns | Purpose |
+|---|---|---|
+| `addTask(input)` | `Task` | Add a task; emits `task:added`. |
+| `updateTask(id, patch)` | `Task` | Patch fields; emits `task:*` per changed field. |
+| `removeTask(id)` | `void` | Remove a task + descendants; emits `dependency:removed`/`task:removed`. |
+| `moveTask(id, newStart)` | `Task` | Shift start+end by the same delta; emits `task:moved`. |
+| `resizeTask(id, newDuration)` | `Task` | Set duration (working hours); emits `task:resized`. |
+| `setProgress(id, progress)` | `Task` | Set progress `0..1`; emits `task:progressed`. |
+| `getTask(id)` | `Task \| undefined` | Look up one task. |
+| `getTasks()` | `Task[]` | All tasks. |
+| `findTasks(predicate)` | `Task[]` | Filter tasks. |
+
+### Dependencies
+
+| Method | Returns | Purpose |
+|---|---|---|
+| `linkTasks(from, to, type?, lag?)` | `Dependency` | Link two tasks (`type` default `'FS'`); emits `dependency:added`. Throws on cycle/self/duplicate. |
+| `unlinkTasks(from, to)` | `void` | Remove links between two tasks; emits `dependency:removed`. |
+| `getDependencies()` | `Dependency[]` | All dependencies. |
+| `getDependenciesOf(taskId)` | `Dependency[]` | Links touching a task. |
+
+### Computation
+
+| Method | Returns | Purpose |
+|---|---|---|
+| `computeCriticalPath()` | `CriticalPathResult` | Run CPM; emits `critical-path:computed`. Throws if no tasks / on cycle. |
+
+### Import / Export
+
+| Method | Returns | Purpose |
+|---|---|---|
+| `exportJson(options?)` | `ExportBundle` | Serialize to the JSON bundle. Headless. |
+| `exportCsv(options?)` | `string` | Serialize tasks to CSV. Headless. |
+| `exportSvg(options?)` | `string` | Serialize the mounted chart to an SVG string. Requires mount. |
+| `exportPng(options?)` | `Promise<Blob>` | Rasterize the mounted chart to PNG. Requires mount; async. |
+
+(Import is done with the standalone `importJson` / `importCsv` functions — see
+[Import & Export](/docs/import-export).)
+
+### Events & lifecycle
+
+| Method | Returns | Purpose |
+|---|---|---|
+| `on(event, callback)` | `UnsubscribeFn` | Subscribe to a `GanttEventMap` event. |
+| `mount(container)` | `void` | Render into an element; wires drag unless `readOnly`. |
+| `unmount()` | `void` | Remove the rendered chart; keep the instance. |
+| `destroy()` | `void` | Unmount + clear listeners; the instance is dead afterward. |
+| `refresh()` | `void` | Force a re-render of the mounted chart. |
+
+## `GanttEventMap`
+
+| Event | Payload |
+|---|---|
+| `task:added` | `(task: Task)` |
+| `task:moved` | `(task: Task, prevStart: DateInput)` |
+| `task:resized` | `(task: Task, prevDuration: number)` |
+| `task:progressed` | `(task: Task, prevProgress: number)` |
+| `task:removed` | `(taskId: TaskId)` |
+| `dependency:added` | `(dependency: Dependency)` |
+| `dependency:removed` | `(dependencyId: DependencyId)` |
+| `critical-path:computed` | `(criticalTaskIds: readonly TaskId[])` |
+
+`on()` returns an `UnsubscribeFn` (`() => void`).
+
+## Standalone functions & values
+
+| Export | Purpose |
+|---|---|
+| `toTaskId`, `toDependencyId`, `toResourceId`, `toBaselineId`, `toProjectId` | Brand a string as the matching branded id. |
+| `importJson(input, options?)` | Validate + parse a JSON bundle → `{ tasks, dependencies }`. |
+| `importCsv(csv, options?)` | Validate + parse CSV → `{ tasks }`. |
+| `exportJson`, `exportCsv`, `exportSvg`, `exportPng` | Pure export functions (the instance methods delegate to these). |
+| `IoValidationError` | Thrown by imports on malformed input. |
+| `DEFAULT_CALENDAR` | The Mon–Fri 9–17 UTC default calendar. |
+| `isWorkingDay`, `isHoliday`, `addWorkingHours`, `subtractWorkingHours`, `differenceInWorkingHours`, `normalizeDate` | Calendar-aware date helpers. |
+| `computeCriticalPath` | The pure CPM function (the instance method delegates to it). |
+| `CyclicDependencyError` | Thrown by CPM on a cyclic graph. |
+| `signal`, `computed`, `effect`, `batch`, `untracked` | The reactive primitives the store is built on. |
+
+## Key types
+
+`TaskId`, `DependencyId`, `ResourceId`, `BaselineId`, `ProjectId` (branded strings) ·
+`Task`, `TaskInput`, `TaskPatch`, `TaskKind`, `TaskConstraint` · `Dependency`,
+`DependencyInput`, `DependencyType` · `DateInput` · `WorkingCalendar`, `WeekdayCode`,
+`WorkingHours` · `CriticalPathResult`, `TaskSchedule` · `ViewMode`, `Density`,
+`SchedulingMode` · `GanttConfig`, `GanttInstance`, `GanttEventMap`, `GanttEventName`,
+`UnsubscribeFn`.

@@ -1,0 +1,77 @@
+# Dependencies
+
+A dependency links two tasks so that one is scheduled relative to the other. FluxGantt supports
+all four classic dependency types plus a lag/lead offset.
+
+## Dependency types
+
+`DependencyType` is one of:
+
+| Type | Name | Meaning |
+|---|---|---|
+| `FS` | Finish-to-Start | `to` starts after `from` finishes. **The default.** |
+| `SS` | Start-to-Start | `to` starts after `from` starts. |
+| `FF` | Finish-to-Finish | `to` finishes after `from` finishes. |
+| `SF` | Start-to-Finish | `to` finishes after `from` starts (rare). |
+
+## Declaring dependencies up front
+
+Pass them to `createGantt` as `{ from, to, type?, lag? }` (a `DependencyInput`). `from`/`to`
+are `TaskId`s:
+
+```ts
+import { createGantt, toTaskId } from '@fluxgantt/core';
+
+const gantt = createGantt({
+  tasks: [/* … */],
+  dependencies: [
+    { from: toTaskId('design'), to: toTaskId('build'), type: 'FS' },
+    { from: toTaskId('build'), to: toTaskId('review'), type: 'FS' },
+  ],
+});
+```
+
+`type` defaults to `'FS'` when omitted. An invalid initial set (a self-link, a duplicate pair,
+or a cycle) throws at construction — FluxGantt rejects bad data rather than best-effort loading
+it.
+
+## Linking at runtime
+
+```ts
+// linkTasks(from, to, type?, lag?) → Dependency, emits dependency:added
+const dep = gantt.linkTasks(toTaskId('review'), toTaskId('launch'), 'FS');
+
+// unlinkTasks(from, to) → void, emits dependency:removed
+gantt.unlinkTasks(toTaskId('review'), toTaskId('launch'));
+
+// inspect
+gantt.getDependencies();                    // Dependency[]
+gantt.getDependenciesOf(toTaskId('build')); // links touching a task
+```
+
+A `Dependency` you get back has a generated `id: DependencyId`, plus `from`, `to`, `type`, and
+optional `lag`.
+
+## Lag and lead
+
+`lag` is measured in **hours**. A positive lag is a wait; a negative lag is lead time (overlap):
+
+```ts
+// build starts 8 working hours AFTER design finishes
+gantt.linkTasks(toTaskId('design'), toTaskId('build'), 'FS', 8);
+
+// review can start 4 hours BEFORE build finishes (lead / overlap)
+gantt.linkTasks(toTaskId('build'), toTaskId('review'), 'FS', -4);
+```
+
+## Cycles are rejected
+
+FluxGantt refuses to create a dependency that would introduce a cycle — `linkTasks` throws, and
+a cyclic initial `dependencies` array throws at construction. This guarantees the critical-path
+computation always terminates. See [Critical Path](/docs/concepts/critical-path).
+
+## Creating dependencies by dragging
+
+When the chart is mounted (and not `readOnly`), a user can drag from one task's link handle to
+another to create an `FS` dependency — this emits `dependency:added`, exactly like
+`linkTasks`. See [Drag & Drop](/docs/interactions/drag).

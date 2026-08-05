@@ -1,0 +1,21 @@
+{
+  "name": "docs",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "FluxGantt documentation + landing site (Vocs). Not published to npm.",
+  "scripts": {
+    "dev": "vocs dev",
+    "build": "vocs build",
+    "preview": "vocs preview",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@fluxgantt/tsconfig": "workspace:*",
+    "@types/react": "^19.0.2",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "typescript": "^5.7.2",
+    "vocs": "^1.0.0"
+  }
+}
