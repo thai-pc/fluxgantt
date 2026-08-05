@@ -1,0 +1,108 @@
+# FluxGantt [The Modern MIT-Licensed Gantt Chart Library]
+
+TypeScript-first · headless · framework-agnostic. A Gantt engine you embed in your own app —
+render to SVG, drag to reschedule, compute the critical path, export to JSON/CSV/SVG/PNG. No
+DOM required for the engine; it runs in Node, Workers, and tests.
+
+:::warning
+**Pre-release.** FluxGantt is not published to npm yet — the tiers and API are stabilizing
+pre-1.0. Run it from source today (see [Installation](/docs/installation)); the
+`pnpm add @fluxgantt/core` path below is the target end-state.
+:::
+
+## Why FluxGantt
+
+- **Headless engine.** State + compute (critical path, working calendar, cascade) run without
+  a DOM. The render layer is a separate concern you can swap or server-side-render around.
+- **Zero required host CSS.** The SVG renderer bakes every visual property inline with a
+  `--fg-*` custom-property fallback — the chart renders correctly even if you ship no
+  stylesheet. Override the tokens when you want to theme it.
+- **Framework-agnostic core, idiomatic wrappers.** `@fluxgantt/core` imports no framework.
+  `@fluxgantt/react` and `@fluxgantt/vue` give you a real `<FluxGantt>` component + hook /
+  composable.
+- **Correct dates.** All date/time math goes through the Temporal API — timezone- and
+  DST-correct, not native `Date` guesswork.
+- **Accessible by construction.** The critical path is distinguished by a dashed outline, not
+  color alone — so it survives color-blindness and grayscale printing.
+- **TypeScript end-to-end.** Branded IDs (`TaskId`, `DependencyId`…) stop you mixing entity
+  ids at compile time.
+
+## Install
+
+```bash
+# Coming soon to npm (see the pre-release note above).
+pnpm add @fluxgantt/core
+# Optional framework wrappers:
+pnpm add @fluxgantt/react   # React 18/19
+pnpm add @fluxgantt/vue     # Vue 3
+```
+
+## Quick start
+
+Create tasks, link a couple of them, and mount — about 15 lines. This is the same code as
+[`examples/plain-html-demo`](https://github.com/thai-pc/fluxgantt/tree/master/examples/plain-html-demo).
+
+```ts
+import { createGantt, toTaskId } from '@fluxgantt/core';
+
+const gantt = createGantt({
+  tasks: [
+    { id: toTaskId('design'), name: 'Design', start: '2026-08-03', end: '2026-08-05', progress: 1, type: 'task' },
+    { id: toTaskId('build'), name: 'Build', start: '2026-08-05', end: '2026-08-10', progress: 0.6, type: 'task' },
+    { id: toTaskId('review'), name: 'Review', start: '2026-08-10', end: '2026-08-12', progress: 0, type: 'task' },
+    { id: toTaskId('launch'), name: 'Launch', start: '2026-08-12', end: '2026-08-12', progress: 0, type: 'milestone' },
+    { id: toTaskId('docs-task'), name: 'Write docs', start: '2026-08-06', end: '2026-08-11', progress: 0.2, type: 'task' },
+  ],
+  dependencies: [
+    { from: toTaskId('design'), to: toTaskId('build'), type: 'FS' },
+    { from: toTaskId('build'), to: toTaskId('review'), type: 'FS' },
+  ],
+});
+
+gantt.on('task:moved', (task, prevStart) => {
+  console.log(`${task.name} moved from ${prevStart}`);
+});
+
+gantt.mount(document.getElementById('gantt')!);
+```
+
+Using React or Vue instead? See the [React guide](/docs/frameworks/react) and
+[Vue guide](/docs/frameworks/vue).
+
+## How it compares
+
+| | FluxGantt (Core, MIT) | Frappe Gantt |
+|---|---|---|
+| License | MIT | MIT |
+| Language | TypeScript-first, branded IDs | JavaScript |
+| Dependency types | FS / SS / FF / SF (+ lag/lead) | FS only |
+| Critical path (CPM) | Built in, color-independent marker | No |
+| Working calendar | Temporal-based, DST-correct | No |
+| Drag move / resize / create-dependency | Yes | Move / resize |
+| Export | JSON, CSV, SVG, PNG | No |
+| React / Vue wrappers | First-class | Community |
+| Headless (runs without a DOM) | Yes | No |
+
+## Tiers
+
+| Tier | Price | Includes |
+|---|---|---|
+| **Core** (MIT) | Free | Rendering, dependencies (FS/SS/FF/SF), hierarchy, critical path, React/Vue, export PNG/SVG/JSON/CSV |
+| **Pro** (one-time) | $299/dev | Resource view + leveling, baselines, constraints, MS Project XML I/O, PDF, custom columns, Svelte/Angular |
+| **Cloud** (subscription) | from $29/month | Multiplayer (Yjs), comment/@mention, AI auto-schedule, risk forecast, integrations |
+
+Only the **Core** tier is documented here — it is the only tier that exists today.
+
+## Run the examples
+
+The repository ships three runnable example apps, all rendering the same 5-task chart:
+
+- [`examples/plain-html-demo`](https://github.com/thai-pc/fluxgantt/tree/master/examples/plain-html-demo) — vanilla `@fluxgantt/core`
+- [`examples/react-vite-demo`](https://github.com/thai-pc/fluxgantt/tree/master/examples/react-vite-demo) — `@fluxgantt/react`
+- [`examples/vue-vite-demo`](https://github.com/thai-pc/fluxgantt/tree/master/examples/vue-vite-demo) — `@fluxgantt/vue`
+
+```bash
+git clone https://github.com/thai-pc/fluxgantt
+cd fluxgantt && pnpm install && pnpm build
+pnpm --filter plain-html-demo dev   # or react-vite-demo / vue-vite-demo
+```

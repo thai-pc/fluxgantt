@@ -1,0 +1,91 @@
+# Import & Export
+
+FluxGantt reads and writes its data as JSON and CSV, and exports the rendered chart as SVG or
+PNG. Export methods live on the instance; import is done with pure functions you feed into
+`createGantt`.
+
+## Export JSON / CSV
+
+These are read-only and work **headless** (no mount required):
+
+```ts
+const bundle = gantt.exportJson();   // ExportBundle: { fluxgantt, tasks, dependencies, ... }
+const csv = gantt.exportCsv();        // string
+```
+
+Both accept an options object (e.g. a `timezone`; it defaults to the instance's own calendar
+timezone). After `destroy()`, they return an empty-but-valid result rather than throwing.
+
+## Export SVG / PNG
+
+These serialize the **currently-mounted** chart, so they require a prior `mount()`:
+
+```ts
+const svg = gantt.exportSvg();              // string — a self-contained <svg> document
+const blob = await gantt.exportPng();       // Promise<Blob> — rasterized PNG
+```
+
+- `exportSvg()` bakes computed styles inline and adds the XML declaration + `xmlns`, so the
+  string is a standalone SVG file.
+- `exportPng()` is **async** (it waits for the browser to decode the SVG before rasterizing)
+  and returns a `Blob`. Both **throw / reject** if the instance was never mounted (there is no
+  sensible empty result for a picture of nothing).
+
+```ts
+// Trigger a download of the PNG in the browser:
+const blob = await gantt.exportPng();
+const url = URL.createObjectURL(blob);
+const a = document.createElement('a');
+a.href = url;
+a.download = 'plan.png';
+a.click();
+URL.revokeObjectURL(url);
+```
+
+## Import JSON / CSV
+
+`importJson` / `importCsv` are standalone functions (not instance methods). They **validate**
+the input and return plain `TaskInput[]` / `DependencyInput[]` you pass to `createGantt` (or
+apply via `addTask` / `linkTasks`):
+
+```ts
+import { createGantt, importJson } from '@fluxgantt/core';
+
+const { tasks, dependencies } = importJson(jsonStringOrObject);
+const gantt = createGantt({ tasks, dependencies });
+```
+
+```ts
+import { importCsv } from '@fluxgantt/core';
+
+const { tasks } = importCsv(csvString);
+```
+
+## Round-trips and validation
+
+`importJson` accepts either the full `{ fluxgantt, tasks, dependencies }` envelope produced by
+`exportJson`, or a bare `{ tasks, dependencies }` object — so an export can be re-imported. It
+is **strict**: malformed input throws an `IoValidationError` atomically (nothing is partially
+loaded), and enforces size/count limits to guard against a malicious file. Unknown top-level
+keys (e.g. a future Pro `resources` block) are tolerated and ignored.
+
+```ts
+import { importJson, IoValidationError } from '@fluxgantt/core';
+
+try {
+  const { tasks, dependencies } = importJson(untrustedInput);
+  createGantt({ tasks, dependencies });
+} catch (err) {
+  if (err instanceof IoValidationError) {
+    // reject the file, show a message — do not best-effort load it
+  }
+}
+```
+
+## A security note
+
+Anything you render came from data provided by someone — treat `notes`, `meta`, and `color` as
+untrusted. FluxGantt's renderer uses safe DOM APIs (never string-interpolated markup) and
+whitelist-validates `color`; CSV export escapes cells to prevent spreadsheet formula injection.
+You get these protections by using the library's own import/export paths rather than
+hand-rolling them.

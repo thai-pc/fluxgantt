@@ -1,0 +1,22 @@
+{
+  "name": "plain-html-demo",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Minimal vanilla @fluxgantt/core demo (Vite). Doubles as the Playwright e2e host app.",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@fluxgantt/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@fluxgantt/tsconfig": "workspace:*",
+    "@js-temporal/polyfill": "^0.5.1",
+    "typescript": "^5.7.2",
+    "vite": "^5.4.11"
+  }
+}

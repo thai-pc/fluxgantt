@@ -1,0 +1,79 @@
+# Working Calendar
+
+FluxGantt schedules against a **working calendar** — which weekdays are working days, the hours
+within them, holidays, and a timezone. Durations are measured in *working hours*, so a task
+never gets "worked on" over a weekend or holiday, and all math is DST-correct because it runs
+through the Temporal API.
+
+## The default
+
+If you don't pass a `calendar`, FluxGantt uses `DEFAULT_CALENDAR`:
+
+```ts
+import { DEFAULT_CALENDAR } from '@fluxgantt/core';
+
+// DEFAULT_CALENDAR:
+// {
+//   workingDays: ['mon', 'tue', 'wed', 'thu', 'fri'],
+//   workingHours: [{ start: '09:00', end: '17:00' }],
+//   holidays: [],
+//   timezone: 'UTC',
+// }
+```
+
+That's Monday–Friday, 9-to-5, no holidays, UTC.
+
+## Supplying your own
+
+```ts
+import { createGantt } from '@fluxgantt/core';
+import type { WorkingCalendar } from '@fluxgantt/core';
+
+const calendar: WorkingCalendar = {
+  workingDays: ['mon', 'tue', 'wed', 'thu', 'fri'],
+  workingHours: [
+    { start: '09:00', end: '12:00' }, // multiple windows model a lunch break
+    { start: '13:00', end: '17:00' },
+  ],
+  holidays: ['2026-08-31'],           // DateInput[]
+  timezone: 'America/New_York',
+};
+
+const gantt = createGantt({ tasks: [/* … */], calendar });
+```
+
+### `WorkingCalendar` shape
+
+| Field | Type | Notes |
+|---|---|---|
+| `workingDays` | `WeekdayCode[]` | `'mon'…'sun'`. |
+| `workingHours` | `WorkingHours[]` | `{ start: 'HH:MM', end: 'HH:MM' }`, 24-hour. Multiple windows allowed (e.g. a lunch break). |
+| `holidays` | `DateInput[]` | Non-working dates. |
+| `timezone` | `string` | IANA zone, e.g. `'America/New_York'`. |
+
+The calendar is immutable for the life of the instance in v1 (there is no `setCalendar()`).
+
+## Calendar-aware helpers
+
+The same functions the engine uses internally are exported for your own date math:
+
+```ts
+import {
+  isWorkingDay,
+  isHoliday,
+  addWorkingHours,
+  subtractWorkingHours,
+  differenceInWorkingHours,
+  normalizeDate,
+  DEFAULT_CALENDAR,
+} from '@fluxgantt/core';
+```
+
+- `addWorkingHours(start, hours, calendar)` / `subtractWorkingHours(...)` — advance a date by
+  working hours, skipping non-working time.
+- `differenceInWorkingHours(start, end, calendar)` — the working-hours span between two dates.
+- `isWorkingDay(date, calendar)` / `isHoliday(date, calendar)` — predicates.
+- `normalizeDate(input, timezone)` — turn a `DateInput` into a `Temporal.ZonedDateTime`.
+
+These power `resizeTask` (which interprets its duration as working hours) and the critical-path
+computation, so a task's rendered span and its schedule always agree.

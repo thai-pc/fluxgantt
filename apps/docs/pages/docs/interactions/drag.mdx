@@ -1,0 +1,69 @@
+# Drag & Drop
+
+When you `mount()` a chart, FluxGantt wires three drag gestures automatically — unless the
+instance is [`readOnly`](/docs/interactions/read-only). You don't call anything extra; mounting
+is enough.
+
+## The three gestures
+
+| Gesture | What it does | Event emitted |
+|---|---|---|
+| **Move** — drag a task bar horizontally | Reschedules the task, preserving its duration | `task:moved` |
+| **Resize** — drag a bar's start/end edge handle | Changes the task's duration | `task:resized` |
+| **Create dependency** — drag from a task's link handle onto another task | Adds an `FS` dependency | `dependency:added` |
+
+Gesture priority is resolved automatically: an edge-handle claim wins over a whole-bar claim,
+and a link-handle claim wins over an edge zone — so the three never fight over the same pointer.
+
+## Listening to the results
+
+Every gesture commits through the same pipeline as the programmatic API, so the events carry
+the same payloads:
+
+```ts
+gantt.on('task:moved', (task, prevStart) => {
+  // task is the updated Task; prevStart is where it started (a DateInput)
+  console.log(`${task.name}: ${prevStart} → ${task.start}`);
+});
+
+gantt.on('task:resized', (task, prevDuration) => {
+  // prevDuration is the previous duration in working hours
+  console.log(`${task.name} resized (was ${prevDuration}h)`);
+});
+
+gantt.on('dependency:added', (dependency) => {
+  console.log(`linked ${dependency.from} → ${dependency.to} (${dependency.type})`);
+});
+```
+
+Each `on(...)` returns an unsubscribe function:
+
+```ts
+const off = gantt.on('task:moved', handler);
+off(); // stop listening
+```
+
+## The same operations, programmatically
+
+The drag gestures are just interactive wrappers over methods you can also call directly:
+
+```ts
+gantt.moveTask(id, '2026-08-06');                       // ≡ drag-move
+gantt.resizeTask(id, 24);                                // ≡ drag-resize (24 working hours)
+gantt.linkTasks(fromId, toId, 'FS');                     // ≡ drag-create-dependency
+```
+
+## Cascade on drag (opt-in)
+
+By default a move/resize affects only the dragged task (`schedulingMode: 'manual'`). Set
+`schedulingMode: 'auto'` at construction to have dependent tasks pushed along their FS/SS/FF/SF
+links (+lag) when you drag — each shifted task emits its own `task:moved`:
+
+```ts
+const gantt = createGantt({ tasks: [/* … */], dependencies: [/* … */], schedulingMode: 'auto' });
+```
+
+## Invalid drops are silently reverted
+
+Dragging out a dependency that would be a self-link, a duplicate, or a cycle is rejected — the
+gesture simply snaps back, with no error thrown into the page and no event emitted.

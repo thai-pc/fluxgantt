@@ -1,0 +1,71 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.2.1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Build (packages + docs site + example apps)
+        run: pnpm build
+
+      - name: Unit tests
+        run: pnpm test
+
+      - name: Snippet-sync check (README / docs / example stay identical)
+        run: node tooling/scripts/check-snippet-sync.mjs
+
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.2.1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Build packages
+        run: pnpm build
+
+      - name: Install Playwright browsers
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: e2e (drives examples/plain-html-demo via Playwright webServer)
+        run: pnpm test:e2e
+
+# NOTE: This workflow build-checks the docs site and example apps (per the locked decision:
+# "CI build-check, deploy later"). A live deploy (e.g. Vercel/GitHub Pages) needs an external
+# account/token and is intentionally NOT wired here — that is a repo-owner follow-up. See
+# apps/docs/README.md for the ready-to-use deploy config.

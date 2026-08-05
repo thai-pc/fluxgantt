@@ -1,17 +1,20 @@
 import { test, expect } from '@playwright/test';
 
-// Sanity: confirm the Playwright harness + browser run.
-// Once @fluxgantt/core has an SVG renderer + mount(), replace page.setContent with
-// page.goto(demo) and test for real: drag move/resize task, create dependency, keyboard nav.
-test('harness renders basic DOM', async ({ page }) => {
-  await page.setContent(`
-    <div class="fg-timeline">
-      <svg role="img" aria-label="gantt">
-        <rect class="fg-task__bar" width="120" height="24"></rect>
-      </svg>
-    </div>
-  `);
+// Real smoke test against the plain-html-demo host app (see playwright.config.ts webServer).
+// Replaces the old page.setContent placeholder now that examples/plain-html-demo exists.
+test('renders the demo chart', async ({ page }) => {
+  await page.goto('/');
 
-  await expect(page.locator('.fg-task__bar')).toBeVisible();
-  await expect(page.locator('svg[role="img"]')).toHaveAttribute('aria-label', 'gantt');
+  // The SVG renderer's root <svg> carries role="img" (svg-renderer.ts).
+  const svg = page.locator('svg[role="img"]');
+  await expect(svg).toBeVisible();
+
+  // The demo has 5 tasks → 5 task bars.
+  await expect(page.locator('.fg-task__bar')).toHaveCount(5);
+});
+
+test('marks the critical path (color-independent, dashed outline)', async ({ page }) => {
+  await page.goto('/');
+  // At least one task is on the critical path (design → build → review chain).
+  await expect(page.locator('.fg-task--critical').first()).toBeVisible();
 });

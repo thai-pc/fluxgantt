@@ -1,0 +1,43 @@
+# Hierarchy
+
+Tasks can be nested. A task with a `parent` becomes a child of that task; a task whose `type`
+is `summary` or `project` acts as a roll-up bar over its descendants.
+
+## Declaring a parent
+
+Set `parent` to another task's `TaskId`:
+
+```ts
+import { createGantt, toTaskId } from '@fluxgantt/core';
+
+const gantt = createGantt({
+  tasks: [
+    { id: toTaskId('phase-1'), name: 'Phase 1', start: '2026-08-03', end: '2026-08-12', progress: 0.4, type: 'summary' },
+    { id: toTaskId('design'), name: 'Design', start: '2026-08-03', end: '2026-08-05', progress: 1, type: 'task', parent: toTaskId('phase-1') },
+    { id: toTaskId('build'), name: 'Build', start: '2026-08-05', end: '2026-08-10', progress: 0.6, type: 'task', parent: toTaskId('phase-1') },
+  ],
+});
+```
+
+## Cascade remove
+
+Removing a task removes its entire subtree. `removeTask(parent)` deletes the parent **and every
+descendant**, and cleans up any dependency that touched a removed task:
+
+```ts
+gantt.removeTask(toTaskId('phase-1'));
+// emits dependency:removed for each affected link, then task:removed for
+// every descendant (deepest first) and finally the parent.
+```
+
+This keeps the store consistent — you never end up with an orphaned child pointing at a
+`parent` that no longer exists, or a dependency referencing a deleted task.
+
+## Summary bars
+
+A `summary`/`project` task is intended to span its children on the timeline. You still provide
+its `start`/`end`/`progress` explicitly in v1 (there is no automatic roll-up computation yet) —
+set them to bracket the child date range.
+
+> Automatic summary roll-up (deriving a summary's span/progress from its children) is on the
+> roadmap; for now, set the summary's own dates.

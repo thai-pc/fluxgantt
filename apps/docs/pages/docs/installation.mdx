@@ -1,0 +1,69 @@
+# Installation
+
+:::warning
+**Pre-release — not on npm yet.** FluxGantt's packages are `0.0.0` and unpublished while the
+tiers and API stabilize pre-1.0. The `pnpm add` commands below are the target end-state. Until
+the first npm release, run FluxGantt **from source** (see [Run from source](#run-from-source)).
+:::
+
+## Packages
+
+| Package | Install when you want… |
+|---|---|
+| `@fluxgantt/core` | The headless engine + SVG renderer (vanilla JS/TS). |
+| `@fluxgantt/react` | A `<FluxGantt>` React component + `useFluxGantt` hook. |
+| `@fluxgantt/vue` | A `<FluxGantt>` Vue 3 component + `useFluxGantt` composable. |
+
+The wrappers depend on `@fluxgantt/core` — you do not install it separately when using a
+wrapper, but you may still import types/helpers (e.g. `toTaskId`) from it.
+
+## Once published
+
+```bash
+# Core only (vanilla)
+pnpm add @fluxgantt/core
+
+# React
+pnpm add @fluxgantt/react
+
+# Vue
+pnpm add @fluxgantt/vue
+```
+
+npm / yarn work too (`npm install @fluxgantt/core`, `yarn add @fluxgantt/core`).
+
+### Peer dependency: Temporal
+
+FluxGantt does all date math with the [Temporal API](https://tc39.es/proposal-temporal/). It
+is exposed as an **optional** peer dependency, `@js-temporal/polyfill`. Install the polyfill
+unless your runtime already ships Temporal natively:
+
+```bash
+pnpm add @js-temporal/polyfill
+```
+
+React and Vue peer versions: React `^18.2 || ^19`, Vue `^3.4`.
+
+## Run from source
+
+Because nothing is on npm yet, the supported way to try FluxGantt today is from a clone. The
+example apps depend on the workspace packages via `workspace:*`, so `pnpm install` links them
+with no registry involved:
+
+```bash
+git clone https://github.com/thai-pc/fluxgantt
+cd fluxgantt
+pnpm install
+pnpm build                          # build @fluxgantt/core + wrappers
+
+# then run any example:
+pnpm --filter plain-html-demo dev   # vanilla core
+pnpm --filter react-vite-demo dev   # React
+pnpm --filter vue-vite-demo dev     # Vue
+```
+
+Requirements: Node ≥ 20 (22 recommended), pnpm 10+.
+
+## Next
+
+Head to the [Quick Start](/docs/quick-start) to render your first chart.
