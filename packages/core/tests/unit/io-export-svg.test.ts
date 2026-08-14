@@ -114,7 +114,7 @@ describe('exportSvg — structure', () => {
     expect(title?.tagName.toLowerCase()).toBe('title');
     expect(title?.textContent).toBe('Gantt chart');
     expect(doc.documentElement.getAttribute('aria-label')).toBe('Gantt chart');
-    expect(doc.documentElement.getAttribute('role')).toBe('img');
+    expect(doc.documentElement.getAttribute('role')).toBe('grid');
   });
 
   it('promotes a custom ariaLabel into <title>', () => {
@@ -156,6 +156,20 @@ describe('exportSvg — structure', () => {
     const h = createSvgRenderer(container, { tasks: baseTasks, dependencies: baseDeps });
     const out = exportSvg(h.svg, { inlineComputedStyle: false });
     expect(out).toContain('var(--fg-task-default, #6366f1)');
+  });
+
+  it('strips tabindex from every row (spec-keyboard-nav.md §9), but keeps role/aria-* structure', () => {
+    const h = createSvgRenderer(container, { tasks: baseTasks, dependencies: baseDeps });
+    const out = exportSvg(h.svg);
+    expect(out).not.toContain('tabindex');
+    const doc = new DOMParser().parseFromString(out, 'image/svg+xml');
+    const rows = doc.querySelectorAll('.fg-timeline__row');
+    expect(rows.length).toBeGreaterThan(0);
+    rows.forEach((row) => {
+      expect(row.getAttribute('role')).toBe('row');
+      expect(row.hasAttribute('aria-rowindex')).toBe(true);
+      expect(row.hasAttribute('aria-selected')).toBe(true);
+    });
   });
 });
 

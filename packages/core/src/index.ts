@@ -50,12 +50,20 @@ export type { SvgRendererInput, SvgRendererOptions, SvgRendererHandle } from './
 
 // Interaction layer (spec §8.4, spec-drag-move.md, spec-drag-resize.md,
 // spec-drag-create-dependency.md)
-export { enableDragMove, enableDragResize, enableDragCreateDep, enableClickSelect } from './interaction/index.js';
+export {
+  enableDragMove,
+  enableDragResize,
+  enableDragCreateDep,
+  enableClickSelect,
+  enableKeyboardNav,
+} from './interaction/index.js';
 export type {
   DragMoveOptions,
   DragResizeOptions,
   DragCreateDepOptions,
   SelectionOptions,
+  KeyboardNavOptions,
+  KeyboardNavHandle,
 } from './interaction/index.js';
 
 // IO layer (spec §7.8, security.md §2)

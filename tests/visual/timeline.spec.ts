@@ -62,3 +62,67 @@ test('a task both critical and selected renders both indicators without collisio
   const chart = page.locator('#gantt');
   await expect(chart).toHaveScreenshot('timeline-critical-and-selected.png');
 });
+
+// --- Keyboard-nav focus-ring visual regression (spec-keyboard-nav.md §12.5) -----------------
+//
+// The focus ring is a separate `<rect class="fg-task__focus-ring">` sibling of the task bar
+// (svg-renderer.ts's `FOCUS_STYLE_TEXT`), visible only while its ancestor `.fg-timeline__row`
+// matches `:focus-visible` — distinct from both the selection `outline` (indigo, on
+// `.fg-task__bar`) and the critical-path `stroke-dasharray` (red, inline on the bar). These
+// snapshots lock in that the three signals compose without visually colliding.
+//
+// Baselines are generated fresh in this change: run `pnpm test:visual --update-snapshots` on
+// the CI image before treating `*-snapshots/*.png` as ground truth, and have a human review
+// the generated PNGs (see the file header note above).
+
+async function focusFirstRow(page: Page): Promise<void> {
+  await page.locator('svg.fg-timeline [tabindex="0"]').first().focus();
+}
+
+test('a focused-only (not selected, not critical) task renders the sky-blue focus ring', async ({
+  page,
+}) => {
+  await page.goto('/selection.html');
+  await focusFirstRow(page);
+
+  const chart = page.locator('#gantt');
+  await expect(chart).toHaveScreenshot('timeline-focused-only.png');
+});
+
+test('a focused AND selected task composes the focus ring with the selection outline, no collision', async ({
+  page,
+}) => {
+  await page.goto('/selection.html');
+  await focusFirstRow(page);
+  await page.keyboard.press('Space'); // toggles selection on for the focused row
+
+  const chart = page.locator('#gantt');
+  await expect(chart).toHaveScreenshot('timeline-focused-and-selected.png');
+});
+
+test('a focused, selected, AND critical-path task composes all three indicators at once', async ({
+  page,
+}) => {
+  await page.goto('/');
+  // The quick-start demo's design→build→review FS chain puts `build` on the critical path.
+  await callGantt(page, (g) => g.select('build'));
+
+  // Tab to the grid then arrow to the `build` row to focus it (row order: design, build,
+  // review, launch, docs-task — see main.ts).
+  await page.locator('svg.fg-timeline [tabindex="0"]').first().focus();
+  await page.keyboard.press('ArrowDown'); // design -> build
+
+  const chart = page.locator('#gantt');
+  await expect(chart).toHaveScreenshot('timeline-focused-critical-and-selected.png');
+});
+
+test('the focus ring is still visible under prefers-reduced-motion (no reliance on animation)', async ({
+  page,
+}) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.goto('/selection.html');
+  await focusFirstRow(page);
+
+  const chart = page.locator('#gantt');
+  await expect(chart).toHaveScreenshot('timeline-focused-reduced-motion.png');
+});

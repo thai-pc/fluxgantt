@@ -28,10 +28,12 @@ import { computeCascade } from './compute/cascade.js';
 import { getTemporal } from './internal/temporal.js';
 import { createSvgRenderer } from './render/svg-renderer.js';
 import type { SvgRendererHandle, SvgRendererInput, SvgRendererOptions } from './render/svg-renderer.js';
+import { layoutRows } from './render/renderer-base.js';
 import { enableDragMove } from './interaction/drag-move.js';
 import { enableDragResize } from './interaction/drag-resize.js';
 import { enableDragCreateDep } from './interaction/drag-create-dep.js';
 import { enableClickSelect } from './interaction/selection.js';
+import { enableKeyboardNav } from './interaction/keyboard-nav.js';
 import {
   exportJson as exportJsonFn,
   exportCsv as exportCsvFn,
@@ -239,6 +241,8 @@ interface MountState {
   readonly dragResizeDispose: () => void;
   readonly dragCreateDepDispose: () => void;
   readonly clickSelectDispose: () => void;
+  readonly keyboardNavDispose: () => void;
+  readonly getFocusedTaskId: () => TaskId | undefined;
   readonly disposeEffect: () => void;
 }
 
@@ -551,7 +555,26 @@ class Gantt implements GanttInstance {
       onRangeSelect: (ids) => this.#commitRangeSelect(ids),
       onClear: () => this.#commitClearSelection(),
     });
-    const disposeEffect = effect(() => this.#renderNow(rendererHandle));
+    // Registered UNCONDITIONALLY (spec-keyboard-nav.md §6.2), same group as
+    // enableClickSelect above, NOT gated by readOnly — Arrow/Space/Shift+Arrow/Tab-entry are
+    // all non-mutating and must stay active even in a readOnly chart; only the Delete/
+    // Backspace action is itself gated (via `isReadOnly` below AND defense-in-depth inside
+    // #commitDeleteSelected).
+    const keyboardNav = enableKeyboardNav(rendererHandle, {
+      onSelect: (id) => this.#commitSelect(id),
+      onToggle: (id) => this.#commitToggleSelect(id),
+      onRangeSelect: (anchorId, focusId) => this.#commitKeyboardRangeSelect(anchorId, focusId),
+      onDeleteSelected: () => this.#commitDeleteSelected(),
+      getTasks: () => this.#taskStore.all(),
+      density: this.#config.density ?? 'default',
+      isReadOnly: () => this.#config.readOnly === true,
+      getSelection: () => this.#selectionStore.all(),
+    });
+    // `keyboardNav.getFocusedTaskId` is captured directly from this closure (NOT read via
+    // `this.#mount.getFocusedTaskId`) because `effect()` runs its callback synchronously,
+    // immediately, on this very call — BEFORE `this.#mount` is assigned below. Reading
+    // through `this.#mount` here would throw/crash on this first synchronous run.
+    const disposeEffect = effect(() => this.#renderNow(rendererHandle, keyboardNav.getFocusedTaskId));
 
     this.#mount = {
       rendererHandle,
@@ -559,6 +582,8 @@ class Gantt implements GanttInstance {
       dragResizeDispose,
       dragCreateDepDispose,
       clickSelectDispose,
+      keyboardNavDispose: keyboardNav.dispose,
+      getFocusedTaskId: keyboardNav.getFocusedTaskId,
       disposeEffect,
     };
   }
@@ -578,7 +603,7 @@ class Gantt implements GanttInstance {
 
   refresh(): void {
     if (this.#destroyed || !this.#mount) return; // nothing to refresh headless or post-destroy
-    this.#renderNow(this.#mount.rendererHandle);
+    this.#renderNow(this.#mount.rendererHandle, this.#mount.getFocusedTaskId);
   }
 
   // --- Private: mutation → split-event pipeline (Q3 + Q6) ---------------------------------
@@ -789,6 +814,49 @@ class Gantt implements GanttInstance {
     this.#applySelection(this.#expandWithDescendants(rawIds));
   }
 
+  /**
+   * Shift+Arrow's range-select commit point (spec-keyboard-nav.md §4.4/§6.2). NOTE — a
+   * deviation from the spec's §6.2 prose, flagged explicitly: the spec claims
+   * `#commitRangeSelect` "already exists ... and takes an (anchorId, focusId) pair, walking
+   * layoutRows() between them", but the actual, pre-existing `#commitRangeSelect` (used by
+   * Shift+click via `selection.ts`) takes a raw ID ARRAY already computed by the caller
+   * (`selection.ts`'s own `collectRowRange` walks the rendered DOM) — it does not compute a
+   * range itself. Rather than change that method's signature (which would also change
+   * Shift+click's contract), this small adapter computes the inclusive row range via
+   * `layoutRows()` (the same source of truth `enableKeyboardNav` itself used to resolve
+   * `anchorId`/`focusId`) and delegates to the existing `#commitRangeSelect(ids)`, giving
+   * Shift+Arrow the exact same semantics as Shift+click (resolution #1) without touching
+   * `selection.ts` or its own commit path.
+   */
+  #commitKeyboardRangeSelect(anchorId: TaskId, focusId: TaskId): void {
+    const rows = layoutRows(this.#taskStore.all(), this.#config.density ?? 'default');
+    const anchorIndex = rows.findIndex((r) => r.task.id === anchorId);
+    const focusIndex = rows.findIndex((r) => r.task.id === focusId);
+    if (anchorIndex === -1 || focusIndex === -1) return; // race: id no longer resolves
+    const lo = Math.min(anchorIndex, focusIndex);
+    const hi = Math.max(anchorIndex, focusIndex);
+    const ids = rows.slice(lo, hi + 1).map((r) => r.task.id);
+    this.#commitRangeSelect(ids);
+  }
+
+  /**
+   * Delete/Backspace commit point (spec-keyboard-nav.md §6.3). Reuses the existing public
+   * `removeTask(id)` once per currently selected id (resolution #5: no confirmation dialog,
+   * no batch-remove primitive needed — `removeTask` already handles hierarchy-cascade
+   * removal, dependency cleanup, and selection-pruning internally per id). `ids` is
+   * snapshotted via `.all()` BEFORE the loop starts, so the shrinking selection (pruned by
+   * `removeTask` itself as it goes) never affects which ids this loop attempts — and
+   * `removeTask` already no-ops gracefully (`if (!this.#taskStore.has(id)) return;`,
+   * confirmed by inspection) on an id already removed by an earlier iteration's cascade, so
+   * no extra guard is needed here (the spec flags this as a "check during implementation" —
+   * confirmed NOT a pre-existing bug).
+   */
+  #commitDeleteSelected(): void {
+    if (this.#config.readOnly) return; // defense in depth — enableKeyboardNav's own isReadOnly() gate already prevents this call
+    const ids = this.#selectionStore.all();
+    for (const id of ids) this.removeTask(id);
+  }
+
   #commitClearSelection(): void {
     this.#applySelection([]);
   }
@@ -841,12 +909,13 @@ class Gantt implements GanttInstance {
     m.dragMoveDispose();
     m.dragCreateDepDispose();
     m.clickSelectDispose();
+    m.keyboardNavDispose();
     // 3. Remove the SVG.
     m.rendererHandle.destroy();
     this.#mount = undefined;
   }
 
-  #renderNow(handle: SvgRendererHandle): void {
+  #renderNow(handle: SvgRendererHandle, getFocusedTaskId: () => TaskId | undefined): void {
     // Track both stores' revisions — read .value unconditionally so this effect re-runs on
     // ANY task or dependency mutation (coarse, per Q6 — no per-field granularity here). Also
     // tracks the selection store's revision so a `select`/`selectAll`/`deselect` call (or a
@@ -911,15 +980,17 @@ class Gantt implements GanttInstance {
     //    then derives the range from the already-pushed, non-empty `tasks`.
     // Reordering unconditionally (either direction, always) reintroduces the crash for the
     // opposite transition — this must stay tasks.length-conditional.
+    const focusedTaskId = getFocusedTaskId();
     if (tasks.length === 0) {
       setTimeRange(handle, this.#emptyStateTimeRange());
-      handle.update({ tasks, dependencies, calendar: this.#calendar, selectedTaskIds });
+      handle.update({ tasks, dependencies, calendar: this.#calendar, selectedTaskIds, focusedTaskId });
     } else {
       handle.update({
         tasks,
         dependencies,
         calendar: this.#calendar,
         selectedTaskIds,
+        focusedTaskId,
         ...(criticalPath !== undefined ? { criticalPath } : {}),
       });
       setTimeRange(handle, undefined);

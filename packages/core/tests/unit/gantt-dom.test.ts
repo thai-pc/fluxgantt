@@ -399,15 +399,20 @@ describe('click-select — mount() wiring (spec-selection.md §12.4)', () => {
     expect(neither.getAttribute('aria-label')).not.toMatch(/selected/);
   });
 
-  it('no aria-selected attribute is present anywhere (locks in the §8 decision)', () => {
+  it('aria-selected reflects selection state on every row (spec-keyboard-nav.md §3.2 supersedes the old §8 "no aria-selected" decision)', () => {
     const gantt = createGantt({
-      tasks: [taskInput('a', '2026-01-05T09:00', '2026-01-06T09:00')],
+      tasks: [
+        taskInput('a', '2026-01-05T09:00', '2026-01-06T09:00'),
+        taskInput('b', '2026-01-07T09:00', '2026-01-08T09:00'),
+      ],
     });
     gantt.mount(container);
     gantt.select(toTaskId('a'));
 
-    const anyAriaSelected = container.querySelectorAll('[aria-selected]');
-    expect(anyAriaSelected).toHaveLength(0);
+    const rowA = container.querySelector('.fg-timeline__row[data-task-id="a"]');
+    const rowB = container.querySelector('.fg-timeline__row[data-task-id="b"]');
+    expect(rowA!.getAttribute('aria-selected')).toBe('true');
+    expect(rowB!.getAttribute('aria-selected')).toBe('false');
   });
 });
 

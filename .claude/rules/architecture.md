@@ -19,7 +19,7 @@ Core Engine (@fluxgantt/core)
 ## 7 design principles (DO NOT violate)
 1. **Headless first** — state + compute run without a DOM (server-side, tests). DOM only in the render/interaction layer.
 2. **Reactive subscription, no full re-render** — consumers subscribe to a specific delta (task X moved, dep Y added), not a full snapshot. Required to scale to 1000+ tasks.
-3. **Plugin for non-core** — MS Project, AI, custom calendar are separate plugins. Core bundle < 30kb gzip.
+3. **Plugin for non-core** — MS Project, AI, custom calendar are separate plugins. Core bundle < 32kb gzip (raised from 30kb after keyboard-nav/a11y landed — WCAG AA keyboard support is Core-wide, not a plugin candidate).
 4. **Tree-shakable everything** — import only what you need. "Hello world" < 15kb gzip.
 5. **Core agnostic, wrapper opinionated** — core doesn't know React/Vue. Wrappers provide the idiomatic API (hooks/composables/runes).
 6. **Type safety end-to-end** — branded IDs, strict null checks everywhere.

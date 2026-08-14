@@ -54,8 +54,10 @@ describe('createSvgRenderer — structure', () => {
     const h = createSvgRenderer(container, { tasks: baseTasks, dependencies: baseDeps });
     expect(h.svg.tagName.toLowerCase()).toBe('svg');
     expect(h.svg.getAttribute('class')).toBe('fg-timeline');
-    expect(h.svg.getAttribute('role')).toBe('img');
+    expect(h.svg.getAttribute('role')).toBe('grid');
     expect(h.svg.getAttribute('aria-label')).toBe('Gantt chart');
+    expect(h.svg.getAttribute('aria-rowcount')).toBe(String(baseTasks.length));
+    expect(h.svg.getAttribute('aria-multiselectable')).toBe('true');
     expect(container.querySelectorAll('svg.fg-timeline')).toHaveLength(1);
   });
 
@@ -75,6 +77,69 @@ describe('createSvgRenderer — structure', () => {
     const h = createSvgRenderer(container, { tasks: baseTasks, dependencies: baseDeps });
     const m = h.svg.querySelector('.fg-task--milestone .fg-task__bar');
     expect(m!.getAttribute('transform')).toMatch(/rotate\(45 /);
+  });
+});
+
+describe('keyboard-nav — ARIA grid/row/gridcell structure (spec-keyboard-nav.md §12.6)', () => {
+  it('each row has role="row", 1-based aria-rowindex, data-task-id, aria-selected', () => {
+    const h = createSvgRenderer(container, { tasks: baseTasks, dependencies: baseDeps });
+    const rows = [...h.svg.querySelectorAll('.fg-timeline__row')] as SVGElement[];
+    expect(rows).toHaveLength(baseTasks.length);
+    rows.forEach((row, i) => {
+      expect(row.getAttribute('role')).toBe('row');
+      expect(row.getAttribute('aria-rowindex')).toBe(String(i + 1));
+      expect(row.getAttribute('data-task-id')).toBe(baseTasks[i]!.id);
+      expect(row.getAttribute('aria-selected')).toBe('false');
+    });
+  });
+
+  it('selectedTaskIds → matching rows get aria-selected="true"', () => {
+    const h = createSvgRenderer(container, {
+      tasks: baseTasks,
+      dependencies: baseDeps,
+      selectedTaskIds: [baseTasks[1]!.id],
+    });
+    const rows = [...h.svg.querySelectorAll('.fg-timeline__row')] as SVGElement[];
+    expect(rows[1]!.getAttribute('aria-selected')).toBe('true');
+    expect(rows[0]!.getAttribute('aria-selected')).toBe('false');
+  });
+
+  it('each row wraps a single role="gridcell" child', () => {
+    const h = createSvgRenderer(container, { tasks: baseTasks, dependencies: baseDeps });
+    const rows = [...h.svg.querySelectorAll('.fg-timeline__row')] as SVGElement[];
+    for (const row of rows) {
+      const cells = row.querySelectorAll(':scope > .fg-timeline__row-cell[role="gridcell"]');
+      expect(cells).toHaveLength(1);
+    }
+  });
+
+  it('exactly one row has tabindex="0" matching input.focusedTaskId, the rest are "-1"', () => {
+    const h = createSvgRenderer(container, {
+      tasks: baseTasks,
+      dependencies: baseDeps,
+      focusedTaskId: baseTasks[2]!.id,
+    });
+    const rows = [...h.svg.querySelectorAll('.fg-timeline__row')] as SVGElement[];
+    const zeroTabindex = rows.filter((r) => r.getAttribute('tabindex') === '0');
+    expect(zeroTabindex).toHaveLength(1);
+    expect(zeroTabindex[0]!.getAttribute('data-task-id')).toBe(baseTasks[2]!.id);
+    for (const row of rows) {
+      if (row !== zeroTabindex[0]) expect(row.getAttribute('tabindex')).toBe('-1');
+    }
+  });
+
+  it('focusedTaskId unset → the first row defaults to tabindex="0"', () => {
+    const h = createSvgRenderer(container, { tasks: baseTasks, dependencies: baseDeps });
+    const rows = [...h.svg.querySelectorAll('.fg-timeline__row')] as SVGElement[];
+    expect(rows[0]!.getAttribute('tabindex')).toBe('0');
+    for (let i = 1; i < rows.length; i++) expect(rows[i]!.getAttribute('tabindex')).toBe('-1');
+  });
+
+  it('the focus-ring CSS block is present in the rendered <style>', () => {
+    const h = createSvgRenderer(container, { tasks: baseTasks, dependencies: baseDeps });
+    const styles = [...h.svg.querySelectorAll('style')].map((s) => s.textContent ?? '').join('\n');
+    expect(styles).toContain('fg-task__focus-ring');
+    expect(styles).toContain(':focus-visible');
   });
 });
 

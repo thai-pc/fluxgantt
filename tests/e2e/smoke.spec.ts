@@ -5,8 +5,8 @@ import { test, expect } from '@playwright/test';
 test('renders the demo chart', async ({ page }) => {
   await page.goto('/');
 
-  // The SVG renderer's root <svg> carries role="img" (svg-renderer.ts).
-  const svg = page.locator('svg[role="img"]');
+  // The SVG renderer's root <svg> carries role="grid" (svg-renderer.ts, keyboard-nav ARIA shape).
+  const svg = page.locator('svg[role="grid"]');
   await expect(svg).toBeVisible();
 
   // The demo has 5 tasks → 5 task bars.

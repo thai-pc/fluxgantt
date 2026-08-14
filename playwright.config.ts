@@ -33,5 +33,10 @@ export default defineConfig({
       testDir: './tests/visual',
       use: { ...devices['Desktop Chrome'] },
     },
+    {
+      name: 'a11y',
+      testDir: './tests/a11y',
+      use: { ...devices['Desktop Chrome'] },
+    },
   ],
 });
