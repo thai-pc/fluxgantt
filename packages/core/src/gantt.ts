@@ -15,7 +15,7 @@
 // `'manual'` (= v1's original single-task-only behavior, unchanged) — see `#maybeCascade`.
 import type { Temporal } from '@js-temporal/polyfill';
 import { effect } from './signals.js';
-import { TaskStore, DependencyStore, DependencyLinkError } from './store/index.js';
+import { TaskStore, DependencyStore, DependencyLinkError, SelectionStore } from './store/index.js';
 import type { TaskInput, TaskPatch } from './store/index.js';
 import {
   DEFAULT_CALENDAR,
@@ -31,6 +31,7 @@ import type { SvgRendererHandle, SvgRendererInput, SvgRendererOptions } from './
 import { enableDragMove } from './interaction/drag-move.js';
 import { enableDragResize } from './interaction/drag-resize.js';
 import { enableDragCreateDep } from './interaction/drag-create-dep.js';
+import { enableClickSelect } from './interaction/selection.js';
 import {
   exportJson as exportJsonFn,
   exportCsv as exportCsvFn,
@@ -133,6 +134,12 @@ export interface GanttEventMap {
   /** Task ids only, even though the facade's `computeCriticalPath()` method itself returns
    *  the full `CriticalPathResult`. */
   'critical-path:computed': [criticalTaskIds: readonly TaskId[]];
+  /** Full flattened selection (explicit ids + auto-selected descendants), in Set-iteration
+   *  (insertion) order — NOT necessarily row order. Fires once per `select`/`selectAll`/
+   *  `deselect` call AND once per completed click-select interaction, but ONLY when the
+   *  resulting set actually differs from the previous one (no-op reselect is suppressed —
+   *  same discipline as `critical-path:computed`'s `#sameCriticalIds` guard). */
+  'selection:changed': [taskIds: readonly TaskId[]];
 }
 
 export type GanttEventName = keyof GanttEventMap;
@@ -157,6 +164,28 @@ export interface GanttInstance {
   unlinkTasks(from: TaskId, to: TaskId): void;
   getDependencies(): Dependency[];
   getDependenciesOf(taskId: TaskId): Dependency[];
+
+  // --- Selection operations --------------------------------------------------------------
+  /**
+   * Replaces the current selection with `id` (or `id[]`), expanded to include every
+   * descendant of any task among them (parent-implies-children). Ids that don't resolve in
+   * the current TaskStore are silently dropped (same resilience posture as a dangling
+   * dependency reference). Fires `selection:changed` iff the resulting flattened set differs
+   * from the previous one.
+   */
+  select(id: TaskId | TaskId[]): void;
+
+  /** Selects every current task (already the full set — hierarchy expansion is a no-op
+   *  here). Fires `selection:changed` iff the set changed. */
+  selectAll(): void;
+
+  /** Clears the selection. Fires `selection:changed` iff the selection was non-empty. */
+  deselect(): void;
+
+  /** Snapshot array (not a live reference) of the CURRENT FLATTENED selection — includes
+   *  every explicitly-selected id AND every auto-selected descendant. Same "snapshot, not
+   *  reference" convention as `getTasks()`/`getDependencies()`. Returns `[]` post-`destroy()`. */
+  getSelection(): TaskId[];
 
   // --- Computation -------------------------------------------------------------------------
   computeCriticalPath(): CriticalPathResult;
@@ -209,6 +238,7 @@ interface MountState {
   readonly dragMoveDispose: () => void;
   readonly dragResizeDispose: () => void;
   readonly dragCreateDepDispose: () => void;
+  readonly clickSelectDispose: () => void;
   readonly disposeEffect: () => void;
 }
 
@@ -221,6 +251,7 @@ const EMPTY_STATE_WINDOW_DAYS = 14;
 class Gantt implements GanttInstance {
   readonly #taskStore: TaskStore;
   readonly #dependencyStore: DependencyStore;
+  readonly #selectionStore = new SelectionStore();
   readonly #calendar: WorkingCalendar;
   readonly #config: GanttConfig;
   readonly #listeners = new Map<GanttEventName, Set<(...args: never[]) => void>>();
@@ -345,6 +376,16 @@ class Gantt implements GanttInstance {
     //    last (mirrors TaskStore.remove's own recursion order).
     for (const dep of depsToRemove.values()) this.#emit('dependency:removed', dep.id);
     for (const tid of removedIds) this.#emit('task:removed', tid);
+
+    // 5. Prune the selection of any removed id — correctness: getSelection() must never
+    //    reference a task that no longer exists (spec-selection.md §6). Only calls
+    //    #applySelection (and therefore only emits selection:changed) if the prune actually
+    //    changed anything. Fires last: a derived UI-state cleanup, not part of the
+    //    task/dependency data-integrity contract those two emits already cover.
+    const removedSet = new Set(removedIds);
+    const currentSelection = this.#selectionStore.all();
+    const pruned = currentSelection.filter((tid) => !removedSet.has(tid));
+    if (pruned.length !== currentSelection.length) this.#applySelection(pruned);
   }
 
   getTask(id: TaskId): Task | undefined {
@@ -388,6 +429,31 @@ class Gantt implements GanttInstance {
   getDependenciesOf(taskId: TaskId): Dependency[] {
     if (this.#destroyed) return [];
     return this.#dependencyStore.of(taskId);
+  }
+
+  // --- Selection operations --------------------------------------------------------------
+
+  select(id: TaskId | TaskId[]): void {
+    this.#assertAlive('select');
+    const ids = Array.isArray(id) ? id : [id];
+    this.#applySelection(this.#expandWithDescendants(ids));
+  }
+
+  selectAll(): void {
+    this.#assertAlive('selectAll');
+    // Expansion is a no-op here (every task is already included) — deliberate
+    // micro-optimization, not a semantic special case (spec-selection.md §3).
+    this.#applySelection(this.#taskStore.all().map((t) => t.id));
+  }
+
+  deselect(): void {
+    this.#assertAlive('deselect');
+    this.#applySelection([]);
+  }
+
+  getSelection(): TaskId[] {
+    if (this.#destroyed) return [];
+    return this.#selectionStore.all();
   }
 
   // --- Computation ---------------------------------------------------------------------------
@@ -477,9 +543,24 @@ class Gantt implements GanttInstance {
         onDependencyCreated: (fromTaskId, toTaskId) => this.#commitCreateDep(fromTaskId, toTaskId),
       });
     }
+    // Selection is NOT gated by readOnly (confirmed): readOnly disables drag-move/drag-resize/
+    // drag-create-dep, not click-select (spec-selection.md §5.5).
+    const clickSelectDispose = enableClickSelect(rendererHandle, () => this.#taskStore.all(), {
+      onSelect: (taskId) => this.#commitSelect(taskId),
+      onToggle: (taskId) => this.#commitToggleSelect(taskId),
+      onRangeSelect: (ids) => this.#commitRangeSelect(ids),
+      onClear: () => this.#commitClearSelection(),
+    });
     const disposeEffect = effect(() => this.#renderNow(rendererHandle));
 
-    this.#mount = { rendererHandle, dragMoveDispose, dragResizeDispose, dragCreateDepDispose, disposeEffect };
+    this.#mount = {
+      rendererHandle,
+      dragMoveDispose,
+      dragResizeDispose,
+      dragCreateDepDispose,
+      clickSelectDispose,
+      disposeEffect,
+    };
   }
 
   unmount(): void {
@@ -586,6 +667,22 @@ class Gantt implements GanttInstance {
     return out;
   }
 
+  /**
+   * Expands explicitly-named ids to include every descendant (recursive, all levels) of any
+   * task among them — parent-implies-children selection semantics (spec-selection.md §3).
+   * Reuses `#collectWithDescendants` (already the single source of truth for "walk the
+   * hierarchy down", currently used by `removeTask`'s cascade) rather than a second traversal.
+   * Ids that don't resolve in `#taskStore` are silently dropped (resilience posture, §4).
+   */
+  #expandWithDescendants(ids: readonly TaskId[]): TaskId[] {
+    const out = new Set<TaskId>();
+    for (const id of ids) {
+      if (!this.#taskStore.has(id)) continue;
+      for (const t of this.#collectWithDescendants(id)) out.add(t);
+    }
+    return [...out];
+  }
+
   // --- Private: event bus -----------------------------------------------------------------
 
   #emit<E extends GanttEventName>(event: E, ...args: GanttEventMap[E]): void {
@@ -674,6 +771,33 @@ class Gantt implements GanttInstance {
     }
   }
 
+  #commitSelect(taskId: TaskId): void {
+    this.#applySelection(this.#expandWithDescendants([taskId]));
+  }
+
+  #commitToggleSelect(taskId: TaskId): void {
+    if (!this.#taskStore.has(taskId)) return; // race: task removed mid-click
+    const group = new Set(this.#expandWithDescendants([taskId]));
+    const current = new Set(this.#selectionStore.all());
+    const isSelected = current.has(taskId); // the group's own representative id
+    if (isSelected) for (const g of group) current.delete(g);
+    else for (const g of group) current.add(g);
+    this.#applySelection([...current]);
+  }
+
+  #commitRangeSelect(rawIds: readonly TaskId[]): void {
+    this.#applySelection(this.#expandWithDescendants(rawIds));
+  }
+
+  #commitClearSelection(): void {
+    this.#applySelection([]);
+  }
+
+  #applySelection(ids: readonly TaskId[]): void {
+    const changed = this.#selectionStore.replace(ids);
+    if (changed) this.#emit('selection:changed', this.#selectionStore.all());
+  }
+
   /**
    * No-op unless `schedulingMode: 'auto'` (default `'manual'` — see `GanttConfig`, spec-
    * cascade.md §4.1/§4.3). Recomputes `computeCascade` over the CURRENT store state (which
@@ -707,13 +831,16 @@ class Gantt implements GanttInstance {
     // Order matters (the shared pointer-drag coordinator wraps handle.destroy):
     // 1. Stop the reactive effect FIRST — no render call may start once teardown begins.
     m.disposeEffect();
-    // 2. Unregister ALL THREE recognizers from the shared coordinator explicitly via their
-    //    returned disposers — order among them doesn't matter; the coordinator only
-    //    detaches its pointerdown listener + unwraps handle.destroy once ALL have
-    //    unregistered (refcounted, see pointer-drag.ts).
+    // 2. Unregister ALL THREE pointer-drag-coordinated recognizers via their returned
+    //    disposers — order among them doesn't matter; the coordinator only detaches its
+    //    pointerdown listener + unwraps handle.destroy once ALL have unregistered
+    //    (refcounted, see pointer-drag.ts). click-select never touched that coordinator (it
+    //    owns its own independent listeners), so it has no shared refcount to worry about —
+    //    still disposed here, order-independent among the four.
     m.dragResizeDispose();
     m.dragMoveDispose();
     m.dragCreateDepDispose();
+    m.clickSelectDispose();
     // 3. Remove the SVG.
     m.rendererHandle.destroy();
     this.#mount = undefined;
@@ -721,12 +848,16 @@ class Gantt implements GanttInstance {
 
   #renderNow(handle: SvgRendererHandle): void {
     // Track both stores' revisions — read .value unconditionally so this effect re-runs on
-    // ANY task or dependency mutation (coarse, per Q6 — no per-field granularity here).
+    // ANY task or dependency mutation (coarse, per Q6 — no per-field granularity here). Also
+    // tracks the selection store's revision so a `select`/`selectAll`/`deselect` call (or a
+    // click-select commit) triggers a repaint (`.fg-task--selected` class).
     void this.#taskStore.revision.value;
     void this.#dependencyStore.revision.value;
+    void this.#selectionStore.revision.value;
 
     const tasks = this.#taskStore.all();
     const dependencies = this.#dependencyStore.all();
+    const selectedTaskIds = this.#selectionStore.all();
 
     let criticalPath: CriticalPathResult | undefined;
     if (tasks.length === 0) {
@@ -782,12 +913,13 @@ class Gantt implements GanttInstance {
     // opposite transition — this must stay tasks.length-conditional.
     if (tasks.length === 0) {
       setTimeRange(handle, this.#emptyStateTimeRange());
-      handle.update({ tasks, dependencies, calendar: this.#calendar });
+      handle.update({ tasks, dependencies, calendar: this.#calendar, selectedTaskIds });
     } else {
       handle.update({
         tasks,
         dependencies,
         calendar: this.#calendar,
+        selectedTaskIds,
         ...(criticalPath !== undefined ? { criticalPath } : {}),
       });
       setTimeRange(handle, undefined);
@@ -803,7 +935,12 @@ class Gantt implements GanttInstance {
   }
 
   #renderInput(): SvgRendererInput {
-    return { tasks: this.#taskStore.all(), dependencies: this.#dependencyStore.all(), calendar: this.#calendar };
+    return {
+      tasks: this.#taskStore.all(),
+      dependencies: this.#dependencyStore.all(),
+      calendar: this.#calendar,
+      selectedTaskIds: this.#selectionStore.all(),
+    };
   }
 
   #rendererOptions(): SvgRendererOptions {

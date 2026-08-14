@@ -47,6 +47,10 @@ export interface SvgRendererInput {
   readonly criticalPath?: CriticalPathResult;
   /** Default `DEFAULT_CALENDAR` — used to shade weekend/holiday columns. */
   readonly calendar?: WorkingCalendar;
+  /** Optional — ids currently selected (already the FULL flattened set, descendants
+   *  included). `undefined`/omitted = nothing selected. Mirrors `criticalPath` as an
+   *  array-at-the-boundary, `Set` internally (see render()). */
+  readonly selectedTaskIds?: readonly TaskId[];
 }
 
 export interface SvgRendererOptions {
@@ -126,6 +130,20 @@ const LINK_HANDLE_STYLE_TEXT = `
 }
 @media (prefers-reduced-motion: reduce) {
   .fg-task__link-handle { transition: none; }
+}
+`;
+
+// Static CSS text — compile-time constant, never derived from task/user data (security.md).
+// Selection is a pure-CSS `outline` (a separate box-model property from SVG `stroke`) —
+// deliberately NOT the same property the critical-path indicator uses inline on `.fg-task__bar`
+// (`stroke`/`stroke-dasharray`/`stroke-width`, see renderTaskBar), so a task that is both
+// critical and selected keeps BOTH signals visible (spec-selection.md §7.3). Always-on,
+// unconditional (unlike LINK_HANDLE_STYLE_TEXT, which is gated behind `showLinkHandles`) —
+// selection must stay visible even in a `readOnly` chart.
+const SELECTION_STYLE_TEXT = `
+.fg-task--selected .fg-task__bar {
+  outline: var(--fg-task-selected-width, 2px) solid var(--fg-task-selected, #4338ca);
+  outline-offset: var(--fg-task-selected-offset, 2px);
 }
 `;
 
@@ -234,6 +252,7 @@ export function createSvgRenderer(
     const now = getTemporal().Now.zonedDateTimeISO(calendar.timezone);
     const gridColumns = computeGridColumns(timeScale, viewMode, calendar, locale, now);
     const criticalIds = new Set(currentInput.criticalPath?.criticalTaskIds ?? []);
+    const selectedIds = new Set(currentInput.selectedTaskIds ?? []);
 
     const offsetX = LABEL_COLUMN_WIDTH;
     const offsetY = HEADER_HEIGHT;
@@ -252,6 +271,7 @@ export function createSvgRenderer(
     const showLinkHandles = currentOptions.showLinkHandles ?? true;
 
     svg.appendChild(createArrowheadMarker());
+    svg.appendChild(createSelectionStyle());
     if (showLinkHandles) svg.appendChild(createLinkHandleStyle());
     svg.appendChild(renderGrid(gridColumns, offsetX, totalHeight));
     svg.appendChild(renderHeader(gridColumns, offsetX, timeScale.totalWidth));
@@ -259,7 +279,18 @@ export function createSvgRenderer(
       renderDependencies(currentInput.dependencies, barByTaskId, rowHeight, offsetX, offsetY),
     );
     svg.appendChild(
-      renderRows(rows, barByTaskId, criticalIds, rowHeight, calendar, locale, offsetX, offsetY, showLinkHandles),
+      renderRows(
+        rows,
+        barByTaskId,
+        criticalIds,
+        selectedIds,
+        rowHeight,
+        calendar,
+        locale,
+        offsetX,
+        offsetY,
+        showLinkHandles,
+      ),
     );
     svg.appendChild(renderLabelDivider(offsetX, totalHeight));
   }
@@ -288,6 +319,12 @@ function createArrowheadMarker(): SVGDefsElement {
 function createLinkHandleStyle(): SVGStyleElement {
   const style = document.createElementNS(SVG_NS, 'style') as SVGStyleElement;
   style.textContent = LINK_HANDLE_STYLE_TEXT;
+  return style;
+}
+
+function createSelectionStyle(): SVGStyleElement {
+  const style = document.createElementNS(SVG_NS, 'style') as SVGStyleElement;
+  style.textContent = SELECTION_STYLE_TEXT;
   return style;
 }
 
@@ -376,6 +413,7 @@ function renderRows(
   rows: readonly RowLayout[],
   barByTaskId: ReadonlyMap<TaskId, TaskBarLayout>,
   criticalIds: ReadonlySet<TaskId>,
+  selectedIds: ReadonlySet<TaskId>,
   rowHeight: number,
   calendar: WorkingCalendar,
   locale: string,
@@ -406,8 +444,9 @@ function renderRows(
     rowGroup.appendChild(label);
 
     const isCritical = criticalIds.has(row.task.id);
+    const isSelected = selectedIds.has(row.task.id);
     rowGroup.appendChild(
-      renderTaskBar(row.task, bar, offsetX, offsetY, isCritical, calendar, locale, showLinkHandles),
+      renderTaskBar(row.task, bar, offsetX, offsetY, isCritical, isSelected, calendar, locale, showLinkHandles),
     );
 
     g.appendChild(rowGroup);
@@ -422,6 +461,7 @@ function renderTaskBar(
   offsetX: number,
   offsetY: number,
   isCritical: boolean,
+  isSelected: boolean,
   calendar: WorkingCalendar,
   locale: string,
   showLinkHandles: boolean,
@@ -433,11 +473,12 @@ function renderTaskBar(
   const kindClass = isKnownTaskKind(task.type) ? task.type : 'task';
   const classNames = ['fg-task', `fg-task--${kindClass}`];
   if (isCritical) classNames.push('fg-task--critical');
+  if (isSelected) classNames.push('fg-task--selected');
   wrapper.setAttribute('class', classNames.join(' '));
   // `task.id` is a branded TaskId (developer-controlled, not free-text host input) —
   // safe as an attribute value via setAttribute regardless.
   wrapper.setAttribute('data-task-id', task.id);
-  wrapper.setAttribute('aria-label', buildTaskAriaLabel(task, isCritical, calendar, locale));
+  wrapper.setAttribute('aria-label', buildTaskAriaLabel(task, isCritical, isSelected, calendar, locale));
 
   const x = bar.x + offsetX;
   const y = bar.y + offsetY;
@@ -510,6 +551,7 @@ function renderLinkHandle(
 function buildTaskAriaLabel(
   task: Task,
   isCritical: boolean,
+  isSelected: boolean,
   calendar: WorkingCalendar,
   locale: string,
 ): string {
@@ -521,7 +563,8 @@ function buildTaskAriaLabel(
   const endLabel = end.toLocaleString(locale, dateOptions);
   const progressPct = Math.round((task.progress ?? 0) * 100);
   const base = `${name}, ${startLabel}–${endLabel} (${progressPct}% complete)`;
-  return isCritical ? `${base}, critical path` : base;
+  const withCritical = isCritical ? `${base}, critical path` : base;
+  return isSelected ? `${withCritical}, selected` : withCritical;
 }
 
 function renderDependencies(
