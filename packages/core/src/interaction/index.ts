@@ -4,3 +4,7 @@ export { enableDragResize } from './drag-resize.js';
 export type { DragResizeOptions } from './drag-resize.js';
 export { enableDragCreateDep } from './drag-create-dep.js';
 export type { DragCreateDepOptions } from './drag-create-dep.js';
+export { enableClickSelect } from './selection.js';
+export type { SelectionOptions } from './selection.js';
+export { enableKeyboardNav } from './keyboard-nav.js';
+export type { KeyboardNavOptions, KeyboardNavHandle } from './keyboard-nav.js';

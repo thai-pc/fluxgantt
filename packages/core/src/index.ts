@@ -18,7 +18,7 @@ export { signal, computed, effect, batch, untracked, Signal } from './signals.js
 export type { ReadonlySignal } from './signals.js';
 
 // State layer (spec §5.1)
-export { TaskStore, DependencyStore } from './store/index.js';
+export { TaskStore, DependencyStore, SelectionStore } from './store/index.js';
 export type { TaskInput, TaskPatch, LinkOptions } from './store/index.js';
 
 // Compute layer (spec §5.1, §13)
@@ -50,8 +50,21 @@ export type { SvgRendererInput, SvgRendererOptions, SvgRendererHandle } from './
 
 // Interaction layer (spec §8.4, spec-drag-move.md, spec-drag-resize.md,
 // spec-drag-create-dependency.md)
-export { enableDragMove, enableDragResize, enableDragCreateDep } from './interaction/index.js';
-export type { DragMoveOptions, DragResizeOptions, DragCreateDepOptions } from './interaction/index.js';
+export {
+  enableDragMove,
+  enableDragResize,
+  enableDragCreateDep,
+  enableClickSelect,
+  enableKeyboardNav,
+} from './interaction/index.js';
+export type {
+  DragMoveOptions,
+  DragResizeOptions,
+  DragCreateDepOptions,
+  SelectionOptions,
+  KeyboardNavOptions,
+  KeyboardNavHandle,
+} from './interaction/index.js';
 
 // IO layer (spec §7.8, security.md §2)
 export { exportJson, importJson, exportCsv, importCsv, DEFAULT_CSV_COLUMNS } from './io/index.js';

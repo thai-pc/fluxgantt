@@ -12,6 +12,6 @@ test('interactive chart renders link handles', async ({ page }) => {
 
 test('read-only chart renders no link handles', async ({ page }) => {
   await page.goto('/read-only.html');
-  await expect(page.locator('svg[role="img"]')).toBeVisible();
+  await expect(page.locator('svg[role="grid"]')).toBeVisible();
   await expect(page.locator('.fg-task__link-handle')).toHaveCount(0);
 });

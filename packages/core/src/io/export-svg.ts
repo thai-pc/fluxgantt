@@ -110,8 +110,21 @@ export function exportSvg(svg: SVGSVGElement, options?: ExportSvgOptions): strin
   //    opacity in the static export.
   clone.querySelectorAll('.fg-task__link-handle').forEach((el) => el.remove());
 
-  // 5. Strip the link-handle hover-reveal `<style>` block (already-decided requirement).
-  clone.querySelector('style')?.remove();
+  // 5. Strip every interactive-only `<style>` block — link-handle hover-reveal AND the
+  //    selection-outline rule (spec-selection.md §7.3/§11: selection is transient UI state,
+  //    not persisted/exported). `svg-renderer.ts` now appends TWO `<style>` elements
+  //    unconditionally (selection) / conditionally (link handles), so this must remove ALL of
+  //    them, not just the first (`querySelector('style')` would leave the second behind).
+  clone.querySelectorAll('style').forEach((el) => el.remove());
+
+  // 5b. Strip `tabindex` (spec-keyboard-nav.md §9): a static, non-interactive exported SVG
+  //     has nothing that is actually focusable — leaving `tabindex="0"`/`"-1"` in place would
+  //     be a meaningless, potentially confusing artifact if the file is opened directly in a
+  //     browser/editor. ARIA roles/attributes (`role`, `aria-rowindex`, `aria-selected`,
+  //     `aria-rowcount`, `aria-multiselectable`) are LEFT IN PLACE — they are accurate, static
+  //     descriptions of the chart's structure/state at export time and are plain attributes,
+  //     not interpolated user strings, so they pose no security or correctness issue.
+  clone.querySelectorAll('[tabindex]').forEach((el) => el.removeAttribute('tabindex'));
 
   // 6. A11y: promote the existing aria-label into a <title> — more portable than aria-label
   //    alone for standalone-file / `<img src>` contexts (spec §8).

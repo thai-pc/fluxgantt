@@ -284,6 +284,138 @@ describe('refresh() — manual repaint escape hatch', () => {
   });
 });
 
+describe('click-select — mount() wiring (spec-selection.md §12.4)', () => {
+  it('clicking a rendered .fg-task adds fg-task--selected after the reactive re-render, and getSelection() reflects it', () => {
+    const gantt = createGantt({
+      tasks: [taskInput('t1', '2026-01-05T09:00', '2026-01-07T09:00')],
+    });
+    gantt.mount(container);
+    const groupEl = container.querySelector('.fg-task[data-task-id="t1"]') as SVGGElement;
+    expect(groupEl.classList.contains('fg-task--selected')).toBe(false);
+
+    dispatchPointer(groupEl, 'pointerdown', { pointerId: 1, clientX: 100, clientY: 50, bubbles: true });
+    dispatchPointer(window, 'pointerup', { pointerId: 1, clientX: 100, clientY: 50 });
+
+    const groupElAfter = container.querySelector('.fg-task[data-task-id="t1"]') as SVGGElement;
+    expect(groupElAfter.classList.contains('fg-task--selected')).toBe(true);
+    expect(gantt.getSelection()).toEqual([toTaskId('t1')]);
+  });
+
+  it("selection:changed fires on a real click via gantt.on(...)", () => {
+    const gantt = createGantt({
+      tasks: [taskInput('t1', '2026-01-05T09:00', '2026-01-07T09:00')],
+    });
+    gantt.mount(container);
+    const changed = vi.fn();
+    gantt.on('selection:changed', changed);
+    const groupEl = container.querySelector('.fg-task[data-task-id="t1"]') as SVGGElement;
+
+    dispatchPointer(groupEl, 'pointerdown', { pointerId: 1, clientX: 100, clientY: 50, bubbles: true });
+    dispatchPointer(window, 'pointerup', { pointerId: 1, clientX: 100, clientY: 50 });
+
+    expect(changed).toHaveBeenCalledTimes(1);
+    expect(changed).toHaveBeenCalledWith([toTaskId('t1')]);
+  });
+
+  it('readOnly: true — drag-move does NOT fire, but click-select STILL works (Q2 regression)', () => {
+    const gantt = createGantt({
+      tasks: [taskInput('t1', '2026-01-05T09:00', '2026-01-07T09:00')],
+      readOnly: true,
+    });
+    gantt.mount(container);
+    const moved = vi.fn();
+    const changed = vi.fn();
+    gantt.on('task:moved', moved);
+    gantt.on('selection:changed', changed);
+    const groupEl = container.querySelector('.fg-task[data-task-id="t1"]') as SVGGElement;
+
+    // A drag (exceeds threshold) must not move the task under readOnly.
+    dispatchPointer(groupEl, 'pointerdown', { pointerId: 1, clientX: 100, clientY: 50, bubbles: true });
+    dispatchPointer(window, 'pointermove', { pointerId: 1, clientX: 200, clientY: 50 });
+    dispatchPointer(window, 'pointerup', { pointerId: 1, clientX: 200, clientY: 50 });
+    expect(moved).not.toHaveBeenCalled();
+
+    // A plain click still selects.
+    const groupEl2 = container.querySelector('.fg-task[data-task-id="t1"]') as SVGGElement;
+    dispatchPointer(groupEl2, 'pointerdown', { pointerId: 2, clientX: 100, clientY: 50, bubbles: true });
+    dispatchPointer(window, 'pointerup', { pointerId: 2, clientX: 100, clientY: 50 });
+
+    const groupElAfter = container.querySelector('.fg-task[data-task-id="t1"]') as SVGGElement;
+    expect(groupElAfter.classList.contains('fg-task--selected')).toBe(true);
+    expect(changed).toHaveBeenCalledTimes(1);
+    expect(gantt.getSelection()).toEqual([toTaskId('t1')]);
+  });
+
+  it('a task both critical AND selected renders BOTH classes, and the inline critical stroke/stroke-dasharray are unaffected by selection', () => {
+    // Two independent, equal-length tasks → both are critical (each is its own zero-slack path).
+    const gantt = createGantt({
+      tasks: [
+        taskInput('a', '2026-01-05T09:00', '2026-01-05T17:00'),
+        taskInput('b', '2026-01-05T09:00', '2026-01-05T17:00'),
+      ],
+    });
+    gantt.mount(container);
+    gantt.select(toTaskId('a'));
+
+    const groupEl = container.querySelector('.fg-task[data-task-id="a"]') as SVGGElement;
+    expect(groupEl.classList.contains('fg-task--critical')).toBe(true);
+    expect(groupEl.classList.contains('fg-task--selected')).toBe(true);
+
+    const bar = groupEl.querySelector('.fg-task__bar') as SVGRectElement;
+    expect(bar.style.getPropertyValue('stroke-dasharray')).not.toBe('');
+    expect(bar.style.getPropertyValue('stroke')).not.toBe('');
+  });
+
+  it('aria-label includes ", selected" when selected, ", critical path" when critical, both suffixes (critical then selected) when both', () => {
+    // Independent (no dependencies) tasks: a task's own late-finish is bounded by the
+    // GLOBAL projectEnd (see computeCriticalPath's backward pass), so the LONGER task ('a',
+    // whose own end IS projectEnd) is critical (zero slack), while the SHORTER task ('b',
+    // ending before projectEnd) has positive slack — not critical. A third, unselected task
+    // ('c') stays neither critical nor selected, as a negative control.
+    const gantt = createGantt({
+      tasks: [
+        taskInput('a', '2026-01-05T09:00', '2026-01-05T17:00'), // 8h — drives projectEnd, critical
+        taskInput('b', '2026-01-05T09:00', '2026-01-05T13:00'), // 4h — ends early, positive slack
+        taskInput('c', '2026-01-05T09:00', '2026-01-05T11:00'), // 2h — unselected control
+      ],
+    });
+    gantt.mount(container);
+    gantt.select([toTaskId('a'), toTaskId('b')]);
+
+    const critAndSelected = container.querySelector('.fg-task[data-task-id="a"]') as SVGGElement;
+    expect(critAndSelected.classList.contains('fg-task--critical')).toBe(true);
+    expect(critAndSelected.classList.contains('fg-task--selected')).toBe(true);
+    expect(critAndSelected.getAttribute('aria-label')).toMatch(/critical path, selected$/);
+
+    const selectedOnly = container.querySelector('.fg-task[data-task-id="b"]') as SVGGElement;
+    expect(selectedOnly.classList.contains('fg-task--critical')).toBe(false);
+    expect(selectedOnly.classList.contains('fg-task--selected')).toBe(true);
+    expect(selectedOnly.getAttribute('aria-label')).toMatch(/, selected$/);
+    expect(selectedOnly.getAttribute('aria-label')).not.toMatch(/critical path/);
+
+    const neither = container.querySelector('.fg-task[data-task-id="c"]') as SVGGElement;
+    expect(neither.classList.contains('fg-task--critical')).toBe(false);
+    expect(neither.classList.contains('fg-task--selected')).toBe(false);
+    expect(neither.getAttribute('aria-label')).not.toMatch(/selected/);
+  });
+
+  it('aria-selected reflects selection state on every row (spec-keyboard-nav.md §3.2 supersedes the old §8 "no aria-selected" decision)', () => {
+    const gantt = createGantt({
+      tasks: [
+        taskInput('a', '2026-01-05T09:00', '2026-01-06T09:00'),
+        taskInput('b', '2026-01-07T09:00', '2026-01-08T09:00'),
+      ],
+    });
+    gantt.mount(container);
+    gantt.select(toTaskId('a'));
+
+    const rowA = container.querySelector('.fg-timeline__row[data-task-id="a"]');
+    const rowB = container.querySelector('.fg-timeline__row[data-task-id="b"]');
+    expect(rowA!.getAttribute('aria-selected')).toBe('true');
+    expect(rowB!.getAttribute('aria-selected')).toBe('false');
+  });
+});
+
 describe('critical-path:computed — emit-on-change from the render effect (fix #3)', () => {
   it('does not re-emit when a mutation leaves the critical set unchanged; re-emits when it changes', () => {
     // Two independent, equal-length tasks → both are critical (each is its own zero-slack path).

@@ -47,6 +47,15 @@ export interface SvgRendererInput {
   readonly criticalPath?: CriticalPathResult;
   /** Default `DEFAULT_CALENDAR` — used to shade weekend/holiday columns. */
   readonly calendar?: WorkingCalendar;
+  /** Optional — ids currently selected (already the FULL flattened set, descendants
+   *  included). `undefined`/omitted = nothing selected. Mirrors `criticalPath` as an
+   *  array-at-the-boundary, `Set` internally (see render()). */
+  readonly selectedTaskIds?: readonly TaskId[];
+  /** Optional — the task id whose row currently has keyboard focus (roving tabindex,
+   *  spec-keyboard-nav.md §4.5). `undefined` = no keyboard interaction has happened yet;
+   *  the renderer falls back to the first row so the grid remains exactly one native Tab
+   *  stop even before any arrow key has been pressed. */
+  readonly focusedTaskId?: TaskId | undefined;
 }
 
 export interface SvgRendererOptions {
@@ -129,6 +138,71 @@ const LINK_HANDLE_STYLE_TEXT = `
 }
 `;
 
+// Static CSS text — compile-time constant, never derived from task/user data (security.md).
+// Selection is a pure-CSS `outline` (a separate box-model property from SVG `stroke`) —
+// deliberately NOT the same property the critical-path indicator uses inline on `.fg-task__bar`
+// (`stroke`/`stroke-dasharray`/`stroke-width`, see renderTaskBar), so a task that is both
+// critical and selected keeps BOTH signals visible (spec-selection.md §7.3). Always-on,
+// unconditional (unlike LINK_HANDLE_STYLE_TEXT, which is gated behind `showLinkHandles`) —
+// selection must stay visible even in a `readOnly` chart.
+const SELECTION_STYLE_TEXT = `
+.fg-task--selected .fg-task__bar {
+  outline: var(--fg-task-selected-width, 2px) solid var(--fg-task-selected, #4338ca);
+  outline-offset: var(--fg-task-selected-offset, 2px);
+}
+`;
+
+/** Geometry offset (px) between the task bar's own edge and the extra focus-ring `<rect>`'s
+ *  edge — matches the `--fg-task-focus-offset` design token's default (spec §5.1). SVG
+ *  geometry (x/y/width/height/rx) is plain attributes, not CSS, so unlike the color and
+ *  stroke-width of the ring (which stay CSS-custom-property-driven and themeable), the
+ *  ring's shape must be computed once in JS at render time — this constant is that single
+ *  source of truth, kept in sync with the CSS default by convention (same pattern already
+ *  used for LABEL_INDENT_PX/LABEL_PADDING_PX above, which also mirror geometry the CSS layer
+ *  cannot itself express). */
+const FOCUS_RING_OFFSET_PX = 5;
+
+// Static CSS text — compile-time constant, never derived from task/user data (security.md).
+// Keyboard focus indicator (spec-keyboard-nav.md §5.2, corrected mechanism per §12.5).
+// IMPLEMENTATION-DETAIL CORRECTION FROM THE SPEC'S ORIGINAL DRAFT: the spec's initial text
+// proposed a second CSS `outline` on `.fg-task__bar`, but SVG's `outline` property is a
+// single, non-stacking box-model property already claimed by `SELECTION_STYLE_TEXT` above —
+// a task that is simultaneously selected AND focused needs BOTH rings visible at once, which
+// two `outline` declarations on the same element cannot do (last-wins collision). `box-shadow`
+// (the spec's own §12.5 fallback suggestion) was considered but rejected: `box-shadow` does
+// not render on inner SVG shape elements (`rect`/`circle`/`path`) in any browser — it only
+// applies to elements that establish an actual CSS box (the outer `<svg>`, HTML content, or
+// `foreignObject`), not SVG shapes painted via the SVG rendering model. The mechanism actually
+// used here — §12.5's OTHER explicitly-offered option — is a second, purpose-built
+// `<rect class="fg-task__focus-ring">` sibling (see `renderTaskBar`), always present in the
+// DOM (rendered unconditionally, every task, every render) but visually inert by default
+// (`stroke: none`); its `stroke` is set ONLY by the `:focus-visible` rule below, targeting the
+// ancestor `.fg-timeline__row` (not the ring itself, since SVG has no `:focus-within`-on-self
+// concept here) — so ring visibility tracks the browser's native focus-visible heuristic with
+// zero extra JS toggling. `:focus-visible` (not bare `:focus`) so focus arriving via pointer
+// interaction never spuriously shows the keyboard ring. Always-on, unconditional (matches
+// SELECTION_STYLE_TEXT's posture — focus must stay visible even in a `readOnly` chart, since
+// Arrow/Space navigation stays active there).
+const FOCUS_STYLE_TEXT = `
+.fg-timeline__row:focus-visible {
+  outline: none; /* the row <g> itself is not the visual target; suppress default UA outline on it */
+}
+.fg-task__focus-ring {
+  fill: none;
+  stroke: none;
+  pointer-events: none;
+}
+.fg-timeline__row:focus-visible .fg-task__focus-ring {
+  stroke: var(--fg-task-focus, #0ea5e9);
+  stroke-width: var(--fg-task-focus-width, 2px);
+}
+@media (prefers-reduced-motion: reduce) {
+  .fg-task__focus-ring {
+    transition: none;
+  }
+}
+`;
+
 /** Defensive string-length cap applied to any task field folded into an `aria-label`
  *  attribute value (security.md "limit string length"). */
 const MAX_ARIA_NAME_LENGTH = 200;
@@ -156,10 +230,10 @@ export function createSvgRenderer(
 
   const svg = document.createElementNS(SVG_NS, 'svg') as SVGSVGElement;
   svg.setAttribute('class', 'fg-timeline');
-  // NOTE (spec §7): placeholder `role="img"` — matches the existing e2e smoke fixture.
-  // Once keyboard-nav lands this must become `role="grid"` with `role="row"`/
-  // `role="gridcell"` per §8.5. Not done here: nothing is focusable in v1.
-  svg.setAttribute('role', 'img');
+  // `role`/`aria-rowcount`/`aria-multiselectable` are set INSIDE render() (spec-keyboard-nav.md
+  // §3.2 point 1) — `aria-rowcount` depends on the row count, which isn't known until the
+  // first render(), so no static value is set here beyond the role/attribute EXISTING in the
+  // DOM once render() runs synchronously below.
   container.appendChild(svg);
 
   render();
@@ -190,6 +264,14 @@ export function createSvgRenderer(
   };
 
   function render(): void {
+    // Captured BEFORE the full repaint below destroys every existing row element (spec
+    // §4.5 point 4) — the gate that prevents this render pass from ever STEALING focus
+    // during a purely programmatic/headless mutation (e.g. a host app calling
+    // `gantt.addTask()` while the Gantt itself isn't focused): focus is only ever
+    // RESTORED, never newly grabbed.
+    const hadFocusInside =
+      typeof document !== 'undefined' && document.activeElement !== null && svg.contains(document.activeElement);
+
     const calendar = currentInput.calendar ?? DEFAULT_CALENDAR;
     const viewMode = currentOptions.viewMode ?? DEFAULT_VIEW_MODE;
     const density = currentOptions.density ?? DEFAULT_DENSITY;
@@ -234,6 +316,7 @@ export function createSvgRenderer(
     const now = getTemporal().Now.zonedDateTimeISO(calendar.timezone);
     const gridColumns = computeGridColumns(timeScale, viewMode, calendar, locale, now);
     const criticalIds = new Set(currentInput.criticalPath?.criticalTaskIds ?? []);
+    const selectedIds = new Set(currentInput.selectedTaskIds ?? []);
 
     const offsetX = LABEL_COLUMN_WIDTH;
     const offsetY = HEADER_HEIGHT;
@@ -248,10 +331,21 @@ export function createSvgRenderer(
     svg.setAttribute('height', String(totalHeight));
     svg.setAttribute('viewBox', `0 0 ${totalWidth} ${totalHeight}`);
     svg.setAttribute('aria-label', ariaLabel);
+    // ARIA grid structure (spec-keyboard-nav.md §3.2 point 1) — replaces the old placeholder
+    // `role="img"`. `aria-multiselectable` is always "true": Core's selection model always
+    // supports multi-select (Ctrl/Shift-click, Shift+Arrow), not gated by any config flag.
+    svg.setAttribute('role', 'grid');
+    svg.setAttribute('aria-rowcount', String(rows.length));
+    svg.setAttribute('aria-multiselectable', 'true');
 
     const showLinkHandles = currentOptions.showLinkHandles ?? true;
+    // `focusedTaskId` falls back to the FIRST row when unset (spec §4.5 point 3) — before any
+    // keyboard interaction has happened, the grid must still be exactly one native Tab stop.
+    const focusedTaskId = currentInput.focusedTaskId ?? rows[0]?.task.id;
 
     svg.appendChild(createArrowheadMarker());
+    svg.appendChild(createSelectionStyle());
+    svg.appendChild(createFocusStyle());
     if (showLinkHandles) svg.appendChild(createLinkHandleStyle());
     svg.appendChild(renderGrid(gridColumns, offsetX, totalHeight));
     svg.appendChild(renderHeader(gridColumns, offsetX, timeScale.totalWidth));
@@ -259,10 +353,45 @@ export function createSvgRenderer(
       renderDependencies(currentInput.dependencies, barByTaskId, rowHeight, offsetX, offsetY),
     );
     svg.appendChild(
-      renderRows(rows, barByTaskId, criticalIds, rowHeight, calendar, locale, offsetX, offsetY, showLinkHandles),
+      renderRows(
+        rows,
+        barByTaskId,
+        criticalIds,
+        selectedIds,
+        focusedTaskId,
+        rowHeight,
+        calendar,
+        locale,
+        offsetX,
+        offsetY,
+        showLinkHandles,
+      ),
     );
     svg.appendChild(renderLabelDivider(offsetX, totalHeight));
+
+    // Focus restoration (spec §4.5 point 4) — MUST run after every element above is already
+    // appended to `svg`, since the target row element is freshly created by renderRows() in
+    // this same synchronous pass.
+    if (hadFocusInside && focusedTaskId !== undefined) {
+      const rowEl = svg.querySelector<SVGElement>(
+        `.fg-timeline__row[data-task-id="${cssEscapeAttr(focusedTaskId)}"]`,
+      );
+      rowEl?.focus({ preventScroll: true });
+    }
   }
+}
+
+/** Minimal CSS.escape-equivalent for a `data-task-id` value interpolated into an attribute
+ *  selector string (`querySelector`). `task.id` is a branded, developer-controlled `TaskId`
+ *  (never raw untrusted host free-text — same posture already documented at
+ *  `renderTaskBar`'s `data-task-id` assignment above), but this is cheap defense-in-depth
+ *  against a value containing a `"` breaking the selector string. Uses the platform
+ *  `CSS.escape` when available (all supported browsers + modern jsdom), falls back to a
+ *  minimal manual escape otherwise so this file never hard-requires `CSS.escape`. */
+function cssEscapeAttr(value: string): string {
+  const css = (globalThis as { CSS?: { escape?: (v: string) => string } }).CSS;
+  if (css?.escape) return css.escape(value);
+  return value.replace(/["\\]/g, '\\$&');
 }
 
 // --- DOM builders (drawing only — no layout math) ------------------------------------
@@ -288,6 +417,18 @@ function createArrowheadMarker(): SVGDefsElement {
 function createLinkHandleStyle(): SVGStyleElement {
   const style = document.createElementNS(SVG_NS, 'style') as SVGStyleElement;
   style.textContent = LINK_HANDLE_STYLE_TEXT;
+  return style;
+}
+
+function createFocusStyle(): SVGStyleElement {
+  const style = document.createElementNS(SVG_NS, 'style') as SVGStyleElement;
+  style.textContent = FOCUS_STYLE_TEXT;
+  return style;
+}
+
+function createSelectionStyle(): SVGStyleElement {
+  const style = document.createElementNS(SVG_NS, 'style') as SVGStyleElement;
+  style.textContent = SELECTION_STYLE_TEXT;
   return style;
 }
 
@@ -376,6 +517,8 @@ function renderRows(
   rows: readonly RowLayout[],
   barByTaskId: ReadonlyMap<TaskId, TaskBarLayout>,
   criticalIds: ReadonlySet<TaskId>,
+  selectedIds: ReadonlySet<TaskId>,
+  focusedTaskId: TaskId | undefined,
   rowHeight: number,
   calendar: WorkingCalendar,
   locale: string,
@@ -390,9 +533,28 @@ function renderRows(
     const bar = barByTaskId.get(row.task.id);
     if (!bar) continue;
 
+    const isSelected = selectedIds.has(row.task.id);
+
+    // ARIA grid row (spec-keyboard-nav.md §3.2 point 2): `role="row"`, 1-based
+    // `aria-rowindex` (distinct from the existing 0-based `data-row-index`, an internal
+    // implementation detail), `data-task-id` (promoted up from the nested `.fg-task` `<g>`
+    // — see §3.3), `aria-selected`, and roving `tabindex` (exactly one row is `0`, the rest
+    // `-1`).
     const rowGroup = document.createElementNS(SVG_NS, 'g');
     rowGroup.setAttribute('class', 'fg-timeline__row');
+    rowGroup.setAttribute('role', 'row');
     rowGroup.setAttribute('data-row-index', String(row.rowIndex));
+    rowGroup.setAttribute('data-task-id', row.task.id);
+    rowGroup.setAttribute('aria-rowindex', String(row.rowIndex + 1));
+    rowGroup.setAttribute('aria-selected', isSelected ? 'true' : 'false');
+    rowGroup.setAttribute('tabindex', row.task.id === focusedTaskId ? '0' : '-1');
+
+    // Single-column v1 (spec §3.2 point 3): exactly one `role="gridcell"` wrapper per row,
+    // a pure ARIA/structural `<g>` with no `transform` of its own — zero rendering diff
+    // versus the pre-keyboard-nav DOM shape.
+    const cell = document.createElementNS(SVG_NS, 'g');
+    cell.setAttribute('class', 'fg-timeline__row-cell');
+    cell.setAttribute('role', 'gridcell');
 
     const label = document.createElementNS(SVG_NS, 'text');
     label.setAttribute('class', 'fg-timeline__row-label');
@@ -403,13 +565,14 @@ function renderRows(
     // SECURITY: `task.name` is untrusted host-app data — text node only, never innerHTML
     // or a template string assembled into markup (security.md §1, spec §8).
     label.appendChild(document.createTextNode(row.task.name));
-    rowGroup.appendChild(label);
+    cell.appendChild(label);
 
     const isCritical = criticalIds.has(row.task.id);
-    rowGroup.appendChild(
-      renderTaskBar(row.task, bar, offsetX, offsetY, isCritical, calendar, locale, showLinkHandles),
+    cell.appendChild(
+      renderTaskBar(row.task, bar, offsetX, offsetY, isCritical, isSelected, calendar, locale, showLinkHandles),
     );
 
+    rowGroup.appendChild(cell);
     g.appendChild(rowGroup);
   }
 
@@ -422,6 +585,7 @@ function renderTaskBar(
   offsetX: number,
   offsetY: number,
   isCritical: boolean,
+  isSelected: boolean,
   calendar: WorkingCalendar,
   locale: string,
   showLinkHandles: boolean,
@@ -433,11 +597,12 @@ function renderTaskBar(
   const kindClass = isKnownTaskKind(task.type) ? task.type : 'task';
   const classNames = ['fg-task', `fg-task--${kindClass}`];
   if (isCritical) classNames.push('fg-task--critical');
+  if (isSelected) classNames.push('fg-task--selected');
   wrapper.setAttribute('class', classNames.join(' '));
   // `task.id` is a branded TaskId (developer-controlled, not free-text host input) —
   // safe as an attribute value via setAttribute regardless.
   wrapper.setAttribute('data-task-id', task.id);
-  wrapper.setAttribute('aria-label', buildTaskAriaLabel(task, isCritical, calendar, locale));
+  wrapper.setAttribute('aria-label', buildTaskAriaLabel(task, isCritical, isSelected, calendar, locale));
 
   const x = bar.x + offsetX;
   const y = bar.y + offsetY;
@@ -473,6 +638,35 @@ function renderTaskBar(
   }
 
   wrapper.appendChild(shape);
+
+  // Keyboard-focus ring (spec-keyboard-nav.md §5.2, mechanism corrected — see
+  // `FOCUS_STYLE_TEXT`'s doc comment): a purpose-built `<rect>` sibling of the bar, offset
+  // outward by `FOCUS_RING_OFFSET_PX` on every edge, rendered unconditionally (every task,
+  // every render) but visually inert (`stroke: none`) unless `.fg-timeline__row:focus-visible`
+  // matches — pure CSS toggling, no JS visibility branching needed here. Milestone bars are
+  // rotated 45° via a `transform` on `.fg-task__bar` itself; the ring intentionally does NOT
+  // copy that rotation — an axis-aligned ring around a diamond still unambiguously indicates
+  // "this row", and matching the diamond's rotated bounding box exactly is unnecessary
+  // precision for a focus indicator.
+  const focusRing = document.createElementNS(SVG_NS, 'rect');
+  focusRing.setAttribute('class', 'fg-task__focus-ring');
+  focusRing.setAttribute('x', String(x - FOCUS_RING_OFFSET_PX));
+  focusRing.setAttribute('y', String(y - FOCUS_RING_OFFSET_PX));
+  focusRing.setAttribute('width', String(bar.width + FOCUS_RING_OFFSET_PX * 2));
+  focusRing.setAttribute('height', String(bar.height + FOCUS_RING_OFFSET_PX * 2));
+  focusRing.setAttribute('rx', '3');
+  focusRing.setAttribute('aria-hidden', 'true');
+  // `fill` MUST be set inline (not left to the `<style>` block's `.fg-task__focus-ring`
+  // rule) — an SVG `<rect>`'s initial/default `fill` is BLACK (unlike `stroke`, whose
+  // default is already `none`), so if the `<style>` block is ever stripped without this
+  // element also being removed (e.g. `exportSvg()`'s blanket `<style>`-removal step, which
+  // deliberately does NOT special-case this new element the way it explicitly removes
+  // `.fg-task__link-handle` circles), the ring would otherwise render as a solid black box
+  // over the task bar. `stroke` itself is safely left to the CSS rule (default is already
+  // "none", matching the intended hidden-by-default state).
+  focusRing.style.setProperty('fill', 'none');
+  wrapper.appendChild(focusRing);
+
   if (showLinkHandles) {
     wrapper.appendChild(renderLinkHandle(bar, offsetX, offsetY, 'start'));
     wrapper.appendChild(renderLinkHandle(bar, offsetX, offsetY, 'end'));
@@ -510,6 +704,7 @@ function renderLinkHandle(
 function buildTaskAriaLabel(
   task: Task,
   isCritical: boolean,
+  isSelected: boolean,
   calendar: WorkingCalendar,
   locale: string,
 ): string {
@@ -521,7 +716,8 @@ function buildTaskAriaLabel(
   const endLabel = end.toLocaleString(locale, dateOptions);
   const progressPct = Math.round((task.progress ?? 0) * 100);
   const base = `${name}, ${startLabel}–${endLabel} (${progressPct}% complete)`;
-  return isCritical ? `${base}, critical path` : base;
+  const withCritical = isCritical ? `${base}, critical path` : base;
+  return isSelected ? `${withCritical}, selected` : withCritical;
 }
 
 function renderDependencies(

@@ -15,7 +15,7 @@
 // `'manual'` (= v1's original single-task-only behavior, unchanged) — see `#maybeCascade`.
 import type { Temporal } from '@js-temporal/polyfill';
 import { effect } from './signals.js';
-import { TaskStore, DependencyStore, DependencyLinkError } from './store/index.js';
+import { TaskStore, DependencyStore, DependencyLinkError, SelectionStore } from './store/index.js';
 import type { TaskInput, TaskPatch } from './store/index.js';
 import {
   DEFAULT_CALENDAR,
@@ -28,9 +28,12 @@ import { computeCascade } from './compute/cascade.js';
 import { getTemporal } from './internal/temporal.js';
 import { createSvgRenderer } from './render/svg-renderer.js';
 import type { SvgRendererHandle, SvgRendererInput, SvgRendererOptions } from './render/svg-renderer.js';
+import { layoutRows } from './render/renderer-base.js';
 import { enableDragMove } from './interaction/drag-move.js';
 import { enableDragResize } from './interaction/drag-resize.js';
 import { enableDragCreateDep } from './interaction/drag-create-dep.js';
+import { enableClickSelect } from './interaction/selection.js';
+import { enableKeyboardNav } from './interaction/keyboard-nav.js';
 import {
   exportJson as exportJsonFn,
   exportCsv as exportCsvFn,
@@ -133,6 +136,12 @@ export interface GanttEventMap {
   /** Task ids only, even though the facade's `computeCriticalPath()` method itself returns
    *  the full `CriticalPathResult`. */
   'critical-path:computed': [criticalTaskIds: readonly TaskId[]];
+  /** Full flattened selection (explicit ids + auto-selected descendants), in Set-iteration
+   *  (insertion) order — NOT necessarily row order. Fires once per `select`/`selectAll`/
+   *  `deselect` call AND once per completed click-select interaction, but ONLY when the
+   *  resulting set actually differs from the previous one (no-op reselect is suppressed —
+   *  same discipline as `critical-path:computed`'s `#sameCriticalIds` guard). */
+  'selection:changed': [taskIds: readonly TaskId[]];
 }
 
 export type GanttEventName = keyof GanttEventMap;
@@ -157,6 +166,28 @@ export interface GanttInstance {
   unlinkTasks(from: TaskId, to: TaskId): void;
   getDependencies(): Dependency[];
   getDependenciesOf(taskId: TaskId): Dependency[];
+
+  // --- Selection operations --------------------------------------------------------------
+  /**
+   * Replaces the current selection with `id` (or `id[]`), expanded to include every
+   * descendant of any task among them (parent-implies-children). Ids that don't resolve in
+   * the current TaskStore are silently dropped (same resilience posture as a dangling
+   * dependency reference). Fires `selection:changed` iff the resulting flattened set differs
+   * from the previous one.
+   */
+  select(id: TaskId | TaskId[]): void;
+
+  /** Selects every current task (already the full set — hierarchy expansion is a no-op
+   *  here). Fires `selection:changed` iff the set changed. */
+  selectAll(): void;
+
+  /** Clears the selection. Fires `selection:changed` iff the selection was non-empty. */
+  deselect(): void;
+
+  /** Snapshot array (not a live reference) of the CURRENT FLATTENED selection — includes
+   *  every explicitly-selected id AND every auto-selected descendant. Same "snapshot, not
+   *  reference" convention as `getTasks()`/`getDependencies()`. Returns `[]` post-`destroy()`. */
+  getSelection(): TaskId[];
 
   // --- Computation -------------------------------------------------------------------------
   computeCriticalPath(): CriticalPathResult;
@@ -209,6 +240,9 @@ interface MountState {
   readonly dragMoveDispose: () => void;
   readonly dragResizeDispose: () => void;
   readonly dragCreateDepDispose: () => void;
+  readonly clickSelectDispose: () => void;
+  readonly keyboardNavDispose: () => void;
+  readonly getFocusedTaskId: () => TaskId | undefined;
   readonly disposeEffect: () => void;
 }
 
@@ -221,6 +255,7 @@ const EMPTY_STATE_WINDOW_DAYS = 14;
 class Gantt implements GanttInstance {
   readonly #taskStore: TaskStore;
   readonly #dependencyStore: DependencyStore;
+  readonly #selectionStore = new SelectionStore();
   readonly #calendar: WorkingCalendar;
   readonly #config: GanttConfig;
   readonly #listeners = new Map<GanttEventName, Set<(...args: never[]) => void>>();
@@ -345,6 +380,16 @@ class Gantt implements GanttInstance {
     //    last (mirrors TaskStore.remove's own recursion order).
     for (const dep of depsToRemove.values()) this.#emit('dependency:removed', dep.id);
     for (const tid of removedIds) this.#emit('task:removed', tid);
+
+    // 5. Prune the selection of any removed id — correctness: getSelection() must never
+    //    reference a task that no longer exists (spec-selection.md §6). Only calls
+    //    #applySelection (and therefore only emits selection:changed) if the prune actually
+    //    changed anything. Fires last: a derived UI-state cleanup, not part of the
+    //    task/dependency data-integrity contract those two emits already cover.
+    const removedSet = new Set(removedIds);
+    const currentSelection = this.#selectionStore.all();
+    const pruned = currentSelection.filter((tid) => !removedSet.has(tid));
+    if (pruned.length !== currentSelection.length) this.#applySelection(pruned);
   }
 
   getTask(id: TaskId): Task | undefined {
@@ -388,6 +433,31 @@ class Gantt implements GanttInstance {
   getDependenciesOf(taskId: TaskId): Dependency[] {
     if (this.#destroyed) return [];
     return this.#dependencyStore.of(taskId);
+  }
+
+  // --- Selection operations --------------------------------------------------------------
+
+  select(id: TaskId | TaskId[]): void {
+    this.#assertAlive('select');
+    const ids = Array.isArray(id) ? id : [id];
+    this.#applySelection(this.#expandWithDescendants(ids));
+  }
+
+  selectAll(): void {
+    this.#assertAlive('selectAll');
+    // Expansion is a no-op here (every task is already included) — deliberate
+    // micro-optimization, not a semantic special case (spec-selection.md §3).
+    this.#applySelection(this.#taskStore.all().map((t) => t.id));
+  }
+
+  deselect(): void {
+    this.#assertAlive('deselect');
+    this.#applySelection([]);
+  }
+
+  getSelection(): TaskId[] {
+    if (this.#destroyed) return [];
+    return this.#selectionStore.all();
   }
 
   // --- Computation ---------------------------------------------------------------------------
@@ -477,9 +547,45 @@ class Gantt implements GanttInstance {
         onDependencyCreated: (fromTaskId, toTaskId) => this.#commitCreateDep(fromTaskId, toTaskId),
       });
     }
-    const disposeEffect = effect(() => this.#renderNow(rendererHandle));
+    // Selection is NOT gated by readOnly (confirmed): readOnly disables drag-move/drag-resize/
+    // drag-create-dep, not click-select (spec-selection.md §5.5).
+    const clickSelectDispose = enableClickSelect(rendererHandle, () => this.#taskStore.all(), {
+      onSelect: (taskId) => this.#commitSelect(taskId),
+      onToggle: (taskId) => this.#commitToggleSelect(taskId),
+      onRangeSelect: (ids) => this.#commitRangeSelect(ids),
+      onClear: () => this.#commitClearSelection(),
+    });
+    // Registered UNCONDITIONALLY (spec-keyboard-nav.md §6.2), same group as
+    // enableClickSelect above, NOT gated by readOnly — Arrow/Space/Shift+Arrow/Tab-entry are
+    // all non-mutating and must stay active even in a readOnly chart; only the Delete/
+    // Backspace action is itself gated (via `isReadOnly` below AND defense-in-depth inside
+    // #commitDeleteSelected).
+    const keyboardNav = enableKeyboardNav(rendererHandle, {
+      onSelect: (id) => this.#commitSelect(id),
+      onToggle: (id) => this.#commitToggleSelect(id),
+      onRangeSelect: (anchorId, focusId) => this.#commitKeyboardRangeSelect(anchorId, focusId),
+      onDeleteSelected: () => this.#commitDeleteSelected(),
+      getTasks: () => this.#taskStore.all(),
+      density: this.#config.density ?? 'default',
+      isReadOnly: () => this.#config.readOnly === true,
+      getSelection: () => this.#selectionStore.all(),
+    });
+    // `keyboardNav.getFocusedTaskId` is captured directly from this closure (NOT read via
+    // `this.#mount.getFocusedTaskId`) because `effect()` runs its callback synchronously,
+    // immediately, on this very call — BEFORE `this.#mount` is assigned below. Reading
+    // through `this.#mount` here would throw/crash on this first synchronous run.
+    const disposeEffect = effect(() => this.#renderNow(rendererHandle, keyboardNav.getFocusedTaskId));
 
-    this.#mount = { rendererHandle, dragMoveDispose, dragResizeDispose, dragCreateDepDispose, disposeEffect };
+    this.#mount = {
+      rendererHandle,
+      dragMoveDispose,
+      dragResizeDispose,
+      dragCreateDepDispose,
+      clickSelectDispose,
+      keyboardNavDispose: keyboardNav.dispose,
+      getFocusedTaskId: keyboardNav.getFocusedTaskId,
+      disposeEffect,
+    };
   }
 
   unmount(): void {
@@ -497,7 +603,7 @@ class Gantt implements GanttInstance {
 
   refresh(): void {
     if (this.#destroyed || !this.#mount) return; // nothing to refresh headless or post-destroy
-    this.#renderNow(this.#mount.rendererHandle);
+    this.#renderNow(this.#mount.rendererHandle, this.#mount.getFocusedTaskId);
   }
 
   // --- Private: mutation → split-event pipeline (Q3 + Q6) ---------------------------------
@@ -584,6 +690,22 @@ class Gantt implements GanttInstance {
     };
     visit(id);
     return out;
+  }
+
+  /**
+   * Expands explicitly-named ids to include every descendant (recursive, all levels) of any
+   * task among them — parent-implies-children selection semantics (spec-selection.md §3).
+   * Reuses `#collectWithDescendants` (already the single source of truth for "walk the
+   * hierarchy down", currently used by `removeTask`'s cascade) rather than a second traversal.
+   * Ids that don't resolve in `#taskStore` are silently dropped (resilience posture, §4).
+   */
+  #expandWithDescendants(ids: readonly TaskId[]): TaskId[] {
+    const out = new Set<TaskId>();
+    for (const id of ids) {
+      if (!this.#taskStore.has(id)) continue;
+      for (const t of this.#collectWithDescendants(id)) out.add(t);
+    }
+    return [...out];
   }
 
   // --- Private: event bus -----------------------------------------------------------------
@@ -674,6 +796,76 @@ class Gantt implements GanttInstance {
     }
   }
 
+  #commitSelect(taskId: TaskId): void {
+    this.#applySelection(this.#expandWithDescendants([taskId]));
+  }
+
+  #commitToggleSelect(taskId: TaskId): void {
+    if (!this.#taskStore.has(taskId)) return; // race: task removed mid-click
+    const group = new Set(this.#expandWithDescendants([taskId]));
+    const current = new Set(this.#selectionStore.all());
+    const isSelected = current.has(taskId); // the group's own representative id
+    if (isSelected) for (const g of group) current.delete(g);
+    else for (const g of group) current.add(g);
+    this.#applySelection([...current]);
+  }
+
+  #commitRangeSelect(rawIds: readonly TaskId[]): void {
+    this.#applySelection(this.#expandWithDescendants(rawIds));
+  }
+
+  /**
+   * Shift+Arrow's range-select commit point (spec-keyboard-nav.md §4.4/§6.2). NOTE — a
+   * deviation from the spec's §6.2 prose, flagged explicitly: the spec claims
+   * `#commitRangeSelect` "already exists ... and takes an (anchorId, focusId) pair, walking
+   * layoutRows() between them", but the actual, pre-existing `#commitRangeSelect` (used by
+   * Shift+click via `selection.ts`) takes a raw ID ARRAY already computed by the caller
+   * (`selection.ts`'s own `collectRowRange` walks the rendered DOM) — it does not compute a
+   * range itself. Rather than change that method's signature (which would also change
+   * Shift+click's contract), this small adapter computes the inclusive row range via
+   * `layoutRows()` (the same source of truth `enableKeyboardNav` itself used to resolve
+   * `anchorId`/`focusId`) and delegates to the existing `#commitRangeSelect(ids)`, giving
+   * Shift+Arrow the exact same semantics as Shift+click (resolution #1) without touching
+   * `selection.ts` or its own commit path.
+   */
+  #commitKeyboardRangeSelect(anchorId: TaskId, focusId: TaskId): void {
+    const rows = layoutRows(this.#taskStore.all(), this.#config.density ?? 'default');
+    const anchorIndex = rows.findIndex((r) => r.task.id === anchorId);
+    const focusIndex = rows.findIndex((r) => r.task.id === focusId);
+    if (anchorIndex === -1 || focusIndex === -1) return; // race: id no longer resolves
+    const lo = Math.min(anchorIndex, focusIndex);
+    const hi = Math.max(anchorIndex, focusIndex);
+    const ids = rows.slice(lo, hi + 1).map((r) => r.task.id);
+    this.#commitRangeSelect(ids);
+  }
+
+  /**
+   * Delete/Backspace commit point (spec-keyboard-nav.md §6.3). Reuses the existing public
+   * `removeTask(id)` once per currently selected id (resolution #5: no confirmation dialog,
+   * no batch-remove primitive needed — `removeTask` already handles hierarchy-cascade
+   * removal, dependency cleanup, and selection-pruning internally per id). `ids` is
+   * snapshotted via `.all()` BEFORE the loop starts, so the shrinking selection (pruned by
+   * `removeTask` itself as it goes) never affects which ids this loop attempts — and
+   * `removeTask` already no-ops gracefully (`if (!this.#taskStore.has(id)) return;`,
+   * confirmed by inspection) on an id already removed by an earlier iteration's cascade, so
+   * no extra guard is needed here (the spec flags this as a "check during implementation" —
+   * confirmed NOT a pre-existing bug).
+   */
+  #commitDeleteSelected(): void {
+    if (this.#config.readOnly) return; // defense in depth — enableKeyboardNav's own isReadOnly() gate already prevents this call
+    const ids = this.#selectionStore.all();
+    for (const id of ids) this.removeTask(id);
+  }
+
+  #commitClearSelection(): void {
+    this.#applySelection([]);
+  }
+
+  #applySelection(ids: readonly TaskId[]): void {
+    const changed = this.#selectionStore.replace(ids);
+    if (changed) this.#emit('selection:changed', this.#selectionStore.all());
+  }
+
   /**
    * No-op unless `schedulingMode: 'auto'` (default `'manual'` — see `GanttConfig`, spec-
    * cascade.md §4.1/§4.3). Recomputes `computeCascade` over the CURRENT store state (which
@@ -707,26 +899,34 @@ class Gantt implements GanttInstance {
     // Order matters (the shared pointer-drag coordinator wraps handle.destroy):
     // 1. Stop the reactive effect FIRST — no render call may start once teardown begins.
     m.disposeEffect();
-    // 2. Unregister ALL THREE recognizers from the shared coordinator explicitly via their
-    //    returned disposers — order among them doesn't matter; the coordinator only
-    //    detaches its pointerdown listener + unwraps handle.destroy once ALL have
-    //    unregistered (refcounted, see pointer-drag.ts).
+    // 2. Unregister ALL THREE pointer-drag-coordinated recognizers via their returned
+    //    disposers — order among them doesn't matter; the coordinator only detaches its
+    //    pointerdown listener + unwraps handle.destroy once ALL have unregistered
+    //    (refcounted, see pointer-drag.ts). click-select never touched that coordinator (it
+    //    owns its own independent listeners), so it has no shared refcount to worry about —
+    //    still disposed here, order-independent among the four.
     m.dragResizeDispose();
     m.dragMoveDispose();
     m.dragCreateDepDispose();
+    m.clickSelectDispose();
+    m.keyboardNavDispose();
     // 3. Remove the SVG.
     m.rendererHandle.destroy();
     this.#mount = undefined;
   }
 
-  #renderNow(handle: SvgRendererHandle): void {
+  #renderNow(handle: SvgRendererHandle, getFocusedTaskId: () => TaskId | undefined): void {
     // Track both stores' revisions — read .value unconditionally so this effect re-runs on
-    // ANY task or dependency mutation (coarse, per Q6 — no per-field granularity here).
+    // ANY task or dependency mutation (coarse, per Q6 — no per-field granularity here). Also
+    // tracks the selection store's revision so a `select`/`selectAll`/`deselect` call (or a
+    // click-select commit) triggers a repaint (`.fg-task--selected` class).
     void this.#taskStore.revision.value;
     void this.#dependencyStore.revision.value;
+    void this.#selectionStore.revision.value;
 
     const tasks = this.#taskStore.all();
     const dependencies = this.#dependencyStore.all();
+    const selectedTaskIds = this.#selectionStore.all();
 
     let criticalPath: CriticalPathResult | undefined;
     if (tasks.length === 0) {
@@ -780,14 +980,17 @@ class Gantt implements GanttInstance {
     //    then derives the range from the already-pushed, non-empty `tasks`.
     // Reordering unconditionally (either direction, always) reintroduces the crash for the
     // opposite transition — this must stay tasks.length-conditional.
+    const focusedTaskId = getFocusedTaskId();
     if (tasks.length === 0) {
       setTimeRange(handle, this.#emptyStateTimeRange());
-      handle.update({ tasks, dependencies, calendar: this.#calendar });
+      handle.update({ tasks, dependencies, calendar: this.#calendar, selectedTaskIds, focusedTaskId });
     } else {
       handle.update({
         tasks,
         dependencies,
         calendar: this.#calendar,
+        selectedTaskIds,
+        focusedTaskId,
         ...(criticalPath !== undefined ? { criticalPath } : {}),
       });
       setTimeRange(handle, undefined);
@@ -803,7 +1006,12 @@ class Gantt implements GanttInstance {
   }
 
   #renderInput(): SvgRendererInput {
-    return { tasks: this.#taskStore.all(), dependencies: this.#dependencyStore.all(), calendar: this.#calendar };
+    return {
+      tasks: this.#taskStore.all(),
+      dependencies: this.#dependencyStore.all(),
+      calendar: this.#calendar,
+      selectedTaskIds: this.#selectionStore.all(),
+    };
   }
 
   #rendererOptions(): SvgRendererOptions {
