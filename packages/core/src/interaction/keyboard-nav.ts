@@ -1,7 +1,9 @@
 // Interaction layer — roving-tabindex keyboard navigation (spec-keyboard-nav.md §4).
 // Arrow Up/Down move focus (select-follows-focus), Shift+Arrow extends a range selection,
 // Space toggles the focused row's selection membership, Delete/Backspace removes every
-// selected task. Delegates a SINGLE `keydown` listener on `handle.svg` (spec §4.4's
+// selected task. Ctrl/Cmd+Z undoes the most recent history entry, Ctrl/Cmd+Shift+Z redoes
+// it — both gated by `isReadOnly()` like Delete/Backspace. Delegates a SINGLE `keydown`
+// listener on `handle.svg` (spec §4.4's
 // recommended topology — consistent with `enableClickSelect`'s single-listener-on-svg-root
 // style, and avoids re-attaching N per-row listeners on every full repaint).
 //
@@ -21,6 +23,15 @@ export interface KeyboardNavOptions {
   onRangeSelect: (anchorId: TaskId, focusId: TaskId) => void;
   /** Delete/Backspace: remove every currently selected task. Not invoked when read-only. */
   onDeleteSelected: () => void;
+  /** Ctrl/Cmd+Z (no Shift): undo the most recently committed history entry. Not invoked when
+   *  read-only, mirroring `onDeleteSelected`'s gate exactly. A no-op on an empty undo stack is
+   *  the caller's (`gantt.undo()`'s) responsibility to handle safely — this module does not
+   *  know or care whether the stack is empty; it always calls through when the gesture is
+   *  recognized and not read-only. */
+  onUndo: () => void;
+  /** Ctrl/Cmd+Shift+Z: redo the most recently undone history entry. Same gating posture as
+   *  `onUndo`. */
+  onRedo: () => void;
   /** Read-only tasks accessor — same contract as `enableClickSelect`'s `getTasks`: full
    *  `Task[]`, re-read fresh on every keydown (never cached), and fed straight into
    *  `layoutRows` for row-order resolution. */
@@ -28,7 +39,9 @@ export interface KeyboardNavOptions {
   /** Density, forwarded to `layoutRows` for row-order resolution (matches the renderer's
    *  own density). */
   density: Density;
-  /** True while `gantt.readOnly` — gates only the destructive Delete action. */
+  /** True while `gantt.readOnly` — gates the destructive Delete action AND the undo/redo
+   *  keybindings (both are mutating keyboard gestures; see plan decision #3 for why undo/redo
+   *  mirrors Delete's gate rather than diverging from it). */
   isReadOnly: () => boolean;
   /** Read the CURRENT flattened selection (ids), used once at setup time to resolve the
    *  initial focused row (spec §4.2) — not read again afterward (selection changes after
@@ -118,6 +131,23 @@ export function enableKeyboardNav(
         if (options.isReadOnly()) return; // no-op, event not prevented (spec §4.4)
         event.preventDefault();
         handleDelete(rows);
+        return;
+      case 'z':
+      case 'Z':
+        // Ctrl/Cmd+Z (undo) and Ctrl/Cmd+Shift+Z (redo) share the SAME `event.key` value —
+        // 'z' vs 'Z' is governed by Shift alone, never by Ctrl/Cmd — so this is necessarily
+        // one case arm with an internal `event.shiftKey` branch, not two separate case labels
+        // (a switch cannot match on modifier state as a case label). Cross-platform modifier
+        // check reuses the exact pattern already established at selection.ts:150
+        // (`event.ctrlKey || event.metaKey`, no separate Mac/Windows branching).
+        if (!(event.ctrlKey || event.metaKey)) return; // plain 'z'/'Z', no modifier — not this binding's concern, not prevented
+        if (options.isReadOnly()) return; // no-op, event not prevented (mirrors Delete/Backspace's gate exactly)
+        event.preventDefault();
+        if (event.shiftKey) {
+          options.onRedo();
+        } else {
+          options.onUndo();
+        }
         return;
       default:
         return; // Enter unbound (v1), all other keys fall through untouched.

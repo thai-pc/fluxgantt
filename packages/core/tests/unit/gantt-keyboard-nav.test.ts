@@ -13,9 +13,20 @@ function taskInput(id: string, start: string, end: string, extra: Partial<TaskIn
   return { id: toTaskId(id), name: id, start, end, progress: 0, type: 'task', ...extra };
 }
 
-function dispatchKey(target: EventTarget, key: string, init: { shiftKey?: boolean } = {}): void {
+function dispatchKey(
+  target: EventTarget,
+  key: string,
+  init: { shiftKey?: boolean; ctrlKey?: boolean; metaKey?: boolean } = {},
+): void {
   target.dispatchEvent(
-    new KeyboardEvent('keydown', { key, shiftKey: init.shiftKey ?? false, bubbles: true, cancelable: true }),
+    new KeyboardEvent('keydown', {
+      key,
+      shiftKey: init.shiftKey ?? false,
+      ctrlKey: init.ctrlKey ?? false,
+      metaKey: init.metaKey ?? false,
+      bubbles: true,
+      cancelable: true,
+    }),
   );
 }
 
@@ -153,6 +164,74 @@ describe('keyboard-nav — facade wiring', () => {
     expect(gantt.getTasks().map((t) => t.id).sort()).toEqual(
       [toTaskId('a'), toTaskId('b'), toTaskId('c')].sort(),
     );
+  });
+
+  it('Ctrl/Cmd+Z undoes a real mutation end-to-end (via the keyboard, not a direct gantt.undo() call)', () => {
+    const gantt = threeTaskGantt();
+    gantt.mount(container);
+    gantt.select(toTaskId('a'));
+
+    dispatchKey(row('a'), 'Delete');
+    expect(gantt.getTasks().map((t) => t.id)).toEqual([toTaskId('b'), toTaskId('c')]);
+
+    dispatchKey(row('b'), 'z', { ctrlKey: true });
+    expect(gantt.getTasks().map((t) => t.id).sort()).toEqual(
+      [toTaskId('a'), toTaskId('b'), toTaskId('c')].sort(),
+    );
+  });
+
+  it('Ctrl/Cmd+Shift+Z redoes, continuing from an undo', () => {
+    const gantt = threeTaskGantt();
+    gantt.mount(container);
+    gantt.select(toTaskId('a'));
+
+    dispatchKey(row('a'), 'Delete');
+    dispatchKey(row('b'), 'z', { ctrlKey: true }); // undo -> a restored
+
+    dispatchKey(row('b'), 'z', { ctrlKey: true, shiftKey: true }); // redo -> a removed again
+    expect(gantt.getTasks().map((t) => t.id)).toEqual([toTaskId('b'), toTaskId('c')]);
+  });
+
+  it('readOnly: true — Ctrl/Cmd+Z is a no-op even though gantt.canUndo() is true (keybinding gated, method surface untouched)', () => {
+    const gantt = threeTaskGantt({ readOnly: true });
+    gantt.mount(container);
+
+    // Programmatic mutation is allowed regardless of readOnly (facade contract), so canUndo()
+    // becomes true without ever going through the keyboard gesture.
+    gantt.addTask(taskInput('d', '2026-01-08T09:00', '2026-01-09T09:00'));
+    expect(gantt.canUndo()).toBe(true);
+
+    dispatchKey(row('a'), 'z', { ctrlKey: true });
+
+    expect(gantt.getTasks()).toHaveLength(4); // task 'd' still present, undo never reached the facade
+    expect(gantt.canUndo()).toBe(true); // the facade method itself remains fully open
+  });
+
+  it('Ctrl/Cmd+Z on an empty undo stack is a no-op: no throw, tasks unchanged, history:changed not fired', () => {
+    const gantt = threeTaskGantt();
+    gantt.mount(container);
+
+    const onHistory = vi.fn();
+    gantt.on('history:changed', onHistory);
+
+    expect(() => dispatchKey(row('a'), 'z', { ctrlKey: true })).not.toThrow();
+    expect(gantt.getTasks()).toHaveLength(3);
+    expect(onHistory).not.toHaveBeenCalled();
+  });
+
+  // Note: `destroy()` tears down the mount BEFORE marking the instance destroyed, and that
+  // teardown disposes the keyboard-nav listener itself (`m.keyboardNavDispose()`, see
+  // `#teardownMount`) — so a keydown dispatched after `destroy()` never reaches `onUndo`/
+  // `gantt.undo()` at all; the listener is simply gone. This matches the existing generic
+  // "destroy() disposes the keyboard listener" test below (ArrowDown case) rather than
+  // reaching `gantt.undo()`'s own `#assertAlive` throw — there is no code path by which a
+  // keyboard gesture can reach an already-destroyed `Gantt`'s facade methods.
+  it('Ctrl/Cmd+Z after destroy() is a no-op: listener is disposed, no throw, gantt.undo() is unreachable via the keyboard', () => {
+    const gantt = threeTaskGantt();
+    gantt.mount(container);
+    const rowEl = row('a');
+    gantt.destroy();
+    expect(() => dispatchKey(rowEl, 'z', { ctrlKey: true })).not.toThrow();
   });
 
   it('destroy() disposes the keyboard listener — a stray keydown after destroy throws nothing and mutates nothing', () => {
