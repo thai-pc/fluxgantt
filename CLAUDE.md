@@ -18,7 +18,7 @@ This file is the context entry point for AI. Details are split into rules under 
 2. **Framework-agnostic core** — `@fluxgantt/core` must NOT import `react`/`vue`/`svelte`. Framework opinions live only in wrappers.
 3. **Date = Temporal API**, never native `Date` for any computation (timezone/DST). Native `Date` only at the I/O boundary.
 4. **TypeScript strict** — no implicit `any`, branded IDs (`TaskId`, `ResourceId`...) never mixed.
-5. **Tree-shakable + bundle budget** — core "hello world" < 15kb gzip, full core < 32kb gzip (raised from 30kb after keyboard-nav/a11y landed — WCAG AA keyboard support is Core-wide, not a plugin candidate). Non-core features are plugins.
+5. **Tree-shakable + bundle budget** — core "hello world" < 15kb gzip, full core < 34kb gzip (raised from 30kb→32kb after keyboard-nav/a11y landed, then 32kb→34kb after undo/redo landed — both are Core-wide editor baseline UX, not plugin candidates). Non-core features are plugins.
 6. **Tier-gate correctly** — Pro (resource/baseline/MSProject), Cloud (multiplayer/AI). Don't cram Pro/Cloud code into `core`.
 7. **Every new feature ships with tests.** See `.claude/rules/testing.md`.
 8. **Security**: validate every external input (file import, share link, API). See `.claude/rules/security.md`.

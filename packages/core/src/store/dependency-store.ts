@@ -75,6 +75,25 @@ export class DependencyStore {
     return dep;
   }
 
+  /**
+   * History-replay support (undo/redo, gantt.ts). Inserts the EXACT `Dependency` object verbatim
+   * — id preserved, no `newDependencyId()` call — skipping self-link/duplicate-pair/cycle
+   * validation entirely. This resolves the identity gap `link()` has: `link()` has no way to
+   * accept an explicit id (always synthesizes one), so undoing an `unlinkTasks()` — or redoing a
+   * `linkTasks()` — could not otherwise round-trip the original `DependencyId`, which matters
+   * because a host may hold onto that id (e.g. from `getDependenciesOf()` or the
+   * `dependency:added` event payload).
+   *
+   * Skipping validation is safe SPECIFICALLY in the undo/redo context (not a general-purpose
+   * "trust me" escape hatch): a replay only ever reconstructs a graph state the store was
+   * ALREADY validly in at the exact moment of the original mutation.
+   */
+  restore(dependency: Dependency): Dependency {
+    this.#deps.set(dependency.id, dependency);
+    this.#bump();
+    return dependency;
+  }
+
   /** Remove the link(s) for a from/to pair (any type). */
   unlink(from: TaskId, to: TaskId): void {
     let removed = false;

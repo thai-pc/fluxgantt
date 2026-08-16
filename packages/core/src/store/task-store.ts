@@ -57,6 +57,21 @@ export class TaskStore {
     return next;
   }
 
+  /**
+   * History-replay support (undo/redo, gantt.ts). Inserts the EXACT `Task` object verbatim: no
+   * id generation, no `createdAt`/`updatedAt` re-stamping, no validation. Distinct from `add()`
+   * (which always mints a fresh `id` when absent and ALWAYS re-stamps `createdAt`/`updatedAt`
+   * to `new Date()`) and `update()` (partial patch + fresh `updatedAt`) — neither can reproduce
+   * a bit-for-bit-identical prior `Task`, which undo/redo needs so that "undo, then redo" lands
+   * on an object equal (by value, all fields) to the one that existed before the undo, not a
+   * near-identical one with drifted timestamps. Bumps `revision` like every other mutation.
+   */
+  restore(task: Task): Task {
+    this.#tasks.set(task.id, task);
+    this.#bump();
+    return task;
+  }
+
   /** Remove a task; cascade-removes all descendants in the hierarchy. */
   remove(id: TaskId): void {
     if (!this.#tasks.has(id)) return;

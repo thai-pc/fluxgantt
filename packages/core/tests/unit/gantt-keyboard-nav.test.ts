@@ -136,6 +136,25 @@ describe('keyboard-nav — facade wiring', () => {
     expect(zeroTabindexRows).toHaveLength(1);
   });
 
+  it('Delete on a multi-selection fires history:changed once and undoes as one gantt.undo() call', () => {
+    const gantt = threeTaskGantt();
+    gantt.mount(container);
+    gantt.select([toTaskId('a'), toTaskId('b'), toTaskId('c')]);
+
+    const onHistory = vi.fn();
+    gantt.on('history:changed', onHistory);
+
+    dispatchKey(row('a'), 'Delete');
+
+    expect(gantt.getTasks()).toHaveLength(0);
+    expect(onHistory).toHaveBeenCalledTimes(1);
+
+    expect(gantt.undo()).toBe(true);
+    expect(gantt.getTasks().map((t) => t.id).sort()).toEqual(
+      [toTaskId('a'), toTaskId('b'), toTaskId('c')].sort(),
+    );
+  });
+
   it('destroy() disposes the keyboard listener — a stray keydown after destroy throws nothing and mutates nothing', () => {
     const gantt = threeTaskGantt();
     gantt.mount(container);
