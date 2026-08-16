@@ -2,9 +2,10 @@
 // Arrow Up/Down move focus (select-follows-focus), Shift+Arrow extends a range selection,
 // Space toggles the focused row's selection membership, Delete/Backspace removes every
 // selected task. Ctrl/Cmd+Z undoes the most recent history entry, Ctrl/Cmd+Shift+Z redoes
-// it — both gated by `isReadOnly()` like Delete/Backspace. Ctrl/Cmd+Plus (`'+'`/`'='`) zooms
-// in, Ctrl/Cmd+Minus (`'-'`) zooms out — neither gated by `isReadOnly()`, since zoom mutates
-// no store state. Delegates a SINGLE `keydown`
+// it — both gated by `isReadOnly()` like Delete/Backspace. Ctrl/Cmd+D duplicates every
+// currently selected task (gated by `isReadOnly()` like Delete/undo/redo). Ctrl/Cmd+Plus
+// (`'+'`/`'='`) zooms in, Ctrl/Cmd+Minus (`'-'`) zooms out — neither gated by `isReadOnly()`,
+// since zoom mutates no store state. Delegates a SINGLE `keydown`
 // listener on `handle.svg` (spec §4.4's
 // recommended topology — consistent with `enableClickSelect`'s single-listener-on-svg-root
 // style, and avoids re-attaching N per-row listeners on every full repaint).
@@ -34,6 +35,14 @@ export interface KeyboardNavOptions {
   /** Ctrl/Cmd+Shift+Z: redo the most recently undone history entry. Same gating posture as
    *  `onUndo`. */
   onRedo: () => void;
+  /** Ctrl/Cmd+D (Shift-independent): duplicate every currently selected task. Not invoked when
+   *  read-only, mirroring `onDeleteSelected`'s gate exactly — the underlying `duplicateTask()`
+   *  mutates `#taskStore` (N `addTask()` calls collapsed into one undo entry), unlike
+   *  `onZoomIn`/`onZoomOut` below. A no-op on an empty selection is `gantt.duplicateTask()`'s
+   *  own responsibility to handle safely (already shipped, PR #26, returns `[]`) — this module
+   *  always calls through when the gesture is recognized and not read-only; it does not
+   *  pre-check whether anything is selected. */
+  onDuplicateSelected: () => void;
   /** Ctrl/Cmd + Plus (`'+'` or `'='`, Shift-independent): step the view one level toward
    *  `'day'`. NOT gated by `isReadOnly()` — zoom is a pure view/viewport concern, touches zero
    *  `TaskStore`/`DependencyStore` state, unlike Delete/undo/redo above. A no-op at the `'day'`
@@ -161,6 +170,26 @@ export function enableKeyboardNav(
         } else {
           options.onUndo();
         }
+        return;
+      case 'd':
+      case 'D':
+        // Ctrl/Cmd+D (duplicate the current selection). One case pair sharing a single body,
+        // NOT a Shift-branched arm like 'z'/'Z' above — 'd' vs 'D' is purely a byproduct of
+        // Shift/Caps-Lock state and carries no separate meaning here (unlike z/Z, there is no
+        // "opposite action" sharing this physical key). Gated by isReadOnly() — duplicateTask()
+        // mutates #taskStore via N addTask() calls collapsed into one undo entry, the same
+        // mutation profile as Delete/undo/redo above, NOT zoom below (see
+        // spec-duplicate-keybinding.md §0). preventDefault() is load-bearing: Ctrl/Cmd+D is the
+        // native "bookmark this page" browser shortcut in every major browser — without it,
+        // duplicating a task would also pop the browser's bookmark UI. KNOWN LIMITATION: some
+        // browsers (notably Firefox, in some configurations) do not allow preventDefault() to
+        // suppress this specific reserved shortcut — an accepted, unfixable-from-userland v1
+        // gap, not a bug (spec-duplicate-keybinding.md §1). Do not swap this key combo to dodge
+        // the collision — apps/docs/fluxgantt-spec.md §8.4 mandates exactly Ctrl/Cmd+D.
+        if (!(event.ctrlKey || event.metaKey)) return; // plain 'd'/'D', no modifier — not this binding's concern
+        if (options.isReadOnly()) return; // no-op, event not prevented (mirrors Delete/z-Z's gate exactly)
+        event.preventDefault();
+        options.onDuplicateSelected();
         return;
       case '+':
       case '=':

@@ -25,6 +25,14 @@ async function getViewMode(page: Page): Promise<string> {
   });
 }
 
+async function getTaskCount(page: Page): Promise<number> {
+  return page.evaluate(() => {
+    const g = (window as unknown as { __gantt?: { getTasks(): unknown[] } }).__gantt;
+    if (!g) throw new Error('window.__gantt not exposed by the demo');
+    return g.getTasks().length;
+  });
+}
+
 async function focusFirstRow(page: Page): Promise<void> {
   // Roving tabindex: exactly one row has tabindex="0" initially (the first row, no selection
   // yet) — Tab from the document body lands there directly.
@@ -200,4 +208,51 @@ test('no visible double-zoom regression: page-level zoom stays unaffected by Ctr
 
   const scaleAfter = await page.evaluate(() => window.visualViewport?.scale);
   expect(scaleAfter).toBe(scaleBefore);
+});
+
+test('Ctrl/Cmd+D duplicates the selected task', async ({ page }) => {
+  await focusFirstRow(page);
+  const before = await getTaskCount(page);
+
+  await page.keyboard.press('ArrowDown'); // -> phase-1-task-a, selected
+  await page.keyboard.press(`${modifier}+d`);
+
+  const after = await getTaskCount(page);
+  expect(after).toBe(before + 1);
+});
+
+test('selection moves to the new copy after Ctrl/Cmd+D', async ({ page }) => {
+  await focusFirstRow(page);
+  await page.keyboard.press('ArrowDown'); // -> phase-1-task-a, selected
+  const before = await getSelection(page);
+
+  await page.keyboard.press(`${modifier}+d`);
+
+  const after = await getSelection(page);
+  expect(after).toHaveLength(1);
+  expect(after[0]).not.toBe(before[0]);
+});
+
+test('read-only chart: Ctrl/Cmd+D is a no-op', async ({ page }) => {
+  await page.goto('/read-only.html');
+  await focusFirstRow(page);
+  await page.keyboard.press('ArrowDown');
+  const beforeCount = await getTaskCount(page);
+  const beforeSelection = await getSelection(page);
+
+  await page.keyboard.press(`${modifier}+d`);
+
+  const afterCount = await getTaskCount(page);
+  const afterSelection = await getSelection(page);
+  expect(afterCount).toBe(beforeCount);
+  expect(afterSelection).toEqual(beforeSelection);
+});
+
+test('no native bookmark-dialog interference: page stays intact after Ctrl/Cmd+D (best-effort)', async ({ page }) => {
+  await focusFirstRow(page);
+  await page.keyboard.press('ArrowDown');
+
+  await page.keyboard.press(`${modifier}+d`);
+
+  await expect(page.locator('svg.fg-timeline')).toBeVisible();
 });

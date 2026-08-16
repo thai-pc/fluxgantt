@@ -339,4 +339,119 @@ describe('keyboard-nav — facade wiring', () => {
       expect(() => dispatchKey(rowEl, '=', { ctrlKey: true })).not.toThrow();
     });
   });
+
+  describe('Ctrl/Cmd+D — duplicate keybinding (facade wiring)', () => {
+    it('Ctrl+d duplicates the selected task via the real duplicateTask()', () => {
+      const gantt = threeTaskGantt();
+      gantt.mount(container);
+      gantt.select(toTaskId('a'));
+
+      dispatchKey(row('a'), 'd', { ctrlKey: true });
+
+      expect(gantt.getTasks()).toHaveLength(4);
+      const copy = gantt.getTasks().find(
+        (t) => t.id !== toTaskId('a') && t.id !== toTaskId('b') && t.id !== toTaskId('c'),
+      )!;
+      expect(copy).toBeDefined();
+      expect(copy.name).toBe('a');
+    });
+
+    it('post-duplicate selection points at the new copy, not the original (single-select)', () => {
+      const gantt = threeTaskGantt();
+      gantt.mount(container);
+      gantt.select(toTaskId('a'));
+
+      dispatchKey(row('a'), 'd', { ctrlKey: true });
+
+      const copy = gantt.getTasks().find(
+        (t) => t.id !== toTaskId('a') && t.id !== toTaskId('b') && t.id !== toTaskId('c'),
+      )!;
+      expect(gantt.getSelection()).toEqual([copy.id]);
+    });
+
+    it('post-duplicate selection points at all new copies, not the originals (multi-select)', () => {
+      const gantt = threeTaskGantt();
+      gantt.mount(container);
+      gantt.select([toTaskId('a'), toTaskId('b')]);
+
+      dispatchKey(row('a'), 'd', { ctrlKey: true });
+
+      expect(gantt.getTasks()).toHaveLength(5);
+      const originalIds = new Set([toTaskId('a'), toTaskId('b'), toTaskId('c')]);
+      const newCopyIds = gantt.getTasks().map((t) => t.id).filter((id) => !originalIds.has(id));
+      expect(newCopyIds).toHaveLength(2);
+      expect(new Set(gantt.getSelection())).toEqual(new Set(newCopyIds));
+    });
+
+    it('multi-select duplicate via keyboard collapses to ONE undo step', () => {
+      const gantt = threeTaskGantt();
+      gantt.mount(container);
+      gantt.select([toTaskId('a'), toTaskId('b')]);
+
+      dispatchKey(row('a'), 'd', { ctrlKey: true });
+      expect(gantt.getTasks()).toHaveLength(5);
+
+      expect(gantt.undo()).toBe(true);
+      expect(gantt.getTasks().map((t) => t.id).sort()).toEqual(
+        [toTaskId('a'), toTaskId('b'), toTaskId('c')].sort(),
+      );
+    });
+
+    it('empty-selection Ctrl+d is a safe no-op via keyboard', () => {
+      const gantt = threeTaskGantt();
+      gantt.mount(container);
+
+      expect(() => dispatchKey(row('a'), 'd', { ctrlKey: true })).not.toThrow();
+      expect(gantt.getTasks()).toHaveLength(3);
+      expect(gantt.getSelection()).toEqual([]);
+    });
+
+    it('readOnly: true — Ctrl+d is a no-op, no task added, selection unchanged', () => {
+      const gantt = threeTaskGantt({ readOnly: true });
+      gantt.mount(container);
+      gantt.select(toTaskId('a'));
+
+      dispatchKey(row('a'), 'd', { ctrlKey: true });
+
+      expect(gantt.getTasks()).toHaveLength(3);
+      expect(gantt.getSelection()).toEqual([toTaskId('a')]);
+    });
+
+    it('task:added fires once per copy, on the keyboard path', () => {
+      const gantt = threeTaskGantt();
+      gantt.mount(container);
+      gantt.select([toTaskId('a'), toTaskId('b')]);
+
+      const onAdded = vi.fn();
+      gantt.on('task:added', onAdded);
+      dispatchKey(row('a'), 'd', { ctrlKey: true });
+
+      expect(onAdded).toHaveBeenCalledTimes(2);
+    });
+
+    it('preventDefault() is called on a real dispatched duplicate event', () => {
+      const gantt = threeTaskGantt();
+      gantt.mount(container);
+      gantt.select(toTaskId('a'));
+
+      const event = new KeyboardEvent('keydown', {
+        key: 'd',
+        ctrlKey: true,
+        bubbles: true,
+        cancelable: true,
+      });
+      row('a').dispatchEvent(event);
+
+      expect(event.defaultPrevented).toBe(true);
+    });
+
+    it('dispatch after destroy() does not throw', () => {
+      const gantt = threeTaskGantt();
+      gantt.mount(container);
+      gantt.select(toTaskId('a'));
+      const rowEl = row('a');
+      gantt.destroy();
+      expect(() => dispatchKey(rowEl, 'd', { ctrlKey: true })).not.toThrow();
+    });
+  });
 });
