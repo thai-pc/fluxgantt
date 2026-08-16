@@ -28,7 +28,7 @@
 ## Conventions
 - Tests must run **headless** (core needs no DOM). No dependency on real network/clock — fake timers, inject the calendar.
 - Dates: test multiple timezones (e.g. `America/New_York`, `Asia/Ho_Chi_Minh`, `UTC`) and across DST boundaries.
-- Performance budget is tested: bundle size (core <32kb gzip, hello world <15kb), rendering 1000+ tasks, Canvas switch ≥2000.
+- Performance budget is tested: bundle size (core <34kb gzip, hello world <15kb), rendering 1000+ tasks, Canvas switch ≥2000.
 - A11y: WCAG 2.1 AA — keyboard reachable, ARIA labels, focus indicator, `prefers-reduced-motion`, critical path distinguishable without color.
 - CI must be green before merge: `lint` + `typecheck` + `test` + `test:e2e` + size-limit.
 

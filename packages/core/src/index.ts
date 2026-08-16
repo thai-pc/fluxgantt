@@ -11,6 +11,7 @@ export type {
   GanttEventName,
   UnsubscribeFn,
   DependencyInput,
+  EventMeta,
 } from './gantt.js';
 
 // Reactive primitives (spec §4.1, §5.2)

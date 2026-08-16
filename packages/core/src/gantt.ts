@@ -113,6 +113,17 @@ export interface GanttConfig {
    *  `computeCascade` (spec-cascade.md §4.1). Immutable for the life of the instance in
    *  v1 — no `setSchedulingMode()`, matching `calendar`'s own posture. */
   readonly schedulingMode?: SchedulingMode;
+
+  /** Max number of undo entries retained. Default `100`. Once exceeded, the OLDEST entry is
+   *  evicted (ring-buffer semantics) — a long editing session never grows the stack
+   *  unboundedly. Immutable for the life of the instance (same posture as `calendar`/
+   *  `schedulingMode` — no runtime setter in v1). Must be a non-negative integer; a
+   *  non-integer or negative value throws at construction (fail-fast, matches the
+   *  `config.tasks`/`config.dependencies` validation posture). `0` is a valid, if unusual,
+   *  opt-out: undo/redo becomes permanently inert (`canUndo()`/`canRedo()` always `false`)
+   *  without disabling any other facade behavior — every mutation still runs normally, its
+   *  history entry is just immediately evicted. */
+  readonly historyLimit?: number;
 }
 
 /** Shape accepted for an initial dependency in `GanttConfig.dependencies` — mirrors what
@@ -122,17 +133,26 @@ export type DependencyInput = Omit<Dependency, 'id'>;
 
 // --- Public event map ------------------------------------------------------------------
 
+/** Present only on an event emitted as a DIRECT result of `gantt.undo()`/`gantt.redo()`
+ *  replaying a history entry. Omitted (the 3rd callback argument is simply not passed) for a
+ *  normal user/programmatic mutation — an ADDITIVE field: existing subscribers whose callback
+ *  only declares the original 1–2 params are entirely unaffected (JS ignores extra args; TS's
+ *  "fewer declared params is assignable" rule keeps old callback signatures type-checking). */
+export interface EventMeta {
+  readonly source: 'undo' | 'redo';
+}
+
 export interface GanttEventMap {
-  'task:added': [task: Task];
+  'task:added': [task: Task, meta?: EventMeta];
   /** `prevStart` is `DateInput` (usually the same shape the task was last written with),
    *  NOT a plain `Date`. */
-  'task:moved': [task: Task, prevStart: DateInput];
+  'task:moved': [task: Task, prevStart: DateInput, meta?: EventMeta];
   /** Working hours, matches `Task.duration`'s unit. */
-  'task:resized': [task: Task, prevDuration: number];
-  'task:progressed': [task: Task, prevProgress: number];
-  'task:removed': [taskId: TaskId];
-  'dependency:added': [dependency: Dependency];
-  'dependency:removed': [dependencyId: DependencyId];
+  'task:resized': [task: Task, prevDuration: number, meta?: EventMeta];
+  'task:progressed': [task: Task, prevProgress: number, meta?: EventMeta];
+  'task:removed': [taskId: TaskId, meta?: EventMeta];
+  'dependency:added': [dependency: Dependency, meta?: EventMeta];
+  'dependency:removed': [dependencyId: DependencyId, meta?: EventMeta];
   /** Task ids only, even though the facade's `computeCriticalPath()` method itself returns
    *  the full `CriticalPathResult`. */
   'critical-path:computed': [criticalTaskIds: readonly TaskId[]];
@@ -142,6 +162,14 @@ export interface GanttEventMap {
    *  resulting set actually differs from the previous one (no-op reselect is suppressed —
    *  same discipline as `critical-path:computed`'s `#sameCriticalIds` guard). */
   'selection:changed': [taskIds: readonly TaskId[]];
+  /** Fires exactly once per "logical gesture" that changes the undo/redo stack: after a new
+   *  entry is committed (`#commitEntry` — one fire per top-level mutation call OR per grouped
+   *  transaction, e.g. one fire for a whole cascade-grouped drag or a whole multi-select
+   *  Delete, never once per internal op), after a successful `undo()`, after a successful
+   *  `redo()`. NOT fired when `undo()`/`redo()` is a no-op (empty stack) or when a mutation
+   *  produces zero ops. Payload mirrors `canUndo()`/`canRedo()` at the moment of the fire so a
+   *  host's Undo/Redo buttons can wire `disabled` state directly off the event. */
+  'history:changed': [state: { readonly canUndo: boolean; readonly canRedo: boolean }];
 }
 
 export type GanttEventName = keyof GanttEventMap;
@@ -188,6 +216,32 @@ export interface GanttInstance {
    *  every explicitly-selected id AND every auto-selected descendant. Same "snapshot, not
    *  reference" convention as `getTasks()`/`getDependencies()`. Returns `[]` post-`destroy()`. */
   getSelection(): TaskId[];
+
+  // --- History (undo/redo) --------------------------------------------------------------
+
+  /**
+   * Undoes the most recent undoable mutation (`addTask`/`updateTask`/`moveTask`/`resizeTask`/
+   * `setProgress`/`removeTask`/`linkTasks`/`unlinkTasks`, including a cascade-grouped drag and
+   * a multi-select Delete — each undoes as ONE step). Returns `true` if something was undone,
+   * `false` if the undo stack was empty (a safe no-op, does not throw, does not emit
+   * `history:changed` on the no-op case). Replays the recorded inverse ops directly against
+   * the stores — never calls `#maybeCascade`, never goes back through `addTask`/`linkTasks`/
+   * etc. NOT gated by `readOnly` (mirrors `readOnly`'s existing "governs rendered
+   * interactivity, not the method surface" posture). Throws if the instance is destroyed (same
+   * `#assertAlive` posture as every other mutating method).
+   */
+  undo(): boolean;
+
+  /** Symmetric to `undo()` — replays the next entry off the redo stack, forward. Same
+   *  no-throw-on-empty / `readOnly`-independent / `#assertAlive`-gated posture. */
+  redo(): boolean;
+
+  /** `true` iff `undo()` would currently do something. Safe post-`destroy()` (returns `false`,
+   *  does not throw) — same posture as `getSelection()`/`getTasks()`. */
+  canUndo(): boolean;
+
+  /** Symmetric to `canUndo()`. */
+  canRedo(): boolean;
 
   // --- Computation -------------------------------------------------------------------------
   computeCriticalPath(): CriticalPathResult;
@@ -252,6 +306,31 @@ interface MountState {
  *  not modified for this. */
 const EMPTY_STATE_WINDOW_DAYS = 14;
 
+/** Default `GanttConfig.historyLimit` — see its doc-comment. */
+const DEFAULT_HISTORY_LIMIT = 100;
+
+/**
+ * One reversible store write. A discriminated union covering both stores this facade touches.
+ * Each variant carries a FULL snapshot (never a partial patch) so both directions (forward =
+ * "redo", inverse = "undo") are a single, non-recomputed store write.
+ */
+type HistoryOp =
+  | { readonly kind: 'task-add'; readonly task: Task }
+  | { readonly kind: 'task-update'; readonly id: TaskId; readonly prev: Task; readonly next: Task }
+  | { readonly kind: 'task-remove'; readonly task: Task }
+  | { readonly kind: 'dependency-add'; readonly dependency: Dependency }
+  | { readonly kind: 'dependency-remove'; readonly dependency: Dependency };
+
+/**
+ * One undo/redo step as presented to the user — "one gesture". `ops` is ordered so that
+ * replaying it FORWARD, in array order, reproduces the original mutation's emitted-event order
+ * exactly (this is `redo()`'s contract); replaying it in REVERSE array order, applying each
+ * op's INVERSE, is `undo()`'s contract (LIFO within the entry).
+ */
+interface HistoryEntry {
+  readonly ops: readonly HistoryOp[];
+}
+
 class Gantt implements GanttInstance {
   readonly #taskStore: TaskStore;
   readonly #dependencyStore: DependencyStore;
@@ -265,11 +344,32 @@ class Gantt implements GanttInstance {
    *  effect emits only when the critical set actually changes (not on every mutation). */
   #lastCriticalIds: readonly TaskId[] | undefined = undefined;
 
+  // --- History (undo/redo) fields ---------------------------------------------------------
+  readonly #undoStack: HistoryEntry[] = [];
+  readonly #redoStack: HistoryEntry[] = [];
+  readonly #historyLimit: number;
+  /** Non-`undefined` while inside a `#beginTransaction()`/`#endTransaction()` span — ops are
+   *  buffered here instead of each committing its own entry. */
+  #pendingOps: HistoryOp[] | undefined;
+  /** Depth counter so `#beginTransaction`/`#endTransaction` calls compose safely if a
+   *  transaction-wrapped method calls another transaction-wrapped method. */
+  #transactionDepth = 0;
+
   constructor(config: GanttConfig) {
     this.#config = config;
     this.#calendar = config.calendar ?? DEFAULT_CALENDAR;
     this.#taskStore = new TaskStore();
     this.#dependencyStore = new DependencyStore();
+
+    if (
+      config.historyLimit !== undefined &&
+      (!Number.isInteger(config.historyLimit) || config.historyLimit < 0)
+    ) {
+      throw new Error(
+        `createGantt: config.historyLimit must be a non-negative integer, got ${config.historyLimit}`,
+      );
+    }
+    this.#historyLimit = config.historyLimit ?? DEFAULT_HISTORY_LIMIT;
 
     const seenIds = new Set<TaskId>();
     for (const t of config.tasks ?? []) {
@@ -295,6 +395,7 @@ class Gantt implements GanttInstance {
   addTask(input: TaskInput): Task {
     this.#assertAlive('addTask');
     const task = this.#taskStore.add(input);
+    this.#recordOp({ kind: 'task-add', task });
     this.#emit('task:added', task);
     return task;
   }
@@ -302,11 +403,8 @@ class Gantt implements GanttInstance {
   updateTask(id: TaskId, patch: TaskPatch): Task {
     this.#assertAlive('updateTask');
     this.#requireTask(id, 'updateTask');
-    const next = this.#applyPatch(id, patch);
-    if (patch.start !== undefined || patch.end !== undefined || patch.duration !== undefined) {
-      this.#maybeCascade(id);
-    }
-    return next;
+    const cascades = patch.start !== undefined || patch.end !== undefined || patch.duration !== undefined;
+    return this.#commitScheduleChange(id, patch, cascades);
   }
 
   moveTask(id: TaskId, newStart: DateInput): Task {
@@ -324,9 +422,7 @@ class Gantt implements GanttInstance {
     // span, matches drag-move's own "same delta on both ends" contract, just using an
     // exact ns delta here instead of a snapped day count (moveTask is a direct API call,
     // not a pixel-drag — no day-snapping to do).
-    const next = this.#applyPatch(id, { start: nextStart, end: nextEnd });
-    this.#maybeCascade(id);
-    return next;
+    return this.#commitScheduleChange(id, { start: nextStart, end: nextEnd }, true);
   }
 
   resizeTask(id: TaskId, newDuration: number): Task {
@@ -342,9 +438,7 @@ class Gantt implements GanttInstance {
     // leave `end` stale → the bar wouldn't move and the schedule/visual would disagree.
     const tz = this.#calendar.timezone;
     const newEnd = addWorkingHours(normalizeDate(prev.start, tz), newDuration, this.#calendar);
-    const next = this.#applyPatch(id, { end: newEnd, duration: newDuration });
-    this.#maybeCascade(id);
-    return next;
+    return this.#commitScheduleChange(id, { end: newEnd, duration: newDuration }, true);
   }
 
   setProgress(id: TaskId, progress: number): Task {
@@ -365,6 +459,9 @@ class Gantt implements GanttInstance {
     //    doesn't report what it removed.
     const removedIds = this.#collectWithDescendants(id);
 
+    // 1b. Snapshot the actual Task objects BEFORE mutating — needed for history (§4.1).
+    const removedTasks = removedIds.map((tid) => this.#taskStore.get(tid)!);
+
     // 2. Snapshot every dependency link touching any of those tasks BEFORE mutating.
     const depsToRemove = new Map<DependencyId, Dependency>();
     for (const tid of removedIds) {
@@ -375,6 +472,14 @@ class Gantt implements GanttInstance {
     this.#taskStore.remove(id); // cascades descendants internally
     for (const tid of removedIds) this.#dependencyStore.removeForTask(tid);
 
+    // 3b. Record — dependency ops before task ops (§5.2 ordering): redo() (forward) removes
+    //     deps before tasks (matches this method's own emit order below); undo() (LIFO/
+    //     reverse) re-adds tasks before the dependencies that reference them.
+    this.#recordOps([
+      ...[...depsToRemove.values()].map((dependency) => ({ kind: 'dependency-remove', dependency }) as const),
+      ...removedTasks.map((task) => ({ kind: 'task-remove', task }) as const),
+    ]);
+
     // 4. Emit — dependency:removed first (cleaning up "references" before announcing the
     //    referenced node is gone), then task:removed, deepest descendant first / target
     //    last (mirrors TaskStore.remove's own recursion order).
@@ -382,14 +487,8 @@ class Gantt implements GanttInstance {
     for (const tid of removedIds) this.#emit('task:removed', tid);
 
     // 5. Prune the selection of any removed id — correctness: getSelection() must never
-    //    reference a task that no longer exists (spec-selection.md §6). Only calls
-    //    #applySelection (and therefore only emits selection:changed) if the prune actually
-    //    changed anything. Fires last: a derived UI-state cleanup, not part of the
-    //    task/dependency data-integrity contract those two emits already cover.
-    const removedSet = new Set(removedIds);
-    const currentSelection = this.#selectionStore.all();
-    const pruned = currentSelection.filter((tid) => !removedSet.has(tid));
-    if (pruned.length !== currentSelection.length) this.#applySelection(pruned);
+    //    reference a task that no longer exists (spec-selection.md §6).
+    this.#pruneSelectionOfMissingTasks();
   }
 
   getTask(id: TaskId): Task | undefined {
@@ -413,6 +512,7 @@ class Gantt implements GanttInstance {
     this.#assertAlive('linkTasks');
     // may throw — no event on throw
     const dep = this.#dependencyStore.link(from, to, type, lag === undefined ? {} : { lag });
+    this.#recordOp({ kind: 'dependency-add', dependency: dep });
     this.#emit('dependency:added', dep);
     return dep;
   }
@@ -422,6 +522,7 @@ class Gantt implements GanttInstance {
     const matches = this.#dependencyStore.all().filter((d) => d.from === from && d.to === to);
     if (matches.length === 0) return;
     this.#dependencyStore.unlink(from, to);
+    this.#recordOps(matches.map((dependency) => ({ kind: 'dependency-remove', dependency }) as const));
     for (const d of matches) this.#emit('dependency:removed', d.id);
   }
 
@@ -458,6 +559,42 @@ class Gantt implements GanttInstance {
   getSelection(): TaskId[] {
     if (this.#destroyed) return [];
     return this.#selectionStore.all();
+  }
+
+  // --- History (undo/redo) ---------------------------------------------------------------
+
+  undo(): boolean {
+    this.#assertAlive('undo');
+    const entry = this.#undoStack.pop();
+    if (!entry) return false;
+    for (let i = entry.ops.length - 1; i >= 0; i--) this.#undoOp(entry.ops[i]!);
+    this.#redoStack.push(entry);
+    if (this.#redoStack.length > this.#historyLimit) this.#redoStack.shift(); // defensive; see #commitEntry
+    this.#pruneSelectionOfMissingTasks();
+    this.#emitHistoryChanged();
+    return true;
+  }
+
+  redo(): boolean {
+    this.#assertAlive('redo');
+    const entry = this.#redoStack.pop();
+    if (!entry) return false;
+    for (const op of entry.ops) this.#redoOp(op);
+    this.#undoStack.push(entry);
+    if (this.#undoStack.length > this.#historyLimit) this.#undoStack.shift(); // defensive; see #commitEntry
+    this.#pruneSelectionOfMissingTasks();
+    this.#emitHistoryChanged();
+    return true;
+  }
+
+  canUndo(): boolean {
+    if (this.#destroyed) return false;
+    return this.#undoStack.length > 0;
+  }
+
+  canRedo(): boolean {
+    if (this.#destroyed) return false;
+    return this.#redoStack.length > 0;
   }
 
   // --- Computation ---------------------------------------------------------------------------
@@ -611,9 +748,29 @@ class Gantt implements GanttInstance {
   #applyPatch(id: TaskId, patch: TaskPatch): Task {
     const prev = this.#taskStore.get(id)!; // caller already asserted existence
     const next = this.#taskStore.update(id, patch);
+    this.#recordOp({ kind: 'task-update', id, prev, next });
     this.#diffAndEmit(prev, next);
     this.#config.onTaskChange?.(next, prev);
     return next;
+  }
+
+  /**
+   * Shared commit path for every schedule-affecting mutation (direct write + its optional
+   * cascade). The ONLY call site of #beginTransaction/#endTransaction for the "cascade-shift
+   * grouping" half of the transaction primitive — moveTask/resizeTask/updateTask/#commitDrag
+   * all route through this one helper instead of each opening their own transaction, so a
+   * drag/API call that cascades N successors collapses into ONE history entry via ONE
+   * begin/end pair, not four independent ones.
+   */
+  #commitScheduleChange(id: TaskId, patch: TaskPatch, cascade: boolean): Task {
+    this.#beginTransaction();
+    try {
+      const next = this.#applyPatch(id, patch);
+      if (cascade) this.#maybeCascade(id);
+      return next;
+    } finally {
+      this.#endTransaction();
+    }
   }
 
   /**
@@ -629,16 +786,18 @@ class Gantt implements GanttInstance {
   #applyCascadeShift(id: TaskId, start: DateInput, end: DateInput): void {
     const prev = this.#taskStore.get(id)!; // cascade only names tasks that exist
     const next = this.#taskStore.update(id, { start, end });
+    this.#recordOp({ kind: 'task-update', id, prev, next });
     if (!this.#sameInstant(prev.start, next.start, this.#calendar.timezone)) {
       this.#emit('task:moved', next, prev.start);
     }
     this.#config.onTaskChange?.(next, prev);
   }
 
-  #diffAndEmit(prev: Task, next: Task): void {
+  #diffAndEmit(prev: Task, next: Task, source?: 'undo' | 'redo'): void {
     const tz = this.#calendar.timezone;
+    const meta = source ? ([{ source }] as const) : ([] as const);
     if (!this.#sameInstant(prev.start, next.start, tz)) {
-      this.#emit('task:moved', next, prev.start);
+      this.#emit('task:moved', next, prev.start, ...meta);
     }
     // Detect a resize by the INSTANT span (end − start) changing — translation-invariant,
     // so a pure move (start+end shifted by the same delta) is never mistaken for a resize,
@@ -647,10 +806,10 @@ class Gantt implements GanttInstance {
     // shifts the span across weekends/holidays.) The payload still reports working-hours
     // duration via `effectiveDuration`.
     if (this.#spanNs(prev, tz) !== this.#spanNs(next, tz)) {
-      this.#emit('task:resized', next, this.#effectiveDuration(prev));
+      this.#emit('task:resized', next, this.#effectiveDuration(prev), ...meta);
     }
     if (prev.progress !== next.progress) {
-      this.#emit('task:progressed', next, prev.progress);
+      this.#emit('task:progressed', next, prev.progress, ...meta);
     }
   }
 
@@ -680,6 +839,115 @@ class Gantt implements GanttInstance {
       if (prev[i] !== next[i]) return false;
     }
     return true;
+  }
+
+  // --- Private: history (undo/redo) --------------------------------------------------------
+
+  /** Record a single op (single low-level write — `addTask`, `linkTasks`, one `#applyPatch`
+   *  call, one `#applyCascadeShift` call). Convenience wrapper over `#recordOps`. */
+  #recordOp(op: HistoryOp): void {
+    this.#recordOps([op]);
+  }
+
+  /** Record a batch of ops that must land in ONE entry, atomically, even outside an explicit
+   *  transaction (used by `removeTask`, which naturally produces N ops — one per removed
+   *  dependency, one per removed hierarchy descendant — from a single call). If called while a
+   *  transaction is open (`#pendingOps` set), appends to the pending buffer instead of
+   *  committing its own entry. */
+  #recordOps(ops: readonly HistoryOp[]): void {
+    if (ops.length === 0) return;
+    if (this.#pendingOps) {
+      this.#pendingOps.push(...ops);
+      return;
+    }
+    this.#commitEntry({ ops });
+  }
+
+  #commitEntry(entry: HistoryEntry): void {
+    this.#undoStack.push(entry);
+    if (this.#undoStack.length > this.#historyLimit) this.#undoStack.shift(); // ring-buffer eviction, oldest first
+    if (this.#redoStack.length > 0) this.#redoStack.length = 0; // new mutation clears redo
+    this.#emitHistoryChanged();
+  }
+
+  #emitHistoryChanged(): void {
+    this.#emit('history:changed', { canUndo: this.#undoStack.length > 0, canRedo: this.#redoStack.length > 0 });
+  }
+
+  #beginTransaction(): void {
+    if (this.#transactionDepth === 0) this.#pendingOps = [];
+    this.#transactionDepth++;
+  }
+
+  #endTransaction(): void {
+    this.#transactionDepth = Math.max(0, this.#transactionDepth - 1); // defensive floor, never throws on imbalance
+    if (this.#transactionDepth === 0) {
+      const ops = this.#pendingOps ?? [];
+      this.#pendingOps = undefined;
+      if (ops.length > 0) this.#commitEntry({ ops });
+    }
+  }
+
+  #undoOp(op: HistoryOp): void {
+    switch (op.kind) {
+      case 'task-add':
+        this.#taskStore.remove(op.task.id);
+        this.#emit('task:removed', op.task.id, { source: 'undo' });
+        break;
+      case 'task-update':
+        this.#taskStore.restore(op.prev);
+        this.#diffAndEmit(op.next, op.prev, 'undo'); // "before" = current (op.next), "after" = target (op.prev)
+        this.#config.onTaskChange?.(op.prev, op.next);
+        break;
+      case 'task-remove':
+        this.#taskStore.restore(op.task);
+        this.#emit('task:added', op.task, { source: 'undo' });
+        break;
+      case 'dependency-add':
+        this.#dependencyStore.remove(op.dependency.id);
+        this.#emit('dependency:removed', op.dependency.id, { source: 'undo' });
+        break;
+      case 'dependency-remove':
+        this.#dependencyStore.restore(op.dependency);
+        this.#emit('dependency:added', op.dependency, { source: 'undo' });
+        break;
+    }
+  }
+
+  #redoOp(op: HistoryOp): void {
+    switch (op.kind) {
+      case 'task-add':
+        this.#taskStore.restore(op.task);
+        this.#emit('task:added', op.task, { source: 'redo' });
+        break;
+      case 'task-update':
+        this.#taskStore.restore(op.next);
+        this.#diffAndEmit(op.prev, op.next, 'redo');
+        this.#config.onTaskChange?.(op.next, op.prev);
+        break;
+      case 'task-remove':
+        this.#taskStore.remove(op.task.id);
+        this.#emit('task:removed', op.task.id, { source: 'redo' });
+        break;
+      case 'dependency-add':
+        this.#dependencyStore.restore(op.dependency);
+        this.#emit('dependency:added', op.dependency, { source: 'redo' });
+        break;
+      case 'dependency-remove':
+        this.#dependencyStore.remove(op.dependency.id);
+        this.#emit('dependency:removed', op.dependency.id, { source: 'redo' });
+        break;
+    }
+  }
+
+  /** Selection hygiene: `undo()`/`redo()` can remove a task from the store (undoing an
+   *  `addTask`, or redoing a `removeTask`) WITHOUT going through the public `removeTask()`
+   *  method, which is the only place that otherwise prunes `SelectionStore` of now-dangling
+   *  ids. Shared by `removeTask` and `undo()`/`redo()` so the filter logic isn't duplicated. */
+  #pruneSelectionOfMissingTasks(): void {
+    const current = this.#selectionStore.all();
+    const pruned = current.filter((id) => this.#taskStore.has(id));
+    if (pruned.length !== current.length) this.#applySelection(pruned);
   }
 
   #collectWithDescendants(id: TaskId): TaskId[] {
@@ -731,15 +999,12 @@ class Gantt implements GanttInstance {
 
   #commitDrag(taskId: TaskId, newStart: Temporal.ZonedDateTime, newEnd: Temporal.ZonedDateTime): void {
     if (!this.#taskStore.has(taskId)) return; // task removed mid-drag (race) — nothing to commit
-    // Reuses the SAME #applyPatch pipeline as moveTask/updateTask — guarantees the exact
-    // same task:moved(task, prevStart) contract, not a separate ad hoc emit. start+end
-    // always shift by the identical instant delta (drag-move's own contract), so the instant
-    // span (end − start) is preserved → #diffAndEmit never fires task:resized from a drag.
-    this.#applyPatch(taskId, { start: newStart, end: newEnd });
-    // Drag is the primary interactive path a cascade must cover (spec-cascade.md §9) —
-    // wired the same way as moveTask/resizeTask, so a dragged move cascades exactly like a
-    // programmatic one.
-    this.#maybeCascade(taskId);
+    // Reuses the SAME #commitScheduleChange pipeline as moveTask/updateTask — guarantees the
+    // exact same task:moved(task, prevStart) contract, not a separate ad hoc emit, AND groups
+    // the direct move + any cascade shifts into ONE history entry. start+end always shift by
+    // the identical instant delta (drag-move's own contract), so the instant span (end −
+    // start) is preserved → #diffAndEmit never fires task:resized from a drag.
+    this.#commitScheduleChange(taskId, { start: newStart, end: newEnd }, true);
   }
 
   #commitResize(taskId: TaskId, newEnd: Temporal.ZonedDateTime): void {
@@ -849,12 +1114,19 @@ class Gantt implements GanttInstance {
    * `removeTask` already no-ops gracefully (`if (!this.#taskStore.has(id)) return;`,
    * confirmed by inspection) on an id already removed by an earlier iteration's cascade, so
    * no extra guard is needed here (the spec flags this as a "check during implementation" —
-   * confirmed NOT a pre-existing bug).
+   * confirmed NOT a pre-existing bug). Wrapped in a transaction (§5.3 call site 2) so N
+   * selected tasks' removals collapse into ONE history entry for the whole Delete keypress.
    */
   #commitDeleteSelected(): void {
     if (this.#config.readOnly) return; // defense in depth — enableKeyboardNav's own isReadOnly() gate already prevents this call
     const ids = this.#selectionStore.all();
-    for (const id of ids) this.removeTask(id);
+    if (ids.length === 0) return;
+    this.#beginTransaction();
+    try {
+      for (const id of ids) this.removeTask(id);
+    } finally {
+      this.#endTransaction();
+    }
   }
 
   #commitClearSelection(): void {

@@ -122,6 +122,46 @@ describe('DependencyStore — remove', () => {
   });
 });
 
+describe('DependencyStore — restore (history-replay support)', () => {
+  it('inserts the exact object verbatim (id preserved), bumps revision', () => {
+    const store = new DependencyStore();
+    const dep = store.link(A, B);
+    store.remove(dep.id);
+    let runs = 0;
+    const stop = effect(() => {
+      void store.revision.value;
+      runs++;
+    });
+    const before = runs;
+
+    const restored = store.restore(dep);
+
+    expect(restored).toBe(dep);
+    expect(store.get(dep.id)).toBe(dep);
+    expect(runs).toBeGreaterThan(before);
+    stop();
+  });
+
+  it('skips validation — succeeds even for a duplicate-pair state that link() would reject', () => {
+    const store = new DependencyStore();
+    const dep = store.link(A, B);
+    // Constructing a state where link() would throw for the same from/to/type:
+    expect(() => store.link(A, B)).toThrow(DependencyLinkError);
+    // restore() bypasses that check entirely.
+    expect(() => store.restore({ ...dep, id: dep.id })).not.toThrow();
+    expect(store.get(dep.id)).toEqual(dep);
+  });
+
+  it('skips validation — succeeds even for a cycle that link() would reject', () => {
+    const store = new DependencyStore();
+    store.link(A, B);
+    const cyclic = { id: 'dep-cyclic' as never, from: B, to: A, type: 'FS' as const, lag: 0 };
+    expect(() => store.link(B, A)).toThrow(/cycle/);
+    expect(() => store.restore(cyclic)).not.toThrow();
+    expect(store.get(cyclic.id)).toEqual(cyclic);
+  });
+});
+
 describe('DependencyStore — reactivity', () => {
   it('effect re-runs when the store changes', () => {
     const store = new DependencyStore();
