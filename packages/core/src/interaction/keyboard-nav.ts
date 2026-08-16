@@ -2,7 +2,9 @@
 // Arrow Up/Down move focus (select-follows-focus), Shift+Arrow extends a range selection,
 // Space toggles the focused row's selection membership, Delete/Backspace removes every
 // selected task. Ctrl/Cmd+Z undoes the most recent history entry, Ctrl/Cmd+Shift+Z redoes
-// it — both gated by `isReadOnly()` like Delete/Backspace. Delegates a SINGLE `keydown`
+// it — both gated by `isReadOnly()` like Delete/Backspace. Ctrl/Cmd+Plus (`'+'`/`'='`) zooms
+// in, Ctrl/Cmd+Minus (`'-'`) zooms out — neither gated by `isReadOnly()`, since zoom mutates
+// no store state. Delegates a SINGLE `keydown`
 // listener on `handle.svg` (spec §4.4's
 // recommended topology — consistent with `enableClickSelect`'s single-listener-on-svg-root
 // style, and avoids re-attaching N per-row listeners on every full repaint).
@@ -32,6 +34,16 @@ export interface KeyboardNavOptions {
   /** Ctrl/Cmd+Shift+Z: redo the most recently undone history entry. Same gating posture as
    *  `onUndo`. */
   onRedo: () => void;
+  /** Ctrl/Cmd + Plus (`'+'` or `'='`, Shift-independent): step the view one level toward
+   *  `'day'`. NOT gated by `isReadOnly()` — zoom is a pure view/viewport concern, touches zero
+   *  `TaskStore`/`DependencyStore` state, unlike Delete/undo/redo above. A no-op at the `'day'`
+   *  boundary is `gantt.zoomIn()`'s own responsibility to handle safely (already shipped,
+   *  PR #25) — this module always calls through when the gesture is recognized, with no
+   *  readOnly check of its own. */
+  onZoomIn: () => void;
+  /** Ctrl/Cmd + Minus (`'-'`, Shift-independent): step the view one level toward `'year'`. Same
+   *  never-gated posture as `onZoomIn`. */
+  onZoomOut: () => void;
   /** Read-only tasks accessor — same contract as `enableClickSelect`'s `getTasks`: full
    *  `Task[]`, re-read fresh on every keydown (never cached), and fed straight into
    *  `layoutRows` for row-order resolution. */
@@ -41,7 +53,8 @@ export interface KeyboardNavOptions {
   density: Density;
   /** True while `gantt.readOnly` — gates the destructive Delete action AND the undo/redo
    *  keybindings (both are mutating keyboard gestures; see plan decision #3 for why undo/redo
-   *  mirrors Delete's gate rather than diverging from it). */
+   *  mirrors Delete's gate rather than diverging from it). Deliberately NOT consulted by the
+   *  zoom-in/zoom-out case arms — see `onZoomIn`'s doc above and spec-zoom-keybinding.md §4. */
   isReadOnly: () => boolean;
   /** Read the CURRENT flattened selection (ids), used once at setup time to resolve the
    *  initial focused row (spec §4.2) — not read again afterward (selection changes after
@@ -148,6 +161,34 @@ export function enableKeyboardNav(
         } else {
           options.onUndo();
         }
+        return;
+      case '+':
+      case '=':
+        // Ctrl/Cmd + Plus (zoom in). `'='` covers the common unshifted `Ctrl+=` keystroke
+        // (US-layout main-row key, no Shift — also the browser's own native page-zoom-in
+        // gesture); `'+'` covers the literal Shift+`=` press AND Numpad `+` (which reports
+        // `'+'` unambiguously regardless of Shift). `event.shiftKey` is deliberately NOT
+        // checked — unlike `z`/`Z` above, Plus has no paired opposite action sharing the same
+        // physical key, so Shift state is incidental, not semantic. NOT gated by
+        // `isReadOnly()` — zoom mutates no store state (see options.isReadOnly doc + gantt.ts's
+        // zoomIn()/zoomOut(), which are intentionally readOnly-independent). `preventDefault()`
+        // is load-bearing here: Ctrl/Cmd+Plus/Minus are native browser page-zoom shortcuts in
+        // every major browser — without it, the chart's zoom and the page's zoom would both
+        // fire on the same keystroke.
+        if (!(event.ctrlKey || event.metaKey)) return;
+        event.preventDefault();
+        options.onZoomIn();
+        return;
+      case '-':
+        // Ctrl/Cmd + Minus (zoom out). `'-'` alone is sufficient — unlike `+`/`=`, the
+        // unshifted main-row key already reports `'-'` directly on a US layout, and Numpad `-`
+        // also reports `'-'` regardless of Shift. No `'_'` (Shift+`-`) case: no real-world
+        // "Ctrl+Minus" keystroke pattern produces it, and adding it would widen the match
+        // surface for no observed benefit (bundle-budget-conscious — see spec §1.5). Same
+        // readOnly/preventDefault posture as the zoom-in arm above.
+        if (!(event.ctrlKey || event.metaKey)) return;
+        event.preventDefault();
+        options.onZoomOut();
         return;
       default:
         return; // Enter unbound (v1), all other keys fall through untouched.

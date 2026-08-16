@@ -1077,12 +1077,13 @@ class Gantt implements GanttInstance {
       onClear: () => this.#commitClearSelection(),
     });
     // Registered UNCONDITIONALLY (spec-keyboard-nav.md §6.2), same group as
-    // enableClickSelect above, NOT gated by readOnly — Arrow/Space/Shift+Arrow/Tab-entry are
-    // all non-mutating and must stay active even in a readOnly chart; only the Delete/
-    // Backspace action and the Ctrl/Cmd+Z / Ctrl/Cmd+Shift+Z undo/redo keybindings are
-    // themselves gated (via `isReadOnly` below AND, for Delete, defense-in-depth inside
-    // #commitDeleteSelected — undo()/redo() need no equivalent second gate, see
-    // spec-undo-redo-keybinding.md §4).
+    // enableClickSelect above, NOT gated by readOnly — Arrow/Space/Shift+Arrow/Tab-entry,
+    // Ctrl/Cmd+Plus/Minus (zoom), are all non-mutating and must stay active even in a
+    // readOnly chart; only the Delete/Backspace action and the Ctrl/Cmd+Z / Ctrl/Cmd+Shift+Z
+    // undo/redo keybindings are themselves gated (via `isReadOnly` below AND, for Delete,
+    // defense-in-depth inside #commitDeleteSelected — undo()/redo() and zoomIn()/zoomOut()
+    // need no equivalent second gate; see spec-undo-redo-keybinding.md §4 and
+    // spec-zoom-keybinding.md §4 respectively).
     const keyboardNav = enableKeyboardNav(rendererHandle, {
       onSelect: (id) => this.#commitSelect(id),
       onToggle: (id) => this.#commitToggleSelect(id),
@@ -1090,6 +1091,8 @@ class Gantt implements GanttInstance {
       onDeleteSelected: () => this.#commitDeleteSelected(),
       onUndo: () => this.undo(),
       onRedo: () => this.redo(),
+      onZoomIn: () => this.zoomIn(),
+      onZoomOut: () => this.zoomOut(),
       getTasks: () => this.#taskStore.all(),
       density: this.#config.density ?? 'default',
       isReadOnly: () => this.#config.readOnly === true,

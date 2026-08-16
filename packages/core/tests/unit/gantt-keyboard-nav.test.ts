@@ -251,4 +251,92 @@ describe('keyboard-nav — facade wiring', () => {
     dispatchKey(row('a'), 'ArrowDown');
     expect(gantt.getSelection()).toEqual([toTaskId('b')]);
   });
+
+  describe('Ctrl/Cmd+Plus/Minus — zoom keybindings (facade wiring)', () => {
+    it('Ctrl+= zooms in one level via the real zoomIn()', () => {
+      const gantt = threeTaskGantt();
+      gantt.mount(container);
+      expect(gantt.getViewMode()).toBe('week'); // default per spec-zoom-runtime.md
+
+      dispatchKey(row('a'), '=', { ctrlKey: true });
+
+      expect(gantt.getViewMode()).toBe('day');
+    });
+
+    it('Ctrl+- zooms out one level via the real zoomOut()', () => {
+      const gantt = threeTaskGantt();
+      gantt.mount(container);
+      expect(gantt.getViewMode()).toBe('week');
+
+      dispatchKey(row('a'), '-', { ctrlKey: true });
+
+      expect(gantt.getViewMode()).toBe('month');
+    });
+
+    it('boundary clamping still holds when triggered via keyboard: already at \'day\', Ctrl+= is a safe no-op', () => {
+      const gantt = threeTaskGantt();
+      gantt.mount(container);
+      gantt.zoomTo('day');
+
+      expect(() => dispatchKey(row('a'), '=', { ctrlKey: true })).not.toThrow();
+      expect(gantt.getViewMode()).toBe('day');
+    });
+
+    it('boundary clamping still holds when triggered via keyboard: already at \'year\', Ctrl+- is a safe no-op', () => {
+      const gantt = threeTaskGantt();
+      gantt.mount(container);
+      gantt.zoomTo('year');
+
+      expect(() => dispatchKey(row('a'), '-', { ctrlKey: true })).not.toThrow();
+      expect(gantt.getViewMode()).toBe('year');
+    });
+
+    it('readOnly: true — Ctrl+=/Ctrl+- still work (contrast against Delete\'s readOnly-suppression above)', () => {
+      const gantt = threeTaskGantt({ readOnly: true });
+      gantt.mount(container);
+      expect(gantt.getViewMode()).toBe('week');
+
+      dispatchKey(row('a'), '=', { ctrlKey: true });
+      expect(gantt.getViewMode()).toBe('day');
+
+      dispatchKey(row('a'), '-', { ctrlKey: true });
+      dispatchKey(row('a'), '-', { ctrlKey: true });
+      expect(gantt.getViewMode()).toBe('month');
+    });
+
+    it('viewport:changed fires exactly once per keyboard zoom', () => {
+      const gantt = threeTaskGantt();
+      gantt.mount(container);
+      const onChanged = vi.fn();
+      gantt.on('viewport:changed', onChanged);
+
+      dispatchKey(row('a'), '=', { ctrlKey: true });
+
+      expect(onChanged).toHaveBeenCalledTimes(1);
+      expect(onChanged).toHaveBeenCalledWith({ viewMode: 'day' });
+    });
+
+    it('preventDefault() is called on a real dispatched keyboard zoom event', () => {
+      const gantt = threeTaskGantt();
+      gantt.mount(container);
+
+      const event = new KeyboardEvent('keydown', {
+        key: '=',
+        ctrlKey: true,
+        bubbles: true,
+        cancelable: true,
+      });
+      row('a').dispatchEvent(event);
+
+      expect(event.defaultPrevented).toBe(true);
+    });
+
+    it('dispatch after destroy() does not throw and does not fire zoom', () => {
+      const gantt = threeTaskGantt();
+      gantt.mount(container);
+      const rowEl = row('a');
+      gantt.destroy();
+      expect(() => dispatchKey(rowEl, '=', { ctrlKey: true })).not.toThrow();
+    });
+  });
 });

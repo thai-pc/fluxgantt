@@ -69,6 +69,8 @@ describe('enableKeyboardNav — DOM interaction', () => {
     const onDeleteSelected = vi.fn();
     const onUndo = vi.fn();
     const onRedo = vi.fn();
+    const onZoomIn = vi.fn();
+    const onZoomOut = vi.fn();
     const nav = enableKeyboardNav(handle, {
       onSelect,
       onToggle,
@@ -76,13 +78,26 @@ describe('enableKeyboardNav — DOM interaction', () => {
       onDeleteSelected,
       onUndo,
       onRedo,
+      onZoomIn,
+      onZoomOut,
       getTasks: () => tasks,
       density: 'default',
       isReadOnly: () => false,
       getSelection: () => [...selection],
       ...options,
     });
-    return { handle, nav, onSelect, onToggle, onRangeSelect, onDeleteSelected, onUndo, onRedo };
+    return {
+      handle,
+      nav,
+      onSelect,
+      onToggle,
+      onRangeSelect,
+      onDeleteSelected,
+      onUndo,
+      onRedo,
+      onZoomIn,
+      onZoomOut,
+    };
   }
 
   function rowFor(handle: ReturnType<typeof createSvgRenderer>, id: string): SVGElement {
@@ -361,5 +376,134 @@ describe('enableKeyboardNav — DOM interaction', () => {
     expect(() => nav.dispose()).not.toThrow();
     dispatchKey(rowFor(handle, 't1'), 'ArrowDown');
     expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  describe('Ctrl/Cmd+Plus/Minus — zoom keybindings', () => {
+    it('Ctrl+= (no Shift) fires onZoomIn, calls preventDefault, does not fire onZoomOut', () => {
+      const { handle, onZoomIn, onZoomOut } = setup();
+      const row = rowFor(handle, 't1');
+      const event = new KeyboardEvent('keydown', { key: '=', ctrlKey: true, bubbles: true, cancelable: true });
+      const spy = vi.spyOn(event, 'preventDefault');
+      row.dispatchEvent(event);
+      expect(onZoomIn).toHaveBeenCalledTimes(1);
+      expect(onZoomOut).not.toHaveBeenCalled();
+      expect(spy).toHaveBeenCalled();
+    });
+
+    it('Ctrl+Shift+= (literal Shift+Plus) also fires onZoomIn', () => {
+      const { handle, onZoomIn } = setup();
+      const row = rowFor(handle, 't1');
+      const event = new KeyboardEvent('keydown', {
+        key: '+',
+        ctrlKey: true,
+        shiftKey: true,
+        bubbles: true,
+        cancelable: true,
+      });
+      row.dispatchEvent(event);
+      expect(onZoomIn).toHaveBeenCalledTimes(1);
+    });
+
+    it('Ctrl++ with shiftKey false (Numpad +) also fires onZoomIn', () => {
+      const { handle, onZoomIn } = setup();
+      const row = rowFor(handle, 't1');
+      const event = new KeyboardEvent('keydown', {
+        key: '+',
+        ctrlKey: true,
+        shiftKey: false,
+        bubbles: true,
+        cancelable: true,
+      });
+      row.dispatchEvent(event);
+      expect(onZoomIn).toHaveBeenCalledTimes(1);
+    });
+
+    it('Meta+=/Meta+Shift+=/Meta++ (Cmd on Mac) all also fire onZoomIn', () => {
+      const { handle, onZoomIn } = setup();
+      const row = rowFor(handle, 't1');
+      for (const init of [
+        { key: '=', metaKey: true },
+        { key: '+', metaKey: true, shiftKey: true },
+        { key: '+', metaKey: true },
+      ]) {
+        row.dispatchEvent(
+          new KeyboardEvent('keydown', { ...init, bubbles: true, cancelable: true }),
+        );
+      }
+      expect(onZoomIn).toHaveBeenCalledTimes(3);
+    });
+
+    it('Ctrl+- fires onZoomOut, calls preventDefault, does not fire onZoomIn', () => {
+      const { handle, onZoomIn, onZoomOut } = setup();
+      const row = rowFor(handle, 't1');
+      const event = new KeyboardEvent('keydown', { key: '-', ctrlKey: true, bubbles: true, cancelable: true });
+      const spy = vi.spyOn(event, 'preventDefault');
+      row.dispatchEvent(event);
+      expect(onZoomOut).toHaveBeenCalledTimes(1);
+      expect(onZoomIn).not.toHaveBeenCalled();
+      expect(spy).toHaveBeenCalled();
+    });
+
+    it('Meta+- also fires onZoomOut', () => {
+      const { handle, onZoomOut } = setup();
+      const row = rowFor(handle, 't1');
+      const event = new KeyboardEvent('keydown', { key: '-', metaKey: true, bubbles: true, cancelable: true });
+      row.dispatchEvent(event);
+      expect(onZoomOut).toHaveBeenCalledTimes(1);
+    });
+
+    it('Ctrl+_ (Shift+Minus) is NOT handled: neither onZoomIn nor onZoomOut fires, preventDefault not called', () => {
+      const { handle, onZoomIn, onZoomOut } = setup();
+      const row = rowFor(handle, 't1');
+      const event = new KeyboardEvent('keydown', {
+        key: '_',
+        ctrlKey: true,
+        shiftKey: true,
+        bubbles: true,
+        cancelable: true,
+      });
+      const spy = vi.spyOn(event, 'preventDefault');
+      row.dispatchEvent(event);
+      expect(onZoomIn).not.toHaveBeenCalled();
+      expect(onZoomOut).not.toHaveBeenCalled();
+      expect(spy).not.toHaveBeenCalled();
+    });
+
+    it('plain +/=/- with no Ctrl/Cmd is a no-op: neither callback fires, preventDefault not called', () => {
+      const { handle, onZoomIn, onZoomOut } = setup();
+      const row = rowFor(handle, 't1');
+      for (const key of ['+', '=', '-']) {
+        const event = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true });
+        const spy = vi.spyOn(event, 'preventDefault');
+        row.dispatchEvent(event);
+        expect(spy).not.toHaveBeenCalled();
+      }
+      expect(onZoomIn).not.toHaveBeenCalled();
+      expect(onZoomOut).not.toHaveBeenCalled();
+    });
+
+    it('isReadOnly: () => true does NOT suppress zoom — onZoomIn/onZoomOut still fire, preventDefault still called', () => {
+      const { handle, onZoomIn, onZoomOut } = setup({ isReadOnly: () => true });
+      const row = rowFor(handle, 't1');
+
+      const zoomInEvent = new KeyboardEvent('keydown', { key: '=', ctrlKey: true, bubbles: true, cancelable: true });
+      const zoomInSpy = vi.spyOn(zoomInEvent, 'preventDefault');
+      row.dispatchEvent(zoomInEvent);
+
+      const zoomOutEvent = new KeyboardEvent('keydown', { key: '-', ctrlKey: true, bubbles: true, cancelable: true });
+      const zoomOutSpy = vi.spyOn(zoomOutEvent, 'preventDefault');
+      row.dispatchEvent(zoomOutEvent);
+
+      expect(onZoomIn).toHaveBeenCalledTimes(1);
+      expect(onZoomOut).toHaveBeenCalledTimes(1);
+      expect(zoomInSpy).toHaveBeenCalled();
+      expect(zoomOutSpy).toHaveBeenCalled();
+    });
+
+    it('Ctrl+= on a keydown target outside any row is ignored', () => {
+      const { handle, onZoomIn } = setup();
+      dispatchKey(handle.svg, '=', { ctrlKey: true }); // svg root itself, not inside a .fg-timeline__row
+      expect(onZoomIn).not.toHaveBeenCalled();
+    });
   });
 });
