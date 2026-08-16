@@ -815,6 +815,8 @@ describe('lifecycle without a DOM', () => {
       expect(() => gantt.setProgress(id, 0.5)).toThrow(/destroyed/);
       expect(() => gantt.linkTasks(id, toTaskId('nope'))).toThrow(/destroyed/);
       expect(() => gantt.computeCriticalPath()).toThrow(/destroyed/);
+      expect(() => gantt.importJson({ tasks: [] })).toThrow(/destroyed/);
+      expect(() => gantt.importCsv('id,name,start,end,duration,progress,type,parent,notes,color')).toThrow(/destroyed/);
     });
 
     it('every read method returns its documented empty value', () => {
