@@ -14,7 +14,7 @@
 // via `computeCascade` — opt-in via `GanttConfig.schedulingMode: 'auto'`. Default remains
 // `'manual'` (= v1's original single-task-only behavior, unchanged) — see `#maybeCascade`.
 import type { Temporal } from '@js-temporal/polyfill';
-import { effect } from './signals.js';
+import { effect, batch } from './signals.js';
 import { TaskStore, DependencyStore, DependencyLinkError, SelectionStore } from './store/index.js';
 import type { TaskInput, TaskPatch } from './store/index.js';
 import {
@@ -39,6 +39,8 @@ import {
   exportCsv as exportCsvFn,
   exportSvg as exportSvgFn,
   exportPng as exportPngFn,
+  importJson as importJsonFn,
+  importCsv as importCsvFn,
 } from './io/index.js';
 import type {
   ExportBundle,
@@ -46,6 +48,8 @@ import type {
   ExportJsonOptions,
   ExportPngOptions,
   ExportSvgOptions,
+  ImportJsonOptions,
+  ImportCsvOptions,
 } from './io/index.js';
 import type {
   CriticalPathResult,
@@ -142,6 +146,21 @@ export interface EventMeta {
   readonly source: 'undo' | 'redo';
 }
 
+/** Returned by `importJson()`/`importCsv()` AND the payload of the `data:imported` event they
+ *  emit — same value in both places (see computeCriticalPath()/critical-path:computed for the
+ *  precedent of "method returns it, event echoes it"). */
+export interface ImportSummary {
+  /** Which of the two import methods produced this summary. */
+  readonly format: 'json' | 'csv';
+  /** Number of tasks now in the live store — always equal to the imported task count (the
+   *  wholesale replace never drops or merges an item; either every item loads, or the whole
+   *  call throws and nothing loads). */
+  readonly taskCount: number;
+  /** Number of dependencies now in the live store. Always `0` for `importCsv()` (CSV has no
+   *  dependency concept — see `importCsv()`'s doc comment). */
+  readonly dependencyCount: number;
+}
+
 export interface GanttEventMap {
   'task:added': [task: Task, meta?: EventMeta];
   /** `prevStart` is `DateInput` (usually the same shape the task was last written with),
@@ -170,6 +189,14 @@ export interface GanttEventMap {
    *  produces zero ops. Payload mirrors `canUndo()`/`canRedo()` at the moment of the fire so a
    *  host's Undo/Redo buttons can wire `disabled` state directly off the event. */
   'history:changed': [state: { readonly canUndo: boolean; readonly canRedo: boolean }];
+  /** Fires exactly once per `importJson()`/`importCsv()` call that COMMITS (never on a
+   *  rejected/throwing import — see `#commitImport`'s atomicity guarantee), after the
+   *  wholesale replace has fully landed: live stores updated, undo/redo history cleared,
+   *  selection cleared. Never fires per-item (no `task:added`×N/`dependency:added`×N storm).
+   *  A host that needs full post-import detail calls `getTasks()`/`getDependencies()` once,
+   *  either from the listener or directly off this method's own return value (identical
+   *  `ImportSummary`). */
+  'data:imported': [summary: ImportSummary];
 }
 
 export type GanttEventName = keyof GanttEventMap;
@@ -246,7 +273,7 @@ export interface GanttInstance {
   // --- Computation -------------------------------------------------------------------------
   computeCriticalPath(): CriticalPathResult;
 
-  // --- IO (read-only export, spec §7.8, security.md §2) -----------------------------------
+  // --- IO (export + import, spec §7.8, security.md §2) -------------------------------------
   /** Thin delegation over `getTasks()`/`getDependencies()` + the pure `exportJson()`
    *  function — same post-`destroy()` posture as those two getters (returns an
    *  empty-but-valid bundle rather than throwing; see spec-io-json-csv.md §1.2). Defaults
@@ -255,6 +282,50 @@ export interface GanttInstance {
   /** Thin delegation over `getTasks()` + the pure `exportCsv()` function. Same posture as
    *  `exportJson()` above. */
   exportCsv(options?: ExportCsvOptions): string;
+
+  /**
+   * Validates `data` via the pure `importJson()` function, then wholesale-REPLACES the
+   * entire live task/dependency set — equivalent to what `createGantt({ tasks, dependencies })`
+   * would have produced from the same data (NOT a merge/append). Concretely, on success:
+   *  1. Clears BOTH `#undoStack` and `#redoStack` — prior entries reference a pre-import state
+   *     that may no longer exist post-replace. The import itself is NOT recorded as an
+   *     undoable op — same precedent as construction-time `config.tasks`/`config.dependencies`
+   *     seeding.
+   *  2. Clears the current selection, equivalent to `deselect()`.
+   *  3. Emits exactly ONE `data:imported` event — never per-item `task:added`/
+   *     `dependency:added`.
+   *  4. Triggers exactly one repaint of a mounted chart (batched), via the same
+   *     store-`revision`-driven reactive effect every other mutation uses.
+   *
+   * NOT gated by `readOnly` (matches every other programmatic mutation method).
+   *
+   * ATOMIC against the live instance: the complete replacement dataset is validated and
+   * staged BEFORE any live store is touched. A rejected import — an invalid schema (rejected
+   * by the pure `importJson()` itself) OR a cyclic dependency set (which the pure
+   * `importJson()` deliberately does NOT detect — see `io/json.ts`'s own note — and only
+   * surfaces when the staged data is linked) — leaves the live instance's tasks,
+   * dependencies, undo/redo history, and selection completely UNCHANGED, and does not fire
+   * `data:imported`.
+   *
+   * Throws if the instance is destroyed (`#assertAlive`, same posture as every other
+   * mutating method).
+   *
+   * `options` is passed straight through to the pure `importJson()` — no facade-level
+   * default injected (unlike `exportJson`'s `timezone` default: `ImportJsonOptions` has no
+   * `timezone` field to default, only `limits`).
+   */
+  importJson(data: string | object, options?: ImportJsonOptions): ImportSummary;
+
+  /**
+   * Same contract as `importJson()` above, for CSV. CSV has no dependency concept
+   * (`io/csv.ts`'s own header comment: "Tasks-only, flat scalar columns... dependencies are
+   * NOT representable in CSV at all") — `dependencyCount` is always `0` in the returned/
+   * emitted summary, and any dependency the live instance held before the call is cleared
+   * along with the task set (wholesale replace is dataset-wide, not tasks-only — importing a
+   * tasks-only CSV still wipes pre-existing dependencies, matching what
+   * `createGantt({ tasks })` with no `dependencies` key would produce).
+   */
+  importCsv(csv: string, options?: ImportCsvOptions): ImportSummary;
 
   /**
    * Serializes the currently-mounted SVG to a self-contained string (XML declaration,
@@ -371,23 +442,107 @@ class Gantt implements GanttInstance {
     }
     this.#historyLimit = config.historyLimit ?? DEFAULT_HISTORY_LIMIT;
 
+    // May throw (duplicate id / self-link / duplicate pair / cycle) — construction fails
+    // atomically; no partial state is observable (the whole `createGantt()` call throws, no
+    // instance is ever returned).
+    this.#loadDataset(config.tasks ?? [], config.dependencies ?? [], this.#taskStore, this.#dependencyStore, 'createGantt');
+  }
+
+  /**
+   * Shared load pipeline: duplicate-id-check + `TaskStore.add()` loop +
+   * `DependencyStore.link()` loop. The ONE validated path for "load a whole
+   * `{tasks, dependencies}` set into a store pair" — used by the constructor (against the
+   * live, freshly-constructed `#taskStore`/`#dependencyStore` — a throw here means
+   * `createGantt()` itself throws, no instance is ever returned, atomic for free) AND by
+   * `#commitImport` (against a pair of throwaway staging stores — see `#commitImport`, which
+   * is what makes import atomic against an ALREADY-LIVE instance, a guarantee the constructor
+   * gets for free but a runtime call does not).
+   *
+   * `context` only prefixes a thrown duplicate-id message (e.g. `'createGantt'` /
+   * `'gantt.importJson'`) — cosmetic. In practice this loop's own duplicate-id branch is
+   * unreachable from import: `importJson`/`importCsv` (the pure functions) already reject a
+   * duplicate id WITHIN the imported batch via their own `seenIds` check before this helper
+   * ever runs. It stays here anyway so there is exactly ONE validated load path, not two —
+   * the constructor's own callers get the identical defense-in-depth check import-sourced
+   * data merely never needs to exercise.
+   */
+  #loadDataset(
+    tasks: readonly TaskInput[],
+    dependencies: readonly DependencyInput[],
+    taskStore: TaskStore,
+    dependencyStore: DependencyStore,
+    context: string,
+  ): void {
     const seenIds = new Set<TaskId>();
-    for (const t of config.tasks ?? []) {
+    for (const t of tasks) {
       if (t.id !== undefined) {
         if (seenIds.has(t.id)) {
           throw new Error(
-            `createGantt: duplicate task id "${t.id}" in config.tasks — TaskStore would silently drop the earlier one`,
+            `${context}: duplicate task id "${t.id}" — TaskStore would silently drop the earlier one`,
           );
         }
         seenIds.add(t.id);
       }
-      this.#taskStore.add(t); // stamps id (if absent)/createdAt/updatedAt, no event emitted
+      taskStore.add(t); // stamps id (if absent)/createdAt/updatedAt, no event emitted
     }
-    for (const d of config.dependencies ?? []) {
-      // May throw (self-link / duplicate pair / cycle) — construction fails atomically; no
-      // partial state is observable (the whole `createGantt()` call throws).
-      this.#dependencyStore.link(d.from, d.to, d.type ?? 'FS', d.lag === undefined ? {} : { lag: d.lag });
+    for (const d of dependencies) {
+      // May throw (self-link / duplicate pair / cycle) — DependencyLinkError, propagated as-is.
+      dependencyStore.link(d.from, d.to, d.type ?? 'FS', d.lag === undefined ? {} : { lag: d.lag });
     }
+  }
+
+  /**
+   * Staging + atomic swap for `importJson()`/`importCsv()`. Builds the complete replacement
+   * dataset against throwaway `TaskStore`/`DependencyStore` instances FIRST — a throw here
+   * (defense-in-depth duplicate id / `DependencyLinkError` incl. cycle) propagates straight
+   * out of `importJson()`/`importCsv()` with NOTHING live touched: `#taskStore`/
+   * `#dependencyStore`/`#undoStack`/`#redoStack`/`#selectionStore` are left byte-for-byte as
+   * they were before the call.
+   */
+  #commitImport(
+    tasks: readonly TaskInput[],
+    dependencies: readonly DependencyInput[],
+    format: 'json' | 'csv',
+  ): ImportSummary {
+    const stagingTasks = new TaskStore();
+    const stagingDependencies = new DependencyStore();
+    this.#loadDataset(
+      tasks,
+      dependencies,
+      stagingTasks,
+      stagingDependencies,
+      format === 'json' ? 'gantt.importJson' : 'gantt.importCsv',
+    );
+
+    // Staging succeeded — every item is guaranteed loadable. Now, and only now, touch the
+    // live instance. `hadHistory` is read BEFORE clearing so #emitHistoryChanged can be
+    // skipped when there was nothing to clear (no-op-suppression discipline, matching
+    // undo()/redo()'s own "don't fire history:changed on an empty-stack no-op" posture).
+    const hadHistory = this.#undoStack.length > 0 || this.#redoStack.length > 0;
+
+    // Single batch(): the live-store swap below performs `clear()` + N×`restore()` per store
+    // plus a selection clear — each an independent revision bump. Without batching, a
+    // MOUNTED chart's reactive render effect (subscribed to all three revisions) would
+    // re-run on EVERY one of those bumps. `batch()` coalesces every bump inside this block
+    // into exactly ONE effect flush after the block exits.
+    batch(() => {
+      this.#taskStore.clear();
+      for (const t of stagingTasks.all()) this.#taskStore.restore(t); // preserves the ids/
+      // createdAt/updatedAt minted during staging — restore(), not add(), so nothing is
+      // re-stamped a second time on the live commit.
+      this.#dependencyStore.clear();
+      for (const d of stagingDependencies.all()) this.#dependencyStore.restore(d);
+      this.#applySelection([]); // explicit clear — emits selection:changed iff the selection
+      // was non-empty; safe/no-op-suppressed inside batch() same as anywhere else.
+    });
+
+    this.#undoStack.length = 0;
+    this.#redoStack.length = 0;
+    if (hadHistory) this.#emitHistoryChanged(); // suppressed when both stacks were already empty
+
+    const summary: ImportSummary = { format, taskCount: tasks.length, dependencyCount: dependencies.length };
+    this.#emit('data:imported', summary);
+    return summary;
   }
 
   // --- Task operations -----------------------------------------------------------------
@@ -628,6 +783,18 @@ class Gantt implements GanttInstance {
 
   exportCsv(options?: ExportCsvOptions): string {
     return exportCsvFn(this.getTasks(), { timezone: this.#calendar.timezone, ...options });
+  }
+
+  importJson(data: string | object, options?: ImportJsonOptions): ImportSummary {
+    this.#assertAlive('importJson');
+    const { tasks, dependencies } = importJsonFn(data, options); // may throw IoValidationError
+    return this.#commitImport(tasks, dependencies, 'json');
+  }
+
+  importCsv(csv: string, options?: ImportCsvOptions): ImportSummary {
+    this.#assertAlive('importCsv');
+    const { tasks } = importCsvFn(csv, options); // may throw IoValidationError
+    return this.#commitImport(tasks, [], 'csv');
   }
 
   exportSvg(options?: ExportSvgOptions): string {
