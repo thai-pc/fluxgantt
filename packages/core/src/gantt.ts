@@ -227,6 +227,46 @@ export interface GanttInstance {
   moveTask(id: TaskId, newStart: DateInput): Task;
   resizeTask(id: TaskId, newDuration: number): Task;
   setProgress(id: TaskId, progress: number): Task;
+  /**
+   * Duplicates one task (`taskId` given) or the current selection (`taskId` omitted) by
+   * constructing a fresh `TaskInput` per source task and calling `addTask()` once per copy —
+   * reuses addTask's id-generation/createdAt+updatedAt-stamping/`task:added` emission/undo-
+   * recording in full, no bypass. See spec-duplicate-task.md for the exact field-copy table.
+   *
+   * - Copy's `id` is always freshly minted (never derived from/equal to the source's).
+   * - Copy's `parent` is copied as-is — becomes a new SIBLING under the same parent, if any.
+   *   The source's own CHILDREN are never cloned (v1 does not duplicate subtrees).
+   * - Copy starts with ZERO dependency edges (incoming or outgoing) — no rewiring in v1.
+   * - Copy's `start` is set to the source's `end` (offset — starts immediately after the
+   *   source finishes); `end` is `start + (the source's own working-hours duration)`, computed
+   *   via the calendar's `addWorkingHours` — the copy's span visually mirrors the source's,
+   *   just shifted later. Computed independently per source task when duplicating a
+   *   multi-selection (each copy is offset from ITS OWN source, not a single shared anchor).
+   * - Copy's `progress` always resets to `0` (a duplicate is new, not-yet-started work) —
+   *   regardless of the source's progress value.
+   * - Every other `Task` field (`name`, `priority`, `type`, `constraint`, `resources`,
+   *   `notes`, `color`, `meta`, `duration`) is copied verbatim (shallow copy — matches
+   *   `TaskStore.add()`'s own existing shallow-spread convention; see spec §5 for why this is
+   *   safe). `name` gets NO suffix (e.g. no `"(copy)"`) — see spec §5 rationale.
+   *
+   * Multiple copies from one call collapse into ONE undo/redo history entry (mirrors
+   * `#commitDeleteSelected`'s `#beginTransaction`/`#endTransaction` pattern) — `undo()` removes
+   * every copy created by that one `duplicateTask()` call in a single step.
+   *
+   * Explicit `taskId` that does not resolve in the live store THROWS (matches
+   * `moveTask`/`resizeTask`/`updateTask`/`setProgress`'s `#requireTask`-gated posture — an
+   * invalid explicit id is treated as a caller error, not a silent no-op). Omitted `taskId`
+   * with an EMPTY current selection is a safe no-op, returns `[]` (matches
+   * `#commitDeleteSelected`'s own "nothing selected → do nothing" posture) — no history entry,
+   * no events, no transaction opened.
+   *
+   * Does NOT auto-select the new copies — call `select(result.map(t => t.id))` if desired.
+   *
+   * NOT gated by `readOnly` (matches every other programmatic mutation method — `readOnly`
+   * governs rendered interactivity, not the facade's method surface). Throws if the instance
+   * is destroyed (`#assertAlive`, same posture as every other mutating method).
+   */
+  duplicateTask(taskId?: TaskId): Task[];
   getTask(id: TaskId): Task | undefined;
   getTasks(): Task[];
   findTasks(predicate: (task: Task) => boolean): Task[];
@@ -662,6 +702,53 @@ class Gantt implements GanttInstance {
       throw new Error(`gantt.setProgress: invalid progress (${progress}) — must be in [0, 1]`);
     }
     return this.#applyPatch(id, { progress });
+  }
+
+  duplicateTask(taskId?: TaskId): Task[] {
+    this.#assertAlive('duplicateTask');
+
+    const sourceIds =
+      taskId !== undefined
+        ? [this.#requireTask(taskId, 'duplicateTask').id] // throws if not found
+        : this.#selectionStore.all(); // current selection, insertion order
+    if (sourceIds.length === 0) return [];
+
+    const tz = this.#calendar.timezone;
+    const copies: Task[] = [];
+
+    this.#beginTransaction();
+    try {
+      for (const id of sourceIds) {
+        const source = this.#taskStore.get(id);
+        if (!source) continue; // defensive: a task:added listener earlier in THIS loop could
+        // synchronously have removed a not-yet-processed source (see #emit's synchronous
+        // dispatch) — skip, mirrors the resilience #commitDeleteSelected relies on
+        // removeTask() for.
+
+        // Omit id/createdAt/updatedAt/start/end from the spread — id/timestamps are
+        // store-owned (addTask mints/stamps them), start/end are explicitly recomputed below.
+        const { id: _id, createdAt: _createdAt, updatedAt: _updatedAt, start: _start, end: _end, ...rest } = source;
+
+        const sourceEnd = normalizeDate(source.end, tz);
+        const durationHours =
+          source.duration ?? differenceInWorkingHours(source.start, source.end, this.#calendar);
+        const newEnd = addWorkingHours(sourceEnd, durationHours, this.#calendar);
+
+        const input: TaskInput = {
+          ...rest, // name, priority, parent, type, constraint, resources, notes, color, meta,
+          // duration — all copied verbatim
+          start: sourceEnd, // offset: begins exactly when the source ends
+          end: newEnd, // preserves the source's working-hours span
+          progress: 0, // always reset — overrides `rest.progress`
+        };
+
+        copies.push(this.addTask(input)); // fresh id, createdAt/updatedAt, task:added, undo op
+      }
+    } finally {
+      this.#endTransaction(); // commits ONE history entry regardless of copies.length (0, 1, or N)
+    }
+
+    return copies;
   }
 
   removeTask(id: TaskId): void {
