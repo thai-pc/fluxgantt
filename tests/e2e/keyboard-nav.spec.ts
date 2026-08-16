@@ -82,6 +82,52 @@ test('Delete removes the selected task', async ({ page }) => {
   await expect(row(page, 'sibling-a')).toHaveCount(0);
 });
 
+// Cross-platform modifier key convention already established in selection.spec.ts:45.
+const modifier = process.platform === 'darwin' ? 'Meta' : 'Control';
+
+test('Ctrl/Cmd+Z undoes a Delete', async ({ page }) => {
+  await focusFirstRow(page);
+  for (let i = 0; i < 3; i++) await page.keyboard.press('ArrowDown'); // -> sibling-a, selected
+  expect(await getSelection(page)).toEqual(['sibling-a']);
+
+  await page.keyboard.press('Delete');
+  await expect(row(page, 'sibling-a')).toHaveCount(0);
+
+  await page.keyboard.press(`${modifier}+z`);
+  await expect(row(page, 'sibling-a')).toBeVisible();
+});
+
+test('Ctrl/Cmd+Shift+Z redoes', async ({ page }) => {
+  await focusFirstRow(page);
+  for (let i = 0; i < 3; i++) await page.keyboard.press('ArrowDown'); // -> sibling-a, selected
+
+  await page.keyboard.press('Delete');
+  await page.keyboard.press(`${modifier}+z`);
+  await expect(row(page, 'sibling-a')).toBeVisible();
+
+  await page.keyboard.press(`${modifier}+Shift+Z`);
+  await expect(row(page, 'sibling-a')).toHaveCount(0);
+});
+
+test('read-only chart: Ctrl/Cmd+Z is a no-op', async ({ page }) => {
+  await page.goto('/read-only.html');
+  await focusFirstRow(page);
+
+  const beforeCount = await page.evaluate(() => {
+    const g = (window as unknown as { __gantt?: { getTasks(): unknown[] } }).__gantt;
+    return g ? g.getTasks().length : -1;
+  });
+
+  await page.keyboard.press('Delete'); // already covered as a no-op elsewhere; re-asserted here
+  await page.keyboard.press(`${modifier}+z`);
+
+  const afterCount = await page.evaluate(() => {
+    const g = (window as unknown as { __gantt?: { getTasks(): unknown[] } }).__gantt;
+    return g ? g.getTasks().length : -1;
+  });
+  expect(afterCount).toBe(beforeCount);
+});
+
 test('read-only chart: Delete is a no-op, ArrowDown/Space still navigate', async ({ page }) => {
   await page.goto('/read-only.html');
   await focusFirstRow(page);

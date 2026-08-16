@@ -26,10 +26,17 @@ function task(id: string, start: string, end: string, extra: Partial<Task> = {})
 function dispatchKey(
   target: EventTarget,
   key: string,
-  init: { shiftKey?: boolean; bubbles?: boolean } = {},
+  init: { shiftKey?: boolean; ctrlKey?: boolean; metaKey?: boolean; bubbles?: boolean } = {},
 ): void {
   target.dispatchEvent(
-    new KeyboardEvent('keydown', { key, shiftKey: init.shiftKey ?? false, bubbles: init.bubbles ?? true, cancelable: true }),
+    new KeyboardEvent('keydown', {
+      key,
+      shiftKey: init.shiftKey ?? false,
+      ctrlKey: init.ctrlKey ?? false,
+      metaKey: init.metaKey ?? false,
+      bubbles: init.bubbles ?? true,
+      cancelable: true,
+    }),
   );
 }
 
@@ -60,18 +67,22 @@ describe('enableKeyboardNav — DOM interaction', () => {
     const onToggle = vi.fn();
     const onRangeSelect = vi.fn();
     const onDeleteSelected = vi.fn();
+    const onUndo = vi.fn();
+    const onRedo = vi.fn();
     const nav = enableKeyboardNav(handle, {
       onSelect,
       onToggle,
       onRangeSelect,
       onDeleteSelected,
+      onUndo,
+      onRedo,
       getTasks: () => tasks,
       density: 'default',
       isReadOnly: () => false,
       getSelection: () => [...selection],
       ...options,
     });
-    return { handle, nav, onSelect, onToggle, onRangeSelect, onDeleteSelected };
+    return { handle, nav, onSelect, onToggle, onRangeSelect, onDeleteSelected, onUndo, onRedo };
   }
 
   function rowFor(handle: ReturnType<typeof createSvgRenderer>, id: string): SVGElement {
@@ -202,6 +213,115 @@ describe('enableKeyboardNav — DOM interaction', () => {
     const { handle, onDeleteSelected } = setup(); // no selection at all
     dispatchKey(rowFor(handle, 't1'), 'Delete');
     expect(onDeleteSelected).toHaveBeenCalledTimes(1);
+  });
+
+  it('Ctrl+z fires onUndo, calls preventDefault, does not fire onRedo', () => {
+    const { handle, onUndo, onRedo } = setup();
+    const row = rowFor(handle, 't1');
+    const event = new KeyboardEvent('keydown', { key: 'z', ctrlKey: true, bubbles: true, cancelable: true });
+    const spy = vi.spyOn(event, 'preventDefault');
+    row.dispatchEvent(event);
+    expect(onUndo).toHaveBeenCalledTimes(1);
+    expect(onRedo).not.toHaveBeenCalled();
+    expect(spy).toHaveBeenCalled();
+  });
+
+  it('Meta+z (Cmd on Mac) also fires onUndo', () => {
+    const { handle, onUndo, onRedo } = setup();
+    const row = rowFor(handle, 't1');
+    const event = new KeyboardEvent('keydown', { key: 'z', metaKey: true, bubbles: true, cancelable: true });
+    const spy = vi.spyOn(event, 'preventDefault');
+    row.dispatchEvent(event);
+    expect(onUndo).toHaveBeenCalledTimes(1);
+    expect(onRedo).not.toHaveBeenCalled();
+    expect(spy).toHaveBeenCalled();
+  });
+
+  it('Ctrl+Shift+Z fires onRedo, not onUndo', () => {
+    const { handle, onUndo, onRedo } = setup();
+    const row = rowFor(handle, 't1');
+    const event = new KeyboardEvent('keydown', {
+      key: 'Z',
+      ctrlKey: true,
+      shiftKey: true,
+      bubbles: true,
+      cancelable: true,
+    });
+    const spy = vi.spyOn(event, 'preventDefault');
+    row.dispatchEvent(event);
+    expect(onRedo).toHaveBeenCalledTimes(1);
+    expect(onUndo).not.toHaveBeenCalled();
+    expect(spy).toHaveBeenCalled();
+  });
+
+  it('Meta+Shift+Z also fires onRedo', () => {
+    const { handle, onUndo, onRedo } = setup();
+    const row = rowFor(handle, 't1');
+    const event = new KeyboardEvent('keydown', {
+      key: 'Z',
+      metaKey: true,
+      shiftKey: true,
+      bubbles: true,
+      cancelable: true,
+    });
+    const spy = vi.spyOn(event, 'preventDefault');
+    row.dispatchEvent(event);
+    expect(onRedo).toHaveBeenCalledTimes(1);
+    expect(onUndo).not.toHaveBeenCalled();
+    expect(spy).toHaveBeenCalled();
+  });
+
+  it('plain z/Z with no Ctrl/Cmd is a no-op: neither onUndo nor onRedo fires, preventDefault not called', () => {
+    const { handle, onUndo, onRedo } = setup();
+    const row = rowFor(handle, 't1');
+
+    const plainZ = new KeyboardEvent('keydown', { key: 'z', bubbles: true, cancelable: true });
+    const plainZSpy = vi.spyOn(plainZ, 'preventDefault');
+    row.dispatchEvent(plainZ);
+
+    const shiftOnlyZ = new KeyboardEvent('keydown', {
+      key: 'Z',
+      shiftKey: true,
+      bubbles: true,
+      cancelable: true,
+    });
+    const shiftOnlyZSpy = vi.spyOn(shiftOnlyZ, 'preventDefault');
+    row.dispatchEvent(shiftOnlyZ);
+
+    expect(onUndo).not.toHaveBeenCalled();
+    expect(onRedo).not.toHaveBeenCalled();
+    expect(plainZSpy).not.toHaveBeenCalled();
+    expect(shiftOnlyZSpy).not.toHaveBeenCalled();
+  });
+
+  it('Ctrl+z and Ctrl+Shift+Z are gated by isReadOnly: no-op, no preventDefault', () => {
+    const { handle, onUndo, onRedo } = setup({ isReadOnly: () => true });
+    const row = rowFor(handle, 't1');
+
+    const undoEvent = new KeyboardEvent('keydown', { key: 'z', ctrlKey: true, bubbles: true, cancelable: true });
+    const undoSpy = vi.spyOn(undoEvent, 'preventDefault');
+    row.dispatchEvent(undoEvent);
+
+    const redoEvent = new KeyboardEvent('keydown', {
+      key: 'Z',
+      ctrlKey: true,
+      shiftKey: true,
+      bubbles: true,
+      cancelable: true,
+    });
+    const redoSpy = vi.spyOn(redoEvent, 'preventDefault');
+    row.dispatchEvent(redoEvent);
+
+    expect(onUndo).not.toHaveBeenCalled();
+    expect(onRedo).not.toHaveBeenCalled();
+    expect(undoSpy).not.toHaveBeenCalled();
+    expect(redoSpy).not.toHaveBeenCalled();
+  });
+
+  it('Ctrl+z on a keydown target outside any row is ignored', () => {
+    const { handle, onUndo } = setup();
+    dispatchKey(handle.svg, 'z', { ctrlKey: true }); // svg root itself, not inside a .fg-timeline__row
+    expect(onUndo).not.toHaveBeenCalled();
   });
 
   it('stale focus re-resolution: focusedTaskId no longer present in a fresh layoutRows() clamps rather than throwing', () => {

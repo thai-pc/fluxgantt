@@ -862,13 +862,17 @@ class Gantt implements GanttInstance {
     // Registered UNCONDITIONALLY (spec-keyboard-nav.md §6.2), same group as
     // enableClickSelect above, NOT gated by readOnly — Arrow/Space/Shift+Arrow/Tab-entry are
     // all non-mutating and must stay active even in a readOnly chart; only the Delete/
-    // Backspace action is itself gated (via `isReadOnly` below AND defense-in-depth inside
-    // #commitDeleteSelected).
+    // Backspace action and the Ctrl/Cmd+Z / Ctrl/Cmd+Shift+Z undo/redo keybindings are
+    // themselves gated (via `isReadOnly` below AND, for Delete, defense-in-depth inside
+    // #commitDeleteSelected — undo()/redo() need no equivalent second gate, see
+    // spec-undo-redo-keybinding.md §4).
     const keyboardNav = enableKeyboardNav(rendererHandle, {
       onSelect: (id) => this.#commitSelect(id),
       onToggle: (id) => this.#commitToggleSelect(id),
       onRangeSelect: (anchorId, focusId) => this.#commitKeyboardRangeSelect(anchorId, focusId),
       onDeleteSelected: () => this.#commitDeleteSelected(),
+      onUndo: () => this.undo(),
+      onRedo: () => this.redo(),
       getTasks: () => this.#taskStore.all(),
       density: this.#config.density ?? 'default',
       isReadOnly: () => this.#config.readOnly === true,
