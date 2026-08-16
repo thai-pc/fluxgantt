@@ -69,6 +69,7 @@ describe('enableKeyboardNav — DOM interaction', () => {
     const onDeleteSelected = vi.fn();
     const onUndo = vi.fn();
     const onRedo = vi.fn();
+    const onDuplicateSelected = vi.fn();
     const onZoomIn = vi.fn();
     const onZoomOut = vi.fn();
     const nav = enableKeyboardNav(handle, {
@@ -78,6 +79,7 @@ describe('enableKeyboardNav — DOM interaction', () => {
       onDeleteSelected,
       onUndo,
       onRedo,
+      onDuplicateSelected,
       onZoomIn,
       onZoomOut,
       getTasks: () => tasks,
@@ -95,6 +97,7 @@ describe('enableKeyboardNav — DOM interaction', () => {
       onDeleteSelected,
       onUndo,
       onRedo,
+      onDuplicateSelected,
       onZoomIn,
       onZoomOut,
     };
@@ -376,6 +379,93 @@ describe('enableKeyboardNav — DOM interaction', () => {
     expect(() => nav.dispose()).not.toThrow();
     dispatchKey(rowFor(handle, 't1'), 'ArrowDown');
     expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  describe('Ctrl/Cmd+D — duplicate keybinding', () => {
+    it('Ctrl+d fires onDuplicateSelected, calls preventDefault', () => {
+      const { handle, onDuplicateSelected } = setup();
+      const row = rowFor(handle, 't1');
+      const event = new KeyboardEvent('keydown', { key: 'd', ctrlKey: true, bubbles: true, cancelable: true });
+      const spy = vi.spyOn(event, 'preventDefault');
+      row.dispatchEvent(event);
+      expect(onDuplicateSelected).toHaveBeenCalledTimes(1);
+      expect(spy).toHaveBeenCalled();
+    });
+
+    it('Cmd+d (metaKey) also fires onDuplicateSelected', () => {
+      const { handle, onDuplicateSelected } = setup();
+      const row = rowFor(handle, 't1');
+      const event = new KeyboardEvent('keydown', { key: 'd', metaKey: true, bubbles: true, cancelable: true });
+      const spy = vi.spyOn(event, 'preventDefault');
+      row.dispatchEvent(event);
+      expect(onDuplicateSelected).toHaveBeenCalledTimes(1);
+      expect(spy).toHaveBeenCalled();
+    });
+
+    it('Ctrl+Shift+d (key "D", shiftKey true) also fires onDuplicateSelected — Shift state does not gate it', () => {
+      const { handle, onDuplicateSelected } = setup();
+      const row = rowFor(handle, 't1');
+      const event = new KeyboardEvent('keydown', {
+        key: 'D',
+        ctrlKey: true,
+        shiftKey: true,
+        bubbles: true,
+        cancelable: true,
+      });
+      const spy = vi.spyOn(event, 'preventDefault');
+      row.dispatchEvent(event);
+      expect(onDuplicateSelected).toHaveBeenCalledTimes(1);
+      expect(spy).toHaveBeenCalled();
+    });
+
+    // Sharpest regression-risk test in this ticket: the OPPOSITE assertion of the zoom
+    // keybinding's "isReadOnly: () => true does NOT suppress zoom" test above. Duplicate
+    // mutates #taskStore (like Delete/undo/redo), so it MUST be suppressed when read-only —
+    // a future reader copying the most-recently-merged zoom precedent must not accidentally
+    // leave this ungated.
+    it('isReadOnly: () => true SUPPRESSES Ctrl+d — onDuplicateSelected NOT called, preventDefault NOT called', () => {
+      const { handle, onDuplicateSelected } = setup({ isReadOnly: () => true });
+      const row = rowFor(handle, 't1');
+      const event = new KeyboardEvent('keydown', { key: 'd', ctrlKey: true, bubbles: true, cancelable: true });
+      const spy = vi.spyOn(event, 'preventDefault');
+      row.dispatchEvent(event);
+      expect(onDuplicateSelected).not.toHaveBeenCalled();
+      expect(spy).not.toHaveBeenCalled();
+    });
+
+    it('plain d/D with no Ctrl/Cmd is a no-op: onDuplicateSelected not called, preventDefault not called', () => {
+      const { handle, onDuplicateSelected } = setup();
+      const row = rowFor(handle, 't1');
+
+      const plainD = new KeyboardEvent('keydown', { key: 'd', bubbles: true, cancelable: true });
+      const plainDSpy = vi.spyOn(plainD, 'preventDefault');
+      row.dispatchEvent(plainD);
+
+      const shiftOnlyD = new KeyboardEvent('keydown', {
+        key: 'D',
+        shiftKey: true,
+        bubbles: true,
+        cancelable: true,
+      });
+      const shiftOnlyDSpy = vi.spyOn(shiftOnlyD, 'preventDefault');
+      row.dispatchEvent(shiftOnlyD);
+
+      expect(onDuplicateSelected).not.toHaveBeenCalled();
+      expect(plainDSpy).not.toHaveBeenCalled();
+      expect(shiftOnlyDSpy).not.toHaveBeenCalled();
+    });
+
+    it('an unrelated key (e.g. "a") with Ctrl held is a no-op', () => {
+      const { handle, onDuplicateSelected } = setup();
+      dispatchKey(rowFor(handle, 't1'), 'a', { ctrlKey: true });
+      expect(onDuplicateSelected).not.toHaveBeenCalled();
+    });
+
+    it('Ctrl+d on a keydown target outside any row is ignored', () => {
+      const { handle, onDuplicateSelected } = setup();
+      dispatchKey(handle.svg, 'd', { ctrlKey: true }); // svg root itself, not inside a .fg-timeline__row
+      expect(onDuplicateSelected).not.toHaveBeenCalled();
+    });
   });
 
   describe('Ctrl/Cmd+Plus/Minus — zoom keybindings', () => {

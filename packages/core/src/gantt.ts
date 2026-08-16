@@ -1091,6 +1091,14 @@ class Gantt implements GanttInstance {
       onDeleteSelected: () => this.#commitDeleteSelected(),
       onUndo: () => this.undo(),
       onRedo: () => this.redo(),
+      // Re-selects the new copies (spec-duplicate-keybinding.md §2) — `duplicateTask()` itself
+      // leaves selection on the ORIGINAL task(s) untouched (its own documented contract,
+      // spec-duplicate-task.md §3.3), so the keyboard gesture opts into the interaction-
+      // appropriate behavior here rather than changing the facade method's own contract.
+      onDuplicateSelected: () => {
+        const copies = this.duplicateTask();
+        if (copies.length > 0) this.select(copies.map((c) => c.id));
+      },
       onZoomIn: () => this.zoomIn(),
       onZoomOut: () => this.zoomOut(),
       getTasks: () => this.#taskStore.all(),
