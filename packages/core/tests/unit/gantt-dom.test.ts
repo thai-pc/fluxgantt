@@ -6,6 +6,7 @@
 // drag-move.test.ts.
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { createGantt } from '../../src/gantt.js';
+import { createSvgRenderer } from '../../src/render/svg-renderer.js';
 import { toTaskId, type Task } from '../../src/types.js';
 import type { TaskInput } from '../../src/store/index.js';
 
@@ -72,7 +73,7 @@ describe('mount() — initial render', () => {
   });
 
   it('mounting with 0 tasks then adding the FIRST task does not throw (empty -> populated transition, regression)', () => {
-    // Regression: `#renderNow` used to call `setTimeRange()` (whose `setOptions` triggers an
+    // Regression: `#renderNow` used to call `applyViewportOptions()` (whose `setOptions` triggers an
     // immediate `render()` against the renderer's STALE, still-empty internal task list)
     // BEFORE `handle.update()` had pushed the new task — `deriveTimeRange` throws when both
     // `timeRange` is unset AND `tasks` is empty. `#renderNow` must order the two calls so
@@ -413,6 +414,143 @@ describe('click-select — mount() wiring (spec-selection.md §12.4)', () => {
     const rowB = container.querySelector('.fg-timeline__row[data-task-id="b"]');
     expect(rowA!.getAttribute('aria-selected')).toBe('true');
     expect(rowB!.getAttribute('aria-selected')).toBe('false');
+  });
+});
+
+describe('zoomTo() — mounted repaint + scroll-anchor preservation (spec-zoom-runtime.md §13.2)', () => {
+  it('zoomTo() while mounted triggers exactly one additional synchronous repaint reflecting the new viewMode', () => {
+    const gantt = createGantt({
+      viewMode: 'week',
+      tasks: [taskInput('a', '2026-01-05T09:00', '2026-01-06T09:00')],
+    });
+    gantt.mount(container);
+    const svg = container.querySelector('svg')!;
+    const widthBefore = svg.getAttribute('width');
+
+    gantt.zoomTo('month'); // pixelsPerDay shrinks (24 -> 8) -> total width shrinks
+
+    const svgAfter = container.querySelector('svg')!;
+    expect(svgAfter.getAttribute('width')).not.toBe(widthBefore);
+  });
+
+  it('scroll-anchor preservation: the centered date stays centered across a zoom, computed independently via dateToX/xToDate', () => {
+    const gantt = createGantt({
+      viewMode: 'week',
+      tasks: [
+        taskInput('a', '2026-01-01T09:00', '2026-06-30T09:00'), // wide range so scrolling is meaningful
+      ],
+    });
+    gantt.mount(container);
+
+    // Reach into the actually-rendered <svg>'s parent (container) — stub realistic scrolled
+    // geometry the same way drag-resize.test.ts stubs getBoundingClientRect (jsdom has no
+    // layout engine).
+    Object.defineProperty(container, 'clientWidth', { value: 800, configurable: true });
+    Object.defineProperty(container, 'scrollWidth', { value: 4000, configurable: true });
+    let scrollLeftValue = 500;
+    Object.defineProperty(container, 'scrollLeft', {
+      get: () => scrollLeftValue,
+      set: (v: number) => {
+        scrollLeftValue = v;
+      },
+      configurable: true,
+    });
+
+    // Independently compute the expected anchor date + expected new scrollLeft using the
+    // SAME dateToX/xToDate formula the implementation uses, via a second, independently
+    // created renderer at the OLD viewMode/tasks (not a re-use of gantt's internals).
+    const tasksSnapshot = gantt.getTasks();
+    const before = createSvgRenderer(document.createElement('div'), {
+      tasks: tasksSnapshot,
+      dependencies: [],
+    }, { viewMode: 'week' });
+    const LABEL_COLUMN_WIDTH = 160; // mirrors render/svg-renderer.ts's exported constant value
+    const anchorContentX = 500 + 800 / 2 - LABEL_COLUMN_WIDTH;
+    const anchorDate = before.getTimeScale().xToDate(anchorContentX);
+
+    const after = createSvgRenderer(document.createElement('div'), {
+      tasks: tasksSnapshot,
+      dependencies: [],
+    }, { viewMode: 'month' });
+    const expectedNewAnchorX = after.getTimeScale().dateToX(anchorDate);
+    const expectedScrollLeft = expectedNewAnchorX + LABEL_COLUMN_WIDTH - 800 / 2;
+
+    gantt.zoomTo('month');
+
+    expect(container.scrollLeft).toBeCloseTo(expectedScrollLeft, 0);
+  });
+
+  it('robustness: zoomTo() on a mounted chart with NO DOM geometry stubbing (all-zero jsdom defaults) does not throw and produces a finite scrollLeft', () => {
+    const gantt = createGantt({
+      viewMode: 'week',
+      tasks: [taskInput('a', '2026-01-05T09:00', '2026-01-06T09:00')],
+    });
+    gantt.mount(container);
+
+    expect(() => gantt.zoomTo('year')).not.toThrow();
+    expect(Number.isFinite(container.scrollLeft)).toBe(true);
+    expect(Number.isNaN(container.scrollLeft)).toBe(false);
+  });
+
+  it('zoom on an empty chart (0 tasks, EMPTY_STATE_WINDOW_DAYS fallback range) does not throw, view mode still updates', () => {
+    const gantt = createGantt({ viewMode: 'week' });
+    gantt.mount(container);
+    expect(() => gantt.zoomTo('quarter')).not.toThrow();
+    expect(gantt.getViewMode()).toBe('quarter');
+    expect(container.querySelector('svg')).not.toBeNull();
+  });
+
+  it('keyboard focus survives a zoom-triggered repaint (regression: existing unconditional focus-restoration mechanism, new trigger)', () => {
+    const gantt = createGantt({
+      viewMode: 'week',
+      tasks: [
+        taskInput('a', '2026-01-05T09:00', '2026-01-06T09:00'),
+        taskInput('b', '2026-01-07T09:00', '2026-01-08T09:00'),
+      ],
+    });
+    gantt.mount(container);
+
+    // Move keyboard-nav's own focus state to row 'b' (roving tabindex) via a real Tab-in
+    // (.focus()) followed by an ArrowDown keydown — matching keyboard-nav.test.ts's own
+    // setup pattern. The renderer's `hadFocusInside` focus-restoration gate (spec §4.5)
+    // only restores focus if `document.activeElement` was already inside the <svg> BEFORE
+    // the repaint, so the initial `.focus()` on row 'a' is required, not optional.
+    const rowA = container.querySelector('.fg-timeline__row[data-task-id="a"]') as SVGElement & {
+      focus(opts?: FocusOptions): void;
+    };
+    rowA.focus();
+    rowA.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true }));
+
+    const rowB = container.querySelector('.fg-timeline__row[data-task-id="b"]') as SVGElement;
+    expect(rowB.getAttribute('tabindex')).toBe('0');
+    expect(document.activeElement).toBe(rowB);
+
+    gantt.zoomTo('day');
+
+    const rowBAfter = container.querySelector('.fg-timeline__row[data-task-id="b"]') as SVGElement;
+    expect(rowBAfter).not.toBeNull();
+    expect(rowBAfter.getAttribute('tabindex')).toBe('0');
+    expect(document.activeElement).toBe(rowBAfter);
+  });
+
+  it("mount() -> zoomTo('day') -> unmount() -> mount() again: the second mount reflects 'day', not the original construction-time viewMode", () => {
+    const gantt = createGantt({
+      viewMode: 'week',
+      tasks: [taskInput('a', '2026-01-05T09:00', '2026-01-06T09:00')],
+    });
+    gantt.mount(container);
+    gantt.zoomTo('day');
+    gantt.unmount();
+
+    const container2 = document.createElement('div');
+    document.body.appendChild(container2);
+    gantt.mount(container2);
+
+    // pixelsPerDay(day) = 60, much wider than week(24) or the original construction default
+    // — assert via the getViewMode() facade getter (state lives on the Gantt instance, not
+    // the mount-scoped renderer handle) rather than re-deriving pixel widths here.
+    expect(gantt.getViewMode()).toBe('day');
+    container2.remove();
   });
 });
 

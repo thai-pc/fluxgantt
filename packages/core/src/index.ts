@@ -13,6 +13,7 @@ export type {
   DependencyInput,
   EventMeta,
   ImportSummary,
+  ViewportChangedPayload,
 } from './gantt.js';
 
 // Reactive primitives (spec §4.1, §5.2)

@@ -14,7 +14,7 @@
 // via `computeCascade` — opt-in via `GanttConfig.schedulingMode: 'auto'`. Default remains
 // `'manual'` (= v1's original single-task-only behavior, unchanged) — see `#maybeCascade`.
 import type { Temporal } from '@js-temporal/polyfill';
-import { effect, batch } from './signals.js';
+import { effect, batch, signal, type Signal } from './signals.js';
 import { TaskStore, DependencyStore, DependencyLinkError, SelectionStore } from './store/index.js';
 import type { TaskInput, TaskPatch } from './store/index.js';
 import {
@@ -26,7 +26,7 @@ import {
 import { computeCriticalPath as computeCriticalPathFn } from './compute/critical-path.js';
 import { computeCascade } from './compute/cascade.js';
 import { getTemporal } from './internal/temporal.js';
-import { createSvgRenderer } from './render/svg-renderer.js';
+import { createSvgRenderer, LABEL_COLUMN_WIDTH } from './render/svg-renderer.js';
 import type { SvgRendererHandle, SvgRendererInput, SvgRendererOptions } from './render/svg-renderer.js';
 import { layoutRows } from './render/renderer-base.js';
 import { enableDragMove } from './interaction/drag-move.js';
@@ -149,6 +149,15 @@ export interface EventMeta {
 /** Returned by `importJson()`/`importCsv()` AND the payload of the `data:imported` event they
  *  emit — same value in both places (see computeCriticalPath()/critical-path:computed for the
  *  precedent of "method returns it, event echoes it"). */
+/** Payload of `viewport:changed` (spec-zoom-runtime.md §2). v1 is intentionally minimal —
+ *  just the new view mode, not a full scroll/visible-range snapshot (no `ViewportStore`,
+ *  no `scrollToDate`/`scrollToTask` exist yet to make a `{start, end}` range meaningful as
+ *  a side effect of this one method — see the spec's §4 for the full reasoning). Additive:
+ *  can grow new readonly fields later without a breaking change to this event's shape. */
+export interface ViewportChangedPayload {
+  readonly viewMode: ViewMode;
+}
+
 export interface ImportSummary {
   /** Which of the two import methods produced this summary. */
   readonly format: 'json' | 'csv';
@@ -197,6 +206,12 @@ export interface GanttEventMap {
    *  either from the listener or directly off this method's own return value (identical
    *  `ImportSummary`). */
   'data:imported': [summary: ImportSummary];
+  /** Fires once per `zoomTo()`/`zoomIn()`/`zoomOut()` call that actually changes the view
+   *  mode (never on a no-op — calling `zoomTo()` with the already-current mode, or
+   *  `zoomIn()`/`zoomOut()` at a boundary, fires nothing). Fires whether or not the
+   *  instance is currently mounted (a headless pre-mount `zoomTo()` still fires — mounting
+   *  only affects whether a DOM repaint + scroll-anchor restoration also happens). */
+  'viewport:changed': [state: ViewportChangedPayload];
 }
 
 export type GanttEventName = keyof GanttEventMap;
@@ -269,6 +284,36 @@ export interface GanttInstance {
 
   /** Symmetric to `canUndo()`. */
   canRedo(): boolean;
+
+  // --- Viewport (zoom / view-mode) --------------------------------------------------------
+
+  /**
+   * Switches the rendered view mode ('day'|'week'|'month'|'quarter'|'year'). Headless-safe
+   * (works before `mount()` — state-only update, no DOM/scroll-anchor math attempted). When
+   * mounted, preserves the visible date range: the date currently centered in the viewport
+   * stays centered after the repaint. A no-op (no render, no `viewport:changed`) when `mode`
+   * already equals the current view mode. NOT gated by `readOnly` (a view concern, not a
+   * data mutation). Throws if `mode` is not one of the five known `ViewMode` values
+   * (defensive — same posture as `resizeTask`/`setProgress` validating their primitive
+   * inputs) or if the instance is destroyed (`#assertAlive`).
+   */
+  zoomTo(mode: ViewMode): void;
+
+  /** Steps one level toward `'day'` (more detail) through the fixed order
+   *  `['day','week','month','quarter','year']`. A safe no-op at the `'day'` boundary
+   *  (mirrors `undo()`/`redo()`'s "safe no-op past the end" precedent) — delegates to
+   *  `zoomTo()`, which already no-ops correctly when the target mode equals the current
+   *  one. Same `readOnly`-independent / `#assertAlive`-gated posture as `zoomTo()`. */
+  zoomIn(): void;
+
+  /** Symmetric to `zoomIn()` — steps one level toward `'year'` (less detail). Safe no-op at
+   *  the `'year'` boundary. */
+  zoomOut(): void;
+
+  /** Current view mode. Trivial state getter (same posture as `canUndo()`/`canRedo()`
+   *  exposing internal signal state) — safe post-`destroy()` (returns the last value, does
+   *  not throw), same posture as `getSelection()`/`getTasks()`. */
+  getViewMode(): ViewMode;
 
   // --- Computation -------------------------------------------------------------------------
   computeCriticalPath(): CriticalPathResult;
@@ -380,6 +425,12 @@ const EMPTY_STATE_WINDOW_DAYS = 14;
 /** Default `GanttConfig.historyLimit` — see its doc-comment. */
 const DEFAULT_HISTORY_LIMIT = 100;
 
+/** Canonical zoom-step order (spec-zoom-runtime.md §2) — `'day'` = most detail/most zoomed
+ *  in, `'year'` = least. Matches both the `ViewMode` union's own textual order AND
+ *  `renderer-base.ts`'s `PIXELS_PER_DAY` map (strictly descending pixel density). Used only
+ *  by `zoomIn()`/`zoomOut()` to step one position toward/away from `'day'`. */
+const ZOOM_LEVELS: readonly ViewMode[] = ['day', 'week', 'month', 'quarter', 'year'];
+
 /**
  * One reversible store write. A discriminated union covering both stores this facade touches.
  * Each variant carries a FULL snapshot (never a partial patch) so both directions (forward =
@@ -409,6 +460,11 @@ class Gantt implements GanttInstance {
   readonly #calendar: WorkingCalendar;
   readonly #config: GanttConfig;
   readonly #listeners = new Map<GanttEventName, Set<(...args: never[]) => void>>();
+  /** Reactive view-mode state (spec-zoom-runtime.md §7) — read (tracked, `.value`) inside
+   *  `#renderNow` so a `zoomTo()` write triggers the same reactive-effect repaint path
+   *  every other mutation uses; read (untracked, `.peek()`) in `#rendererOptions()`, which
+   *  runs once at `mount()` time outside any active effect. */
+  readonly #viewMode: Signal<ViewMode>;
   #mount: MountState | undefined; // undefined = headless
   #destroyed = false;
   /** Last `criticalTaskIds` emitted via `critical-path:computed`, so the reactive render
@@ -429,6 +485,9 @@ class Gantt implements GanttInstance {
   constructor(config: GanttConfig) {
     this.#config = config;
     this.#calendar = config.calendar ?? DEFAULT_CALENDAR;
+    // 'week' matches the renderer's own DEFAULT_VIEW_MODE (svg-renderer.ts) — the facade
+    // does not duplicate a different default.
+    this.#viewMode = signal(config.viewMode ?? 'week');
     this.#taskStore = new TaskStore();
     this.#dependencyStore = new DependencyStore();
 
@@ -750,6 +809,77 @@ class Gantt implements GanttInstance {
   canRedo(): boolean {
     if (this.#destroyed) return false;
     return this.#redoStack.length > 0;
+  }
+
+  // --- Viewport (zoom / view-mode) --------------------------------------------------------
+
+  zoomTo(mode: ViewMode): void {
+    this.#assertAlive('zoomTo');
+    if (!ZOOM_LEVELS.includes(mode)) {
+      throw new Error(
+        `gantt.zoomTo: invalid view mode "${mode}" — must be one of ${ZOOM_LEVELS.join(', ')}`,
+      );
+    }
+    if (mode === this.#viewMode.peek()) return; // no-op: no event, no render, no scroll math
+
+    if (!this.#mount) {
+      // Headless / pre-mount: state only — the next mount() picks it up via
+      // #rendererOptions() reading #viewMode.peek().
+      this.#viewMode.value = mode;
+      this.#emit('viewport:changed', { viewMode: mode });
+      return;
+    }
+
+    const handle = this.#mount.rendererHandle;
+    const container = handle.container;
+
+    // 1. Capture the date currently at the viewport's CENTER, in the OLD time scale.
+    //    `container.scrollLeft`/`clientWidth` are measured in the renderer's PAINTED
+    //    coordinate space (which includes the LABEL_COLUMN_WIDTH offset), while
+    //    `TimeScale.dateToX`/`xToDate` operate in "content-only" space (x=0 = range.start,
+    //    no label-column offset) — the offset must be subtracted before `xToDate()` and
+    //    re-added after `dateToX()` (see render/svg-renderer.ts's LABEL_COLUMN_WIDTH doc).
+    const beforeScale = handle.getTimeScale();
+    const anchorContentX = container.scrollLeft + container.clientWidth / 2 - LABEL_COLUMN_WIDTH;
+    // No clamping — xToDate extrapolates linearly; fine even if anchorContentX is negative
+    // (e.g. all-zero DOM geometry in an unstubbed jsdom test).
+    const anchorDate = beforeScale.xToDate(anchorContentX);
+
+    // 2. Mutate — this signal write synchronously re-runs #renderNow's effect (signals.ts's
+    //    push model runs a subscribed EffectImpl's callback synchronously, not on a
+    //    microtask), which calls handle.setOptions({viewMode: mode, ...}) → one full
+    //    repaint, already reflecting the new viewMode by the time this line returns. Single
+    //    write → no batch() needed (batch() exists to coalesce MULTIPLE store bumps into one
+    //    flush; zoomTo() only ever performs ONE bump per call).
+    this.#viewMode.value = mode;
+
+    // 3. Restore, in the NEW time scale (reflects the just-completed repaint), so the same
+    //    date is centered again.
+    const afterScale = handle.getTimeScale();
+    const newAnchorContentX = afterScale.dateToX(anchorDate);
+    // Browser self-clamps scrollLeft to [0, scrollWidth - clientWidth] — no manual clamp
+    // needed.
+    container.scrollLeft = newAnchorContentX + LABEL_COLUMN_WIDTH - container.clientWidth / 2;
+
+    this.#emit('viewport:changed', { viewMode: mode });
+  }
+
+  zoomIn(): void {
+    this.#assertAlive('zoomIn');
+    const idx = ZOOM_LEVELS.indexOf(this.#viewMode.peek());
+    // Boundary (already 'day', idx === 0) → same index → zoomTo() itself no-ops; no
+    // duplicate boundary-check logic here.
+    this.zoomTo(ZOOM_LEVELS[Math.max(0, idx - 1)]!);
+  }
+
+  zoomOut(): void {
+    this.#assertAlive('zoomOut');
+    const idx = ZOOM_LEVELS.indexOf(this.#viewMode.peek());
+    this.zoomTo(ZOOM_LEVELS[Math.min(ZOOM_LEVELS.length - 1, idx + 1)]!);
+  }
+
+  getViewMode(): ViewMode {
+    return this.#viewMode.peek();
   }
 
   // --- Computation ---------------------------------------------------------------------------
@@ -1366,6 +1496,7 @@ class Gantt implements GanttInstance {
     void this.#taskStore.revision.value;
     void this.#dependencyStore.revision.value;
     void this.#selectionStore.revision.value;
+    const viewMode = this.#viewMode.value; // tracked — re-runs this effect on zoomTo()
 
     const tasks = this.#taskStore.all();
     const dependencies = this.#dependencyStore.all();
@@ -1401,13 +1532,15 @@ class Gantt implements GanttInstance {
     // `timeRange` back to "unset" (auto-derive) — a merge that simply omitted the key would
     // leave the stale fallback range in place. `exactOptionalPropertyTypes` forbids writing
     // `undefined` to an optional property that isn't typed `X | undefined` directly on a
-    // `Partial<SvgRendererOptions>`-typed literal, so this goes through `setTimeRange`,
+    // `Partial<SvgRendererOptions>`-typed literal, so this goes through `applyViewportOptions`,
     // typed against render/'s own `Partial<SvgRendererOptions>` via a narrow, explicit
-    // helper type instead of fighting the literal-freshness check inline.
+    // helper type instead of fighting the literal-freshness check inline. That same helper
+    // also carries `viewMode` in the SAME `setOptions()` call (spec-zoom-runtime.md §8), so a
+    // `zoomTo()`-triggered repaint doesn't need a 3rd, independent `setOptions()` call.
     //
     // ORDER MATTERS (bugfix): `handle.update()` and `handle.setOptions()` (which
-    // `setTimeRange` calls) each trigger a full synchronous `render()` independently — one
-    // using the freshly-passed argument, the other still reading the renderer's OTHER,
+    // `applyViewportOptions` calls) each trigger a full synchronous `render()` independently —
+    // one using the freshly-passed argument, the other still reading the renderer's OTHER,
     // not-yet-updated internal field (`currentInput.tasks` vs `currentOptions.timeRange`).
     // `render()` throws (`deriveTimeRange: tasks must not be empty`) iff BOTH `timeRange` is
     // unset AND `tasks` is empty at the same instant — so the two calls below are ordered to
@@ -1419,13 +1552,13 @@ class Gantt implements GanttInstance {
     //    also has a real `timeRange` already in place.
     //  - Going TO non-empty (`tasks.length > 0`): push the new `tasks` FIRST — its
     //    intermediate `render()` pass (still using the OLD `timeRange`, whatever it was) is
-    //    always safe once `tasks` is non-empty; the following `setTimeRange(undefined)` pass
-    //    then derives the range from the already-pushed, non-empty `tasks`.
+    //    always safe once `tasks` is non-empty; the following `applyViewportOptions(..., undefined)`
+    //    pass then derives the range from the already-pushed, non-empty `tasks`.
     // Reordering unconditionally (either direction, always) reintroduces the crash for the
     // opposite transition — this must stay tasks.length-conditional.
     const focusedTaskId = getFocusedTaskId();
     if (tasks.length === 0) {
-      setTimeRange(handle, this.#emptyStateTimeRange());
+      applyViewportOptions(handle, viewMode, this.#emptyStateTimeRange());
       handle.update({ tasks, dependencies, calendar: this.#calendar, selectedTaskIds, focusedTaskId });
     } else {
       handle.update({
@@ -1436,7 +1569,7 @@ class Gantt implements GanttInstance {
         focusedTaskId,
         ...(criticalPath !== undefined ? { criticalPath } : {}),
       });
-      setTimeRange(handle, undefined);
+      applyViewportOptions(handle, viewMode, undefined);
     }
   }
 
@@ -1462,7 +1595,13 @@ class Gantt implements GanttInstance {
     // value is actually set; an explicit `undefined` value on an optional property that
     // isn't typed `X | undefined` is a compile error, not just redundant.
     const opts: SvgRendererOptions = {
-      ...(this.#config.viewMode !== undefined ? { viewMode: this.#config.viewMode } : {}),
+      // `#viewMode.peek()` is ALWAYS a concrete ViewMode (never undefined), so the
+      // exactOptionalPropertyTypes conditional dance the other optional config fields need
+      // isn't needed for this one field. `.peek()`, not `.value` — this call site runs
+      // before the reactive effect exists (outside any effect()/computed() callback), so
+      // there is no active subscriber to register against regardless; `.peek()` makes that
+      // intent explicit.
+      viewMode: this.#viewMode.peek(),
       ...(this.#config.density !== undefined ? { density: this.#config.density } : {}),
       ...(this.#config.locale !== undefined ? { locale: this.#config.locale } : {}),
       // A readOnly chart must not render the connector handles — they are an interactive
@@ -1508,9 +1647,14 @@ export function createGantt(config: GanttConfig): GanttInstance {
 }
 
 /**
- * Sets — or explicitly clears — `SvgRendererOptions.timeRange` (item B). `setOptions`
- * merges shallowly over the previous options object, so once real tasks exist the
- * facade must be able to overwrite a previously-set empty-state fallback range back to
+ * Sets `viewMode` and — or explicitly clears — `SvgRendererOptions.timeRange` in a SINGLE
+ * `setOptions()` call (item B; extended per spec-zoom-runtime.md §8 to also carry
+ * `viewMode`, so a `zoomTo()`-triggered repaint doesn't need a second, independent
+ * `setOptions()` call alongside this one — `#renderNow` already makes exactly one
+ * `handle.update(...)` + one `setOptions(...)` call per invocation regardless of whether
+ * the trigger was a task/dependency/selection mutation or a view-mode change).
+ * `setOptions` merges shallowly over the previous options object, so once real tasks exist
+ * the facade must be able to overwrite a previously-set empty-state fallback range back to
  * "unset" (auto-derive); simply omitting the key from a `Partial<SvgRendererOptions>`
  * literal would leave the stale fallback in place. `render/svg-renderer.ts`'s
  * `SvgRendererOptions.timeRange` is optional but not typed `X | undefined`, so
@@ -1519,14 +1663,15 @@ export function createGantt(config: GanttConfig): GanttInstance {
  * narrow, deliberate cast instead of fighting the check inline in `#renderNow`. Not a
  * `render/` change (per item B's instruction) — purely a `gantt.ts` call-site concern.
  */
-function setTimeRange(
+function applyViewportOptions(
   handle: SvgRendererHandle,
+  viewMode: ViewMode,
   timeRange: { start: Temporal.ZonedDateTime; end: Temporal.ZonedDateTime } | undefined,
 ): void {
   if (timeRange) {
-    handle.setOptions({ timeRange });
+    handle.setOptions({ viewMode, timeRange });
     return;
   }
-  const clear: { timeRange: undefined } = { timeRange: undefined };
+  const clear: { viewMode: ViewMode; timeRange: undefined } = { viewMode, timeRange: undefined };
   handle.setOptions(clear as unknown as Partial<SvgRendererOptions>);
 }

@@ -96,7 +96,12 @@ export interface SvgRendererHandle {
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
-const LABEL_COLUMN_WIDTH = 160;
+// Exported (same pattern as ARROWHEAD_MARKER_ID below) so `gantt.ts`'s `zoomTo()` can
+// convert between the renderer's own painted coordinate space (which includes this
+// offset, see the `offsetX` assignment below) and `TimeScale.dateToX`/`xToDate`'s
+// "content-only" coordinate space (which does not) when computing the scroll-anchor date
+// to preserve across a view-mode change.
+export const LABEL_COLUMN_WIDTH = 160;
 const HEADER_HEIGHT = 32;
 const LABEL_INDENT_PX = 16;
 const LABEL_PADDING_PX = 8;
