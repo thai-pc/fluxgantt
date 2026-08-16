@@ -17,6 +17,14 @@ async function getSelection(page: Page): Promise<string[]> {
   });
 }
 
+async function getViewMode(page: Page): Promise<string> {
+  return page.evaluate(() => {
+    const g = (window as unknown as { __gantt?: { getViewMode(): string } }).__gantt;
+    if (!g) throw new Error('window.__gantt not exposed by the demo');
+    return g.getViewMode();
+  });
+}
+
 async function focusFirstRow(page: Page): Promise<void> {
   // Roving tabindex: exactly one row has tabindex="0" initially (the first row, no selection
   // yet) — Tab from the document body lands there directly.
@@ -150,4 +158,46 @@ test('read-only chart: Delete is a no-op, ArrowDown/Space still navigate', async
     return g ? g.getTasks().length : -1;
   });
   expect(afterDelete).toBe(beforeDelete);
+});
+
+test('Ctrl/Cmd+= zooms in', async ({ page }) => {
+  await focusFirstRow(page);
+  const before = await getViewMode(page);
+
+  await page.keyboard.press(`${modifier}+=`);
+
+  const after = await getViewMode(page);
+  expect(after).not.toBe(before);
+});
+
+test('Ctrl/Cmd+- zooms out', async ({ page }) => {
+  await focusFirstRow(page);
+  const before = await getViewMode(page);
+
+  await page.keyboard.press(`${modifier}+-`);
+
+  const after = await getViewMode(page);
+  expect(after).not.toBe(before);
+});
+
+test('read-only chart: Ctrl/Cmd+= still zooms', async ({ page }) => {
+  await page.goto('/read-only.html');
+  await focusFirstRow(page);
+  const before = await getViewMode(page);
+
+  await page.keyboard.press(`${modifier}+=`);
+
+  const after = await getViewMode(page);
+  expect(after).not.toBe(before);
+});
+
+test('no visible double-zoom regression: page-level zoom stays unaffected by Ctrl/Cmd+=/- (best-effort)', async ({ page }) => {
+  await focusFirstRow(page);
+  const scaleBefore = await page.evaluate(() => window.visualViewport?.scale);
+
+  await page.keyboard.press(`${modifier}+=`);
+  await page.keyboard.press(`${modifier}+-`);
+
+  const scaleAfter = await page.evaluate(() => window.visualViewport?.scale);
+  expect(scaleAfter).toBe(scaleBefore);
 });
