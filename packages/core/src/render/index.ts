@@ -1,4 +1,4 @@
-export { createSvgRenderer, ARROWHEAD_MARKER_ID } from './svg-renderer.js';
+export { createSvgRenderer, ARROWHEAD_MARKER_ID, LABEL_COLUMN_WIDTH } from './svg-renderer.js';
 export type { SvgRendererInput, SvgRendererOptions, SvgRendererHandle } from './svg-renderer.js';
 
 export {
