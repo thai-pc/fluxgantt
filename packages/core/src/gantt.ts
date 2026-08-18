@@ -34,6 +34,7 @@ import { enableDragResize } from './interaction/drag-resize.js';
 import { enableDragCreateDep } from './interaction/drag-create-dep.js';
 import { enableClickSelect } from './interaction/selection.js';
 import { enableKeyboardNav } from './interaction/keyboard-nav.js';
+import { enableWheelZoom } from './interaction/wheel-zoom.js';
 import {
   exportJson as exportJsonFn,
   exportCsv as exportCsvFn,
@@ -452,6 +453,7 @@ interface MountState {
   readonly dragCreateDepDispose: () => void;
   readonly clickSelectDispose: () => void;
   readonly keyboardNavDispose: () => void;
+  readonly wheelZoomDispose: () => void;
   readonly getFocusedTaskId: () => TaskId | undefined;
   readonly disposeEffect: () => void;
 }
@@ -1106,6 +1108,14 @@ class Gantt implements GanttInstance {
       isReadOnly: () => this.#config.readOnly === true,
       getSelection: () => this.#selectionStore.all(),
     });
+    // Registered UNCONDITIONALLY, same posture as enableKeyboardNav's zoom case arms — Ctrl+
+    // wheel mutates no store state (zoomIn()/zoomOut() touch only the viewport signal +, when
+    // mounted, container.scrollLeft), so readOnly has nothing to protect against here. See
+    // spec-wheel-zoom.md §4.
+    const wheelZoomDispose = enableWheelZoom(rendererHandle, {
+      onZoomIn: () => this.zoomIn(),
+      onZoomOut: () => this.zoomOut(),
+    });
     // `keyboardNav.getFocusedTaskId` is captured directly from this closure (NOT read via
     // `this.#mount.getFocusedTaskId`) because `effect()` runs its callback synchronously,
     // immediately, on this very call — BEFORE `this.#mount` is assigned below. Reading
@@ -1119,6 +1129,7 @@ class Gantt implements GanttInstance {
       dragCreateDepDispose,
       clickSelectDispose,
       keyboardNavDispose: keyboardNav.dispose,
+      wheelZoomDispose,
       getFocusedTaskId: keyboardNav.getFocusedTaskId,
       disposeEffect,
     };
@@ -1581,6 +1592,7 @@ class Gantt implements GanttInstance {
     m.dragCreateDepDispose();
     m.clickSelectDispose();
     m.keyboardNavDispose();
+    m.wheelZoomDispose();
     // 3. Remove the SVG.
     m.rendererHandle.destroy();
     this.#mount = undefined;
