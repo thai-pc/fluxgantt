@@ -8,3 +8,5 @@ export { enableClickSelect } from './selection.js';
 export type { SelectionOptions } from './selection.js';
 export { enableKeyboardNav } from './keyboard-nav.js';
 export type { KeyboardNavOptions, KeyboardNavHandle } from './keyboard-nav.js';
+export { enableWheelZoom } from './wheel-zoom.js';
+export type { WheelZoomOptions } from './wheel-zoom.js';

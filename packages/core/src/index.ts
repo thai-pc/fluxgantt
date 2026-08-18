@@ -59,6 +59,7 @@ export {
   enableDragCreateDep,
   enableClickSelect,
   enableKeyboardNav,
+  enableWheelZoom,
 } from './interaction/index.js';
 export type {
   DragMoveOptions,
@@ -67,6 +68,7 @@ export type {
   SelectionOptions,
   KeyboardNavOptions,
   KeyboardNavHandle,
+  WheelZoomOptions,
 } from './interaction/index.js';
 
 // IO layer (spec §7.8, security.md §2)
