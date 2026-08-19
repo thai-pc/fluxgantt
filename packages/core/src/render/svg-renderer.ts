@@ -23,11 +23,13 @@ import {
   isKnownTaskKind,
   isKnownDependencyType,
   anchorOf,
+  buildTaskAriaLabel,
   type GridColumn,
   type RowLayout,
   type TaskBarLayout,
   type TimeScale,
 } from './renderer-base.js';
+import type { InteractiveRendererHandle } from './interactive-renderer-handle.js';
 import type {
   CriticalPathResult,
   DateInput,
@@ -73,9 +75,15 @@ export interface SvgRendererOptions {
   readonly showLinkHandles?: boolean;
 }
 
-export interface SvgRendererHandle {
+export interface SvgRendererHandle extends InteractiveRendererHandle {
   /** Root `<svg>` created and appended into `container` by the renderer. */
   readonly svg: SVGSVGElement;
+  /** Same node as `svg` — `enableClickSelect`/`enableKeyboardNav` query `.fg-timeline__row`
+   *  structure and attach their `keydown` listener here (spec-canvas-renderer-ticket2.md §3.3). */
+  readonly interactionRoot: SVGSVGElement;
+  /** Same node as `svg` — SVG has no separate hit-testing layer, the visible `<svg>` receives
+   *  real pointer events directly (spec-canvas-renderer-ticket2.md §3.3). */
+  readonly pointerEventTarget: SVGSVGElement;
   readonly container: HTMLElement;
   /** Full repaint (no diff — spec §5.5) with new input. */
   update(input: SvgRendererInput): void;
@@ -245,6 +253,8 @@ export function createSvgRenderer(
 
   return {
     svg,
+    interactionRoot: svg,
+    pointerEventTarget: svg,
     container,
     update(nextInput: SvgRendererInput): void {
       if (destroyed) return;
@@ -704,25 +714,6 @@ function renderLinkHandle(
   circle.style.setProperty('stroke', 'var(--fg-link-handle-stroke, #6366f1)');
   circle.style.setProperty('stroke-width', 'var(--fg-link-handle-stroke-width, 1.5px)');
   return circle;
-}
-
-function buildTaskAriaLabel(
-  task: Task,
-  isCritical: boolean,
-  isSelected: boolean,
-  calendar: WorkingCalendar,
-  locale: string,
-): string {
-  const name = task.name.slice(0, MAX_ARIA_NAME_LENGTH);
-  const start = normalizeDate(task.start, calendar.timezone).toPlainDate();
-  const end = normalizeDate(task.end, calendar.timezone).toPlainDate();
-  const dateOptions: Intl.DateTimeFormatOptions = { year: 'numeric', month: 'short', day: 'numeric' };
-  const startLabel = start.toLocaleString(locale, dateOptions);
-  const endLabel = end.toLocaleString(locale, dateOptions);
-  const progressPct = Math.round((task.progress ?? 0) * 100);
-  const base = `${name}, ${startLabel}–${endLabel} (${progressPct}% complete)`;
-  const withCritical = isCritical ? `${base}, critical path` : base;
-  return isSelected ? `${withCritical}, selected` : withCritical;
 }
 
 function renderDependencies(

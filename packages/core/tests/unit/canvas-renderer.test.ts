@@ -19,7 +19,7 @@ import {
 } from '../../src/render/canvas-renderer.js';
 import { computeCriticalPath } from '../../src/compute/critical-path.js';
 import { DEFAULT_CALENDAR, normalizeDate } from '../../src/compute/working-calendar.js';
-import { layoutDependencyPath, type TaskBarLayout } from '../../src/render/renderer-base.js';
+import { layoutDependencyPath, buildTaskAriaLabel, type TaskBarLayout } from '../../src/render/renderer-base.js';
 import { toTaskId, toDependencyId, type Task, type Dependency } from '../../src/types.js';
 
 const cal = DEFAULT_CALENDAR;
@@ -182,30 +182,392 @@ function setDpr(value: number): void {
 // --- Structure / ARIA ---------------------------------------------------------------------
 
 describe('createCanvasRenderer — structure', () => {
-  it('mounts a <canvas class="fg-timeline-canvas"> with role="img" and aria-label', () => {
+  it('mounts a <canvas class="fg-timeline-canvas"> that is aria-hidden (Ticket 2 supersedes Ticket 1\'s role="img" stopgap)', () => {
     const mock = createMockContext2D();
     installMockContext(mock);
     const h = createCanvasRenderer(container, { tasks: baseTasks, dependencies: baseDeps });
     expect(h.canvas.tagName.toLowerCase()).toBe('canvas');
     expect(h.canvas.getAttribute('class')).toBe('fg-timeline-canvas');
-    expect(h.canvas.getAttribute('role')).toBe('img');
-    expect(h.canvas.getAttribute('aria-label')).toBe('Gantt chart');
+    expect(h.canvas.getAttribute('aria-hidden')).toBe('true');
+    expect(h.canvas.getAttribute('role')).toBeNull();
+    expect(h.canvas.getAttribute('aria-label')).toBeNull();
     expect(container.querySelectorAll('canvas.fg-timeline-canvas')).toHaveLength(1);
   });
 
-  it('aria-label is capped at 200 chars for an oversized options.ariaLabel', () => {
+  it('aria-label is capped at 200 chars for an oversized options.ariaLabel — now on interactionRoot, not canvas', () => {
     const mock = createMockContext2D();
     installMockContext(mock);
     const longLabel = 'x'.repeat(500);
     const h = createCanvasRenderer(container, { tasks: baseTasks, dependencies: baseDeps }, { ariaLabel: longLabel });
-    expect(h.canvas.getAttribute('aria-label')).toHaveLength(200);
+    expect(h.interactionRoot.getAttribute('aria-label')).toHaveLength(200);
   });
 
-  it('interactionRoot is undefined on every handle produced by Ticket 1', () => {
+  it('interactionRoot is a real, attached HTMLElement (Ticket 2) — different node than canvas', () => {
     const mock = createMockContext2D();
     installMockContext(mock);
     const h = createCanvasRenderer(container, { tasks: baseTasks, dependencies: baseDeps });
-    expect(h.interactionRoot).toBeUndefined();
+    expect(h.interactionRoot).toBeInstanceOf(HTMLElement);
+    expect(h.interactionRoot).not.toBe(h.canvas);
+    expect(container.contains(h.interactionRoot)).toBe(true);
+    expect(h.pointerEventTarget).toBe(h.canvas);
+  });
+});
+
+// --- Hidden ARIA layer (Ticket 2, spec §5 / §12.1) --------------------------------------
+
+describe('hidden ARIA layer', () => {
+  it('offscreen CSS applied via inline style.* (no host stylesheet loaded in this test)', () => {
+    const mock = createMockContext2D();
+    installMockContext(mock);
+    const h = createCanvasRenderer(container, { tasks: baseTasks, dependencies: baseDeps });
+    expect(h.interactionRoot.style.position).toBe('absolute');
+    expect(h.interactionRoot.style.width).toBe('1px');
+    expect(h.interactionRoot.style.height).toBe('1px');
+    expect(h.interactionRoot.style.overflow).toBe('hidden');
+    expect(h.interactionRoot.style.clip).toBe('rect(0px, 0px, 0px, 0px)');
+    expect(h.interactionRoot.style.clipPath).toBe('inset(50%)');
+  });
+
+  it('layer root: role="grid", aria-rowcount, aria-multiselectable, aria-label', () => {
+    const mock = createMockContext2D();
+    installMockContext(mock);
+    const h = createCanvasRenderer(container, { tasks: baseTasks, dependencies: baseDeps }, { ariaLabel: 'My chart' });
+    expect(h.interactionRoot.getAttribute('role')).toBe('grid');
+    expect(h.interactionRoot.getAttribute('aria-rowcount')).toBe(String(baseTasks.length));
+    expect(h.interactionRoot.getAttribute('aria-multiselectable')).toBe('true');
+    expect(h.interactionRoot.getAttribute('aria-label')).toBe('My chart');
+  });
+
+  it('one .fg-timeline-canvas__row per task, correct role/data-row-index/data-task-id/aria-rowindex/aria-selected', () => {
+    const mock = createMockContext2D();
+    installMockContext(mock);
+    const h = createCanvasRenderer(container, {
+      tasks: baseTasks,
+      dependencies: baseDeps,
+      selectedTaskIds: [toTaskId('b')],
+    });
+    const rowEls = h.interactionRoot.querySelectorAll<HTMLElement>('.fg-timeline-canvas__row');
+    expect(rowEls).toHaveLength(baseTasks.length);
+    rowEls.forEach((rowEl, i) => {
+      expect(rowEl.getAttribute('role')).toBe('row');
+      expect(rowEl.getAttribute('data-row-index')).toBe(String(i));
+      expect(rowEl.getAttribute('data-task-id')).toBe(baseTasks[i]!.id);
+      expect(rowEl.getAttribute('aria-rowindex')).toBe(String(i + 1));
+      expect(rowEl.getAttribute('aria-selected')).toBe(baseTasks[i]!.id === 'b' ? 'true' : 'false');
+    });
+  });
+
+  it('nested .fg-timeline-canvas__row-cell[role=gridcell] > .fg-timeline-canvas__task[data-task-id] with aria-label matching buildTaskAriaLabel', () => {
+    const mock = createMockContext2D();
+    installMockContext(mock);
+    const cp = computeCriticalPath(baseTasks, baseDeps, cal);
+    const h = createCanvasRenderer(container, { tasks: baseTasks, dependencies: baseDeps, criticalPath: cp });
+    const rowEl = h.interactionRoot.querySelector<HTMLElement>('.fg-timeline-canvas__row[data-task-id="c"]')!;
+    const cellEl = rowEl.querySelector('.fg-timeline-canvas__row-cell[role="gridcell"]');
+    expect(cellEl).not.toBeNull();
+    const taskEl = cellEl!.querySelector<HTMLElement>('.fg-timeline-canvas__task[data-task-id="c"]');
+    expect(taskEl).not.toBeNull();
+    const isCritical = cp.criticalTaskIds.includes(toTaskId('c'));
+    const expected = buildTaskAriaLabel(baseTasks[2]!, isCritical, false, cal, 'en');
+    expect(taskEl!.getAttribute('aria-label')).toBe(expected);
+  });
+
+  it('roving tabindex: exactly one [tabindex="0"], matching focusedTaskId; unset falls back to rows[0]', () => {
+    const mock = createMockContext2D();
+    installMockContext(mock);
+    const h = createCanvasRenderer(container, { tasks: baseTasks, dependencies: baseDeps, focusedTaskId: toTaskId('c') });
+    const tabbable = h.interactionRoot.querySelectorAll<HTMLElement>('[tabindex="0"]');
+    expect(tabbable).toHaveLength(1);
+    expect(tabbable[0]!.getAttribute('data-task-id')).toBe('c');
+
+    const h2 = createCanvasRenderer(document.createElement('div'), { tasks: baseTasks, dependencies: baseDeps });
+    const tabbable2 = h2.interactionRoot.querySelectorAll<HTMLElement>('[tabindex="0"]');
+    expect(tabbable2).toHaveLength(1);
+    expect(tabbable2[0]!.getAttribute('data-task-id')).toBe(baseTasks[0]!.id);
+  });
+
+  it('canvas: aria-hidden === "true", role/aria-label attributes absent', () => {
+    const mock = createMockContext2D();
+    installMockContext(mock);
+    const h = createCanvasRenderer(container, { tasks: baseTasks, dependencies: baseDeps });
+    expect(h.canvas.getAttribute('aria-hidden')).toBe('true');
+    expect(h.canvas.hasAttribute('role')).toBe(false);
+    expect(h.canvas.hasAttribute('aria-label')).toBe(false);
+  });
+
+  it('focus restoration: focus a row, update() with same tasks, activeElement is a freshly-rebuilt row with the same data-task-id', () => {
+    const mock = createMockContext2D();
+    installMockContext(mock);
+    const h = createCanvasRenderer(container, { tasks: baseTasks, dependencies: baseDeps, focusedTaskId: toTaskId('b') });
+    const rowB = h.interactionRoot.querySelector<HTMLElement>('.fg-timeline-canvas__row[data-task-id="b"]')!;
+    rowB.focus();
+    // `.focus()` itself synchronously fires a real `focusin` that this module reacts to (not
+    // suppressed by the reentrancy guard — that guard only suppresses render()'s OWN internal
+    // restoration focus() calls, not a genuinely external one) — triggering a render that
+    // rebuilds every row, including the one we just focused. Re-query for the live element
+    // rather than assuming `rowB` is still attached/current.
+    const rowBAfterFirstFocus = h.interactionRoot.querySelector<HTMLElement>('.fg-timeline-canvas__row[data-task-id="b"]')!;
+    expect(document.activeElement).toBe(rowBAfterFirstFocus);
+
+    h.update({ tasks: baseTasks, dependencies: baseDeps, focusedTaskId: toTaskId('b') });
+    const newRowB = h.interactionRoot.querySelector<HTMLElement>('.fg-timeline-canvas__row[data-task-id="b"]')!;
+    expect(newRowB).not.toBe(rowBAfterFirstFocus); // full rebuild — a new element
+    expect(document.activeElement).toBe(newRowB);
+  });
+
+  describe('SECURITY', () => {
+    it('a malicious task name reaches textContent verbatim, never markup — no <img>/<script> under interactionRoot', () => {
+      const mock = createMockContext2D();
+      installMockContext(mock);
+      const evilName = '<img src=x onerror=alert(1)>';
+      const t = task('x', '2026-01-05T09:00', '2026-01-07T17:00', { name: evilName });
+      const h = createCanvasRenderer(container, { tasks: [t], dependencies: [] });
+      const labelEl = h.interactionRoot.querySelector('.fg-timeline-canvas__row-label')!;
+      expect(labelEl.textContent).toBe(evilName);
+      expect(h.interactionRoot.querySelector('img')).toBeNull();
+      expect(h.interactionRoot.querySelector('script')).toBeNull();
+    });
+
+    it('a task.id containing a double-quote does not throw during focus restoration', () => {
+      const mock = createMockContext2D();
+      installMockContext(mock);
+      const trickyId = 'x"y';
+      const t = task(trickyId, '2026-01-05T09:00', '2026-01-07T17:00');
+      const h = createCanvasRenderer(container, { tasks: [t], dependencies: [], focusedTaskId: toTaskId(trickyId) });
+      const rowEl = h.interactionRoot.querySelector<HTMLElement>('.fg-timeline-canvas__row')!;
+      rowEl.focus();
+      expect(() => h.update({ tasks: [t], dependencies: [], focusedTaskId: toTaskId(trickyId) })).not.toThrow();
+    });
+
+    it('oversized task name still caps the per-task aria-label at MAX_ARIA_TASK_NAME_LENGTH (200)', () => {
+      const mock = createMockContext2D();
+      installMockContext(mock);
+      const longName = 'y'.repeat(500);
+      const t = task('x', '2026-01-05T09:00', '2026-01-07T17:00', { name: longName });
+      const h = createCanvasRenderer(container, { tasks: [t], dependencies: [] });
+      const taskEl = h.interactionRoot.querySelector<HTMLElement>('.fg-timeline-canvas__task[data-task-id="x"]')!;
+      const label = taskEl.getAttribute('aria-label')!;
+      // label = "<name (capped 200)>, <dates> (<pct>% complete)" — assert the capped name prefix
+      // length, matching svg-renderer.test.ts's equivalent assertion style.
+      expect(label.startsWith('y'.repeat(200))).toBe(true);
+      expect(label.startsWith('y'.repeat(201))).toBe(false);
+    });
+
+    it('unknown task.type falls back to the fg-task--task whitelist class', () => {
+      const mock = createMockContext2D();
+      installMockContext(mock);
+      const t = task('x', '2026-01-05T09:00', '2026-01-07T17:00', { type: 'bogus' as unknown as Task['type'] });
+      const h = createCanvasRenderer(container, { tasks: [t], dependencies: [] });
+      const taskEl = h.interactionRoot.querySelector<HTMLElement>('.fg-timeline-canvas__task[data-task-id="x"]')!;
+      expect(taskEl.classList.contains('fg-timeline-canvas__task--task')).toBe(true);
+      expect(taskEl.classList.contains('fg-timeline-canvas__task--bogus')).toBe(false);
+    });
+  });
+});
+
+// --- hitTestRow (Ticket 2, spec §7.2 / §12.2) --------------------------------------------
+
+describe('hitTestRow', () => {
+  function stubRect(canvas: HTMLCanvasElement, rect: Partial<DOMRect>): void {
+    vi.spyOn(canvas, 'getBoundingClientRect').mockReturnValue({
+      x: 0,
+      y: 0,
+      top: 0,
+      left: 0,
+      right: 1000,
+      bottom: 1000,
+      width: 1000,
+      height: 1000,
+      toJSON: () => ({}),
+      ...rect,
+    } as DOMRect);
+  }
+
+  it('click inside row 0\'s band resolves to row 0\'s task', () => {
+    const mock = createMockContext2D();
+    installMockContext(mock);
+    const h = createCanvasRenderer(container, { tasks: baseTasks, dependencies: baseDeps });
+    stubRect(h.canvas, {});
+    // HEADER_HEIGHT = 32, ROW_HEIGHT.default = 32 — midpoint of row 0's band.
+    const hit = h.hitTestRow(100, 32 + 16);
+    expect(hit).toEqual({ taskId: baseTasks[0]!.id, rowIndex: 0 });
+  });
+
+  it('click inside a deeply-nested row band resolves correctly regardless of label indentation', () => {
+    const mock = createMockContext2D();
+    installMockContext(mock);
+    // 'b' is a child of 'a' (depth 1) in baseTasks — row index 1.
+    const h = createCanvasRenderer(container, { tasks: baseTasks, dependencies: baseDeps });
+    stubRect(h.canvas, {});
+    const hit = h.hitTestRow(100, 32 + 32 + 16); // row index 1's band midpoint
+    expect(hit).toEqual({ taskId: baseTasks[1]!.id, rowIndex: 1 });
+  });
+
+  it('click in the header band (y < HEADER_HEIGHT) resolves to undefined', () => {
+    const mock = createMockContext2D();
+    installMockContext(mock);
+    const h = createCanvasRenderer(container, { tasks: baseTasks, dependencies: baseDeps });
+    stubRect(h.canvas, {});
+    expect(h.hitTestRow(100, 10)).toBeUndefined();
+  });
+
+  it('click below the last row resolves to undefined', () => {
+    const mock = createMockContext2D();
+    installMockContext(mock);
+    const h = createCanvasRenderer(container, { tasks: baseTasks, dependencies: baseDeps });
+    stubRect(h.canvas, {});
+    const belowLast = 32 + baseTasks.length * 32 + 100;
+    expect(h.hitTestRow(100, belowLast)).toBeUndefined();
+  });
+
+  it('click outside canvas bounds (negative or beyond rect.width/height) resolves to undefined', () => {
+    const mock = createMockContext2D();
+    installMockContext(mock);
+    const h = createCanvasRenderer(container, { tasks: baseTasks, dependencies: baseDeps });
+    stubRect(h.canvas, { width: 500, height: 500, right: 500, bottom: 500 });
+    expect(h.hitTestRow(-10, 50)).toBeUndefined();
+    expect(h.hitTestRow(50, -10)).toBeUndefined();
+    expect(h.hitTestRow(600, 50)).toBeUndefined();
+    expect(h.hitTestRow(50, 600)).toBeUndefined();
+  });
+
+  it('click exactly on a row boundary pixel resolves to the row below (Math.floor convention)', () => {
+    const mock = createMockContext2D();
+    installMockContext(mock);
+    const h = createCanvasRenderer(container, { tasks: baseTasks, dependencies: baseDeps });
+    stubRect(h.canvas, {});
+    // Exact boundary between row 0 and row 1: y = HEADER_HEIGHT + ROW_HEIGHT = 64.
+    const hit = h.hitTestRow(100, 64);
+    expect(hit).toEqual({ taskId: baseTasks[1]!.id, rowIndex: 1 });
+  });
+
+  it.each(['compact', 'default', 'comfortable'] as const)('resolves correctly at density=%s', (density) => {
+    const mock = createMockContext2D();
+    installMockContext(mock);
+    const h = createCanvasRenderer(container, { tasks: baseTasks, dependencies: baseDeps }, { density });
+    stubRect(h.canvas, {});
+    const hit = h.hitTestRow(100, 32 + 1);
+    expect(hit?.taskId).toBe(baseTasks[0]!.id);
+    expect(hit?.rowIndex).toBe(0);
+  });
+
+  it('reflects a fresh layout after update() — not a stale cache', () => {
+    const mock = createMockContext2D();
+    installMockContext(mock);
+    const h = createCanvasRenderer(container, { tasks: [baseTasks[0]!], dependencies: [] });
+    stubRect(h.canvas, {});
+    expect(h.hitTestRow(100, 32 + 1)).toEqual({ taskId: baseTasks[0]!.id, rowIndex: 0 });
+
+    const swapped = task('z', '2026-01-05T09:00', '2026-01-07T17:00');
+    h.update({ tasks: [swapped], dependencies: [] });
+    expect(h.hitTestRow(100, 32 + 1)).toEqual({ taskId: swapped.id, rowIndex: 0 });
+  });
+});
+
+// --- Focus ring (Ticket 2, spec §8.2 / §12.3) --------------------------------------------
+
+describe('focus ring', () => {
+  it('no focus inside the widget — no stroke call using the distinct focus-ring token color', () => {
+    const mock = createMockContext2D();
+    installMockContext(mock);
+    container.style.setProperty('--fg-task-focus', '#00ff00'); // a color no other paint path uses
+    const h = createCanvasRenderer(container, { tasks: baseTasks, dependencies: baseDeps, focusedTaskId: toTaskId('c') });
+
+    // Nothing was ever DOM-focused in this test — hadFocusInside is false by construction —
+    // confirmed directly, not inferred from call-log shape alone.
+    expect(h.interactionRoot.contains(document.activeElement)).toBe(false);
+
+    const ringStrokeSets = mock.calls.filter((c) => c.op === 'set' && c.prop === 'strokeStyle' && c.args[0] === '#00ff00');
+    expect(ringStrokeSets).toHaveLength(0);
+  });
+
+  it('focus set on a row paints a ring using --fg-task-focus/--fg-task-focus-width as the LAST call group', () => {
+    const mock = createMockContext2D();
+    installMockContext(mock);
+    container.style.setProperty('--fg-task-focus', '#00ff00');
+    container.style.setProperty('--fg-task-focus-width', '5');
+    const h = createCanvasRenderer(container, { tasks: baseTasks, dependencies: baseDeps, focusedTaskId: toTaskId('c') });
+    const rowC = h.interactionRoot.querySelector<HTMLElement>('.fg-timeline-canvas__row[data-task-id="c"]')!;
+    rowC.focus();
+
+    const before = mock.calls.length;
+    h.update({ tasks: baseTasks, dependencies: baseDeps, focusedTaskId: toTaskId('c') });
+    const callsThisRender = mock.calls.slice(before);
+
+    const ringStrokeIdx = callsThisRender.findIndex(
+      (c) => c.op === 'set' && c.prop === 'strokeStyle' && c.args[0] === '#00ff00',
+    );
+    expect(ringStrokeIdx).toBeGreaterThanOrEqual(0);
+    const ringWidthIdx = callsThisRender.findIndex((c) => c.op === 'set' && c.prop === 'lineWidth' && c.args[0] === 5);
+    // Strictly after, not `>=` — `paintFocusRing` sets `strokeStyle` then `lineWidth`
+    // (canvas-renderer.ts), so this must be a genuine `>`, not the previous
+    // `> ringStrokeIdx - 1` (equivalent to `>=`), which would have still passed even if both
+    // ended up at the same index.
+    expect(ringWidthIdx).toBeGreaterThan(ringStrokeIdx);
+
+    // The final `stroke()` call in the whole render pass belongs to the focus ring (painted
+    // last, spec §8.2).
+    const lastStrokeIdx = callsThisRender.map((c) => c.op).lastIndexOf('stroke');
+    expect(lastStrokeIdx).toBeGreaterThan(ringStrokeIdx);
+  });
+
+  it('focusedTaskId not present in the current row set — no ring painted, no throw', () => {
+    const mock = createMockContext2D();
+    installMockContext(mock);
+    const h = createCanvasRenderer(container, {
+      tasks: baseTasks,
+      dependencies: baseDeps,
+      focusedTaskId: toTaskId('gone'),
+    });
+    const rowA = h.interactionRoot.querySelector<HTMLElement>('.fg-timeline-canvas__row')!;
+    rowA.focus();
+    expect(() =>
+      h.update({ tasks: baseTasks, dependencies: baseDeps, focusedTaskId: toTaskId('gone') }),
+    ).not.toThrow();
+  });
+
+  it('reentrancy guard: a focus-restoration-triggered focusin during update() causes exactly one paint pass', () => {
+    const mock = createMockContext2D();
+    installMockContext(mock);
+    const h = createCanvasRenderer(container, { tasks: baseTasks, dependencies: baseDeps, focusedTaskId: toTaskId('b') });
+    const rowB = h.interactionRoot.querySelector<HTMLElement>('.fg-timeline-canvas__row[data-task-id="b"]')!;
+    rowB.focus();
+
+    let focusinCount = 0;
+    h.interactionRoot.addEventListener('focusin', () => focusinCount++);
+
+    const before = mock.calls.length;
+    h.update({ tasks: baseTasks, dependencies: baseDeps, focusedTaskId: toTaskId('b') });
+    const setTransformCallsThisUpdate = mock.calls.slice(before).filter((c) => c.op === 'setTransform');
+
+    // Exactly one paint pass per update() — setTransform is called exactly once per
+    // renderPixels() invocation, so >1 would mean the reentrancy guard failed to suppress a
+    // recursive render triggered by the internal .focus() call's synchronous focusin.
+    expect(setTransformCallsThisUpdate).toHaveLength(1);
+    // The internal focus-restoration .focus() call DID fire focusin at least once (proving the
+    // guard was actually exercised, not just trivially never triggered).
+    expect(focusinCount).toBeGreaterThanOrEqual(1);
+  });
+
+  it('focusin/focusout dispatched directly on interactionRoot (native Tab) each trigger exactly one additional render', () => {
+    const mock = createMockContext2D();
+    installMockContext(mock);
+    const h = createCanvasRenderer(container, { tasks: baseTasks, dependencies: baseDeps });
+
+    const countSetTransform = (): number => mock.calls.filter((c) => c.op === 'setTransform').length;
+
+    const beforeFocusin = countSetTransform();
+    const rowEl = h.interactionRoot.querySelector<HTMLElement>('.fg-timeline-canvas__row')!;
+    rowEl.dispatchEvent(new FocusEvent('focusin', { bubbles: true }));
+    expect(countSetTransform()).toBe(beforeFocusin + 1);
+
+    // The focusin above triggered a full rebuild — `rowEl` is now a detached, stale node (its
+    // replacement lives at the same query path). Dispatching directly on the stale node would
+    // never bubble to `interactionRoot` post-rebuild, so re-query for the live element first.
+    const beforeFocusout = countSetTransform();
+    const rowElAfterRebuild = h.interactionRoot.querySelector<HTMLElement>('.fg-timeline-canvas__row')!;
+    rowElAfterRebuild.dispatchEvent(new FocusEvent('focusout', { bubbles: true }));
+    expect(countSetTransform()).toBe(beforeFocusout + 1);
   });
 });
 

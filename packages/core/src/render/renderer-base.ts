@@ -25,6 +25,40 @@ import type {
   WorkingCalendar,
 } from '../types.js';
 
+// --- Accessible-name string builder (spec-canvas-renderer-ticket2.md §2.1) ---------------
+//
+// Shared by `svg-renderer.ts` and `canvas-renderer.ts` so the per-task `aria-label` string
+// is produced by exactly one implementation — drift between two hand-duplicated copies would
+// be a real a11y correctness bug (a screen-reader user hearing different text depending on
+// which renderer is active), not a merely cosmetic one, unlike the small numeric layout
+// constants each renderer file duplicates locally by hand. Pure, DOM-free (task/calendar/
+// locale in, string out) — this file's own "no DOM API" invariant is unaffected.
+
+/** Defensive string-length cap applied to the task name folded into a per-task `aria-label`
+ *  (security.md "limit string length"). Deliberately a DIFFERENT constant name than each
+ *  renderer's own local `MAX_ARIA_NAME_LENGTH` (which caps the whole-chart `ariaLabel`
+ *  OPTION string, a separate concern) — avoids a same-named-but-different-purpose shadow. */
+export const MAX_ARIA_TASK_NAME_LENGTH = 200;
+
+export function buildTaskAriaLabel(
+  task: Task,
+  isCritical: boolean,
+  isSelected: boolean,
+  calendar: WorkingCalendar,
+  locale: string,
+): string {
+  const name = task.name.slice(0, MAX_ARIA_TASK_NAME_LENGTH);
+  const start = normalizeDate(task.start, calendar.timezone).toPlainDate();
+  const end = normalizeDate(task.end, calendar.timezone).toPlainDate();
+  const dateOptions: Intl.DateTimeFormatOptions = { year: 'numeric', month: 'short', day: 'numeric' };
+  const startLabel = start.toLocaleString(locale, dateOptions);
+  const endLabel = end.toLocaleString(locale, dateOptions);
+  const progressPct = Math.round((task.progress ?? 0) * 100);
+  const base = `${name}, ${startLabel}–${endLabel} (${progressPct}% complete)`;
+  const withCritical = isCritical ? `${base}, critical path` : base;
+  return isSelected ? `${withCritical}, selected` : withCritical;
+}
+
 type ZDT = Temporal.ZonedDateTime;
 
 // --- Time-scale --------------------------------------------------------------------

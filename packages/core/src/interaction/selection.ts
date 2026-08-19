@@ -1,14 +1,15 @@
-// Interaction layer — click-select (spec-selection.md §5). Independent, lightweight
+// Interaction layer — click-select (spec-selection.md §5, generalized in
+// spec-canvas-renderer-ticket2.md §7 to also support Canvas mode). Independent, lightweight
 // pointerdown/pointerup tracking — NOT registered through `pointer-drag.ts`'s
 // `getPointerDragController` (that coordinator explicitly treats a below-threshold
 // press-release as a no-op — exactly the gesture click-select needs to act on). Owns its
-// own `pointerdown` listener on `handle.svg` and its own `pointerup`/`pointercancel`
-// listeners on `window` (mirrors `pointer-drag.ts`'s own window-level pattern so a release
-// outside the SVG bounds is still caught).
+// own `pointerdown` listener on `handle.pointerEventTarget` and its own `pointerup`/
+// `pointercancel` listeners on `window` (mirrors `pointer-drag.ts`'s own window-level
+// pattern so a release outside the rendered surface is still caught).
 //
 // TOUCHES THE DOM (raw Pointer Events) — this is the only layer in `@fluxgantt/core`
 // allowed to, per architecture.md "Interaction". Still does NOT import react/vue/svelte.
-import type { SvgRendererHandle } from '../render/index.js';
+import type { InteractiveRendererHandle } from '../render/index.js';
 import type { Task, TaskId } from '../types.js';
 import { toTaskId } from '../types.js';
 import { DEFAULT_DRAG_THRESHOLD_PX } from './pointer-drag.js';
@@ -36,8 +37,10 @@ export interface SelectionOptions {
  *  task's row — the bar (`.fg-task`) OR its label (`.fg-timeline__row-label`, a SIBLING of
  *  `.fg-task` under the same `.fg-timeline__row`, not a descendant — see svg-renderer.ts
  *  renderRows()). Returns undefined for a click that resolves to neither (grid/header/margin
- *  = empty space, per Q1). */
-function resolveRowHit(target: Element): { taskId: TaskId; rowIndex: number } | undefined {
+ *  = empty space, per Q1). SVG-only path — Canvas mode resolves hits via pixel-space
+ *  `handle.hitTestRow()` instead (spec-canvas-renderer-ticket2.md §7.2), since a real click on
+ *  the visible `<canvas>` bitmap never lands on a DOM descendant of `.fg-timeline__row`. */
+function resolveRowHitDom(target: Element): { taskId: TaskId; rowIndex: number } | undefined {
   const rowEl = target.closest('.fg-timeline__row');
   if (!rowEl) return undefined;
   const taskEl = rowEl.querySelector('.fg-task[data-task-id]');
@@ -55,33 +58,54 @@ interface DownState {
 }
 
 /**
- * Attaches click-select to a mounted `SvgRendererHandle`. Returns a disposer.
+ * Attaches click-select to a mounted renderer handle (SVG or Canvas — anything satisfying
+ * `InteractiveRendererHandle`). Returns a disposer.
  *
  * `getTasks` is duck-typed (same convention as `enableDragMove`) but not actually consulted
  * for hit-testing — task identity for a click comes straight off the already-rendered
- * `data-task-id` attribute (§5.2), matching exactly what's on screen. It is accepted for API
- * symmetry with the other `enableDragXxx` functions and to leave room for a future
- * resilience check without a signature change.
+ * `data-task-id` attribute (SVG path, §5.2) or `handle.hitTestRow()`'s pixel-space lookup
+ * (Canvas path), matching exactly what's on screen. It is accepted for API symmetry with the
+ * other `enableDragXxx` functions and to leave room for a future resilience check without a
+ * signature change.
  */
 export function enableClickSelect(
-  handle: SvgRendererHandle,
+  handle: InteractiveRendererHandle,
   getTasks: () => readonly Task[],
   options: SelectionOptions,
 ): () => void {
   const dragThresholdPx = options.dragThresholdPx ?? DEFAULT_DRAG_THRESHOLD_PX;
+  // Real pointer events land here — for SVG this is the same node as `interactionRoot` (the
+  // visible `<svg>`); for Canvas it is the visible `<canvas>`, a DIFFERENT node than
+  // `interactionRoot` (the hidden ARIA layer, spec-canvas-renderer-ticket2.md §5/§7).
+  const listenerTarget = handle.pointerEventTarget;
 
   let down: DownState | null = null;
   let anchorTaskId: TaskId | undefined;
   let anchorRowIndex: number | undefined;
   let disposed = false;
 
-  handle.svg.addEventListener('pointerdown', onPointerDown);
+  listenerTarget.addEventListener('pointerdown', onPointerDown);
   window.addEventListener('pointerup', onPointerUp);
   window.addEventListener('pointercancel', onPointerCancel);
 
   return dispose;
 
-  function onPointerDown(event: PointerEvent): void {
+  /** Branches on `handle.hitTestRow`'s presence — the Canvas/SVG discriminator
+   *  (spec-canvas-renderer-ticket2.md §7.3). */
+  function resolveHit(event: PointerEvent, target: Element): { taskId: TaskId; rowIndex: number } | undefined {
+    if (handle.hitTestRow) {
+      return handle.hitTestRow(event.clientX, event.clientY);
+    }
+    return resolveRowHitDom(target);
+  }
+
+  function onPointerDown(rawEvent: Event): void {
+    // `handle.pointerEventTarget` is typed as the base `Element` (shared by SVG's `<svg>` and
+    // Canvas's visible `<canvas>`, spec-canvas-renderer-ticket2.md §3.3) — `Element`'s
+    // `addEventListener` only recognizes `ElementEventMap` (no `pointerdown`), so the listener
+    // is typed to accept a plain `Event` and narrows once here. Always safe: this function is
+    // only ever registered for the literal `'pointerdown'` event type below.
+    const event = rawEvent as PointerEvent;
     if (disposed) return;
     // B3-style guard: ignore a second concurrent pointerdown while a gesture is already open.
     if (down) return;
@@ -120,7 +144,7 @@ export function enableClickSelect(
   }
 
   function handleClick(s: DownState, event: PointerEvent): void {
-    const hit = resolveRowHit(s.downTarget);
+    const hit = resolveHit(event, s.downTarget);
 
     if (!hit) {
       // Empty space inside the chart (grid/header/row-margin) — clear the selection.
@@ -163,24 +187,31 @@ export function enableClickSelect(
     if (disposed) return;
     disposed = true;
     down = null;
-    handle.svg.removeEventListener('pointerdown', onPointerDown);
+    listenerTarget.removeEventListener('pointerdown', onPointerDown);
     window.removeEventListener('pointerup', onPointerUp);
     window.removeEventListener('pointercancel', onPointerCancel);
   }
 }
 
 /** Collects every rendered row's task id whose `data-row-index` falls within
- *  `[lo, hi]` inclusive, in DOM/row order — used by the Shift-range branch. */
-function collectRowRange(handle: SvgRendererHandle, lo: number, hi: number): TaskId[] {
+ *  `[lo, hi]` inclusive, in DOM/row order — used by the Shift-range branch. Works
+ *  identically for Canvas mode once the hidden ARIA layer (spec-canvas-renderer-ticket2.md
+ *  §5) exists — only the initial per-click row resolution needed a Canvas-specific path.
+ *  Queried by `[data-row-index]`/`[data-task-id]` attributes only, deliberately NOT by class
+ *  name (`.fg-timeline__row`/`.fg-task`) — SVG and Canvas's hidden layer use different class
+ *  names by design (Canvas's `fg-timeline-canvas__*` classes must stay undiscoverable to
+ *  host/theme CSS written against the real visible SVG chart), but both renderers put
+ *  `data-row-index`/`data-task-id` directly on the row element itself, so this stays
+ *  renderer-agnostic without needing to special-case either one. */
+function collectRowRange(handle: InteractiveRendererHandle, lo: number, hi: number): TaskId[] {
   const ids: TaskId[] = [];
-  const rowEls = handle.svg.querySelectorAll('.fg-timeline__row');
+  const rowEls = handle.interactionRoot.querySelectorAll('[data-row-index]');
   for (const rowEl of rowEls) {
     const rowIndexAttr = rowEl.getAttribute('data-row-index');
     if (rowIndexAttr === null) continue;
     const rowIndex = Number(rowIndexAttr);
     if (rowIndex < lo || rowIndex > hi) continue;
-    const taskEl = rowEl.querySelector('.fg-task[data-task-id]');
-    const idAttr = taskEl?.getAttribute('data-task-id');
+    const idAttr = rowEl.getAttribute('data-task-id');
     if (idAttr === null || idAttr === undefined) continue;
     ids.push(toTaskId(idAttr));
   }
