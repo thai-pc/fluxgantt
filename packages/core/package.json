@@ -25,15 +25,19 @@
     "test:watch": "vitest",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "clean": "rimraf dist .turbo"
+    "clean": "rimraf dist .turbo",
+    "size": "size-limit"
   },
   "devDependencies": {
     "@fluxgantt/eslint-config": "workspace:*",
     "@fluxgantt/tsconfig": "workspace:*",
     "@js-temporal/polyfill": "^0.5.1",
+    "@size-limit/esbuild": "^13.0.3",
+    "@size-limit/file": "^13.0.3",
     "@vitest/coverage-v8": "2.1.9",
     "fast-check": "^4.9.0",
     "jsdom": "^25.0.1",
+    "size-limit": "^13.0.3",
     "tsup": "^8.3.5",
     "typescript": "^5.7.2",
     "vitest": "^2.1.8"

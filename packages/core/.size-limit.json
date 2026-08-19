@@ -1,0 +1,15 @@
+[
+  {
+    "name": "Full core (dist/index.js, gzip)",
+    "path": "dist/index.js",
+    "limit": "36 KiB",
+    "gzip": true,
+    "disablePlugins": ["@size-limit/esbuild"]
+  },
+  {
+    "name": "Hello world (createGantt only, tree-shaken, gzip)",
+    "path": "size-limit/hello-world.js",
+    "limit": "22 KiB",
+    "gzip": true
+  }
+]
