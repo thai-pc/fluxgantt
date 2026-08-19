@@ -19,8 +19,8 @@ Core Engine (@fluxgantt/core)
 ## 7 design principles (DO NOT violate)
 1. **Headless first** — state + compute run without a DOM (server-side, tests). DOM only in the render/interaction layer.
 2. **Reactive subscription, no full re-render** — consumers subscribe to a specific delta (task X moved, dep Y added), not a full snapshot. Required to scale to 1000+ tasks.
-3. **Plugin for non-core** — MS Project, AI, custom calendar are separate plugins. Core bundle < 36kb gzip (raised from 30kb→32kb after keyboard-nav/a11y landed, 32kb→34kb after undo/redo landed, then 34kb→36kb after import/export facade wiring landed — all are Core-wide editor baseline UX, not plugin candidates).
-4. **Tree-shakable everything** — import only what you need. "Hello world" < 15kb gzip.
+3. **Plugin for non-core** — MS Project, AI, custom calendar are separate plugins. Core bundle < 36kb gzip (raised from 30kb→32kb after keyboard-nav/a11y landed, 32kb→34kb after undo/redo landed, then 34kb→36kb after import/export facade wiring landed — all are Core-wide editor baseline UX, not plugin candidates). This budget is enforced mechanically in CI via `pnpm size` (`packages/core/.size-limit.json`) — see `.claude/work/spec-bundle-size-ci.md`.
+4. **Tree-shakable everything** — import only what you need. "Hello world" < 22kb gzip (re-baselined 2026-08; see CLAUDE.md golden rule 5 — the previous 15kb figure was never CI-verified, and the real, now-enforced measurement is ~21.3kb because the `Gantt` facade class doesn't tree-shake well yet).
 5. **Core agnostic, wrapper opinionated** — core doesn't know React/Vue. Wrappers provide the idiomatic API (hooks/composables/runes).
 6. **Type safety end-to-end** — branded IDs, strict null checks everywhere.
 7. **Server-friendly** — runs in Node/Workers without a DOM.
