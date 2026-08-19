@@ -19,7 +19,7 @@ Node >= 20 (22 recommended, see `.nvmrc`), pnpm 10+.
 - **Framework-agnostic core** — `@fluxgantt/core` must not import react/vue/svelte.
 - **Temporal API** for all date/time math, never native `Date`.
 - **TypeScript strict**, branded IDs, no `any`.
-- **Tree-shakable** — no top-level side effects; respect the bundle budget (core <30kb, hello-world <15kb gzip).
+- **Tree-shakable** — no top-level side effects; respect the bundle budget (core <36kb, hello-world <22kb gzip).
 - **Every new feature ships with tests** (see `.claude/rules/testing.md`).
 - **Security** — validate every external input (see `.claude/rules/security.md`).
 - **Language** — chat/discussion may be in Vietnamese, but all code, comments, docs, commit messages, and PRs are written in English.

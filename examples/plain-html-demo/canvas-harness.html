@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>FluxGantt · canvas renderer harness</title>
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <main>
+      <h1>FluxGantt — Canvas renderer harness (Ticket 1, temporary)</h1>
+      <p>
+        Exercises <code>createCanvasRenderer()</code> directly (no <code>createGantt()</code>,
+        no <code>.mount()</code>) against a small (~8-task) dataset covering a hierarchy, a
+        milestone, all 4 dependency types, and composed critical-path + selection signals. This
+        page is a <strong>temporary</strong>, Ticket-1-only fixture for
+        <code>tests/visual/canvas-renderer.spec.ts</code> — see
+        <code>src/canvas-harness.ts</code>'s header comment for why it imports workspace source
+        directly instead of the published package. Expected to be deleted/rewritten once
+        Ticket 3 wires Canvas mode into <code>createGantt().mount()</code>.
+      </p>
+      <div id="gantt"></div>
+    </main>
+    <script type="module" src="/src/canvas-harness.ts"></script>
+  </body>
+</html>

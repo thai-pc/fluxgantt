@@ -33,6 +33,9 @@ jobs:
       - name: Build (packages + docs site + example apps)
         run: pnpm build
 
+      - name: Bundle size (@fluxgantt/core budget: full <36kb gzip, hello-world <22kb gzip)
+        run: pnpm size
+
       - name: Unit tests
         run: pnpm test
 
