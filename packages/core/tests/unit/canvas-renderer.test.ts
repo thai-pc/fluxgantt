@@ -12,7 +12,11 @@
 // already covered by the separate Playwright visual-regression spec).
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import fc from 'fast-check';
-import { createCanvasRenderer } from '../../src/render/canvas-renderer.js';
+import {
+  createCanvasRenderer,
+  CanvasDimensionExceededError,
+  MAX_CANVAS_DIMENSION_PX,
+} from '../../src/render/canvas-renderer.js';
 import { computeCriticalPath } from '../../src/compute/critical-path.js';
 import { DEFAULT_CALENDAR, normalizeDate } from '../../src/compute/working-calendar.js';
 import { layoutDependencyPath, type TaskBarLayout } from '../../src/render/renderer-base.js';
@@ -46,6 +50,37 @@ const baseDeps: Dependency[] = [
   { id: toDependencyId('d2'), from: toTaskId('b'), to: toTaskId('c'), type: 'FS' },
   { id: toDependencyId('d3'), from: toTaskId('c'), to: toTaskId('m'), type: 'FF' },
 ];
+
+/**
+ * Distinct, non-overlapping 1-day tasks, no `parent` (spec-canvas-row-limit-fix.md §12.1) —
+ * used to hit the canvas dimension guard's real row-count boundaries EXACTLY (2046/2047 at
+ * dpr=1, 1022/1023 at dpr=2), rather than inventing an artificial smaller limit or a
+ * test-only injectable override (deliberately not added — see the fix spec). Every task
+ * shares the same tiny date span shape (1 day, offset by `i` days), so the derived
+ * `TimeScale.totalWidth` stays comfortably under `MAX_CANVAS_DIMENSION_PX` regardless of
+ * `n` for every case this file exercises — only `rows.length` (via `canvas.height`) is
+ * intentionally being pushed toward the limit.
+ */
+function buildFlatTasks(n: number): Task[] {
+  const base = normalizeDate('2026-01-05T09:00', cal.timezone);
+  const now = new Date();
+  const tasks: Task[] = [];
+  for (let i = 0; i < n; i++) {
+    const start = base.add({ days: i });
+    const end = start.add({ hours: 8 });
+    tasks.push({
+      id: toTaskId(`t${i}`),
+      name: `t${i}`,
+      start,
+      end,
+      progress: 0,
+      type: 'task',
+      createdAt: now,
+      updatedAt: now,
+    });
+  }
+  return tasks;
+}
 
 // --- Hand-rolled CanvasRenderingContext2D call-log mock (spec §9.1) --------------------
 
@@ -526,5 +561,268 @@ describe('ctx.roundRect feature-detect fallback', () => {
     expect(() => createCanvasRenderer(container, { tasks: [baseTasks[2]!], dependencies: [] })).not.toThrow();
     const rectCalls = mock.calls.filter((c) => c.op === 'rect');
     expect(rectCalls.length).toBeGreaterThan(0);
+  });
+});
+
+// --- Canvas dimension guard (spec-canvas-row-limit-fix.md §12.1) --------------------------
+//
+// No `node-canvas`, no real 65,536px canvas allocation anywhere in this block — the guard is
+// pure arithmetic on numbers `render()` already computes, checked and thrown BEFORE any
+// `canvas.width`/`canvas.height` assignment is attempted. jsdom's `HTMLCanvasElement.width`/
+// `.height` setters are plain numeric IDL properties with no real backing-store allocation
+// regardless, so even the safe-boundary cases below (which DO reach the assignment line)
+// never allocate real GPU/pixel memory.
+
+describe('canvas dimension guard', () => {
+  describe('height boundary — dpr=1', () => {
+    it('2046 rows: safe, canvas.height === 65_504', () => {
+      setDpr(1);
+      const mock = createMockContext2D();
+      installMockContext(mock);
+      const h = createCanvasRenderer(container, { tasks: buildFlatTasks(2046), dependencies: [] });
+      expect(h.canvas.height).toBe(65_504);
+    });
+
+    it('2047 rows: throws CanvasDimensionExceededError with exact fields; canvas removed', () => {
+      setDpr(1);
+      const mock = createMockContext2D();
+      installMockContext(mock);
+      let thrown: unknown;
+      try {
+        createCanvasRenderer(container, { tasks: buildFlatTasks(2047), dependencies: [] });
+      } catch (err) {
+        thrown = err;
+      }
+      expect(thrown).toBeInstanceOf(CanvasDimensionExceededError);
+      const err = thrown as CanvasDimensionExceededError;
+      expect(err.axis).toBe('height');
+      expect(err.physicalPx).toBe(65_536);
+      expect(err.limitPx).toBe(65_535);
+      expect(err.rowCount).toBe(2047);
+      expect(err.devicePixelRatio).toBe(1);
+      // Construction-time failure — mirrors the existing null-2D-context test's assertion
+      // style: no half-mounted canvas left behind.
+      expect(container.children).toHaveLength(0);
+    });
+  });
+
+  describe('height boundary — dpr=2', () => {
+    it('1022 rows: safe, canvas.height === 65_472', () => {
+      setDpr(2);
+      const mock = createMockContext2D();
+      installMockContext(mock);
+      const h = createCanvasRenderer(container, { tasks: buildFlatTasks(1022), dependencies: [] });
+      expect(h.canvas.height).toBe(65_472);
+    });
+
+    it('1023 rows: throws, physicalPx === 65_536', () => {
+      setDpr(2);
+      const mock = createMockContext2D();
+      installMockContext(mock);
+      let thrown: unknown;
+      try {
+        createCanvasRenderer(container, { tasks: buildFlatTasks(1023), dependencies: [] });
+      } catch (err) {
+        thrown = err;
+      }
+      expect(thrown).toBeInstanceOf(CanvasDimensionExceededError);
+      const err = thrown as CanvasDimensionExceededError;
+      expect(err.axis).toBe('height');
+      expect(err.physicalPx).toBe(65_536);
+      expect(err.rowCount).toBe(1023);
+      expect(err.devicePixelRatio).toBe(2);
+    });
+  });
+
+  describe('width boundary', () => {
+    it('~1,095-day visible range at viewMode "day" (dpr=1): throws axis "width"', () => {
+      setDpr(1);
+      const mock = createMockContext2D();
+      installMockContext(mock);
+      const start = normalizeDate('2026-01-01T00:00', cal.timezone);
+      const end = start.add({ days: 1095 });
+      let thrown: unknown;
+      try {
+        createCanvasRenderer(
+          container,
+          { tasks: [task('x', '2026-01-05T09:00', '2026-01-05T17:00')], dependencies: [] },
+          { viewMode: 'day', timeRange: { start, end } },
+        );
+      } catch (err) {
+        thrown = err;
+      }
+      expect(thrown).toBeInstanceOf(CanvasDimensionExceededError);
+      const err = thrown as CanvasDimensionExceededError;
+      expect(err.axis).toBe('width');
+      expect(err.physicalPx).toBeGreaterThan(MAX_CANVAS_DIMENSION_PX);
+    });
+
+    it('a narrower ~1,000-day range at viewMode "day" (dpr=1): safe, no throw', () => {
+      setDpr(1);
+      const mock = createMockContext2D();
+      installMockContext(mock);
+      const start = normalizeDate('2026-01-01T00:00', cal.timezone);
+      const end = start.add({ days: 1000 });
+      expect(() =>
+        createCanvasRenderer(
+          container,
+          { tasks: [task('x', '2026-01-05T09:00', '2026-01-05T17:00')], dependencies: [] },
+          { viewMode: 'day', timeRange: { start, end } },
+        ),
+      ).not.toThrow();
+    });
+  });
+
+  describe('0 rows', () => {
+    it('empty tasks + explicit timeRange: no throw, canvas.height stays at the small fallback', () => {
+      setDpr(1);
+      const mock = createMockContext2D();
+      installMockContext(mock);
+      const start = normalizeDate('2026-01-01T00:00', cal.timezone);
+      const end = start.add({ days: 10 });
+      const h = createCanvasRenderer(container, { tasks: [], dependencies: [] }, { timeRange: { start, end } });
+      // HEADER_HEIGHT(32) + ROW_HEIGHT.default(32) fallback (rows.length === 0), far under
+      // the limit — the guard never trips, no behavior change.
+      expect(h.canvas.height).toBe(64);
+    });
+  });
+
+  describe('update() — rollback on a failed render', () => {
+    it('crossing the boundary rolls back canvas/getTimeScale/currentInput; destroy() still works afterward', () => {
+      setDpr(1);
+      const mock = createMockContext2D();
+      installMockContext(mock);
+      const h = createCanvasRenderer(container, { tasks: buildFlatTasks(5), dependencies: [] });
+      const prevHeight = h.canvas.height;
+      const prevTimeScale = h.getTimeScale();
+
+      expect(() => h.update({ tasks: buildFlatTasks(2047), dependencies: [] })).toThrow(
+        CanvasDimensionExceededError,
+      );
+      // Rollback: the bitmap dimension and the TimeScale reference are both exactly what
+      // they were before the failed update — never a half-applied new frame.
+      expect(h.canvas.height).toBe(prevHeight);
+      expect(h.getTimeScale()).toBe(prevTimeScale);
+
+      expect(() => h.destroy()).not.toThrow();
+      expect(container.children).toHaveLength(0);
+    });
+
+    it('recovers on a subsequent safe update() after a failed, rolled-back one', () => {
+      setDpr(1);
+      const mock = createMockContext2D();
+      installMockContext(mock);
+      const h = createCanvasRenderer(container, { tasks: buildFlatTasks(5), dependencies: [] });
+
+      expect(() => h.update({ tasks: buildFlatTasks(2047), dependencies: [] })).toThrow(
+        CanvasDimensionExceededError,
+      );
+      expect(() => h.update({ tasks: buildFlatTasks(10), dependencies: [] })).not.toThrow();
+      expect(h.canvas.height).toBe(32 + 10 * 32); // HEADER_HEIGHT + rows.length * ROW_HEIGHT.default
+    });
+  });
+
+  describe('update() — a LATER render()-internal throw (computeGridColumns) also rolls back state fully', () => {
+    it('a MAX_GRID_COLUMNS throw from computeGridColumns (unrelated to the dimension guard, fires AFTER it passes) still rolls back getTimeScale(), not just canvas.height/currentInput', () => {
+      setDpr(1);
+      const mock = createMockContext2D();
+      installMockContext(mock);
+
+      // Initial, narrow-range construction — succeeds cleanly (small derived range, well
+      // under both MAX_GRID_COLUMNS and MAX_CANVAS_DIMENSION_PX).
+      const narrowTasks = [
+        task('a', '2026-01-05T09:00', '2026-01-06T17:00'),
+        task('b', '2026-01-07T09:00', '2026-01-08T17:00'),
+      ];
+      const h = createCanvasRenderer(container, { tasks: narrowTasks, dependencies: [] }, { viewMode: 'year' });
+      const prevTimeScale = h.getTimeScale();
+      const prevHeight = h.canvas.height;
+
+      // Wide-span tasks, no explicit `options.timeRange` — `deriveTimeRange` infers a
+      // ~25,000+ day range at viewMode 'year'. `PIXELS_PER_DAY.year === 1`, so this NEVER
+      // trips the dimension guard added by this fix (comfortably under
+      // `MAX_CANVAS_DIMENSION_PX` on both axes) — but IS over `renderer-base.ts`'s own,
+      // independent `MAX_GRID_COLUMNS` (20,000) guard inside `computeGridColumns`, a second,
+      // unrelated throw site inside `render()` that fires strictly AFTER the dimension guard
+      // has already passed.
+      const wideTasks = [
+        task('start', '2000-01-01T00:00', '2000-01-02T00:00'),
+        task('end', '2069-01-01T00:00', '2069-01-02T00:00'), // ~25,200 days apart
+      ];
+
+      let thrown: unknown;
+      try {
+        h.update({ tasks: wideTasks, dependencies: [] });
+      } catch (err) {
+        thrown = err;
+      }
+      // Confirms this is genuinely a DIFFERENT throw site than the dimension guard.
+      expect(thrown).toBeInstanceOf(Error);
+      expect(thrown).not.toBeInstanceOf(CanvasDimensionExceededError);
+      expect((thrown as Error).message).toMatch(/exceeded max column guard/);
+
+      // The regression this test targets: getTimeScale() must be rolled back too, not just
+      // canvas.height/currentInput — a throw that fires AFTER the dimension guard passes but
+      // BEFORE `state.timeScale` is committed must still leave every exposed piece of state
+      // untouched (spec §5.3, hardened).
+      expect(h.getTimeScale()).toBe(prevTimeScale);
+      expect(h.canvas.height).toBe(prevHeight);
+    });
+  });
+
+  describe('setOptions() — rollback via density alone', () => {
+    it('a density change that alone crosses the boundary throws and leaves canvas.height unchanged', () => {
+      setDpr(1);
+      const mock = createMockContext2D();
+      installMockContext(mock);
+      // Exactly at the safe edge for default density (canvas.height === 65_504).
+      const h = createCanvasRenderer(container, { tasks: buildFlatTasks(2046), dependencies: [] });
+      expect(h.canvas.height).toBe(65_504);
+
+      // rowHeight 40 (comfortable) with the same 2046 rows would be far over the limit —
+      // row count is unchanged, only rowHeight grows, still caught by the same guard.
+      expect(() => h.setOptions({ density: 'comfortable' })).toThrow(CanvasDimensionExceededError);
+      expect(h.canvas.height).toBe(65_504);
+    });
+  });
+
+  describe('error identity / exported constant', () => {
+    it('CanvasDimensionExceededError is instanceof Error with name set; MAX_CANVAS_DIMENSION_PX === 65_535', () => {
+      expect(MAX_CANVAS_DIMENSION_PX).toBe(65_535);
+
+      setDpr(1);
+      const mock = createMockContext2D();
+      installMockContext(mock);
+      let thrown: unknown;
+      try {
+        createCanvasRenderer(container, { tasks: buildFlatTasks(2047), dependencies: [] });
+      } catch (err) {
+        thrown = err;
+      }
+      expect(thrown).toBeInstanceOf(CanvasDimensionExceededError);
+      expect(thrown).toBeInstanceOf(Error);
+      expect((thrown as CanvasDimensionExceededError).name).toBe('CanvasDimensionExceededError');
+    });
+  });
+
+  describe('regression — clampedCount console.warn does NOT fire on a dimension-guard overflow', () => {
+    it('an overflowing render with an end-before-start task never reaches the clampedCount warning', () => {
+      setDpr(1);
+      const mock = createMockContext2D();
+      installMockContext(mock);
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+      const tasks = buildFlatTasks(2047);
+      // Swap start/end on one task so it WOULD trip the existing `clampedCount` warning —
+      // this must never be reached, since the dimension guard (§5.2) now runs, and throws,
+      // strictly before the barByTaskId loop that computes `clampedCount`.
+      const clamped: Task = { ...tasks[0]!, start: tasks[0]!.end, end: tasks[0]!.start };
+      const withClampedTask = [clamped, ...tasks.slice(1)];
+
+      expect(() => createCanvasRenderer(container, { tasks: withClampedTask, dependencies: [] })).toThrow(
+        CanvasDimensionExceededError,
+      );
+      expect(warnSpy).not.toHaveBeenCalled();
+    });
   });
 });
