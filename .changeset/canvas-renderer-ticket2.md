@@ -29,8 +29,9 @@ cheap pixel-space-hit-test equivalent for drag gestures; a materially larger, se
 the plan doc). Still not re-exported from the package barrel and not wired into `mount()`'s
 renderer-selection logic — that's Ticket 3.
 
-Known follow-up (not fixed here, flagged for before/alongside Ticket 3): `createCanvasRenderer()` has
-no virtual scrolling and sizes its canvas bitmap directly to the full row count. Real browsers impose
-a hard per-dimension canvas backing-store limit (~65,535px); a project with roughly >2,047 rows at
-default density silently renders a blank canvas today, with no thrown error. Since Ticket 3 wires the
-`>2000`-task auto-switch into Canvas mode, this should be addressed before or alongside that ticket.
+Note: this ticket was rebased onto the separately-shipped canvas-dimension-guard fix (patch release,
+`createCanvasRenderer()` no longer silently blanks past the ~65,535px browser backing-store limit —
+it now throws a structured `CanvasDimensionExceededError` instead). `createCanvasRenderer()` still
+has no virtual scrolling and sizes its canvas bitmap to the full row count, so the guard can still
+trip on very large projects; Ticket 3 (the `>2000`-task auto-switch) must catch that error and fall
+back to `createSvgRenderer()` rather than letting it propagate out of `mount()`.
