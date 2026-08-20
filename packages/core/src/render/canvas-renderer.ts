@@ -1,42 +1,51 @@
-// Canvas renderer — static paint layer (spec-canvas-renderer-ticket1.md, Ticket 1 of
-// `.claude/work/plan-canvas-renderer.md`'s 3-ticket breakdown). Mirrors `svg-renderer.ts`'s
-// structure and visual feature set, but paints via `CanvasRenderingContext2D` primitives
-// (`fillRect`/`roundRect`/`moveTo`+`lineTo`+`stroke`/`fillText`/`setLineDash`) instead of
-// `document.createElementNS`.
+// Canvas renderer — static paint layer + hidden ARIA a11y layer (spec-canvas-renderer-
+// ticket1.md, spec-canvas-renderer-ticket2.md; Tickets 1+2 of `.claude/work/plan-canvas-
+// renderer.md`'s 3-ticket breakdown). Mirrors `svg-renderer.ts`'s structure and visual
+// feature set, but paints via `CanvasRenderingContext2D` primitives (`fillRect`/`roundRect`/
+// `moveTo`+`lineTo`+`stroke`/`fillText`/`setLineDash`) instead of `document.createElementNS`.
 //
-// **THIS MODULE IS INERT AND UNWIRED (Ticket 1 only).** It is not re-exported from
-// `render/index.ts` or the public barrel (`src/index.ts`), not referenced from `gantt.ts`,
-// and adds no new `tsup`/`package.json` entry — it costs the default build ZERO bytes
-// (verified: nothing in the module graph reachable from `src/index.ts` references this
-// file). Tickets 2 (hidden ARIA DOM layer) and 3 (auto-switch wiring into `mount()` via a
-// dynamic `import()`) are separate, future changes.
+// **THIS MODULE IS STILL INERT AND UNWIRED (Ticket 2, same posture as Ticket 1).** It is not
+// re-exported from `render/index.ts` or the public barrel (`src/index.ts`), not referenced
+// from `gantt.ts`, and adds no new `tsup`/`package.json` entry — it costs the default build
+// ZERO bytes (verified: nothing in the module graph reachable from `src/index.ts` references
+// this file). Ticket 3 (auto-switch wiring into `mount()` via a dynamic `import()`) is a
+// separate, future change.
 //
-// **ACCESSIBILITY — NOT WCAG 2.1 AA COMPLIANT ON ITS OWN.** This module must not ship
-// reachable to real end users until Ticket 2 lands. A `<canvas>` element has no per-row
-// focusable structure, no `role="row"`/`aria-selected`/roving `tabindex` equivalent to what
-// `svg-renderer.ts`'s `renderRows()` already provides, and is therefore not keyboard-operable
-// or per-task-navigable by assistive technology. This ticket adds only a minimal stopgap —
-// `role="img"` + a capped `aria-label` — so the module isn't a *total* silence if it is ever
-// directly instantiated ahead of Ticket 2 (e.g. by this ticket's own visual-regression
-// harness). Do NOT mistake `role="img"` for "accessibility done" (spec §7).
+// **ACCESSIBILITY — Ticket 2 closes the gap Ticket 1 explicitly flagged.** A hidden
+// (offscreen, but focusable/AT-reachable) `role="grid"` DOM layer (`a11yLayer`, §5 in the
+// ticket-2 spec) is constructed once at setup and fully rebuilt on every `render()`, mirroring
+// `svg-renderer.ts`'s `renderRows()` attribute-for-attribute (`role="row"`/`role="gridcell"`/
+// `aria-selected`/roving `tabindex`/per-task `aria-label`). The visible `<canvas>` itself is
+// `aria-hidden="true"` — Ticket 1's `role="img"` stopgap is superseded, not layered on top of,
+// since exposing both would double-announce the same data to a screen reader. Click-select
+// (`hitTestRow()`, §7) and a `focusin`/`focusout`-driven on-canvas focus ring (§8) bring Canvas
+// mode to full keyboard+mouse+screen-reader parity with SVG mode. Drag-move/drag-resize/
+// drag-create-dep remain SVG-only (unrelated to accessibility, out of scope for both tickets).
 //
-// SECURITY (security.md, spec §6 — read before touching this file): `task.name` is the
-// only free-form string painted in v1, and it is passed ONLY as the literal first argument
-// to `ctx.fillText(text, x, y)` — `fillText` paints pixels, it cannot be interpreted as
-// markup/code, so this is injection-safe by construction. It is NEVER concatenated into
-// `ctx.font` or any other property string; `ctx.font` is assigned only from a fixed,
-// compile-time-constant string. `task.color` is only ever used after `validateTaskColor()`
-// (from `renderer-base.ts`) accepts it — its return value, or a hardcoded/token-resolved
-// default, is the ONLY thing ever assigned to `ctx.fillStyle`/`ctx.strokeStyle` for a
-// task-colored element; the raw `task.color` string never reaches a Canvas API call. This
-// file NEVER calls `ctx.createPattern()`/`ctx.createLinearGradient()`/
+// SECURITY (security.md, spec §6/§9 — read before touching this file): `task.name` is the
+// only free-form string painted/rendered in v1. On the bitmap it is passed ONLY as the
+// literal first argument to `ctx.fillText(text, x, y)` — `fillText` paints pixels, it cannot
+// be interpreted as markup/code, so this is injection-safe by construction. It is NEVER
+// concatenated into `ctx.font` or any other property string; `ctx.font` is assigned only from
+// a fixed, compile-time-constant string. In the hidden a11y layer, `task.name` reaches the DOM
+// ONLY via `labelEl.textContent`, never `innerHTML`, never a template string assembled into
+// markup — same posture as `svg-renderer.ts`'s `document.createTextNode`. `buildTaskAriaLabel`
+// output reaches the DOM ONLY via `setAttribute('aria-label', ...)`, which never interprets
+// its value as markup. `task.color` is only ever used after `validateTaskColor()` (from
+// `renderer-base.ts`) accepts it — its return value, or a hardcoded/token-resolved default, is
+// the ONLY thing ever assigned to `ctx.fillStyle`/`ctx.strokeStyle` for a task-colored element;
+// the raw `task.color` string never reaches a Canvas API call, and is never read anywhere in
+// the hidden a11y layer's code (the focus ring's color comes from a validated design token,
+// not task data). This file NEVER calls `ctx.createPattern()`/`ctx.createLinearGradient()`/
 // `ctx.createRadialGradient()` anywhere — `fillStyle`/`strokeStyle` are only ever assigned a
 // plain string (a compile-time-constant fallback or `validateTaskColor`'s output), so the
 // pattern/gradient injection vector security.md flags is closed by construction, not merely
 // by validation discipline. `canvas.getContext('2d')` returning `null` throws synchronously
 // rather than silently no-op'ing (a confusing "nothing rendered, no error" state is itself a
-// defensive-programming failure mode security.md's "reject rather than best-effort"
-// principle argues against).
+// defensive-programming failure mode security.md's "reject rather than best-effort" principle
+// argues against). Focus-restoration `querySelector` interpolation applies `cssEscapeAttr()`
+// to `focusedTaskId` before building the attribute-selector string (same defense-in-depth
+// `svg-renderer.ts` already applies).
 //
 // MODULE-ISOLATION RULE (spec §2.1): this file must NEVER statically import anything from
 // `svg-renderer.ts` — not even a pure numeric constant. This is deliberate: Ticket 3 will
@@ -45,7 +54,10 @@
 // the entire SVG paint module into that chunk, defeating the whole reason the split exists.
 // A handful of small layout constants are therefore intentionally DUPLICATED locally below
 // (see §5.1) rather than imported — kept in sync BY HAND with `svg-renderer.ts`'s
-// identically-named constants.
+// identically-named constants. `buildTaskAriaLabel`/`isKnownTaskKind` ARE imported — but from
+// `renderer-base.ts`, the shared DOM-free seam BOTH renderer files already depend on, never
+// from `svg-renderer.ts` itself — the isolation rule is about the two renderer files never
+// importing from EACH OTHER, not about avoiding all shared code.
 import { getTemporal } from '../internal/temporal.js';
 import { DEFAULT_CALENDAR, normalizeDate } from '../compute/working-calendar.js';
 import {
@@ -57,12 +69,15 @@ import {
   layoutRows,
   layoutTaskBar,
   validateTaskColor,
+  isKnownTaskKind,
   isKnownDependencyType,
+  buildTaskAriaLabel,
   type GridColumn,
   type RowLayout,
   type TaskBarLayout,
   type TimeScale,
 } from './renderer-base.js';
+import type { InteractiveRendererHandle } from './interactive-renderer-handle.js';
 import type {
   CriticalPathResult,
   DateInput,
@@ -85,10 +100,15 @@ export interface CanvasRendererInput {
   /** Optional — ids currently selected (already the FULL flattened set, descendants
    *  included). `undefined`/omitted = nothing selected. */
   readonly selectedTaskIds?: readonly TaskId[];
-  // NOTE: no `focusedTaskId` field in Ticket 1 (see file header a11y note) — there is no
-  // focusable element to point it at yet (no hidden ARIA row layer exists until Ticket 2).
-  // Adding a dead/no-op field now would be more misleading than omitting it; Ticket 2 adds
-  // it back when it becomes meaningful, mirroring `SvgRendererInput.focusedTaskId`.
+  /**
+   * (Ticket 2). Mirrors `SvgRendererInput.focusedTaskId` field-for-field, including its
+   * fallback semantics: `undefined` = no keyboard interaction has happened yet, and `render()`
+   * falls back to the first row so the hidden grid remains exactly one native Tab stop even
+   * before any arrow key has been pressed. Drives THREE things: the roving-tabindex assignment
+   * on hidden-layer rows, the DOM focus-restoration target after a rebuild, and the on-canvas
+   * focus ring's target row.
+   */
+  readonly focusedTaskId?: TaskId | undefined;
 }
 
 export interface CanvasRendererOptions {
@@ -98,15 +118,15 @@ export interface CanvasRendererOptions {
   readonly timeRange?: { readonly start: DateInput; readonly end: DateInput };
   /** Locale for date labels (Temporal + Intl formatting). Default 'en'. */
   readonly locale?: string;
-  /** `aria-label` for the root `<canvas>`. Default `'Gantt chart'`. NOT WCAG-sufficient
-   *  alone — see file header. Ticket 2 supersedes it with real per-row semantics. */
+  /** `aria-label` for the hidden a11y layer's `role="grid"` root. Default `'Gantt chart'`. The
+   *  visible `<canvas>` itself carries no `aria-label` (it is `aria-hidden`, Ticket 2). */
   readonly ariaLabel?: string;
   // NOTE: no `showLinkHandles` — Canvas mode has no connector-handle affordance in v1 at all
   // (drag-create-dep is excluded from Canvas mode entirely, not just deferred), so there is
   // nothing for this flag to toggle. Do not add a no-op option.
 }
 
-export interface CanvasRendererHandle {
+export interface CanvasRendererHandle extends InteractiveRendererHandle {
   /** Root `<canvas class="fg-timeline-canvas">` created and appended into `container`.
    *  Deliberately a DIFFERENT block class than SVG's `.fg-timeline` (not a modifier of it)
    *  so the two can coexist in a DOM/CSS sense without rule bleed. */
@@ -128,21 +148,39 @@ export interface CanvasRendererHandle {
    *  `getTimeScale()`) is rolled back atomically to the last successful render, as if the
    *  call never happened. */
   setOptions(options: Partial<CanvasRendererOptions>): void;
-  /** Removes the canvas element from `container`. `update()`/`setOptions()` after
-   *  `destroy()` are a no-op — same contract as `SvgRendererHandle.destroy`. */
+  /** Removes the canvas element AND the hidden a11y layer from `container`. `update()`/
+   *  `setOptions()` after `destroy()` are a no-op — same contract as `SvgRendererHandle.destroy`. */
   destroy(): void;
   /** Same contract as `SvgRendererHandle.getTimeScale()` — `TimeScale` of the most recent
    *  **successful** render. */
   getTimeScale(): TimeScale;
   /**
-   * RESERVED for Ticket 2. `undefined` in Ticket 1 — no hidden ARIA DOM layer exists yet.
-   * Once Ticket 2 lands, this becomes the real, focusable per-row grid root element (the
-   * Canvas equivalent of attaching `enableClickSelect`/`enableKeyboardNav` to `handle.svg`
-   * today), so those interaction modules only need to generalize their "attach to
-   * `handle.svg`" call sites to "attach to `handle.interactionRoot ?? handle.svg`"-shaped
-   * logic, not learn an entirely new handle shape.
+   * (Ticket 2). Root of the offscreen (visually hidden, `role="grid"`) DOM subtree
+   * `enableKeyboardNav` attaches its `keydown` listener to and both interaction modules query
+   * via the renderer-agnostic `[data-row-index]`/`[data-task-id]` attribute contract (NOT class
+   * names — this layer's rows/cells/task elements use their own `fg-timeline-canvas__*` classes,
+   * deliberately distinct from SVG's `.fg-timeline__row`/`.fg-task`, so host/theme CSS targeting
+   * the real visible SVG chart can never accidentally match this offscreen layer). See the
+   * hidden-layer construction below for its exact structure/attribute contract.
+   * Always a real, attached `HTMLElement` — never `undefined`, built synchronously inside
+   * `createCanvasRenderer()`, before this handle is ever returned.
    */
-  readonly interactionRoot: HTMLElement | undefined;
+  readonly interactionRoot: HTMLElement;
+  /**
+   * (Ticket 2). Same node as `canvas` — the element real pointer events actually land on.
+   * `enableClickSelect` attaches its `pointerdown` listener here, not to `interactionRoot`
+   * (which is never under the user's cursor).
+   */
+  readonly pointerEventTarget: HTMLCanvasElement;
+  /**
+   * (Ticket 2). Resolves a client-space pointer coordinate to the task row it falls inside, in
+   * the same logical/CSS-pixel coordinate space `layoutRows()`/`paintRows()` already use
+   * internally. Returns `undefined` for header-band clicks, out-of-canvas clicks, or clicks
+   * below the last row (all treated as "empty space", matching SVG's `resolveRowHitDom()`
+   * returning `undefined` for the same cases). Row-band-wide (not bar/label-precise) —
+   * deliberate v1 UX design (bigger, simpler click target), documented divergence from SVG.
+   */
+  hitTestRow(clientX: number, clientY: number): { taskId: TaskId; rowIndex: number } | undefined;
 }
 
 // --- §5.1 Duplicated local constants (module-isolation rule, §2.1) --------------------
@@ -235,6 +273,8 @@ interface DesignTokens {
   readonly taskSelected: string;
   readonly taskSelectedWidth: number;
   readonly taskSelectedOffset: number;
+  readonly taskFocus: string;
+  readonly taskFocusWidth: number;
   readonly depLine: string;
 }
 
@@ -278,6 +318,8 @@ function resolveDesignTokens(container: HTMLElement): DesignTokens {
     taskSelected: color('--fg-task-selected', '#4338ca'),
     taskSelectedWidth: num('--fg-task-selected-width', 2),
     taskSelectedOffset: num('--fg-task-selected-offset', 2),
+    taskFocus: color('--fg-task-focus', '#0ea5e9'),
+    taskFocusWidth: num('--fg-task-focus-width', 2),
     depLine: color('--fg-dep-line', '#64748b'),
   };
 }
@@ -303,11 +345,24 @@ function drawRoundedRect(
   }
 }
 
+/** Minimal CSS.escape-equivalent for a `data-task-id` value interpolated into an attribute
+ *  selector string (`querySelector`). `task.id` is a branded, developer-controlled `TaskId`
+ *  (never raw untrusted host free-text), but this is cheap defense-in-depth against a value
+ *  containing a `"` breaking the selector string. Kept in sync BY HAND with
+ *  `svg-renderer.ts`'s identically-behaved copy (spec §2.1 — small/isolated enough that
+ *  duplication, not extraction, is the deliberate choice here). */
+function cssEscapeAttr(value: string): string {
+  const css = (globalThis as { CSS?: { escape?: (v: string) => string } }).CSS;
+  if (css?.escape) return css.escape(value);
+  return value.replace(/["\\]/g, '\\$&');
+}
+
 /**
  * Creates and mounts a Canvas renderer into `container` — appends one
- * `<canvas class="fg-timeline-canvas">` child. Same call shape as `createSvgRenderer`
- * (container-first, input, optional options) — deliberate, so a future auto-switch call
- * site is a one-line change, not a signature adaptation.
+ * `<canvas class="fg-timeline-canvas">` child plus one hidden `<div class="fg-timeline-a11y-
+ * layer">` child (Ticket 2). Same call shape as `createSvgRenderer` (container-first, input,
+ * optional options) — deliberate, so a future auto-switch call site is a one-line change, not
+ * a signature adaptation.
  */
 /**
  * Every piece of closure state `render()` reads from or assigns to, grouped into ONE object
@@ -360,18 +415,69 @@ export function createCanvasRenderer(
   // narrow of `maybeCtx`.
   const ctx: CanvasRenderingContext2D = maybeCtx;
 
+  // The hidden a11y layer below is positioned `absolute; top:0; left:0` — for that to anchor
+  // at `container`'s own top-left corner (co-located with `canvas`, which is `container`'s
+  // first child) rather than the nearest ANY positioned ancestor somewhere else in the host
+  // page, `container` itself must establish a positioning context. Only set when the host app
+  // hasn't already positioned it (`static` is the CSS-default, so "unset" and "explicitly
+  // static" are indistinguishable and both safe to upgrade) — never overrides a host app's own
+  // `relative`/`absolute`/`fixed`/`sticky` choice.
+  if (getComputedStyle(container).position === 'static') {
+    container.style.position = 'relative';
+  }
+
+  // --- Hidden ARIA grid layer construction (Ticket 2, spec §5.1) --------------------------
+  // Visually hidden, but focusable/AT-reachable — the standard "sr-only" technique, NOT
+  // display:none/visibility:hidden (both remove an element from the accessibility tree AND
+  // the tab order). Set via inline styles — `@fluxgantt/core` ships no base stylesheet.
+  // Deliberately OFFSCREEN, not positioned to overlay the visible canvas (spec §5.1).
+  const a11yLayer = document.createElement('div');
+  a11yLayer.className = 'fg-timeline-a11y-layer';
+  a11yLayer.style.position = 'absolute';
+  // `top`/`left` MUST be pinned (not left to the "static position" fallback) — without them,
+  // an unpositioned `position: absolute` element renders wherever it would fall in normal
+  // document flow, which for a tall chart (many rows -> a tall `canvas`, this layer appended
+  // right after it) can be thousands of pixels down the page. A keyboard/AT user focusing a
+  // row then drags the WHOLE PAGE (canvas included) into a huge scroll jump via the browser's
+  // built-in scroll-into-view-on-focus behavior, defeating the entire point of "offscreen but
+  // visually in place." Pinning to the container's own top-left keeps the hidden layer (and
+  // therefore the focus scroll target) co-located with the visible canvas regardless of row
+  // count. Empirically confirmed via a Playwright repro while authoring this ticket's harness.
+  a11yLayer.style.top = '0';
+  a11yLayer.style.left = '0';
+  a11yLayer.style.width = '1px';
+  a11yLayer.style.height = '1px';
+  a11yLayer.style.margin = '-1px';
+  a11yLayer.style.border = '0';
+  a11yLayer.style.padding = '0';
+  a11yLayer.style.overflow = 'hidden';
+  a11yLayer.style.clip = 'rect(0px, 0px, 0px, 0px)';
+  a11yLayer.style.clipPath = 'inset(50%)';
+  a11yLayer.style.whiteSpace = 'nowrap';
+  container.appendChild(a11yLayer);
+
+  // Reentrancy guard (spec §5.1/§8.3) — prevents the a11y-layer rebuild's own `.focus()` call
+  // (below, in render()) or DOM removal from recursively re-entering render() via focusin/
+  // focusout, which the rebuild itself synchronously fires.
+  let isRendering = false;
+  a11yLayer.addEventListener('focusin', handleFocusChange);
+  a11yLayer.addEventListener('focusout', handleFocusChange);
+
   try {
     render();
   } catch (err) {
     // Mirrors the null-2D-context guard above (§5.3 of the fix spec) — leave no half-mounted
-    // canvas behind on a construction-time failure.
+    // canvas or a11y layer behind on a construction-time failure.
     canvas.remove();
+    a11yLayer.remove();
     throw err;
   }
 
   return {
     canvas,
     container,
+    interactionRoot: a11yLayer,
+    pointerEventTarget: canvas,
     update(nextInput: CanvasRendererInput): void {
       if (destroyed) return;
       const previousState = state;
@@ -401,18 +507,62 @@ export function createCanvasRenderer(
     destroy(): void {
       if (destroyed) return;
       destroyed = true;
+      a11yLayer.removeEventListener('focusin', handleFocusChange);
+      a11yLayer.removeEventListener('focusout', handleFocusChange);
       canvas.remove();
+      a11yLayer.remove();
     },
     getTimeScale(): TimeScale {
       // No `destroyed` guard needed — returns the last render's TimeScale (harmless, pure
       // data) even after destroy(), same non-throwing spirit as the rest of this handle.
       return state.timeScale;
     },
-    // RESERVED for Ticket 2 — no hidden ARIA DOM layer exists yet (see interface doc comment).
-    interactionRoot: undefined,
+    hitTestRow,
   };
 
+  function handleFocusChange(): void {
+    // Ignore focus events caused by our OWN DOM rebuild inside render() (spec §5.2/§8.3), and
+    // any stray event arriving after destroy().
+    if (isRendering || destroyed) return;
+    render();
+  }
+
+  /** (Ticket 2, spec §7.2) O(1) index arithmetic, not a per-row scan — safe to call on every
+   *  `pointerdown` even at 10,000+ rows, since `ROW_HEIGHT` is constant across all rows
+   *  regardless of hierarchy indentation. Reads live `state.input`/`state.options`, never a
+   *  stale cache from the last `render()` — same freshness posture `keyboard-nav.ts` already
+   *  uses for its own `layoutRows()` calls. */
+  function hitTestRow(clientX: number, clientY: number): { taskId: TaskId; rowIndex: number } | undefined {
+    const rect = canvas.getBoundingClientRect();
+    const x = clientX - rect.left;
+    const y = clientY - rect.top;
+
+    // Same logical/CSS-pixel coordinate space paintRows() already uses internally — no DPR
+    // conversion needed here (the 2D context is scaled by devicePixelRatio ONCE at paint
+    // time; layout math always operates in plain CSS pixels, matching clientX/clientY units).
+    if (x < 0 || x > rect.width || y < 0 || y > rect.height) return undefined; // outside canvas entirely
+    if (y < HEADER_HEIGHT) return undefined; // header band — not a row
+
+    const density = state.options.density ?? DEFAULT_DENSITY;
+    const rows = layoutRows(state.input.tasks, density); // same call render() makes
+    const rowHeight = ROW_HEIGHT[density]; // uniform per density, independent of hierarchy depth
+    const rowIndex = Math.floor((y - HEADER_HEIGHT) / rowHeight);
+    const row = rows[rowIndex];
+    if (row === undefined) return undefined; // below the last row — empty space
+
+    return { taskId: row.task.id, rowIndex };
+  }
+
   function render(): void {
+    isRendering = true;
+    try {
+      renderPixels();
+    } finally {
+      isRendering = false;
+    }
+  }
+
+  function renderPixels(): void {
     const calendar = state.input.calendar ?? DEFAULT_CALENDAR;
     const viewMode = state.options.viewMode ?? DEFAULT_VIEW_MODE;
     const density = state.options.density ?? DEFAULT_DENSITY;
@@ -516,15 +666,102 @@ export function createCanvasRenderer(
     // reassignment semantics.
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-    canvas.setAttribute('role', 'img');
-    canvas.setAttribute('aria-label', ariaLabel);
-
     // Paint order mirrors svg-renderer.ts's DOM append order exactly (bottom → top z-order).
     paintGrid(ctx, gridColumns, offsetX, totalHeight, tokens);
     paintHeader(ctx, gridColumns, offsetX, timeScale.totalWidth, tokens);
     paintDependencies(ctx, state.input.dependencies, barByTaskId, rowHeight, offsetX, offsetY, tokens);
     paintRows(ctx, rows, barByTaskId, criticalIds, selectedIds, rowHeight, offsetX, offsetY, tokens);
     paintLabelDivider(ctx, offsetX, totalHeight, tokens);
+
+    // --- Hidden ARIA layer rebuild (Ticket 2, spec §5.2) -----------------------------------
+    // `focusedTaskId` falls back to the FIRST row when unset — before any keyboard interaction
+    // has happened, the grid must still be exactly one native Tab stop (mirrors SVG's
+    // identical fallback).
+    const focusedTaskId = state.input.focusedTaskId ?? rows[0]?.task.id;
+    // Captured BEFORE the full rebuild below destroys every existing row element — the gate
+    // that prevents this render pass from ever STEALING focus during a purely programmatic/
+    // headless mutation: focus is only ever RESTORED, never newly grabbed.
+    const hadFocusInside = a11yLayer.contains(document.activeElement);
+
+    while (a11yLayer.firstChild) a11yLayer.removeChild(a11yLayer.firstChild);
+
+    a11yLayer.setAttribute('role', 'grid');
+    a11yLayer.setAttribute('aria-rowcount', String(rows.length));
+    a11yLayer.setAttribute('aria-multiselectable', 'true');
+    a11yLayer.setAttribute('aria-label', ariaLabel);
+
+    for (const row of rows) {
+      const isSelected = selectedIds.has(row.task.id);
+      const isCritical = criticalIds.has(row.task.id);
+
+      const rowEl = document.createElement('div');
+      // Deliberately a DIFFERENT class than SVG's `.fg-timeline__row` (own `fg-timeline-canvas__`
+      // prefix — mirrors the `.fg-timeline-canvas` vs `.fg-timeline` split above) — this layer is
+      // never meant to be styled directly, so it must not accidentally pick up host/theme CSS
+      // written against the real visible SVG chart's classes. The shared interaction modules
+      // (`selection.ts`, `keyboard-nav.ts`) never rely on these class names — they use the
+      // `[data-row-index]`/`[data-task-id]` attribute contract instead, which is identical
+      // between both renderers.
+      rowEl.className = 'fg-timeline-canvas__row';
+      rowEl.setAttribute('role', 'row');
+      rowEl.setAttribute('data-row-index', String(row.rowIndex));
+      rowEl.setAttribute('data-task-id', row.task.id);
+      rowEl.setAttribute('aria-rowindex', String(row.rowIndex + 1));
+      rowEl.setAttribute('aria-selected', isSelected ? 'true' : 'false');
+      rowEl.setAttribute('tabindex', row.task.id === focusedTaskId ? '0' : '-1');
+
+      const cellEl = document.createElement('div');
+      cellEl.className = 'fg-timeline-canvas__row-cell';
+      cellEl.setAttribute('role', 'gridcell');
+
+      const labelEl = document.createElement('span');
+      labelEl.className = 'fg-timeline-canvas__row-label';
+      // SECURITY: `task.name` is untrusted host-app data — textContent only, never innerHTML
+      // or a template string assembled into markup (security.md §1, spec §9).
+      labelEl.textContent = row.task.name;
+
+      const taskEl = document.createElement('div');
+      // Whitelist `task.type` before folding it into a class token — fall back to the `task`
+      // modifier for any value that isn't a known TaskKind, so untrusted data can't inject an
+      // arbitrary extra class (CSS-token spoofing).
+      const kindClass = isKnownTaskKind(row.task.type) ? row.task.type : 'task';
+      const classNames = ['fg-timeline-canvas__task', `fg-timeline-canvas__task--${kindClass}`];
+      if (isCritical) classNames.push('fg-timeline-canvas__task--critical');
+      if (isSelected) classNames.push('fg-timeline-canvas__task--selected');
+      taskEl.className = classNames.join(' ');
+      // `task.id` is a branded TaskId (developer-controlled, not free-text host input) — safe
+      // as an attribute value via setAttribute regardless.
+      taskEl.setAttribute('data-task-id', row.task.id);
+      taskEl.setAttribute('aria-label', buildTaskAriaLabel(row.task, isCritical, isSelected, calendar, locale));
+
+      cellEl.appendChild(labelEl);
+      cellEl.appendChild(taskEl);
+      rowEl.appendChild(cellEl);
+      a11yLayer.appendChild(rowEl);
+    }
+
+    // Canvas itself is now purely decorative — all semantic content lives in `a11yLayer`
+    // (Ticket 1's `role="img"`/`aria-label` stopgap is superseded, not layered on top of).
+    canvas.setAttribute('aria-hidden', 'true');
+    canvas.removeAttribute('role');
+    canvas.removeAttribute('aria-label');
+
+    if (hadFocusInside && focusedTaskId !== undefined) {
+      // Attribute-only selector (not `.fg-timeline-canvas__row[...]`) — `data-task-id` alone is
+      // already unique within this layer, and staying attribute-only keeps this lookup decoupled
+      // from the class-naming choice above.
+      const rowEl = a11yLayer.querySelector<HTMLElement>(
+        `[data-task-id="${cssEscapeAttr(focusedTaskId)}"]`,
+      );
+      // Fires focusin/focusout synchronously — SAFE, `isRendering` is still true here (set by
+      // the outer render() wrapper), so handleFocusChange() no-ops instead of recursing.
+      rowEl?.focus({ preventScroll: true });
+    }
+
+    // Always the LAST paint step (spec §8.2) — drawn on top of everything else, so the ring
+    // is never obscured by a bar, dependency arrow, or critical-path dash.
+    const focusBar = focusedTaskId !== undefined ? barByTaskId.get(focusedTaskId) : undefined;
+    paintFocusRing(ctx, focusBar, hadFocusInside, offsetX, offsetY, tokens);
   }
 }
 
@@ -750,6 +987,39 @@ function paintSelectionOutline(
     ctx.lineWidth = tokens.taskSelectedWidth;
     // Explicit — must NOT inherit a dash pattern from anything else.
     ctx.setLineDash([]);
+    ctx.stroke();
+  } finally {
+    ctx.restore();
+  }
+}
+
+/**
+ * Focus ring (Ticket 2, spec §8.2) — a solid, distinctly-colored/toned outline around the
+ * focused task's bar, painted LAST so it always sits on top of everything else. `bar` is
+ * `undefined` when nothing is focused, or when `focusedTaskId` no longer resolves in the
+ * current row set (e.g. just filtered/removed) — both are silent no-ops, never a throw.
+ * Solid stroke (NOT dashed, unlike the critical-path outline) — a third, independent visual
+ * signal from both critical (dashed) and selected (solid, different token/offset), so all
+ * three compose without visual collision (matches SVG's three-independent-signals model).
+ */
+function paintFocusRing(
+  ctx: CanvasRenderingContext2D,
+  bar: TaskBarLayout | undefined,
+  hadFocusInside: boolean,
+  offsetX: number,
+  offsetY: number,
+  tokens: DesignTokens,
+): void {
+  if (!hadFocusInside || bar === undefined) return;
+  const x = bar.x + offsetX;
+  const y = bar.y + offsetY;
+
+  ctx.save();
+  try {
+    ctx.strokeStyle = tokens.taskFocus;
+    ctx.lineWidth = tokens.taskFocusWidth;
+    ctx.setLineDash([]);
+    drawRoundedRect(ctx, x - 2, y - 2, bar.width + 4, bar.height + 4, 3);
     ctx.stroke();
   } finally {
     ctx.restore();

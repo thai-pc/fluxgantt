@@ -5,7 +5,9 @@
 // `drag-move.test.ts`'s `PointerEventPolyfill` setup exactly.
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { createSvgRenderer } from '../../src/render/svg-renderer.js';
+import { createCanvasRenderer } from '../../src/render/canvas-renderer.js';
 import { enableClickSelect } from '../../src/interaction/selection.js';
+import type { InteractiveRendererHandle } from '../../src/render/interactive-renderer-handle.js';
 import { toTaskId, type Task } from '../../src/types.js';
 
 function task(id: string, start: string, end: string, extra: Partial<Task> = {}): Task {
@@ -98,6 +100,12 @@ describe('enableClickSelect — DOM interaction', () => {
     });
     return { handle, dispose, onSelect, onToggle, onRangeSelect, onClear };
   }
+
+  it('handle.interactionRoot and handle.pointerEventTarget both alias handle.svg (Ticket 2 aliasing guarantee)', () => {
+    const { handle } = setup();
+    expect(handle.interactionRoot).toBe(handle.svg);
+    expect(handle.pointerEventTarget).toBe(handle.svg);
+  });
 
   it('below-threshold click on a .fg-task fires onSelect with the correct TaskId', () => {
     const { handle, onSelect } = setup();
@@ -274,5 +282,178 @@ describe('enableClickSelect — DOM interaction', () => {
     dispatchPointer(window, 'pointerup', { pointerId: 1, clientX: 100, clientY: 50 });
 
     expect(onSelect).not.toHaveBeenCalled();
+  });
+});
+
+// --- Minimal-mock structural test (Ticket 2, spec §12.4) — proves enableClickSelect is
+// decoupled from SVG specifically: a bare object satisfying InteractiveRendererHandle (no
+// `.svg` field, no `hitTestRow`) with hand-built row markup works identically to a real
+// SvgRendererHandle for the DOM-hit-test path.
+describe('enableClickSelect — minimal InteractiveRendererHandle mock (SVG-decoupling proof)', () => {
+  it('resolves a click via resolveRowHitDom against a bare interactionRoot/pointerEventTarget, no .svg field required', () => {
+    const root = document.createElement('div');
+    document.body.appendChild(root);
+    root.innerHTML = `
+      <div class="fg-timeline__row" data-row-index="0">
+        <div class="fg-task" data-task-id="mock-1"></div>
+      </div>
+    `;
+    const handle: InteractiveRendererHandle = { interactionRoot: root, pointerEventTarget: root };
+    const onSelect = vi.fn();
+    const onClear = vi.fn();
+    const dispose = enableClickSelect(handle, () => [], {
+      onSelect,
+      onToggle: vi.fn(),
+      onRangeSelect: vi.fn(),
+      onClear,
+    });
+
+    const taskEl = root.querySelector('.fg-task[data-task-id="mock-1"]')!;
+    dispatchPointer(taskEl, 'pointerdown', { pointerId: 1, clientX: 10, clientY: 10, bubbles: true });
+    dispatchPointer(window, 'pointerup', { pointerId: 1, clientX: 10, clientY: 10 });
+
+    expect(onSelect).toHaveBeenCalledTimes(1);
+    expect(onSelect).toHaveBeenCalledWith(toTaskId('mock-1'));
+
+    dispose();
+    root.remove();
+  });
+});
+
+// --- Canvas click-select (Ticket 2, spec §7.3 / §12.4) — real createCanvasRenderer() handle.
+describe('canvas click-select', () => {
+  let container: HTMLElement;
+  let tasks: Task[];
+
+  function stubGetContext2D(): void {
+    const ctx: Partial<CanvasRenderingContext2D> = new Proxy(
+      {},
+      {
+        get(_target, prop) {
+          if (prop === 'canvas') return undefined;
+          return (): unknown => undefined;
+        },
+      },
+    );
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockImplementation(() => ctx as CanvasRenderingContext2D);
+  }
+
+  function stubCanvasRect(canvas: HTMLCanvasElement): void {
+    vi.spyOn(canvas, 'getBoundingClientRect').mockReturnValue({
+      x: 0,
+      y: 0,
+      top: 0,
+      left: 0,
+      right: 1000,
+      bottom: 1000,
+      width: 1000,
+      height: 1000,
+      toJSON: () => ({}),
+    } as DOMRect);
+  }
+
+  beforeEach(() => {
+    container = document.createElement('div');
+    document.body.appendChild(container);
+    tasks = [
+      task('t1', '2026-01-05T09:00', '2026-01-07T09:00'),
+      task('t2', '2026-01-10T09:00', '2026-01-12T09:00'),
+      task('t3', '2026-01-15T09:00', '2026-01-17T09:00'),
+    ];
+  });
+
+  afterEach(() => {
+    container.remove();
+    vi.restoreAllMocks();
+  });
+
+  function setupCanvas(options?: Partial<Parameters<typeof enableClickSelect>[2]>) {
+    stubGetContext2D();
+    const handle = createCanvasRenderer(container, { tasks, dependencies: [] });
+    stubCanvasRect(handle.canvas);
+    const onSelect = vi.fn();
+    const onToggle = vi.fn();
+    const onRangeSelect = vi.fn();
+    const onClear = vi.fn();
+    const dispose = enableClickSelect(handle, () => tasks, {
+      onSelect,
+      onToggle,
+      onRangeSelect,
+      onClear,
+      ...options,
+    });
+    return { handle, dispose, onSelect, onToggle, onRangeSelect, onClear };
+  }
+
+  // Row 0's band midpoint in default density: HEADER_HEIGHT(32) + ROW_HEIGHT.default(32)/2.
+  const ROW0_Y = 32 + 16;
+  const ROW1_Y = 32 + 32 + 16;
+  const ROW2_Y = 32 + 64 + 16;
+
+  it('click on row 0\'s band fires onSelect with the correct TaskId (via hitTestRow, not DOM)', () => {
+    const { handle, onSelect } = setupCanvas();
+    dispatchPointer(handle.canvas, 'pointerdown', { pointerId: 1, clientX: 100, clientY: ROW0_Y, bubbles: true });
+    dispatchPointer(window, 'pointerup', { pointerId: 1, clientX: 100, clientY: ROW0_Y });
+    expect(onSelect).toHaveBeenCalledTimes(1);
+    expect(onSelect).toHaveBeenCalledWith(toTaskId('t1'));
+  });
+
+  it('click in the header band fires onClear, not onSelect', () => {
+    const { handle, onSelect, onClear } = setupCanvas();
+    dispatchPointer(handle.canvas, 'pointerdown', { pointerId: 1, clientX: 100, clientY: 10, bubbles: true });
+    dispatchPointer(window, 'pointerup', { pointerId: 1, clientX: 100, clientY: 10 });
+    expect(onClear).toHaveBeenCalledTimes(1);
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  it('click below the last row fires onClear, not onSelect', () => {
+    const { handle, onSelect, onClear } = setupCanvas();
+    const belowLast = 32 + tasks.length * 32 + 200;
+    dispatchPointer(handle.canvas, 'pointerdown', { pointerId: 1, clientX: 100, clientY: belowLast, bubbles: true });
+    dispatchPointer(window, 'pointerup', { pointerId: 1, clientX: 100, clientY: belowLast });
+    expect(onClear).toHaveBeenCalledTimes(1);
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  it('Shift+click after a prior click fires onRangeSelect with the correct ordered ids (via handle.interactionRoot/collectRowRange)', () => {
+    const { handle, onSelect, onRangeSelect } = setupCanvas();
+    dispatchPointer(handle.canvas, 'pointerdown', { pointerId: 1, clientX: 100, clientY: ROW0_Y, bubbles: true });
+    dispatchPointer(window, 'pointerup', { pointerId: 1, clientX: 100, clientY: ROW0_Y });
+    expect(onSelect).toHaveBeenCalledWith(toTaskId('t1'));
+
+    dispatchPointer(handle.canvas, 'pointerdown', {
+      pointerId: 2,
+      clientX: 100,
+      clientY: ROW2_Y,
+      bubbles: true,
+      shiftKey: true,
+    });
+    dispatchPointer(window, 'pointerup', { pointerId: 2, clientX: 100, clientY: ROW2_Y, shiftKey: true });
+
+    expect(onRangeSelect).toHaveBeenCalledTimes(1);
+    expect(onRangeSelect).toHaveBeenCalledWith([toTaskId('t1'), toTaskId('t2'), toTaskId('t3')]);
+  });
+
+  it('Ctrl/Cmd+click fires onToggle, not onSelect', () => {
+    const { handle, onToggle, onSelect } = setupCanvas();
+    dispatchPointer(handle.canvas, 'pointerdown', {
+      pointerId: 1,
+      clientX: 100,
+      clientY: ROW1_Y,
+      bubbles: true,
+      ctrlKey: true,
+    });
+    dispatchPointer(window, 'pointerup', { pointerId: 1, clientX: 100, clientY: ROW1_Y, ctrlKey: true });
+    expect(onToggle).toHaveBeenCalledTimes(1);
+    expect(onToggle).toHaveBeenCalledWith(toTaskId('t2'));
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  it('the pointerdown listener is on handle.canvas (pointerEventTarget), not handle.interactionRoot — a dispatch on interactionRoot alone fires nothing', () => {
+    const { handle, onSelect, onClear } = setupCanvas();
+    dispatchPointer(handle.interactionRoot, 'pointerdown', { pointerId: 1, clientX: 100, clientY: ROW0_Y, bubbles: true });
+    dispatchPointer(window, 'pointerup', { pointerId: 1, clientX: 100, clientY: ROW0_Y });
+    expect(onSelect).not.toHaveBeenCalled();
+    expect(onClear).not.toHaveBeenCalled();
   });
 });

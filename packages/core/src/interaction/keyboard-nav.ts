@@ -6,14 +6,16 @@
 // currently selected task (gated by `isReadOnly()` like Delete/undo/redo). Ctrl/Cmd+Plus
 // (`'+'`/`'='`) zooms in, Ctrl/Cmd+Minus (`'-'`) zooms out — neither gated by `isReadOnly()`,
 // since zoom mutates no store state. Delegates a SINGLE `keydown`
-// listener on `handle.svg` (spec §4.4's
-// recommended topology — consistent with `enableClickSelect`'s single-listener-on-svg-root
-// style, and avoids re-attaching N per-row listeners on every full repaint).
+// listener on `handle.interactionRoot` (spec §4.4's
+// recommended topology — consistent with `enableClickSelect`'s single-listener-on-root
+// style, and avoids re-attaching N per-row listeners on every full repaint). Generalized in
+// spec-canvas-renderer-ticket2.md §3.4 to work against any `InteractiveRendererHandle`
+// (SVG's `<svg>` or Canvas's hidden ARIA layer), not `SvgRendererHandle` specifically.
 //
 // TOUCHES THE DOM (native KeyboardEvent + `document.activeElement`/`.focus()`) — this is
 // the interaction layer, explicitly permitted per architecture.md. Still imports nothing
 // outside `@fluxgantt/core`'s own tree (no react/vue/svelte).
-import type { SvgRendererHandle } from '../render/svg-renderer.js';
+import type { InteractiveRendererHandle } from '../render/index.js';
 import { layoutRows, type RowLayout } from '../render/renderer-base.js';
 import type { Density, Task, TaskId } from '../types.js';
 
@@ -77,14 +79,16 @@ export interface KeyboardNavHandle {
 }
 
 /**
- * Attaches roving-tabindex keyboard navigation to a mounted `SvgRendererHandle`. Returns
- * `{ dispose, getFocusedTaskId }` — NOT a bare disposer (a deliberate, documented deviation
- * from `enableClickSelect`'s bare-function return: the renderer needs a live read of the
- * current focus state on every render to thread `focusedTaskId` through `SvgRendererInput`
- * and restore DOM focus after each full repaint — spec §4.5 point 2).
+ * Attaches roving-tabindex keyboard navigation to a mounted renderer handle (SVG or Canvas —
+ * anything satisfying `InteractiveRendererHandle`, spec-canvas-renderer-ticket2.md §3.4).
+ * Returns `{ dispose, getFocusedTaskId }` — NOT a bare disposer (a deliberate, documented
+ * deviation from `enableClickSelect`'s bare-function return: the renderer needs a live read of
+ * the current focus state on every render to thread `focusedTaskId` through
+ * `SvgRendererInput`/`CanvasRendererInput` and restore DOM focus after each full repaint —
+ * spec §4.5 point 2).
  */
 export function enableKeyboardNav(
-  handle: SvgRendererHandle,
+  handle: InteractiveRendererHandle,
   options: KeyboardNavOptions,
 ): KeyboardNavHandle {
   let disposed = false;
@@ -108,7 +112,7 @@ export function enableKeyboardNav(
     anchorTaskId = focusedTaskId;
   }
 
-  handle.svg.addEventListener('keydown', onKeyDown);
+  handle.interactionRoot.addEventListener('keydown', onKeyDown);
 
   return { dispose, getFocusedTaskId };
 
@@ -116,15 +120,24 @@ export function enableKeyboardNav(
     return focusedTaskId;
   }
 
-  function onKeyDown(event: KeyboardEvent): void {
+  function onKeyDown(rawEvent: Event): void {
+    // `handle.interactionRoot` is typed as the base `Element` (shared by both SVG's `<svg>`
+    // and Canvas's hidden a11y `<div>`, spec-canvas-renderer-ticket2.md §3.3) — `Element`'s
+    // `addEventListener` only recognizes `ElementEventMap` (no `keydown`), so the listener
+    // itself is typed to accept a plain `Event` and narrows once here. Always safe: this
+    // function is only ever registered for the literal `'keydown'` event type below.
+    const event = rawEvent as KeyboardEvent;
     if (disposed) return;
 
-    // Delegated single listener on `handle.svg` (spec §4.4) — only react to a keydown whose
+    // Delegated single listener on `handle.interactionRoot` (spec §4.4) — only react to a keydown whose
     // target is genuinely inside a row (i.e. the currently-focused row, since roving
     // tabindex makes exactly one row focusable at a time). A keydown bubbling up from some
-    // unrelated descendant (e.g. a future non-row focusable element) is ignored.
+    // unrelated descendant (e.g. a future non-row focusable element) is ignored. Guarded via the
+    // renderer-agnostic `[data-row-index]` attribute, NOT a class name — SVG's `.fg-timeline__row`
+    // and Canvas's `fg-timeline-canvas__row` are deliberately different classes (spec-canvas-
+    // renderer-ticket2.md), but both put `data-row-index` on the row element itself.
     const target = event.target;
-    if (!(target instanceof Element) || !target.closest('.fg-timeline__row')) return;
+    if (!(target instanceof Element) || !target.closest('[data-row-index]')) return;
 
     // Fresh, never cached (spec §4.3) — correctness even if tasks were added/removed by
     // any other code path between the last render and this keydown.
@@ -309,6 +322,6 @@ export function enableKeyboardNav(
   function dispose(): void {
     if (disposed) return;
     disposed = true;
-    handle.svg.removeEventListener('keydown', onKeyDown);
+    handle.interactionRoot.removeEventListener('keydown', onKeyDown);
   }
 }

@@ -6,6 +6,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { createSvgRenderer } from '../../src/render/svg-renderer.js';
 import { enableKeyboardNav, type KeyboardNavOptions } from '../../src/interaction/keyboard-nav.js';
+import type { InteractiveRendererHandle } from '../../src/render/interactive-renderer-handle.js';
 import { toTaskId, type Task, type TaskId } from '../../src/types.js';
 
 function task(id: string, start: string, end: string, extra: Partial<Task> = {}): Task {
@@ -106,6 +107,11 @@ describe('enableKeyboardNav — DOM interaction', () => {
   function rowFor(handle: ReturnType<typeof createSvgRenderer>, id: string): SVGElement {
     return handle.svg.querySelector(`.fg-timeline__row[data-task-id="${id}"]`) as SVGElement;
   }
+
+  it('handle.interactionRoot aliases handle.svg (Ticket 2 aliasing guarantee)', () => {
+    const { handle } = setup();
+    expect(handle.interactionRoot).toBe(handle.svg);
+  });
 
   it('initial focus resolves to the first row when no selection exists', () => {
     const { nav } = setup();
@@ -595,5 +601,52 @@ describe('enableKeyboardNav — DOM interaction', () => {
       dispatchKey(handle.svg, '=', { ctrlKey: true }); // svg root itself, not inside a .fg-timeline__row
       expect(onZoomIn).not.toHaveBeenCalled();
     });
+  });
+});
+
+// --- Minimal-mock structural test (Ticket 2, spec §12.4) — proves enableKeyboardNav is
+// decoupled from SVG specifically: a bare object satisfying InteractiveRendererHandle (no
+// `.svg` field) with hand-built row markup works identically to a real SvgRendererHandle.
+describe('enableKeyboardNav — minimal InteractiveRendererHandle mock (SVG-decoupling proof)', () => {
+  it('roving-tabindex ArrowDown navigation works against a bare interactionRoot, no .svg field required', () => {
+    const root = document.createElement('div');
+    document.body.appendChild(root);
+    root.setAttribute('role', 'grid');
+    root.innerHTML = `
+      <div class="fg-timeline__row" data-row-index="0" data-task-id="mock-1" tabindex="0"></div>
+      <div class="fg-timeline__row" data-row-index="1" data-task-id="mock-2" tabindex="-1"></div>
+    `;
+    const handle: InteractiveRendererHandle = { interactionRoot: root, pointerEventTarget: root };
+    const tasks = [
+      task('mock-1', '2026-01-05T09:00', '2026-01-07T09:00'),
+      task('mock-2', '2026-01-10T09:00', '2026-01-12T09:00'),
+    ];
+    const onSelect = vi.fn();
+    const nav = enableKeyboardNav(handle, {
+      onSelect,
+      onToggle: vi.fn(),
+      onRangeSelect: vi.fn(),
+      onDeleteSelected: vi.fn(),
+      onUndo: vi.fn(),
+      onRedo: vi.fn(),
+      onDuplicateSelected: vi.fn(),
+      onZoomIn: vi.fn(),
+      onZoomOut: vi.fn(),
+      getTasks: () => tasks,
+      density: 'default',
+      isReadOnly: () => false,
+      getSelection: () => [],
+    });
+
+    expect(nav.getFocusedTaskId()).toBe(toTaskId('mock-1'));
+    const row0 = root.querySelector('[data-task-id="mock-1"]') as HTMLElement;
+    dispatchKey(row0, 'ArrowDown', { bubbles: true });
+
+    expect(onSelect).toHaveBeenCalledTimes(1);
+    expect(onSelect).toHaveBeenCalledWith(toTaskId('mock-2'));
+    expect(nav.getFocusedTaskId()).toBe(toTaskId('mock-2'));
+
+    nav.dispose();
+    root.remove();
   });
 });
