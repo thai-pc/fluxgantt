@@ -112,15 +112,27 @@ export interface CanvasRendererHandle {
    *  so the two can coexist in a DOM/CSS sense without rule bleed. */
   readonly canvas: HTMLCanvasElement;
   readonly container: HTMLElement;
-  /** Full repaint (no diff — same v1 posture as `SvgRendererHandle.update`) with new input. */
+  /** Full repaint (no diff — same v1 posture as `SvgRendererHandle.update`) with new input.
+   *  Throws `CanvasDimensionExceededError` if the resulting canvas would exceed the
+   *  browser's real backing-store limit (see `MAX_CANVAS_DIMENSION_PX`), or propagates any
+   *  other error `render()` raises (e.g. `renderer-base.ts`'s `MAX_GRID_COLUMNS` guard) — on
+   *  ANY such throw, every piece of state this handle exposes (the canvas bitmap, the input/
+   *  options this call would have applied, and `getTimeScale()`) is rolled back atomically
+   *  to the last successful render, as if the call never happened. */
   update(input: CanvasRendererInput): void;
-  /** Change viewMode/density/timeRange/locale/ariaLabel and repaint with the last input. */
+  /** Change viewMode/density/timeRange/locale/ariaLabel and repaint with the last input.
+   *  Throws `CanvasDimensionExceededError` if the resulting canvas would exceed the
+   *  browser's real backing-store limit (see `MAX_CANVAS_DIMENSION_PX`), or propagates any
+   *  other error `render()` raises — on ANY such throw, every piece of state this handle
+   *  exposes (the canvas bitmap, the input/options this call would have applied, and
+   *  `getTimeScale()`) is rolled back atomically to the last successful render, as if the
+   *  call never happened. */
   setOptions(options: Partial<CanvasRendererOptions>): void;
   /** Removes the canvas element from `container`. `update()`/`setOptions()` after
    *  `destroy()` are a no-op — same contract as `SvgRendererHandle.destroy`. */
   destroy(): void;
   /** Same contract as `SvgRendererHandle.getTimeScale()` — `TimeScale` of the most recent
-   *  render. */
+   *  **successful** render. */
   getTimeScale(): TimeScale;
   /**
    * RESERVED for Ticket 2. `undefined` in Ticket 1 — no hidden ARIA DOM layer exists yet.
@@ -151,6 +163,57 @@ const TASK_LABEL_FONT = '12px system-ui, sans-serif';
 
 /** ~half-size of the hand-drawn dependency arrowhead triangle (px), §5.4. */
 const ARROWHEAD_SIZE_PX = 6;
+
+// --- Canvas backing-store dimension guard (spec-canvas-row-limit-fix.md) -----------------
+//
+// A `<canvas>` element's backing-store bitmap has a real, silent-failure ceiling per axis in
+// every browser this repo tests (Chromium/`playwright.config.ts`'s only project family):
+// `canvas.height`/`canvas.width` = 65536 makes every subsequent `ctx.*` draw call silently
+// no-op — no thrown exception, `getImageData` reads back fully transparent. `65535` paints
+// correctly. This is empirically confirmed against the CURRENT, post-Chromium-fix ceiling
+// (see spec §4.2 for why no additional safety margin is subtracted). Only validated against
+// Chromium — Safari/WebKit's real constraint is shaped differently (area-based, not
+// per-axis) and is NOT covered by this guard (spec §4.3), a flagged, explicitly-scoped
+// residual risk, not silently assumed solved.
+
+/**
+ * Hard per-axis ceiling for a `<canvas>` element's backing-store bitmap — see the comment
+ * above for how this number was derived and its known (Safari/WebKit) limits.
+ */
+export const MAX_CANVAS_DIMENSION_PX = 65_535;
+
+/**
+ * Thrown by `createCanvasRenderer()`/`CanvasRendererHandle.update()`/`.setOptions()` when the
+ * computed physical (post-devicePixelRatio) canvas bitmap size would exceed the browser's real
+ * `<canvas>` backing-store limit (see `MAX_CANVAS_DIMENSION_PX` above) — this is the ONLY way
+ * this file fails on an oversized project; it never silently renders a blank bitmap. See the
+ * module-level comment above `MAX_CANVAS_DIMENSION_PX` for the full empirical rationale
+ * (Chromium-only validation, known Safari/WebKit gap) — not repeated here so there is exactly
+ * ONE place to update if that rationale ever changes (e.g. WebKit testing lands).
+ */
+export class CanvasDimensionExceededError extends Error {
+  readonly axis: 'width' | 'height';
+  readonly physicalPx: number;
+  readonly limitPx: number;
+  readonly rowCount: number;
+  readonly devicePixelRatio: number;
+
+  constructor(axis: 'width' | 'height', physicalPx: number, limitPx: number, rowCount: number, devicePixelRatio: number) {
+    super(
+      `canvas-renderer: computed canvas ${axis} (${physicalPx}px physical) exceeds the browser's ` +
+        `safe <canvas> backing-store limit (${limitPx}px). This chart has ${rowCount} row(s) at ` +
+        `devicePixelRatio=${devicePixelRatio}. Reduce the task/row count, use a more compact ` +
+        `density, narrow the visible time range, or catch this error and fall back to ` +
+        `createSvgRenderer(), which has no such limit.`,
+    );
+    this.name = 'CanvasDimensionExceededError';
+    this.axis = axis;
+    this.physicalPx = physicalPx;
+    this.limitPx = limitPx;
+    this.rowCount = rowCount;
+    this.devicePixelRatio = devicePixelRatio;
+  }
+}
 
 // --- §5.2 Design tokens ------------------------------------------------------------------
 
@@ -246,17 +309,39 @@ function drawRoundedRect(
  * (container-first, input, optional options) — deliberate, so a future auto-switch call
  * site is a one-line change, not a signature adaptation.
  */
+/**
+ * Every piece of closure state `render()` reads from or assigns to, grouped into ONE object
+ * so `update()`/`setOptions()` can snapshot-and-restore it atomically on a failed `render()`
+ * (spec-canvas-row-limit-fix.md §5.3, hardened per its own follow-up review — a previous,
+ * hand-rolled per-field rollback missed `timeScale`, since `render()` can still throw AFTER
+ * assigning it, from `renderer-base.ts`'s independent `MAX_GRID_COLUMNS` guard inside
+ * `computeGridColumns`, not just from the dimension guard above). Grouping every mutated
+ * field into one object makes the rollback exhaustive BY CONSTRUCTION — a future field
+ * `render()` starts assigning is automatically covered by the same snapshot/restore, no
+ * per-field bookkeeping to remember.
+ */
+interface RenderState {
+  readonly input: CanvasRendererInput;
+  readonly options: CanvasRendererOptions;
+  // Mutable (not readonly) — the only field `render()` itself assigns, once, after every
+  // guard that can still throw has passed.
+  timeScale: TimeScale;
+}
+
 export function createCanvasRenderer(
   container: HTMLElement,
   input: CanvasRendererInput,
   options: CanvasRendererOptions = {},
 ): CanvasRendererHandle {
-  let currentInput = input;
-  let currentOptions: CanvasRendererOptions = { ...options };
+  // `timeScale` is assigned inside render(), which always runs synchronously below before
+  // the handle is returned — never read while still the placeholder (definite-assignment
+  // asserted, same spirit as the previous `let currentTimeScale!: TimeScale`).
+  let state: RenderState = {
+    input,
+    options: { ...options },
+    timeScale: undefined as unknown as TimeScale,
+  };
   let destroyed = false;
-  // Assigned inside render(), which always runs synchronously below before the handle is
-  // returned — never read while unassigned (definite-assignment asserted).
-  let currentTimeScale!: TimeScale;
 
   const canvas = document.createElement('canvas');
   canvas.className = 'fg-timeline-canvas';
@@ -275,20 +360,43 @@ export function createCanvasRenderer(
   // narrow of `maybeCtx`.
   const ctx: CanvasRenderingContext2D = maybeCtx;
 
-  render();
+  try {
+    render();
+  } catch (err) {
+    // Mirrors the null-2D-context guard above (§5.3 of the fix spec) — leave no half-mounted
+    // canvas behind on a construction-time failure.
+    canvas.remove();
+    throw err;
+  }
 
   return {
     canvas,
     container,
     update(nextInput: CanvasRendererInput): void {
       if (destroyed) return;
-      currentInput = nextInput;
-      render();
+      const previousState = state;
+      state = { ...state, input: nextInput };
+      try {
+        render();
+      } catch (err) {
+        // Roll back the WHOLE state object at once (input, options, AND timeScale) —
+        // atomic-by-construction, so every piece of state this handle exposes reflects the
+        // last SUCCESSFUL render, never a half-applied new one, no matter which guard inside
+        // render() is what actually threw (spec §5.3).
+        state = previousState;
+        throw err;
+      }
     },
     setOptions(nextOptions: Partial<CanvasRendererOptions>): void {
       if (destroyed) return;
-      currentOptions = { ...currentOptions, ...nextOptions };
-      render();
+      const previousState = state;
+      state = { ...state, options: { ...state.options, ...nextOptions } };
+      try {
+        render();
+      } catch (err) {
+        state = previousState;
+        throw err;
+      }
     },
     destroy(): void {
       if (destroyed) return;
@@ -298,31 +406,79 @@ export function createCanvasRenderer(
     getTimeScale(): TimeScale {
       // No `destroyed` guard needed — returns the last render's TimeScale (harmless, pure
       // data) even after destroy(), same non-throwing spirit as the rest of this handle.
-      return currentTimeScale;
+      return state.timeScale;
     },
     // RESERVED for Ticket 2 — no hidden ARIA DOM layer exists yet (see interface doc comment).
     interactionRoot: undefined,
   };
 
   function render(): void {
-    const calendar = currentInput.calendar ?? DEFAULT_CALENDAR;
-    const viewMode = currentOptions.viewMode ?? DEFAULT_VIEW_MODE;
-    const density = currentOptions.density ?? DEFAULT_DENSITY;
-    const locale = currentOptions.locale ?? DEFAULT_LOCALE;
-    const ariaLabel = (currentOptions.ariaLabel ?? DEFAULT_ARIA_LABEL).slice(0, MAX_ARIA_NAME_LENGTH);
+    const calendar = state.input.calendar ?? DEFAULT_CALENDAR;
+    const viewMode = state.options.viewMode ?? DEFAULT_VIEW_MODE;
+    const density = state.options.density ?? DEFAULT_DENSITY;
+    const locale = state.options.locale ?? DEFAULT_LOCALE;
+    const ariaLabel = (state.options.ariaLabel ?? DEFAULT_ARIA_LABEL).slice(0, MAX_ARIA_NAME_LENGTH);
 
-    const optionRange = currentOptions.timeRange;
+    const optionRange = state.options.timeRange;
     const range = optionRange
       ? {
           start: normalizeDate(optionRange.start, calendar.timezone),
           end: normalizeDate(optionRange.end, calendar.timezone),
         }
-      : deriveTimeRange(currentInput.tasks, viewMode, calendar);
+      : deriveTimeRange(state.input.tasks, viewMode, calendar);
 
     const timeScale = createTimeScale(range, viewMode, calendar);
-    currentTimeScale = timeScale;
+    // NOTE: `state.timeScale = timeScale` is deliberately NOT assigned here — deferred until
+    // after EVERY guard that can still throw has passed (the dimension guard below, AND
+    // `computeGridColumns`'s own `MAX_GRID_COLUMNS` guard further down), so `getTimeScale()`
+    // never reports a range that was never actually painted
+    // (spec-canvas-row-limit-fix.md §5.2, hardened per its own follow-up review).
+
     const rowHeight = ROW_HEIGHT[density];
-    const rows = layoutRows(currentInput.tasks, density);
+    const rows = layoutRows(state.input.tasks, density);
+
+    const offsetX = LABEL_COLUMN_WIDTH;
+    const offsetY = HEADER_HEIGHT;
+    const bodyHeight = rows.length > 0 ? rows[rows.length - 1]!.y + rowHeight : rowHeight;
+    const totalWidth = offsetX + timeScale.totalWidth;
+    const totalHeight = offsetY + bodyHeight;
+    const dpr = (typeof window !== 'undefined' ? window.devicePixelRatio : 1) || 1;
+
+    const physicalWidth = Math.round(totalWidth * dpr);
+    const physicalHeight = Math.round(totalHeight * dpr);
+
+    // --- Guards that can still throw — ALL of them MUST run before any canvas/DOM mutation,
+    // before the barByTaskId loop (avoids wasted O(rows) work and a misleading
+    // `clampedCount` console.warn firing right before a hard failure), and before
+    // `state.timeScale` is assigned (spec-canvas-row-limit-fix.md §5.2/§5.3, hardened): a
+    // throw at ANY point below this comment must leave the canvas's prior bitmap, and every
+    // other piece of exposed state, entirely untouched (see update()/setOptions() rollback
+    // above, which now rolls back `state` as one atomic unit for exactly this reason — a
+    // second, independent throw site here, `computeGridColumns`'s own `MAX_GRID_COLUMNS`
+    // guard, is not the dimension guard added by this fix, but must be treated identically:
+    // both run, and can both throw, before any state mutation).
+
+    // Dimension guard — height is checked first; both axes are independently checked, but if
+    // both overflow simultaneously the error reports 'height' (documented tie-break, not
+    // accidental ordering — spec §11).
+    if (physicalHeight > MAX_CANVAS_DIMENSION_PX) {
+      throw new CanvasDimensionExceededError('height', physicalHeight, MAX_CANVAS_DIMENSION_PX, rows.length, dpr);
+    }
+    if (physicalWidth > MAX_CANVAS_DIMENSION_PX) {
+      throw new CanvasDimensionExceededError('width', physicalWidth, MAX_CANVAS_DIMENSION_PX, rows.length, dpr);
+    }
+
+    // "Today" is read from the real clock only here, at the DOM boundary — never inside a
+    // pure `renderer-base.ts` function.
+    const now = getTemporal().Now.zonedDateTimeISO(calendar.timezone);
+    // `computeGridColumns` has its own independent `MAX_GRID_COLUMNS` guard (anti-DoS,
+    // `renderer-base.ts`) that can throw here — unrelated to, and checked after, the
+    // dimension guard above, but still strictly before any state mutation/canvas paint.
+    const gridColumns = computeGridColumns(timeScale, viewMode, calendar, locale, now);
+
+    // First mutation of exposed state, now that EVERY guard that could still throw has
+    // passed — this frame WILL complete successfully from here on.
+    state.timeScale = timeScale;
 
     const barByTaskId = new Map<TaskId, TaskBarLayout>();
     let clampedCount = 0;
@@ -344,27 +500,16 @@ export function createCanvasRenderer(
       );
     }
 
-    // "Today" is read from the real clock only here, at the DOM boundary — never inside a
-    // pure `renderer-base.ts` function.
-    const now = getTemporal().Now.zonedDateTimeISO(calendar.timezone);
-    const gridColumns = computeGridColumns(timeScale, viewMode, calendar, locale, now);
-    const criticalIds = new Set(currentInput.criticalPath?.criticalTaskIds ?? []);
-    const selectedIds = new Set(currentInput.selectedTaskIds ?? []);
-
-    const offsetX = LABEL_COLUMN_WIDTH;
-    const offsetY = HEADER_HEIGHT;
-    const bodyHeight = rows.length > 0 ? rows[rows.length - 1]!.y + rowHeight : rowHeight;
-    const totalWidth = offsetX + timeScale.totalWidth;
-    const totalHeight = offsetY + bodyHeight;
+    const criticalIds = new Set(state.input.criticalPath?.criticalTaskIds ?? []);
+    const selectedIds = new Set(state.input.selectedTaskIds ?? []);
 
     const tokens = resolveDesignTokens(container);
 
-    const dpr = (typeof window !== 'undefined' ? window.devicePixelRatio : 1) || 1;
     // Reassigning .width/.height clears the bitmap AND resets any transform, per the
     // HTMLCanvasElement spec — always reassigned even if numerically unchanged, so every
     // render() starts from a truly blank, untransformed canvas (no accumulation bugs).
-    canvas.width = Math.round(totalWidth * dpr);
-    canvas.height = Math.round(totalHeight * dpr);
+    canvas.width = physicalWidth;
+    canvas.height = physicalHeight;
     canvas.style.width = `${totalWidth}px`;
     canvas.style.height = `${totalHeight}px`;
     // Defensive — stated explicitly rather than relying silently on width/height-
@@ -377,7 +522,7 @@ export function createCanvasRenderer(
     // Paint order mirrors svg-renderer.ts's DOM append order exactly (bottom → top z-order).
     paintGrid(ctx, gridColumns, offsetX, totalHeight, tokens);
     paintHeader(ctx, gridColumns, offsetX, timeScale.totalWidth, tokens);
-    paintDependencies(ctx, currentInput.dependencies, barByTaskId, rowHeight, offsetX, offsetY, tokens);
+    paintDependencies(ctx, state.input.dependencies, barByTaskId, rowHeight, offsetX, offsetY, tokens);
     paintRows(ctx, rows, barByTaskId, criticalIds, selectedIds, rowHeight, offsetX, offsetY, tokens);
     paintLabelDivider(ctx, offsetX, totalHeight, tokens);
   }
