@@ -202,54 +202,166 @@ const TASK_LABEL_FONT = '12px system-ui, sans-serif';
 /** ~half-size of the hand-drawn dependency arrowhead triangle (px), §5.4. */
 const ARROWHEAD_SIZE_PX = 6;
 
-// --- Canvas backing-store dimension guard (spec-canvas-row-limit-fix.md) -----------------
+// --- Canvas backing-store dimension guard (spec-canvas-row-limit-fix.md, extended by
+// spec-canvas-webkit-dimension-limit.md for WebKit/Safari) --------------------------------
 //
-// A `<canvas>` element's backing-store bitmap has a real, silent-failure ceiling per axis in
-// every browser this repo tests (Chromium/`playwright.config.ts`'s only project family):
+// A `<canvas>` element's backing-store bitmap has a real, silent-failure ceiling in every
+// browser this repo tests. Chromium's is a simple PER-AXIS cutoff:
 // `canvas.height`/`canvas.width` = 65536 makes every subsequent `ctx.*` draw call silently
 // no-op — no thrown exception, `getImageData` reads back fully transparent. `65535` paints
 // correctly. This is empirically confirmed against the CURRENT, post-Chromium-fix ceiling
-// (see spec §4.2 for why no additional safety margin is subtracted). Only validated against
-// Chromium — Safari/WebKit's real constraint is shaped differently (area-based, not
-// per-axis) and is NOT covered by this guard (spec §4.3), a flagged, explicitly-scoped
-// residual risk, not silently assumed solved.
+// (see spec-canvas-row-limit-fix.md §4.2 for why no additional safety margin is subtracted).
+//
+// WEBKIT/SAFARI (spec-canvas-webkit-dimension-limit.md §4) — measured 2026-08-20 against
+// Playwright's bundled `webkit` project, build version "26.5" (`browser.version()`), via a
+// binary-search methodology mirroring the Chromium fix's own. Findings:
+//
+// 1. FAILURE MODE (§4 Step 1): identical shape to Chromium — silent no-op. No exception is
+//    ever thrown at `canvas.width =`/`canvas.height =` assignment, at `getContext('2d')`, or
+//    at any draw call (`fillRect`), for shapes far beyond every plausible ceiling (confirmed
+//    up to 100,000 x 100,000). `getImageData` simply reads back fully transparent
+//    (`[0,0,0,0]`) past the ceiling. This confirms the proactive-guard shape (this file's
+//    existing approach) is still correct for WebKit too — no `try/catch`-around-paint
+//    redesign needed.
+// 2. INDEPENDENT PER-AXIS CAP (§4 Step 2): a genuine, reproducible per-axis ceiling DOES
+//    exist, independent of area — measured at exactly 4,194,305px on either axis alone
+//    (`width=1, height=4,194,305` paints; `height=4,194,306` does not; confirmed symmetric
+//    for `height=1` varying width; reproduced identically across 3 independent fresh-browser
+//    trials). However, this WebKit-real per-axis ceiling (~4.19M) is dramatically LARGER than
+//    Chromium's existing `MAX_CANVAS_DIMENSION_PX` (65,535), which already runs UNCONDITIONALLY
+//    for every engine, including WebKit, strictly before the WebKit-only branch below. Any
+//    shape that reaches the WebKit branch has therefore already had both axes confirmed
+//    `<= 65,535` — WebKit's own, much larger per-axis ceiling can never be the binding
+//    constraint. Per this measurement, no separate `MAX_CANVAS_DIMENSION_PX_WEBKIT` constant
+//    or check is added — it would be permanently unreachable dead code. (If a future
+//    WebKit build is ever found with a per-axis ceiling BELOW 65,535, that would need its own
+//    re-measurement and a new constant — not expected given this finding, but noting the
+//    reasoning so a future re-check knows what to look for.)
+// 3. AREA CEILING (§4 Step 3) — NOT a single stable number. Binary-searching a near-square
+//    shape in a freshly-launched, single-canvas browser page found the boundary at exactly
+//    `16384 x 16384` (`16383 x 16383` paints; `16384 x 16384` — 268,435,456px², exactly 2^28 —
+//    does not) in that isolated condition, consistent with an underlying ~1 GiB
+//    (2^30 byte, `width * height * 4`) total backing-store budget. BUT this ceiling was found
+//    to be highly sensitive to the page's accumulated allocation history: the exact same
+//    `16384 x 16384` shape PAINTED SUCCESSFULLY when it was the very first canvas ever
+//    created in a fresh page, yet FAILED after ~14 prior large-canvas probes earlier in the
+//    same page session (each explicitly shrunk back to `1x1` after use, which did not fully
+//    prevent the effect) — i.e., the real ceiling moved down under realistic cumulative
+//    memory pressure, not just varying by aspect ratio. This directly matches the
+//    RAM-relative-limit concern flagged in the spec (§3 point 3 / §4 Step 4) rather than a
+//    fixed platform fact the way Chromium's 65,535 was judged to be.
+// 4. CHOSEN CONSTANT — a DEFENSIBLY CONSERVATIVE FLOOR, not the best-case empirical number,
+//    per the spec's explicit instruction (§4 Step 4, §5 Option A's own "still inherently a
+//    conservative guess" framing): `MAX_CANVAS_AREA_PX_WEBKIT = 16_777_216` (4096 x 4096,
+//    2^24px²). This is ~16x under the best-case ~2^28px² ceiling measured above, is itself
+//    the most-conservative figure independently cited across public sources for older iOS
+//    Safari (spec §3 point 2), and was confirmed (2026-08-20, same Playwright webkit build)
+//    to paint correctly even as the very first canvas allocation in a fresh browser page —
+//    i.e. it is never the binding constraint in any condition this methodology observed,
+//    leaving real headroom for (a) actual Safari/iOS builds this Linux/WPE-based Playwright
+//    `webkit` project does not claim to reproduce exactly (spec §4 Step 4/§12.2's caveat),
+//    (b) real host pages that have already allocated meaningful memory before Canvas mode
+//    mounts (the realistic embedding scenario, unlike this measurement's isolated lab
+//    conditions), and (c) lower-RAM real devices than this measurement's CI/dev machine.
 
 /**
- * Hard per-axis ceiling for a `<canvas>` element's backing-store bitmap — see the comment
- * above for how this number was derived and its known (Safari/WebKit) limits.
+ * Hard per-axis ceiling for a `<canvas>` element's backing-store bitmap — applies to EVERY
+ * engine (Chromium and default/fallback branch alike). See the comment block above for how
+ * this number was derived and WebKit's own (much larger, and therefore non-binding) per-axis
+ * finding.
  */
 export const MAX_CANVAS_DIMENSION_PX = 65_535;
 
 /**
+ * WebKit-only backing-store AREA ceiling (physical `width * height`, in px²) — see the
+ * comment block above `MAX_CANVAS_DIMENSION_PX` for the full empirical methodology, the
+ * measured-but-unstable real ceiling this deliberately sits far under, and why it is framed
+ * as a conservative floor rather than an exact number. Only checked on the `isWebKitEngine()`
+ * branch — never applied to Chromium or any other engine (§5 Option A, engine detection).
+ */
+export const MAX_CANVAS_AREA_PX_WEBKIT = 16_777_216;
+
+/**
+ * Inferred, not queried — no capability-query API exists for a `<canvas>` backing-store
+ * limit. Internal only, not exported (small public surface, coding-conventions.md).
+ * Standard "Safari but not actually Chrome/Chromium/Android" UA pattern — Chrome/Edge/etc.
+ * all include the literal substring "Safari" in their UA string for legacy-compat reasons, so
+ * a plain substring check is insufficient; this must positively EXCLUDE every known
+ * Chromium-family marker too. `navigator.userAgent` is client-controlled/spoofable — see
+ * spec-canvas-webkit-dimension-limit.md §10 for why this is treated as a correctness
+ * (not security) concern: the worst case of a misdetection is the same "blank chart, no
+ * error" failure this guard exists to close, never a data-integrity/injection risk.
+ */
+function isWebKitEngine(): boolean {
+  if (typeof navigator === 'undefined') return false;
+  const ua = navigator.userAgent;
+  return /^((?!chrome|chromium|crios|edg|android).)*safari/i.test(ua);
+}
+
+/**
  * Thrown by `createCanvasRenderer()`/`CanvasRendererHandle.update()`/`.setOptions()` when the
- * computed physical (post-devicePixelRatio) canvas bitmap size would exceed the browser's real
- * `<canvas>` backing-store limit (see `MAX_CANVAS_DIMENSION_PX` above) — this is the ONLY way
- * this file fails on an oversized project; it never silently renders a blank bitmap. See the
- * module-level comment above `MAX_CANVAS_DIMENSION_PX` for the full empirical rationale
- * (Chromium-only validation, known Safari/WebKit gap) — not repeated here so there is exactly
- * ONE place to update if that rationale ever changes (e.g. WebKit testing lands).
+ * computed physical (post-devicePixelRatio) canvas bitmap size would exceed the applicable
+ * `<canvas>` backing-store limit — this is the ONLY way this file fails on an oversized
+ * project; it never silently renders a blank bitmap. See the module-level comment above
+ * `MAX_CANVAS_DIMENSION_PX` for the full empirical rationale (Chromium's per-axis ceiling,
+ * applied to every engine; WebKit's additional, engine-gated area ceiling) — not repeated
+ * here so there is exactly ONE place to update if that rationale ever changes.
  */
 export class CanvasDimensionExceededError extends Error {
-  readonly axis: 'width' | 'height';
+  /** 'area' is reported when neither individual axis exceeds `MAX_CANVAS_DIMENSION_PX`, but
+   *  `width * height` exceeds `MAX_CANVAS_AREA_PX_WEBKIT` on the WebKit-only branch. Existing
+   *  'width'/'height' members and their meaning are UNCHANGED from the shipped Chromium fix. */
+  readonly axis: 'width' | 'height' | 'area';
+
+  /** For axis 'width'|'height': the offending physical pixel LENGTH on that axis (unchanged
+   *  meaning/unit from the shipped Chromium fix). For axis 'area': the offending physical
+   *  pixel AREA (`physicalWidth * physicalHeight`). Always the exact quantity compared
+   *  against `limitPx` to decide to throw — kept as one field (not made optional) so existing
+   *  'width'/'height' consumers see no type-level change. */
   readonly physicalPx: number;
+  /** The ceiling `physicalPx` was compared against — `MAX_CANVAS_DIMENSION_PX` for
+   *  'width'/'height', `MAX_CANVAS_AREA_PX_WEBKIT` for 'area'. */
   readonly limitPx: number;
   readonly rowCount: number;
   readonly devicePixelRatio: number;
 
-  constructor(axis: 'width' | 'height', physicalPx: number, limitPx: number, rowCount: number, devicePixelRatio: number) {
-    super(
-      `canvas-renderer: computed canvas ${axis} (${physicalPx}px physical) exceeds the browser's ` +
-        `safe <canvas> backing-store limit (${limitPx}px). This chart has ${rowCount} row(s) at ` +
-        `devicePixelRatio=${devicePixelRatio}. Reduce the task/row count, use a more compact ` +
-        `density, narrow the visible time range, or catch this error and fall back to ` +
-        `createSvgRenderer(), which has no such limit.`,
-    );
+  /** Populated ONLY when `axis === 'area'`; `undefined` for 'width'/'height' (unchanged shape
+   *  there). The two physical dimensions whose product produced `physicalPx`, given for free
+   *  since render() already computed both — lets a catch site log/report the actual shape
+   *  that overflowed, not just the product. */
+  readonly physicalWidth?: number | undefined;
+  readonly physicalHeight?: number | undefined;
+
+  constructor(
+    axis: 'width' | 'height' | 'area',
+    physicalPx: number,
+    limitPx: number,
+    rowCount: number,
+    devicePixelRatio: number,
+    areaDimensions?: { readonly physicalWidth: number; readonly physicalHeight: number },
+  ) {
+    const message =
+      axis === 'area'
+        ? `canvas-renderer: computed canvas area (${physicalPx}px², ${areaDimensions?.physicalWidth}x` +
+          `${areaDimensions?.physicalHeight} physical) exceeds this engine's safe <canvas> ` +
+          `backing-store area limit (${limitPx}px²). This chart has ${rowCount} row(s) at ` +
+          `devicePixelRatio=${devicePixelRatio}. Reduce the task/row count, use a more compact ` +
+          `density, narrow the visible time range, or catch this error and fall back to ` +
+          `createSvgRenderer(), which has no such limit.`
+        : `canvas-renderer: computed canvas ${axis} (${physicalPx}px physical) exceeds the browser's ` +
+          `safe <canvas> backing-store limit (${limitPx}px). This chart has ${rowCount} row(s) at ` +
+          `devicePixelRatio=${devicePixelRatio}. Reduce the task/row count, use a more compact ` +
+          `density, narrow the visible time range, or catch this error and fall back to ` +
+          `createSvgRenderer(), which has no such limit.`;
+    super(message);
     this.name = 'CanvasDimensionExceededError';
     this.axis = axis;
     this.physicalPx = physicalPx;
     this.limitPx = limitPx;
     this.rowCount = rowCount;
     this.devicePixelRatio = devicePixelRatio;
+    this.physicalWidth = areaDimensions?.physicalWidth;
+    this.physicalHeight = areaDimensions?.physicalHeight;
   }
 }
 
@@ -610,12 +722,34 @@ export function createCanvasRenderer(
 
     // Dimension guard — height is checked first; both axes are independently checked, but if
     // both overflow simultaneously the error reports 'height' (documented tie-break, not
-    // accidental ordering — spec §11).
+    // accidental ordering — spec-canvas-row-limit-fix.md §11). Runs UNCHANGED, for every
+    // engine, before the WebKit-only branch below (spec-canvas-webkit-dimension-limit.md §7.1
+    // — a Chromium (or any other non-WebKit) user must never see a MORE restrictive outcome
+    // than today's shipped behavior; this branch only ever ADDS restriction, never removes it).
     if (physicalHeight > MAX_CANVAS_DIMENSION_PX) {
       throw new CanvasDimensionExceededError('height', physicalHeight, MAX_CANVAS_DIMENSION_PX, rows.length, dpr);
     }
     if (physicalWidth > MAX_CANVAS_DIMENSION_PX) {
       throw new CanvasDimensionExceededError('width', physicalWidth, MAX_CANVAS_DIMENSION_PX, rows.length, dpr);
+    }
+
+    // WebKit-only area guard (spec-canvas-webkit-dimension-limit.md §5 Option A / §7.1). Only
+    // reachable once BOTH Chromium-shaped per-axis checks above have already passed — see the
+    // module-level comment above `MAX_CANVAS_AREA_PX_WEBKIT` for the full empirical rationale,
+    // including why no separate WebKit per-axis check exists (dominated by the check above).
+    // Tie-break order stays height -> width -> area, extending the existing precedent.
+    if (isWebKitEngine()) {
+      const physicalArea = physicalWidth * physicalHeight;
+      if (physicalArea > MAX_CANVAS_AREA_PX_WEBKIT) {
+        throw new CanvasDimensionExceededError(
+          'area',
+          physicalArea,
+          MAX_CANVAS_AREA_PX_WEBKIT,
+          rows.length,
+          dpr,
+          { physicalWidth, physicalHeight },
+        );
+      }
     }
 
     // "Today" is read from the real clock only here, at the DOM boundary — never inside a

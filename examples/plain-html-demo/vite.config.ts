@@ -11,11 +11,14 @@ import { defineConfig } from 'vite';
 // `tests/a11y/canvas-renderer.spec.ts` and `tests/visual/canvas-renderer-focus-ring.spec.ts` —
 // a TEMPORARY, Ticket-2-only fixture (spec-canvas-renderer-ticket2.md §12.5) exercising the
 // hidden ARIA grid layer + click-select/keyboard-nav parity against a 1,000-task dataset (see
-// that file's header comment for why 1,000, not architecture.md's `>2000` figure). Both
-// canvas harnesses import `createCanvasRenderer` via a relative path directly into workspace
-// source, since that module isn't part of the published `@fluxgantt/core` surface yet (see each
-// file's own header comment). All are listed as rollup inputs so `vite build` type/asset-checks
-// every one of them.
+// that file's header comment for why 1,000, not architecture.md's `>2000` figure). The
+// canvas-webkit-dimension-guard-harness page exists for
+// `tests/visual/canvas-renderer-webkit-dimension-guard.spec.ts` — a TEMPORARY,
+// spec-canvas-webkit-dimension-limit.md-only fixture (§13.2), parametrized via `?rows=N` to hit
+// the exact WebKit area-guard row-count boundary. All three canvas harnesses import
+// `createCanvasRenderer` via a relative path directly into workspace source, since that module
+// isn't part of the published `@fluxgantt/core` surface yet (see each file's own header
+// comment). All are listed as rollup inputs so `vite build` type/asset-checks every one of them.
 export default defineConfig({
   server: {
     fs: {
@@ -34,6 +37,9 @@ export default defineConfig({
         selection: fileURLToPath(new URL('./selection.html', import.meta.url)),
         canvasHarness: fileURLToPath(new URL('./canvas-harness.html', import.meta.url)),
         canvasA11yHarness: fileURLToPath(new URL('./canvas-a11y-harness.html', import.meta.url)),
+        canvasWebkitDimensionGuardHarness: fileURLToPath(
+          new URL('./canvas-webkit-dimension-guard-harness.html', import.meta.url),
+        ),
       },
     },
   },

@@ -63,10 +63,19 @@ jobs:
         run: pnpm build
 
       - name: Install Playwright browsers
-        run: pnpm exec playwright install --with-deps chromium
+        # `webkit` added for spec-canvas-webkit-dimension-limit.md's new
+        # `webkit-canvas-dimension-guard` project (§12.2).
+        run: pnpm exec playwright install --with-deps chromium webkit
 
       - name: e2e (drives examples/plain-html-demo via Playwright webServer)
         run: pnpm test:e2e
+
+      - name: "WebKit canvas area-dimension guard (spec-canvas-webkit-dimension-limit.md §12.2)"
+        # NOTE: each `pnpm test:*` script is scoped to its own `--project=`, unlike a bare
+        # `playwright test` (which would run every configured project by default) — this repo's
+        # `test:e2e` only ever ran the `e2e` project, so the new `webkit-canvas-dimension-guard`
+        # project needs its own explicit script + CI step, not just an installed browser binary.
+        run: pnpm test:webkit-canvas-dimension-guard
 
 # NOTE: This workflow build-checks the docs site and example apps (per the locked decision:
 # "CI build-check, deploy later"). A live deploy (e.g. Vercel/GitHub Pages) needs an external
