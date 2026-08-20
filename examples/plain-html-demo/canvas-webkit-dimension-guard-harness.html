@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>FluxGantt · canvas WebKit dimension-guard harness</title>
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <main>
+      <h1>FluxGantt — Canvas WebKit dimension-guard harness (temporary)</h1>
+      <p>
+        Fixture for <code>tests/visual/canvas-renderer-webkit-dimension-guard.spec.ts</code>
+        (spec-canvas-webkit-dimension-limit.md §13.2) only. Reads <code>?rows=N</code> from the
+        query string, builds N flat 1-day tasks confined to a fixed 1-day <code>timeRange</code>
+        (so <code>physicalWidth</code> stays constant regardless of N — only
+        <code>physicalHeight</code>, and therefore the computed area, varies with the row count),
+        and calls <code>createCanvasRenderer()</code> directly. See
+        <code>src/canvas-webkit-dimension-guard-harness.ts</code>'s header comment for the exact
+        row-count boundary math. Result is reported via <code>document.body.dataset.result</code>
+        (<code>"ok"</code> or <code>"error"</code>) plus <code>data-error-axis</code> for
+        assertions — same "temporary, ticket-scoped fixture" posture as
+        <code>canvas-harness.html</code>/<code>canvas-a11y-harness.html</code>.
+      </p>
+      <div id="gantt"></div>
+      <pre id="error-message"></pre>
+    </main>
+    <script type="module" src="/src/canvas-webkit-dimension-guard-harness.ts"></script>
+  </body>
+</html>

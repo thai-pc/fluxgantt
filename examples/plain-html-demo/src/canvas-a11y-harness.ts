@@ -21,6 +21,15 @@ import { enableKeyboardNav } from '../../../packages/core/src/interaction/keyboa
 import { layoutRows } from '../../../packages/core/src/render/renderer-base.js';
 import { toTaskId, type Task, type TaskId } from '@fluxgantt/core';
 
+// `@fluxgantt/core` treats Temporal as an optional peerDependency and reads `globalThis.Temporal`
+// (spec-canvas-webkit-dimension-limit.md §13.2 finding, `packages/core/src/internal/temporal.ts`)
+// — it is the HOST APP's job to install it. Guarded (`??=`) so this is a no-op wherever the
+// runtime already has native `Temporal` (e.g. this repo's Playwright-bundled Chromium build, at
+// the time of writing) and only actually installs the polyfill where it's missing (e.g.
+// Playwright's bundled WebKit build, which does not yet ship native `Temporal`) — required for
+// this harness to run under the new `webkit-canvas-dimension-guard` Playwright project.
+(globalThis as { Temporal?: typeof Temporal }).Temporal ??= Temporal;
+
 // TASK_COUNT is deliberately NOT the architecture.md `>2000` Canvas-switch figure. Real browsers
 // impose a hard PER-DIMENSION limit on a `<canvas>`'s backing store — confirmed empirically in
 // this environment via a Playwright binary search (fill a marker rect near the bottom edge of

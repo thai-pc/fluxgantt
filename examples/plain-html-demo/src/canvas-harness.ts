@@ -10,8 +10,19 @@
 // mode into `createGantt().mount()`'s automatic renderer-selection logic. `toTaskId`/
 // `toDependencyId`/`Task`/`Dependency` are still imported from the public package below, since
 // those ARE public.
+import { Temporal } from '@js-temporal/polyfill';
 import { createCanvasRenderer } from '../../../packages/core/src/render/canvas-renderer.js';
 import { computeCriticalPath, toTaskId, toDependencyId, type Task, type Dependency } from '@fluxgantt/core';
+
+// `@fluxgantt/core` treats Temporal as an optional peerDependency and reads `globalThis.Temporal`
+// (spec-canvas-webkit-dimension-limit.md §13.2 finding, `packages/core/src/internal/temporal.ts`)
+// — it is the HOST APP's job to install it. Guarded (`??=`) so this is a no-op wherever the
+// runtime already has native `Temporal` (e.g. this repo's Playwright-bundled Chromium build, at
+// the time of writing) and only actually installs the polyfill where it's missing (e.g.
+// Playwright's bundled WebKit build, which does not yet ship native `Temporal`) — required for
+// this harness to run under the new `webkit-canvas-dimension-guard` Playwright project (this
+// fixture is reused there for the safe-shape smoke test, per that spec's §13.2).
+(globalThis as { Temporal?: typeof Temporal }).Temporal ??= Temporal;
 
 // Reuses the same hierarchy + siblings shape as `selection.ts`'s fixture (2-level hierarchy +
 // flat siblings), plus one milestone and one dependency of each FS/SS/FF/SF type, to exercise

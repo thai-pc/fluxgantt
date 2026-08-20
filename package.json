@@ -16,6 +16,7 @@
     "test:e2e": "playwright test --project=e2e",
     "test:visual": "playwright test --project=visual",
     "test:a11y": "playwright test --project=a11y",
+    "test:webkit-canvas-dimension-guard": "playwright test --project=webkit-canvas-dimension-guard",
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
     "size": "turbo run size",

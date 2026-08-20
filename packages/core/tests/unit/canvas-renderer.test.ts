@@ -12,10 +12,12 @@
 // already covered by the separate Playwright visual-regression spec).
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import fc from 'fast-check';
+import type { Temporal } from '@js-temporal/polyfill';
 import {
   createCanvasRenderer,
   CanvasDimensionExceededError,
   MAX_CANVAS_DIMENSION_PX,
+  MAX_CANVAS_AREA_PX_WEBKIT,
 } from '../../src/render/canvas-renderer.js';
 import { computeCriticalPath } from '../../src/compute/critical-path.js';
 import { DEFAULT_CALENDAR, normalizeDate } from '../../src/compute/working-calendar.js';
@@ -177,6 +179,50 @@ function installMockContext(mock: MockContext2D): void {
 
 function setDpr(value: number): void {
   Object.defineProperty(window, 'devicePixelRatio', { value, configurable: true, writable: true });
+}
+
+// --- spec-canvas-webkit-dimension-limit.md §13.1 -------------------------------------------
+const ORIGINAL_USER_AGENT = navigator.userAgent;
+
+/** Mirrors `setDpr()`'s override pattern — overrides `navigator.userAgent` for the current
+ *  test, restored in `afterEach` below (navigator.userAgent, unlike devicePixelRatio, is read
+ *  by `isWebKitEngine()` in every `render()` call, so a leaked override could silently affect
+ *  unrelated later tests — worth actually restoring, not just relying on each test setting its
+ *  own value). */
+function setUserAgent(ua: string): void {
+  Object.defineProperty(navigator, 'userAgent', { value: ua, configurable: true });
+}
+
+const WEBKIT_UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15';
+const CHROMIUM_UA =
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+const CHROME_ANDROID_UA =
+  'Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36';
+const EDGE_UA =
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 Edg/120.0.0.0';
+
+afterEach(() => {
+  setUserAgent(ORIGINAL_USER_AGENT);
+});
+
+/**
+ * A shape whose physical AREA exceeds `MAX_CANVAS_AREA_PX_WEBKIT` (16,777,216) but whose
+ * individual physical axes both stay comfortably under `MAX_CANVAS_DIMENSION_PX` (65,535) —
+ * the single shape this whole ticket's guard exists to catch on WebKit, and the single shape
+ * whose behavior must NOT change on Chromium (§13.3's "must not regress" case). `viewMode:
+ * 'day'` (60px/day, `renderer-base.ts`) over an exact 81-day range gives a deterministic
+ * `physicalWidth = 160 (LABEL_COLUMN_WIDTH) + 81*60 = 5,020`; `buildFlatTasks(312)` (flat, no
+ * hierarchy) gives a deterministic `physicalHeight = 32 (HEADER_HEIGHT) + 312*32 = 10,016`.
+ * `5,020 * 10,016 = 50,280,320` — comfortably over the 16,777,216 WebKit area ceiling, and
+ * both axes comfortably under 65,535.
+ */
+function buildAreaOnlyOverflowFixture(): {
+  tasks: Task[];
+  timeRange: { start: Temporal.ZonedDateTime; end: Temporal.ZonedDateTime };
+} {
+  const start = normalizeDate('2026-01-01T00:00', cal.timezone);
+  const end = start.add({ days: 81 });
+  return { tasks: buildFlatTasks(312), timeRange: { start, end } };
 }
 
 // --- Structure / ARIA ---------------------------------------------------------------------
@@ -1164,6 +1210,158 @@ describe('canvas dimension guard', () => {
       expect(thrown).toBeInstanceOf(CanvasDimensionExceededError);
       expect(thrown).toBeInstanceOf(Error);
       expect((thrown as CanvasDimensionExceededError).name).toBe('CanvasDimensionExceededError');
+    });
+  });
+
+  // --- spec-canvas-webkit-dimension-limit.md §13.1 (WebKit-only area guard) --------------
+  describe('WebKit-only area guard', () => {
+    it('Chromium UA + area-only-overflowing shape: no throw (must not regress today\'s shipped behavior)', () => {
+      setDpr(1);
+      setUserAgent(CHROMIUM_UA);
+      const mock = createMockContext2D();
+      installMockContext(mock);
+      const { tasks, timeRange } = buildAreaOnlyOverflowFixture();
+      expect(() =>
+        createCanvasRenderer(container, { tasks, dependencies: [] }, { viewMode: 'day', timeRange }),
+      ).not.toThrow();
+    });
+
+    it('WebKit UA + the SAME area-only-overflowing shape: throws CanvasDimensionExceededError with axis "area"', () => {
+      setDpr(1);
+      setUserAgent(WEBKIT_UA);
+      const mock = createMockContext2D();
+      installMockContext(mock);
+      const { tasks, timeRange } = buildAreaOnlyOverflowFixture();
+      let thrown: unknown;
+      try {
+        createCanvasRenderer(container, { tasks, dependencies: [] }, { viewMode: 'day', timeRange });
+      } catch (err) {
+        thrown = err;
+      }
+      expect(thrown).toBeInstanceOf(CanvasDimensionExceededError);
+      const err = thrown as CanvasDimensionExceededError;
+      expect(err.axis).toBe('area');
+      expect(err.limitPx).toBe(MAX_CANVAS_AREA_PX_WEBKIT);
+      expect(err.physicalWidth).toBe(5_020);
+      expect(err.physicalHeight).toBe(10_016);
+      expect(err.physicalPx).toBe(err.physicalWidth! * err.physicalHeight!);
+      expect(err.physicalPx).toBeGreaterThan(MAX_CANVAS_AREA_PX_WEBKIT);
+      // Both axes individually stay well under the pre-existing per-axis check — confirms this
+      // really is the area-only guard firing, not the height/width guard above it.
+      expect(err.physicalWidth!).toBeLessThan(MAX_CANVAS_DIMENSION_PX);
+      expect(err.physicalHeight!).toBeLessThan(MAX_CANVAS_DIMENSION_PX);
+      expect(container.children).toHaveLength(0);
+    });
+
+    it('WebKit UA + a safe shape (well under the area ceiling): no throw', () => {
+      setDpr(1);
+      setUserAgent(WEBKIT_UA);
+      const mock = createMockContext2D();
+      installMockContext(mock);
+      const h = createCanvasRenderer(container, { tasks: buildFlatTasks(20), dependencies: [] });
+      expect(h.canvas.height).toBe(32 + 20 * 32);
+    });
+
+    it('Chrome-on-Android UA (contains the substring "Safari" too): treated as NOT WebKit, no throw', () => {
+      setDpr(1);
+      setUserAgent(CHROME_ANDROID_UA);
+      const mock = createMockContext2D();
+      installMockContext(mock);
+      const { tasks, timeRange } = buildAreaOnlyOverflowFixture();
+      expect(() =>
+        createCanvasRenderer(container, { tasks, dependencies: [] }, { viewMode: 'day', timeRange }),
+      ).not.toThrow();
+    });
+
+    it('Edge UA (Chromium-based, contains "Safari" + "Edg/"): treated as NOT WebKit, no throw', () => {
+      setDpr(1);
+      setUserAgent(EDGE_UA);
+      const mock = createMockContext2D();
+      installMockContext(mock);
+      const { tasks, timeRange } = buildAreaOnlyOverflowFixture();
+      expect(() =>
+        createCanvasRenderer(container, { tasks, dependencies: [] }, { viewMode: 'day', timeRange }),
+      ).not.toThrow();
+    });
+
+    it('WebKit UA: existing Chromium-shaped height boundary (2046/2047 rows) still applies identically', () => {
+      setDpr(1);
+      setUserAgent(WEBKIT_UA);
+      // Explicit narrow `timeRange` (rather than the default `buildFlatTasks`-derived one, which
+      // spreads tasks across `n` days and would ALSO trip the new WebKit area check at 2046/2047
+      // rows — a real, independent finding, but not what this test isolates): pins physicalWidth
+      // to 160(label) + 60(1 day @ 'day' view) = 220px, so 220 * 65_504 = 14,410,880 stays under
+      // MAX_CANVAS_AREA_PX_WEBKIT (16,777,216) — only the pre-existing height axis is exercised.
+      const start = normalizeDate('2026-01-01T00:00', cal.timezone);
+      const end = start.add({ days: 1 });
+      const mockSafe = createMockContext2D();
+      installMockContext(mockSafe);
+      const safe = createCanvasRenderer(
+        container,
+        { tasks: buildFlatTasks(2046), dependencies: [] },
+        { viewMode: 'day', timeRange: { start, end } },
+      );
+      expect(safe.canvas.height).toBe(65_504);
+      safe.destroy();
+
+      let thrown: unknown;
+      try {
+        createCanvasRenderer(
+          container,
+          { tasks: buildFlatTasks(2047), dependencies: [] },
+          { viewMode: 'day', timeRange: { start, end } },
+        );
+      } catch (err) {
+        thrown = err;
+      }
+      expect(thrown).toBeInstanceOf(CanvasDimensionExceededError);
+      expect((thrown as CanvasDimensionExceededError).axis).toBe('height');
+    });
+
+    it('update() rollback also applies through the area-throw path', () => {
+      setDpr(1);
+      setUserAgent(WEBKIT_UA);
+      const mock = createMockContext2D();
+      installMockContext(mock);
+      const h = createCanvasRenderer(container, { tasks: buildFlatTasks(5), dependencies: [] });
+
+      const { timeRange } = buildAreaOnlyOverflowFixture();
+      // Widens the timescale alone first (still only 5 rows tall — area stays tiny, no throw).
+      expect(() => h.setOptions({ viewMode: 'day', timeRange })).not.toThrow();
+
+      const prevHeight = h.canvas.height;
+      const prevTimeScale = h.getTimeScale();
+
+      // Now grow the row count on top of the already-wide timescale — crosses the area
+      // ceiling via `update()`, the real supported entry point for swapping `tasks`.
+      const { tasks } = buildAreaOnlyOverflowFixture();
+      let thrown: unknown;
+      try {
+        h.update({ tasks, dependencies: [] });
+      } catch (err) {
+        thrown = err;
+      }
+      expect(thrown).toBeInstanceOf(CanvasDimensionExceededError);
+      expect((thrown as CanvasDimensionExceededError).axis).toBe('area');
+      expect(h.canvas.height).toBe(prevHeight);
+      expect(h.getTimeScale()).toBe(prevTimeScale);
+    });
+
+    it('CanvasDimensionExceededError for axis "width"/"height" leaves physicalWidth/physicalHeight undefined', () => {
+      setDpr(1);
+      setUserAgent(CHROMIUM_UA);
+      const mock = createMockContext2D();
+      installMockContext(mock);
+      let thrown: unknown;
+      try {
+        createCanvasRenderer(container, { tasks: buildFlatTasks(2047), dependencies: [] });
+      } catch (err) {
+        thrown = err;
+      }
+      const err = thrown as CanvasDimensionExceededError;
+      expect(err.axis).toBe('height');
+      expect(err.physicalWidth).toBeUndefined();
+      expect(err.physicalHeight).toBeUndefined();
     });
   });
 
