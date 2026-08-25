@@ -18,6 +18,10 @@ import { createSvgRenderer } from '../../src/render/svg-renderer.js';
 import { CanvasDimensionExceededError, createCanvasRenderer } from '../../src/render/canvas-renderer.js';
 import { toTaskId, type Task } from '../../src/types.js';
 import type { TaskInput } from '../../src/store/index.js';
+// Type-only namespace import so `importOriginal`'s generic below can reference the module's
+// shape without an inline `typeof import(...)` type query (forbidden by
+// @typescript-eslint/consistent-type-imports — erased at compile time either way).
+import type * as CanvasRendererModule from '../../src/render/canvas-renderer.js';
 
 // `vi.fn(actual.createCanvasRenderer)` wraps the REAL implementation by default (success-path
 // tests exercise the genuine Canvas renderer, not a stub) while letting individual tests swap
@@ -26,7 +30,7 @@ import type { TaskInput } from '../../src/store/index.js';
 // describe block above, since none of them mount a project above
 // `CANVAS_AUTO_SWITCH_THRESHOLD` (the only path that ever calls this).
 vi.mock('../../src/render/canvas-renderer.js', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../../src/render/canvas-renderer.js')>();
+  const actual = await importOriginal<typeof CanvasRendererModule>();
   return { ...actual, createCanvasRenderer: vi.fn(actual.createCanvasRenderer) };
 });
 

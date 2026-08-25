@@ -35,6 +35,10 @@ import type { SvgRendererHandle, SvgRendererInput, SvgRendererOptions } from './
 // spec-canvas-auto-switch.md) — this import exists purely so `gantt.ts` can type-check
 // against the shape of what that dynamic import resolves to.
 import type { CanvasRendererHandle, CanvasRendererOptions } from './render/canvas-renderer.js';
+// Type-only namespace import so `#mountCanvasAsync` can type the awaited dynamic-import result
+// without an inline `typeof import(...)` type query (forbidden by
+// @typescript-eslint/consistent-type-imports — erased at compile time either way, same module).
+import type * as CanvasRendererModule from './render/canvas-renderer.js';
 import { layoutRows } from './render/renderer-base.js';
 import { enableDragMove } from './interaction/drag-move.js';
 import { enableDragResize } from './interaction/drag-resize.js';
@@ -1153,7 +1157,7 @@ class Gantt implements GanttInstance {
    * this attempt (spec §5).
    */
   async #mountCanvasAsync(container: HTMLElement, generation: number, taskCount: number): Promise<void> {
-    let canvasModule: typeof import('./render/canvas-renderer.js');
+    let canvasModule: typeof CanvasRendererModule;
     try {
       canvasModule = await import('./render/canvas-renderer.js');
     } catch (importErr) {
