@@ -9,6 +9,7 @@
   {
     "name": "Hello world (createGantt only, tree-shaken, gzip)",
     "path": "size-limit/hello-world.js",
+    "config": "size-limit/hello-world.esbuild-config.mjs",
     "limit": "22 KiB",
     "gzip": true
   }

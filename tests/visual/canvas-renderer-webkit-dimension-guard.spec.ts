@@ -83,6 +83,50 @@ test.describe('area-boundary straddling pair (new, parametrized harness)', () =>
   });
 });
 
+test.describe('real mount() path: dimension-exceeded fallback under WebKit (spec §10)', () => {
+  // Ticket 3 (`.claude/work/plan-canvas-renderer.md`) wires Canvas mode into the real, public
+  // `createGantt().mount()` path — everything above this block exercises the guard through
+  // direct `createCanvasRenderer()` calls (`canvas-webkit-dimension-guard-harness.ts`), which
+  // proves the guard itself fires correctly but not that `mount()`'s own fallback wiring (catch →
+  // `console.warn` → `mountSvg(..., 'dimension-exceeded')` → `renderer:selected`, see
+  // `gantt.ts`'s `#mountCanvasAsync`) behaves the same way under a second real engine. Reuses
+  // `canvas-mount-perf-harness.html` (Ticket 3's own fixture, Chromium-verified already in
+  // `tests/visual/canvas-auto-switch-boundary.spec.ts`) at `taskCount=2001` — the smallest
+  // over-threshold count, safe under Chromium's dimension guard but, per `devices['Desktop
+  // Safari']`'s `deviceScaleFactor: 2` (this project's own device preset — same reasoning as the
+  // `OVERFLOWING_ROWS` boundary above), pushes `physicalHeight` well past `MAX_CANVAS_
+  // DIMENSION_PX` under WebKit, triggering the exact same fallback path a much larger Chromium
+  // dataset would.
+  test('mount() falls back to SVG, fires renderer:selected with dimension-exceeded, warns once', async ({
+    page,
+  }) => {
+    await page.goto('/canvas-mount-perf-harness.html?taskCount=2001');
+
+    const warnings: string[] = [];
+    page.on('console', (msg) => {
+      if (msg.type() === 'warning') warnings.push(msg.text());
+    });
+
+    await page.evaluate(() =>
+      (window as unknown as { __mountAndTime: () => Promise<unknown> }).__mountAndTime(),
+    );
+
+    await expect(page.locator('body')).toHaveAttribute('data-renderer', 'svg');
+    await expect(page.locator('body')).toHaveAttribute(
+      'data-canvas-fallback-reason',
+      'dimension-exceeded',
+    );
+    await expect(page.locator('#gantt svg')).toBeVisible();
+    await expect(page.locator('#gantt .fg-timeline-canvas')).toHaveCount(0);
+
+    const canvasFallbackWarnings = warnings.filter((text) =>
+      text.includes('Canvas renderer initialization failed'),
+    );
+    expect(canvasFallbackWarnings).toHaveLength(1);
+    expect(canvasFallbackWarnings[0]).toContain('dimension-exceeded');
+  });
+});
+
 test.describe('a11y layer still works under WebKit', () => {
   // Deliberately NOT `canvas-a11y-harness.html` here (unlike the safe-shape smoke test above,
   // which does reuse an existing fixture unmodified): that page's 1,000-row dataset, combined

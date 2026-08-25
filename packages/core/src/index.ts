@@ -3,7 +3,7 @@
 export const VERSION = '0.0.0';
 
 // Public facade (spec §7)
-export { createGantt } from './gantt.js';
+export { createGantt, CANVAS_AUTO_SWITCH_THRESHOLD } from './gantt.js';
 export type {
   GanttConfig,
   GanttInstance,
@@ -14,6 +14,7 @@ export type {
   EventMeta,
   ImportSummary,
   ViewportChangedPayload,
+  RendererSelectedPayload,
 } from './gantt.js';
 
 // Reactive primitives (spec §4.1, §5.2)
