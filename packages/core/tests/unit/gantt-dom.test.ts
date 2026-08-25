@@ -4,11 +4,35 @@
 // store->render effect, and the drag-move -> task:moved wiring. Runs under jsdom (per-file
 // override; the rest of core stays `environment: 'node'`), matching svg-renderer.test.ts /
 // drag-move.test.ts.
+//
+// The trailing `describe('renderer auto-switch', ...)` block (spec-canvas-auto-switch.md §11)
+// lives HERE rather than in `gantt.test.ts` (the location named in the original ticket text) —
+// a deliberate deviation, flagged for review: `gantt.test.ts`'s own header comment restricts it
+// to the DOM-free `node` environment and explicitly says "DOM tests... live in
+// gantt-dom.test.ts". mount()'s auto-switch behavior is fundamentally DOM-dependent (it
+// creates/paints a real `<canvas>`/`<svg>` into a real `HTMLElement`), so this file's existing
+// jsdom setup (and its `container`/`PointerEventPolyfill` conventions) is the correct home.
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { createGantt } from '../../src/gantt.js';
+import { createGantt, CANVAS_AUTO_SWITCH_THRESHOLD } from '../../src/gantt.js';
 import { createSvgRenderer } from '../../src/render/svg-renderer.js';
+import { CanvasDimensionExceededError, createCanvasRenderer } from '../../src/render/canvas-renderer.js';
 import { toTaskId, type Task } from '../../src/types.js';
 import type { TaskInput } from '../../src/store/index.js';
+// Type-only namespace import so `importOriginal`'s generic below can reference the module's
+// shape without an inline `typeof import(...)` type query (forbidden by
+// @typescript-eslint/consistent-type-imports — erased at compile time either way).
+import type * as CanvasRendererModule from '../../src/render/canvas-renderer.js';
+
+// `vi.fn(actual.createCanvasRenderer)` wraps the REAL implementation by default (success-path
+// tests exercise the genuine Canvas renderer, not a stub) while letting individual tests swap
+// in a one-shot failure via `mockImplementationOnce` (spec §11's dimension-exceeded/
+// construction-failed scenarios). Hoisted/static for the whole file — harmless to every other
+// describe block above, since none of them mount a project above
+// `CANVAS_AUTO_SWITCH_THRESHOLD` (the only path that ever calls this).
+vi.mock('../../src/render/canvas-renderer.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof CanvasRendererModule>();
+  return { ...actual, createCanvasRenderer: vi.fn(actual.createCanvasRenderer) };
+});
 
 function taskInput(id: string, start: string, end: string, extra: Partial<TaskInput> = {}): TaskInput {
   return { id: toTaskId(id), name: id, start, end, progress: 0, type: 'task', ...extra };
@@ -579,4 +603,350 @@ describe('critical-path:computed — emit-on-change from the render effect (fix 
     expect(computed.mock.calls.length).toBe(afterMount + 1);
     expect(computed.mock.lastCall?.[0]).toEqual([toTaskId('c')]);
   });
+});
+
+// --- Renderer auto-switch (spec-canvas-auto-switch.md §11) -------------------------------
+
+/** `n` distinct, flat (no `parent`), same-day tasks — row count is all that matters for the
+ *  auto-switch threshold check, so every task shares one minimal date span (keeps TimeScale's
+ *  derived grid/width small and this helper fast, mirrors canvas-renderer.test.ts's own
+ *  `buildFlatTasks` reasoning for why date overlap is irrelevant to row count). */
+function buildManyTasks(n: number): TaskInput[] {
+  const tasks: TaskInput[] = [];
+  for (let i = 0; i < n; i++) {
+    tasks.push(taskInput(`t${i}`, '2026-01-05T09:00', '2026-01-05T17:00'));
+  }
+  return tasks;
+}
+
+/** Lenient Proxy-based `CanvasRenderingContext2D` stub — unlike `canvas-renderer.test.ts`'s
+ *  call-log-tracking `MockContext2D` (built to assert exact draw calls), these tests only need
+ *  "a real Canvas mount completes without throwing and paints *something*", so any unknown
+ *  method/property read returns a harmless no-op function (covers the `typeof ctx.roundRect ===
+ *  'function'` feature-detection in `canvas-renderer.ts` too — the Proxy always answers
+ *  `'function'` for an unset method). Installed via `vi.spyOn` (auto-restored by this file's
+ *  existing `afterEach(() => vi.restoreAllMocks())`), matching the exact pattern
+ *  `canvas-renderer.test.ts`'s own `installMockContext` established. */
+function installMockCanvasContext(): void {
+  const handler: ProxyHandler<Record<string, unknown>> = {
+    get(target, prop) {
+      if (prop in target) return target[prop as string];
+      return (..._args: unknown[]): void => {};
+    },
+    set(target, prop, value) {
+      target[prop as string] = value;
+      return true;
+    },
+  };
+  const ctx = new Proxy({}, handler) as unknown as CanvasRenderingContext2D;
+  vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockImplementation(() => ctx);
+}
+
+// A real mount() of 2000+ tasks does genuine, CPU-heavy DOM work under jsdom (2000+ real
+// `<g class="fg-task">` elements, or 2000+ real Canvas 2D draw-call sequences against the
+// Proxy stub above) — comfortably outside vitest's 5s default test/assertion timeouts on a
+// loaded machine, even though the behavior under test is correct. Every test below that
+// mounts an above-threshold project passes an explicit generous timeout (both at the `it()`
+// level and to `vi.waitFor()`) for exactly that reason — not masking a bug, just sizing the
+// budget to the genuinely heavy DOM work spec-canvas-auto-switch.md §11 asks these tests to
+// exercise for real (no renderer internals are stubbed beyond the 2D context itself).
+const HEAVY_TEST_TIMEOUT_MS = 60_000;
+const HEAVY_WAIT_FOR_TIMEOUT_MS = 30_000;
+
+describe('renderer auto-switch (spec-canvas-auto-switch.md)', () => {
+  it(
+    'taskCount at/below CANVAS_AUTO_SWITCH_THRESHOLD mounts SVG synchronously; renderer:selected fires before mount() returns, no canvasFallbackReason',
+    () => {
+      const gantt = createGantt({ tasks: buildManyTasks(CANVAS_AUTO_SWITCH_THRESHOLD) });
+      const selected = vi.fn();
+      gantt.on('renderer:selected', selected);
+
+      gantt.mount(container);
+
+      expect(container.querySelector('svg')).not.toBeNull();
+      expect(container.querySelector('canvas')).toBeNull();
+      expect(selected).toHaveBeenCalledTimes(1);
+      expect(selected).toHaveBeenCalledWith({ renderer: 'svg', taskCount: CANVAS_AUTO_SWITCH_THRESHOLD });
+    },
+    HEAVY_TEST_TIMEOUT_MS,
+  );
+
+  it(
+    'taskCount above the threshold: mount() returns synchronously with the container still empty; renderer:selected fires later with renderer "canvas"',
+    async () => {
+      installMockCanvasContext();
+      const taskCount = CANVAS_AUTO_SWITCH_THRESHOLD + 1;
+      const gantt = createGantt({ tasks: buildManyTasks(taskCount) });
+      const selected = vi.fn();
+      gantt.on('renderer:selected', selected);
+
+      gantt.mount(container);
+
+      // mount() has already returned at this point — nothing painted yet, event not fired yet.
+      expect(container.querySelector('canvas')).toBeNull();
+      expect(container.querySelector('svg')).toBeNull();
+      expect(selected).not.toHaveBeenCalled();
+
+      await vi.waitFor(
+        () => {
+          expect(selected).toHaveBeenCalledTimes(1);
+        },
+        HEAVY_WAIT_FOR_TIMEOUT_MS,
+      );
+      expect(selected).toHaveBeenCalledWith({ renderer: 'canvas', taskCount });
+      expect(container.querySelector('canvas')).not.toBeNull();
+      expect(container.querySelector('svg')).toBeNull();
+    },
+    HEAVY_TEST_TIMEOUT_MS,
+  );
+
+  it(
+    'CanvasDimensionExceededError during Canvas construction falls back to SVG with canvasFallbackReason "dimension-exceeded", warning exactly once',
+    async () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      vi.mocked(createCanvasRenderer).mockImplementationOnce(() => {
+        throw new CanvasDimensionExceededError('height', 100_000, 32_767, 3000, 1);
+      });
+      const taskCount = CANVAS_AUTO_SWITCH_THRESHOLD + 1;
+      const gantt = createGantt({ tasks: buildManyTasks(taskCount) });
+      const selected = vi.fn();
+      gantt.on('renderer:selected', selected);
+
+      gantt.mount(container);
+
+      await vi.waitFor(
+        () => {
+          expect(selected).toHaveBeenCalledTimes(1);
+        },
+        HEAVY_WAIT_FOR_TIMEOUT_MS,
+      );
+      expect(selected).toHaveBeenCalledWith({
+        renderer: 'svg',
+        taskCount,
+        canvasFallbackReason: 'dimension-exceeded',
+      });
+      expect(container.querySelector('svg')).not.toBeNull();
+      expect(container.querySelector('canvas')).toBeNull();
+      expect(warn).toHaveBeenCalledTimes(1);
+    },
+    HEAVY_TEST_TIMEOUT_MS,
+  );
+
+  it(
+    'a generic (non-CanvasDimensionExceededError) Canvas construction failure falls back to SVG with canvasFallbackReason "construction-failed"',
+    async () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      vi.mocked(createCanvasRenderer).mockImplementationOnce(() => {
+        throw new Error('simulated construction failure');
+      });
+      const taskCount = CANVAS_AUTO_SWITCH_THRESHOLD + 1;
+      const gantt = createGantt({ tasks: buildManyTasks(taskCount) });
+      const selected = vi.fn();
+      gantt.on('renderer:selected', selected);
+
+      gantt.mount(container);
+
+      await vi.waitFor(
+        () => {
+          expect(selected).toHaveBeenCalledTimes(1);
+        },
+        HEAVY_WAIT_FOR_TIMEOUT_MS,
+      );
+      expect(selected).toHaveBeenCalledWith({
+        renderer: 'svg',
+        taskCount,
+        canvasFallbackReason: 'construction-failed',
+      });
+      expect(container.querySelector('svg')).not.toBeNull();
+      expect(warn).toHaveBeenCalledTimes(1);
+    },
+    HEAVY_TEST_TIMEOUT_MS,
+  );
+
+  it(
+    'a dynamic import() rejection (simulated chunk-load failure) falls back to SVG with canvasFallbackReason "load-failed"',
+    async () => {
+      // Isolated per-test module-registry override (NOT the shared, static, file-level
+      // vi.mock() above): a real ES module that throws during evaluation stays permanently
+      // failed in the registry it was evaluated in, so simulating "the import() promise
+      // itself rejects" needs a fresh module graph, scoped to just this one test, rather than
+      // reusing the always-passthrough `createCanvasRenderer` mock every other test in this
+      // block relies on.
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      vi.resetModules();
+      vi.doMock('../../src/render/canvas-renderer.js', () => {
+        throw new Error('simulated chunk-load failure');
+      });
+      try {
+        const { createGantt: createGanttFresh } = await import('../../src/gantt.js');
+        const taskCount = CANVAS_AUTO_SWITCH_THRESHOLD + 1;
+        const gantt = createGanttFresh({ tasks: buildManyTasks(taskCount) });
+        const selected = vi.fn();
+        gantt.on('renderer:selected', selected);
+
+        gantt.mount(container);
+
+        await vi.waitFor(
+          () => {
+            expect(selected).toHaveBeenCalledTimes(1);
+          },
+          HEAVY_WAIT_FOR_TIMEOUT_MS,
+        );
+        expect(selected).toHaveBeenCalledWith({
+          renderer: 'svg',
+          taskCount,
+          canvasFallbackReason: 'load-failed',
+        });
+        expect(container.querySelector('svg')).not.toBeNull();
+        expect(container.querySelector('canvas')).toBeNull();
+        expect(warn).toHaveBeenCalledTimes(1);
+      } finally {
+        vi.doUnmock('../../src/render/canvas-renderer.js');
+        vi.resetModules();
+      }
+    },
+    HEAVY_TEST_TIMEOUT_MS,
+  );
+
+  it(
+    'race guard: unmount() before an in-flight above-threshold mount() resolves — no renderer:selected, container untouched, no throw',
+    async () => {
+      installMockCanvasContext();
+      const gantt = createGantt({ tasks: buildManyTasks(CANVAS_AUTO_SWITCH_THRESHOLD + 1) });
+      const selected = vi.fn();
+      gantt.on('renderer:selected', selected);
+
+      expect(() => {
+        gantt.mount(container); // async Canvas attempt started, not awaited
+        gantt.unmount(); // supersedes before the dynamic import()/construction resolves
+      }).not.toThrow();
+
+      // Flush the still in-flight microtasks the abandoned attempt was suspended on.
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(selected).not.toHaveBeenCalled();
+      expect(container.querySelector('canvas')).toBeNull();
+      expect(container.querySelector('svg')).toBeNull();
+    },
+    HEAVY_TEST_TIMEOUT_MS,
+  );
+
+  it(
+    'race guard: a second mount() into a different container supersedes an in-flight first mount() — only the later attempt completes',
+    async () => {
+      installMockCanvasContext();
+      const gantt = createGantt({ tasks: buildManyTasks(CANVAS_AUTO_SWITCH_THRESHOLD + 1) });
+      const containerB = document.createElement('div');
+      document.body.appendChild(containerB);
+      const selected = vi.fn();
+      gantt.on('renderer:selected', selected);
+
+      gantt.mount(container); // first attempt, not awaited
+      gantt.mount(containerB); // supersedes before the first resolves
+
+      await vi.waitFor(
+        () => {
+          expect(selected).toHaveBeenCalledTimes(1);
+        },
+        HEAVY_WAIT_FOR_TIMEOUT_MS,
+      );
+      expect(selected).toHaveBeenCalledWith(expect.objectContaining({ renderer: 'canvas' }));
+      expect(container.querySelector('canvas')).toBeNull();
+      expect(containerB.querySelector('canvas')).not.toBeNull();
+
+      containerB.remove();
+    },
+    HEAVY_TEST_TIMEOUT_MS,
+  );
+
+  it(
+    'exportSvg()/exportPng() throw a clear "Canvas-rendering mode" error while Canvas-mounted; still work while SVG-mounted (regression)',
+    async () => {
+      installMockCanvasContext();
+      const gantt = createGantt({ tasks: buildManyTasks(CANVAS_AUTO_SWITCH_THRESHOLD + 1) });
+      gantt.mount(container);
+      await vi.waitFor(
+        () => {
+          expect(container.querySelector('canvas')).not.toBeNull();
+        },
+        HEAVY_WAIT_FOR_TIMEOUT_MS,
+      );
+
+      expect(() => gantt.exportSvg()).toThrow(/Canvas-rendering mode/);
+      await expect(gantt.exportPng()).rejects.toThrow(/Canvas-rendering mode/);
+
+      const svgGantt = createGantt({ tasks: [taskInput('a', '2026-01-05T09:00', '2026-01-06T09:00')] });
+      const svgContainer = document.createElement('div');
+      document.body.appendChild(svgContainer);
+      svgGantt.mount(svgContainer);
+      expect(() => svgGantt.exportSvg()).not.toThrow();
+      svgContainer.remove();
+    },
+    HEAVY_TEST_TIMEOUT_MS,
+  );
+
+  it(
+    'zoomTo()/zoomIn()/zoomOut()/refresh() do not throw while Canvas-mounted, and repaint',
+    async () => {
+      installMockCanvasContext();
+      const gantt = createGantt({
+        viewMode: 'week',
+        tasks: buildManyTasks(CANVAS_AUTO_SWITCH_THRESHOLD + 1),
+      });
+      gantt.mount(container);
+      await vi.waitFor(
+        () => {
+          expect(container.querySelector('canvas')).not.toBeNull();
+        },
+        HEAVY_WAIT_FOR_TIMEOUT_MS,
+      );
+
+      expect(() => gantt.zoomTo('month')).not.toThrow();
+      expect(gantt.getViewMode()).toBe('month');
+      expect(() => gantt.zoomIn()).not.toThrow();
+      expect(() => gantt.zoomOut()).not.toThrow();
+      expect(() => gantt.refresh()).not.toThrow();
+      expect(container.querySelector('canvas')).not.toBeNull();
+    },
+    HEAVY_TEST_TIMEOUT_MS,
+  );
+
+  it(
+    'readOnly: true in Canvas mode — the SVG-only interaction disposers are inert no-ops; unmount()/destroy() do not throw and are idempotent',
+    async () => {
+      installMockCanvasContext();
+      const gantt = createGantt({
+        readOnly: true,
+        tasks: buildManyTasks(CANVAS_AUTO_SWITCH_THRESHOLD + 1),
+      });
+      gantt.mount(container);
+      await vi.waitFor(
+        () => {
+          expect(container.querySelector('canvas')).not.toBeNull();
+        },
+        HEAVY_WAIT_FOR_TIMEOUT_MS,
+      );
+
+      expect(() => {
+        gantt.unmount();
+        gantt.unmount(); // idempotent — no-op second call
+      }).not.toThrow();
+      expect(container.querySelector('canvas')).toBeNull();
+
+      gantt.mount(container);
+      await vi.waitFor(
+        () => {
+          expect(container.querySelector('canvas')).not.toBeNull();
+        },
+        HEAVY_WAIT_FOR_TIMEOUT_MS,
+      );
+      expect(() => {
+        gantt.destroy();
+        gantt.destroy(); // idempotent — no-op second call
+      }).not.toThrow();
+      expect(container.querySelector('canvas')).toBeNull();
+    },
+    HEAVY_TEST_TIMEOUT_MS,
+  );
 });

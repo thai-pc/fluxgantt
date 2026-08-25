@@ -28,6 +28,17 @@ import { computeCascade } from './compute/cascade.js';
 import { getTemporal } from './internal/temporal.js';
 import { createSvgRenderer, LABEL_COLUMN_WIDTH } from './render/svg-renderer.js';
 import type { SvgRendererHandle, SvgRendererInput, SvgRendererOptions } from './render/svg-renderer.js';
+// TYPE-ONLY import — erased at compile time (`import type`), so this does NOT create a
+// runtime dependency edge into `canvas-renderer.ts`'s module graph and has zero effect on
+// which chunk esbuild puts that file's code into. The only runtime access to that module is
+// the dynamic `import('./render/canvas-renderer.js')` inside `#mountCanvasAsync` (see §3 of
+// spec-canvas-auto-switch.md) — this import exists purely so `gantt.ts` can type-check
+// against the shape of what that dynamic import resolves to.
+import type { CanvasRendererHandle, CanvasRendererOptions } from './render/canvas-renderer.js';
+// Type-only namespace import so `#mountCanvasAsync` can type the awaited dynamic-import result
+// without an inline `typeof import(...)` type query (forbidden by
+// @typescript-eslint/consistent-type-imports — erased at compile time either way, same module).
+import type * as CanvasRendererModule from './render/canvas-renderer.js';
 import { layoutRows } from './render/renderer-base.js';
 import { enableDragMove } from './interaction/drag-move.js';
 import { enableDragResize } from './interaction/drag-resize.js';
@@ -159,6 +170,16 @@ export interface ViewportChangedPayload {
   readonly viewMode: ViewMode;
 }
 
+/** Payload of `renderer:selected` (spec-canvas-auto-switch.md §4). */
+export interface RendererSelectedPayload {
+  readonly renderer: 'svg' | 'canvas';
+  readonly taskCount: number;
+  /** Present only when `renderer === 'svg'` AND a Canvas attempt was made first but failed —
+   *  i.e. a true fallback, not the ordinary "task count was at/below the threshold" case
+   *  (which never attempts Canvas at all and leaves this field absent). */
+  readonly canvasFallbackReason?: 'dimension-exceeded' | 'load-failed' | 'construction-failed';
+}
+
 export interface ImportSummary {
   /** Which of the two import methods produced this summary. */
   readonly format: 'json' | 'csv';
@@ -213,6 +234,16 @@ export interface GanttEventMap {
    *  instance is currently mounted (a headless pre-mount `zoomTo()` still fires — mounting
    *  only affects whether a DOM repaint + scroll-anchor restoration also happens). */
   'viewport:changed': [state: ViewportChangedPayload];
+  /** Fires exactly once per `mount()` call (including an implicit remount), after the chosen
+   *  renderer has fully painted and all applicable interaction modules are wired — i.e. after
+   *  the point at which the container is guaranteed to reflect `renderer`. For a sub-threshold
+   *  project this fires synchronously, before `mount()` returns. For a project above
+   *  `CANVAS_AUTO_SWITCH_THRESHOLD`, `mount()` itself returns synchronously (unchanged
+   *  signature) but this event fires later, once the internally lazy-loaded Canvas module has
+   *  resolved and painted (or, on any Canvas-path failure, once the SVG fallback has painted
+   *  instead) — this is the intended way for a host to know a large-project chart has become
+   *  visible. Never fires on `unmount()`/`destroy()`. */
+  'renderer:selected': [state: RendererSelectedPayload];
 }
 
 export type GanttEventName = keyof GanttEventMap;
@@ -438,6 +469,35 @@ export interface GanttInstance {
   ): UnsubscribeFn;
 
   // --- Lifecycle -------------------------------------------------------------------------------
+  /**
+   * Mounts the chart into `container`. If already mounted, implicitly tears down the previous
+   * mount first (same posture as today).
+   *
+   * **Renderer auto-switch (spec-canvas-auto-switch.md).** The task count at THIS INSTANT
+   * (`getTasks().length`) is compared once against `CANVAS_AUTO_SWITCH_THRESHOLD` (2000, per
+   * architecture.md's "Canvas fallback automatically when task count > 2000"):
+   *  - At or below the threshold: identical to every prior release — `createSvgRenderer()` is
+   *    used, synchronously, and the container reflects the chart before `mount()` returns.
+   *  - Above the threshold: `mount()` still returns synchronously (this signature never
+   *    changes), but the Canvas renderer is loaded via an internal dynamic `import()` and the
+   *    container is EMPTY until that resolves — listen for `renderer:selected` to know when
+   *    the chart has actually become visible. If the Canvas path fails for any reason
+   *    (chunk-load failure, `CanvasDimensionExceededError`, or any other construction error),
+   *    this falls back to SVG automatically; `renderer:selected`'s `canvasFallbackReason`
+   *    reports which.
+   *
+   * **v1 limitation, by design (not an oversight):** the renderer choice is decided ONCE, at
+   * the moment `mount()` is called, from the task count at that instant. Adding/removing tasks
+   * while already mounted does NOT re-evaluate or swap renderers mid-session — a project that
+   * grows past the threshold after mounting keeps using SVG (slower, but correct) until the
+   * next explicit `unmount()`+`mount()` (or a `mount()` remount), which re-evaluates the
+   * threshold from the then-current count. Live mid-session renderer swapping is out of scope
+   * for v1 (see `.claude/work/plan-canvas-renderer.md` §3).
+   *
+   * Drag-move/drag-resize/drag-create-dependency and `exportSvg()`/`exportPng()` are SVG-only —
+   * a Canvas-rendered chart (auto-switched above the threshold) supports click-select and
+   * keyboard navigation, but not those (see `CanvasRendererHandle`'s own scope notes).
+   */
   mount(container: HTMLElement): void;
   unmount(): void;
   destroy(): void;
@@ -446,14 +506,23 @@ export interface GanttInstance {
 
 // --- Internal ------------------------------------------------------------------------------
 
+/** Task count above which `mount()` lazily loads and uses the Canvas renderer instead of SVG
+ *  (architecture.md: "Canvas fallback automatically when task count > 2000"). Decided once, at
+ *  the moment `mount()` is called — see `GanttInstance.mount()`'s own doc comment for the full
+ *  contract. Strictly greater-than: exactly 2000 tasks still uses SVG. */
+export const CANVAS_AUTO_SWITCH_THRESHOLD = 2000;
+
+type RendererKind = 'svg' | 'canvas';
+
 interface MountState {
-  readonly rendererHandle: SvgRendererHandle;
-  readonly dragMoveDispose: () => void;
-  readonly dragResizeDispose: () => void;
-  readonly dragCreateDepDispose: () => void;
+  readonly renderer: RendererKind;
+  readonly rendererHandle: SvgRendererHandle | CanvasRendererHandle;
+  readonly dragMoveDispose: () => void; // no-op in Canvas mode
+  readonly dragResizeDispose: () => void; // no-op in Canvas mode
+  readonly dragCreateDepDispose: () => void; // no-op in Canvas mode
   readonly clickSelectDispose: () => void;
   readonly keyboardNavDispose: () => void;
-  readonly wheelZoomDispose: () => void;
+  readonly wheelZoomDispose: () => void; // no-op in Canvas mode
   readonly getFocusedTaskId: () => TaskId | undefined;
   readonly disposeEffect: () => void;
 }
@@ -508,6 +577,12 @@ class Gantt implements GanttInstance {
    *  runs once at `mount()` time outside any active effect. */
   readonly #viewMode: Signal<ViewMode>;
   #mount: MountState | undefined; // undefined = headless
+  /** Monotonic race-guard token (spec-canvas-auto-switch.md §5). Incremented by every
+   *  `mount()` call (both the sync-SVG and async-Canvas paths, for symmetry) AND by
+   *  `unmount()`/`destroy()` — the async Canvas path re-checks this at every `await` boundary
+   *  and abandons silently (no DOM touch, no `#mount` assignment, no event) if a later call
+   *  already superseded it. */
+  #mountGeneration = 0;
   #destroyed = false;
   /** Last `criticalTaskIds` emitted via `critical-path:computed`, so the reactive render
    *  effect emits only when the critical set actually changes (not on every mutation). */
@@ -1017,12 +1092,12 @@ class Gantt implements GanttInstance {
   }
 
   exportSvg(options?: ExportSvgOptions): string {
-    const handle = this.#assertMounted('exportSvg');
+    const handle = this.#assertMountedSvg('exportSvg');
     return exportSvgFn(handle.svg, options);
   }
 
   async exportPng(options?: ExportPngOptions): Promise<Blob> {
-    const handle = this.#assertMounted('exportPng');
+    const handle = this.#assertMountedSvg('exportPng');
     return exportPngFn(handle.svg, options);
   }
 
@@ -1050,29 +1125,109 @@ class Gantt implements GanttInstance {
     if (this.#destroyed) return; // safe no-op
     if (this.#mount) this.#teardownMount(); // implicit remount if already mounted (item A)
 
-    const rendererHandle = createSvgRenderer(container, this.#renderInput(), this.#rendererOptions());
+    // Monotonic race-guard token (spec-canvas-auto-switch.md §5) — bumped on every mount()
+    // call (both the sync-SVG and async-Canvas paths, for symmetry), and also by unmount()/
+    // destroy() so those invalidate any in-flight Canvas attempt too.
+    const generation = ++this.#mountGeneration;
+    // Read ONCE, at this instant — the auto-switch decision is made once, at mount() time
+    // only (spec §2); adding/removing tasks later does not re-evaluate it (see this method's
+    // own JSDoc on `GanttInstance`).
+    const taskCount = this.#taskStore.size;
 
-    let dragMoveDispose: () => void = () => {};
-    let dragResizeDispose: () => void = () => {};
-    let dragCreateDepDispose: () => void = () => {};
-    if (!this.#config.readOnly) {
-      // Registration order is irrelevant to priority (pointer-drag.ts uses an explicit
-      // numeric priority, not call order) — all three wire through the SAME coordinator on
-      // `rendererHandle`, so a handle claim always wins over an edge-zone claim, which
-      // always wins over a whole-bar claim.
-      dragResizeDispose = enableDragResize(rendererHandle, () => this.#taskStore.all(), {
-        onTaskResized: (taskId, newEnd) => this.#commitResize(taskId, newEnd),
-      });
-      dragMoveDispose = enableDragMove(rendererHandle, () => this.#taskStore.all(), {
-        onTaskMoved: (taskId, newStart, newEnd) => this.#commitDrag(taskId, newStart, newEnd),
-      });
-      dragCreateDepDispose = enableDragCreateDep(rendererHandle, () => this.#taskStore.all(), {
-        onDependencyCreated: (fromTaskId, toTaskId) => this.#commitCreateDep(fromTaskId, toTaskId),
-      });
+    if (taskCount <= CANVAS_AUTO_SWITCH_THRESHOLD) {
+      this.#mountSvg(container, generation, taskCount); // fully synchronous — today's exact behavior
+      return; // mount() returns after the full paint, as always
     }
+
+    // Above the threshold: fire-and-forget async path (Option B, spec §0) — mount() itself
+    // still returns synchronously (signature unchanged); the container stays empty until
+    // `#mountCanvasAsync` resolves (or falls back to SVG). Not awaited — `void` documents
+    // that this is intentional, not an oversight.
+    void this.#mountCanvasAsync(container, generation, taskCount);
+  }
+
+  /**
+   * Loads the Canvas renderer via a real dynamic `import()` (keeps Canvas code out of the
+   * default bundle — spec-canvas-auto-switch.md §3) and mounts it. On ANY failure along the
+   * way — the chunk failing to load, `CanvasDimensionExceededError`, or any other
+   * construction error — falls back to `#mountSvg()` rather than letting the failure
+   * propagate; a `console.warn` reports which. Re-checks the race-guard `generation` at every
+   * `await` boundary and abandons silently (no DOM touch, no `#mount` assignment, no
+   * `renderer:selected`) if a later `mount()`/`unmount()`/`destroy()` call already superseded
+   * this attempt (spec §5).
+   */
+  async #mountCanvasAsync(container: HTMLElement, generation: number, taskCount: number): Promise<void> {
+    let canvasModule: typeof CanvasRendererModule;
+    try {
+      canvasModule = await import('./render/canvas-renderer.js');
+    } catch (importErr) {
+      if (generation !== this.#mountGeneration || this.#destroyed) return; // superseded — abandon silently
+      console.warn(
+        '@fluxgantt/core: Canvas renderer failed to load — falling back to the SVG renderer.',
+        importErr,
+      );
+      this.#mountSvg(container, generation, taskCount, 'load-failed');
+      return;
+    }
+
+    if (generation !== this.#mountGeneration || this.#destroyed) return; // superseded while awaiting the import
+
+    let handle: CanvasRendererHandle;
+    try {
+      handle = canvasModule.createCanvasRenderer(container, this.#renderInput(), this.#canvasRendererOptions());
+    } catch (constructErr) {
+      if (generation !== this.#mountGeneration || this.#destroyed) return; // superseded — abandon silently
+      const reason: 'dimension-exceeded' | 'construction-failed' =
+        constructErr instanceof canvasModule.CanvasDimensionExceededError
+          ? 'dimension-exceeded'
+          : 'construction-failed';
+      console.warn(
+        `@fluxgantt/core: Canvas renderer initialization failed (${reason}) — falling back to the SVG renderer.`,
+        constructErr,
+      );
+      this.#mountSvg(container, generation, taskCount, reason);
+      return;
+    }
+
+    // Not re-checked a second time here: `createCanvasRenderer()` above is synchronous (no
+    // `await` between the check above and this call), and JS is single-threaded, so no new
+    // race window can have opened (spec §5's own reasoning).
+    this.#finishMount('canvas', handle, generation, taskCount);
+  }
+
+  /** Synchronous SVG mount — today's exact, unchanged behavior, reachable both directly from
+   *  `mount()` (sub-threshold path) and as `#mountCanvasAsync`'s fallback (any Canvas-path
+   *  failure, `fallbackReason` set accordingly). */
+  #mountSvg(
+    container: HTMLElement,
+    generation: number,
+    taskCount: number,
+    fallbackReason?: 'dimension-exceeded' | 'load-failed' | 'construction-failed',
+  ): void {
+    if (generation !== this.#mountGeneration || this.#destroyed) return; // defensive, cheap even on the sync path
+    const handle = createSvgRenderer(container, this.#renderInput(), this.#rendererOptions());
+    this.#finishMount('svg', handle, generation, taskCount, fallbackReason);
+  }
+
+  /**
+   * Shared tail of every successful mount path (SVG direct, Canvas, or SVG-as-fallback):
+   * wires the applicable interaction modules, starts the reactive render effect, assigns
+   * `#mount`, and emits `renderer:selected`. Click-select + keyboard-nav are wired
+   * identically for both renderer kinds (both already work against the
+   * `InteractiveRendererHandle`-typed structural contract, Ticket 2) — drag-move/drag-resize/
+   * drag-create-dep/wheel-zoom stay SVG-only (all four are typed strictly against
+   * `SvgRendererHandle`, confirmed by grep; their disposers are no-ops in Canvas mode).
+   */
+  #finishMount(
+    renderer: RendererKind,
+    handle: SvgRendererHandle | CanvasRendererHandle,
+    generation: number,
+    taskCount: number,
+    fallbackReason?: 'dimension-exceeded' | 'load-failed' | 'construction-failed',
+  ): void {
     // Selection is NOT gated by readOnly (confirmed): readOnly disables drag-move/drag-resize/
     // drag-create-dep, not click-select (spec-selection.md §5.5).
-    const clickSelectDispose = enableClickSelect(rendererHandle, () => this.#taskStore.all(), {
+    const clickSelectDispose = enableClickSelect(handle, () => this.#taskStore.all(), {
       onSelect: (taskId) => this.#commitSelect(taskId),
       onToggle: (taskId) => this.#commitToggleSelect(taskId),
       onRangeSelect: (ids) => this.#commitRangeSelect(ids),
@@ -1086,7 +1241,7 @@ class Gantt implements GanttInstance {
     // defense-in-depth inside #commitDeleteSelected — undo()/redo() and zoomIn()/zoomOut()
     // need no equivalent second gate; see spec-undo-redo-keybinding.md §4 and
     // spec-zoom-keybinding.md §4 respectively).
-    const keyboardNav = enableKeyboardNav(rendererHandle, {
+    const keyboardNav = enableKeyboardNav(handle, {
       onSelect: (id) => this.#commitSelect(id),
       onToggle: (id) => this.#commitToggleSelect(id),
       onRangeSelect: (anchorId, focusId) => this.#commitKeyboardRangeSelect(anchorId, focusId),
@@ -1108,22 +1263,55 @@ class Gantt implements GanttInstance {
       isReadOnly: () => this.#config.readOnly === true,
       getSelection: () => this.#selectionStore.all(),
     });
-    // Registered UNCONDITIONALLY, same posture as enableKeyboardNav's zoom case arms — Ctrl+
-    // wheel mutates no store state (zoomIn()/zoomOut() touch only the viewport signal +, when
-    // mounted, container.scrollLeft), so readOnly has nothing to protect against here. See
-    // spec-wheel-zoom.md §4.
-    const wheelZoomDispose = enableWheelZoom(rendererHandle, {
-      onZoomIn: () => this.zoomIn(),
-      onZoomOut: () => this.zoomOut(),
-    });
+
+    let dragMoveDispose: () => void = () => {};
+    let dragResizeDispose: () => void = () => {};
+    let dragCreateDepDispose: () => void = () => {};
+    let wheelZoomDispose: () => void = () => {};
+
+    if (renderer === 'svg') {
+      // Cast, not a narrow: `renderer`/`handle` are two separate parameters, so TypeScript
+      // cannot correlate a check on one to narrow the other — this invariant (renderer ===
+      // 'svg' implies handle was produced by createSvgRenderer()) is guaranteed by
+      // construction (the only two call sites are #mountSvg, always with an SVG handle) and
+      // documented here, matching `#assertMountedSvg`'s own existing cast posture.
+      const svgHandle = handle as SvgRendererHandle;
+      if (!this.#config.readOnly) {
+        // Registration order is irrelevant to priority (pointer-drag.ts uses an explicit
+        // numeric priority, not call order) — all three wire through the SAME coordinator on
+        // `svgHandle`, so a handle claim always wins over an edge-zone claim, which always
+        // wins over a whole-bar claim.
+        dragResizeDispose = enableDragResize(svgHandle, () => this.#taskStore.all(), {
+          onTaskResized: (taskId, newEnd) => this.#commitResize(taskId, newEnd),
+        });
+        dragMoveDispose = enableDragMove(svgHandle, () => this.#taskStore.all(), {
+          onTaskMoved: (taskId, newStart, newEnd) => this.#commitDrag(taskId, newStart, newEnd),
+        });
+        dragCreateDepDispose = enableDragCreateDep(svgHandle, () => this.#taskStore.all(), {
+          onDependencyCreated: (fromTaskId, toTaskId) => this.#commitCreateDep(fromTaskId, toTaskId),
+        });
+      }
+      // Registered UNCONDITIONALLY, same posture as enableKeyboardNav's zoom case arms —
+      // Ctrl+wheel mutates no store state (zoomIn()/zoomOut() touch only the viewport signal
+      // +, when mounted, container.scrollLeft), so readOnly has nothing to protect against
+      // here. See spec-wheel-zoom.md §4.
+      wheelZoomDispose = enableWheelZoom(svgHandle, {
+        onZoomIn: () => this.zoomIn(),
+        onZoomOut: () => this.zoomOut(),
+      });
+    }
+    // Canvas mode: drag-move/drag-resize/drag-create-dep/wheel-zoom stay SVG-only (Ticket 2's
+    // scope boundary) — their disposers stay the no-op default above.
+
     // `keyboardNav.getFocusedTaskId` is captured directly from this closure (NOT read via
     // `this.#mount.getFocusedTaskId`) because `effect()` runs its callback synchronously,
     // immediately, on this very call — BEFORE `this.#mount` is assigned below. Reading
     // through `this.#mount` here would throw/crash on this first synchronous run.
-    const disposeEffect = effect(() => this.#renderNow(rendererHandle, keyboardNav.getFocusedTaskId));
+    const disposeEffect = effect(() => this.#renderNow(handle, renderer, keyboardNav.getFocusedTaskId));
 
     this.#mount = {
-      rendererHandle,
+      renderer,
+      rendererHandle: handle,
       dragMoveDispose,
       dragResizeDispose,
       dragCreateDepDispose,
@@ -1133,16 +1321,27 @@ class Gantt implements GanttInstance {
       getFocusedTaskId: keyboardNav.getFocusedTaskId,
       disposeEffect,
     };
+
+    this.#emit('renderer:selected', {
+      renderer,
+      taskCount,
+      ...(fallbackReason ? { canvasFallbackReason: fallbackReason } : {}),
+    });
   }
 
   unmount(): void {
     if (this.#destroyed) return;
+    // Bumped BEFORE the `!this.#mount` no-op check below — an in-flight async Canvas attempt
+    // (mount() called with taskCount > threshold) has no `#mount` assigned yet, but must still
+    // be invalidated here (spec §5).
+    this.#mountGeneration++;
     if (!this.#mount) return; // no-op if never mounted / already unmounted
     this.#teardownMount();
   }
 
   destroy(): void {
     if (this.#destroyed) return; // idempotent
+    this.#mountGeneration++; // invalidate any in-flight async Canvas attempt, same as unmount()
     if (this.#mount) this.#teardownMount();
     this.#listeners.clear();
     this.#destroyed = true;
@@ -1150,7 +1349,7 @@ class Gantt implements GanttInstance {
 
   refresh(): void {
     if (this.#destroyed || !this.#mount) return; // nothing to refresh headless or post-destroy
-    this.#renderNow(this.#mount.rendererHandle, this.#mount.getFocusedTaskId);
+    this.#renderNow(this.#mount.rendererHandle, this.#mount.renderer, this.#mount.getFocusedTaskId);
   }
 
   // --- Private: mutation → split-event pipeline (Q3 + Q6) ---------------------------------
@@ -1598,7 +1797,11 @@ class Gantt implements GanttInstance {
     this.#mount = undefined;
   }
 
-  #renderNow(handle: SvgRendererHandle, getFocusedTaskId: () => TaskId | undefined): void {
+  #renderNow(
+    handle: SvgRendererHandle | CanvasRendererHandle,
+    renderer: RendererKind,
+    getFocusedTaskId: () => TaskId | undefined,
+  ): void {
     // Track both stores' revisions — read .value unconditionally so this effect re-runs on
     // ANY task or dependency mutation (coarse, per Q6 — no per-field granularity here). Also
     // tracks the selection store's revision so a `select`/`selectAll`/`deselect` call (or a
@@ -1668,7 +1871,7 @@ class Gantt implements GanttInstance {
     // opposite transition — this must stay tasks.length-conditional.
     const focusedTaskId = getFocusedTaskId();
     if (tasks.length === 0) {
-      applyViewportOptions(handle, viewMode, this.#emptyStateTimeRange());
+      this.#applyViewportOptionsFor(handle, renderer, viewMode, this.#emptyStateTimeRange());
       handle.update({ tasks, dependencies, calendar: this.#calendar, selectedTaskIds, focusedTaskId });
     } else {
       handle.update({
@@ -1679,8 +1882,33 @@ class Gantt implements GanttInstance {
         focusedTaskId,
         ...(criticalPath !== undefined ? { criticalPath } : {}),
       });
-      applyViewportOptions(handle, viewMode, undefined);
+      this.#applyViewportOptionsFor(handle, renderer, viewMode, undefined);
     }
+  }
+
+  /**
+   * Renderer-kind-aware dispatch for the `setOptions()` half of `#renderNow` (spec-canvas-
+   * auto-switch.md §6.1) — the ONE call in `#renderNow` that must branch explicitly rather than
+   * go through a unified union call: `SvgRendererOptions` carries `showLinkHandles` (a
+   * Canvas-irrelevant field, no drag-handle affordance exists in Canvas mode), while
+   * `CanvasRendererOptions` does not. `handle.update(...)` above needs no equivalent branch —
+   * `SvgRendererInput`/`CanvasRendererInput` are structurally identical.
+   */
+  #applyViewportOptionsFor(
+    handle: SvgRendererHandle | CanvasRendererHandle,
+    renderer: RendererKind,
+    viewMode: ViewMode,
+    timeRange: { start: Temporal.ZonedDateTime; end: Temporal.ZonedDateTime } | undefined,
+  ): void {
+    if (renderer === 'canvas') {
+      const clear: { viewMode: ViewMode; timeRange: { start: Temporal.ZonedDateTime; end: Temporal.ZonedDateTime } | undefined } = {
+        viewMode,
+        timeRange,
+      };
+      (handle as CanvasRendererHandle).setOptions(clear as unknown as Partial<CanvasRendererOptions>);
+      return;
+    }
+    applyViewportOptions(handle as SvgRendererHandle, viewMode, timeRange);
   }
 
   #emptyStateTimeRange(): { start: Temporal.ZonedDateTime; end: Temporal.ZonedDateTime } {
@@ -1722,6 +1950,21 @@ class Gantt implements GanttInstance {
     return this.#taskStore.size === 0 ? { ...opts, timeRange: this.#emptyStateTimeRange() } : opts;
   }
 
+  /** Canvas sibling of `#rendererOptions()` (spec-canvas-auto-switch.md §6.1) — same shape
+   *  minus `showLinkHandles` (Canvas mode has no connector-handle affordance at all, v1). The
+   *  `#taskStore.size === 0` branch can't actually co-occur with the Canvas mount path today
+   *  (Canvas is only ever chosen when `size > CANVAS_AUTO_SWITCH_THRESHOLD` at mount time) —
+   *  kept for shape-symmetry with `#rendererOptions()` and defensiveness; effectively dead in
+   *  practice, harmless. */
+  #canvasRendererOptions(): CanvasRendererOptions {
+    const opts: CanvasRendererOptions = {
+      viewMode: this.#viewMode.peek(),
+      ...(this.#config.density !== undefined ? { density: this.#config.density } : {}),
+      ...(this.#config.locale !== undefined ? { locale: this.#config.locale } : {}),
+    };
+    return this.#taskStore.size === 0 ? { ...opts, timeRange: this.#emptyStateTimeRange() } : opts;
+  }
+
   // --- Private: guards ---------------------------------------------------------------------
 
   #requireTask(id: TaskId, method: string): Task {
@@ -1742,13 +1985,33 @@ class Gantt implements GanttInstance {
    * `#teardownMount()`) before setting `#destroyed = true`, so `!this.#mount` is already the
    * correct single condition; no separate `#assertAlive` call is needed alongside it.
    */
-  #assertMounted(method: string): SvgRendererHandle {
+  #assertMounted(method: string): SvgRendererHandle | CanvasRendererHandle {
     if (!this.#mount) {
       throw new Error(
         `@fluxgantt/core: cannot call ${method} — gantt instance is not mounted (call mount() first)`,
       );
     }
     return this.#mount.rendererHandle;
+  }
+
+  /**
+   * SVG-only guard for `exportSvg()`/`exportPng()` (spec-canvas-auto-switch.md §7) — both
+   * methods read `handle.svg`, which does not exist on `CanvasRendererHandle`. Reuses
+   * `#assertMounted()`'s existing "not mounted" check, then additionally rejects a live
+   * Canvas-mode mount with a clear, actionable error instead of a confusing
+   * `undefined`/type error at the call site. Canvas-mode export is out of scope for v1 (see
+   * `CanvasRendererHandle`'s own scope notes).
+   */
+  #assertMountedSvg(method: string): SvgRendererHandle {
+    const handle = this.#assertMounted(method);
+    if (this.#mount!.renderer !== 'svg') {
+      throw new Error(
+        `@fluxgantt/core: ${method} is not available while mounted in Canvas-rendering mode ` +
+          `(task count ${this.#taskStore.size} exceeds the ${CANVAS_AUTO_SWITCH_THRESHOLD}-task ` +
+          `auto-switch threshold). Canvas-mode export is not implemented yet.`,
+      );
+    }
+    return handle as SvgRendererHandle;
   }
 }
 

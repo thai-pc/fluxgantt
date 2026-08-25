@@ -56,5 +56,17 @@ export default defineConfig({
       testMatch: 'canvas-renderer-webkit-dimension-guard.spec.ts',
       use: { ...devices['Desktop Safari'] },
     },
+    {
+      // spec-canvas-auto-switch.md §9.1/§9.3 — real-browser mount-time budgets for the Canvas
+      // auto-switch (`CANVAS_AUTO_SWITCH_THRESHOLD`). Deliberately Playwright, not vitest bench:
+      // `packages/core/vitest.config.ts` runs in a Node/jsdom-less `environment: 'node'` with a
+      // mocked `CanvasRenderingContext2D` (zero real paint cost) for its unit tests, which would
+      // not measure the thing that actually matters here (real Chromium rasterization + Ticket 2's
+      // hidden ARIA a11y layer's real per-task DOM node creation). `devices['Desktop Chrome']`
+      // only for v1 — Firefox/WebKit perf baselines are a follow-up, not this ticket.
+      name: 'performance',
+      testDir: './tests/performance',
+      use: { ...devices['Desktop Chrome'] },
+    },
   ],
 });

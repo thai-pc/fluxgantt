@@ -18,7 +18,13 @@ import { defineConfig } from 'vite';
 // the exact WebKit area-guard row-count boundary. All three canvas harnesses import
 // `createCanvasRenderer` via a relative path directly into workspace source, since that module
 // isn't part of the published `@fluxgantt/core` surface yet (see each file's own header
-// comment). All are listed as rollup inputs so `vite build` type/asset-checks every one of them.
+// comment). The canvas-mount-perf-harness page exists for
+// `tests/performance/canvas-mount.spec.ts` and `tests/visual/canvas-auto-switch-boundary.spec.ts`
+// (spec-canvas-auto-switch.md §9.2/§10, Ticket 3) — unlike the other three, it imports
+// exclusively from the published `@fluxgantt/core` package (Ticket 3 wires Canvas mode into the
+// real public `mount()` path, so no workspace-source workaround is needed here), parametrized
+// via `?taskCount=N`. All are listed as rollup inputs so `vite build` type/asset-checks every one
+// of them.
 export default defineConfig({
   server: {
     fs: {
@@ -40,6 +46,7 @@ export default defineConfig({
         canvasWebkitDimensionGuardHarness: fileURLToPath(
           new URL('./canvas-webkit-dimension-guard-harness.html', import.meta.url),
         ),
+        canvasMountPerfHarness: fileURLToPath(new URL('./canvas-mount-perf-harness.html', import.meta.url)),
       },
     },
   },

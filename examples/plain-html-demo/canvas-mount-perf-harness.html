@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>FluxGantt · canvas mount-time auto-switch perf harness</title>
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <main>
+      <h1>FluxGantt — Canvas mount-time auto-switch perf harness</h1>
+      <p>
+        Fixture for <code>tests/performance/canvas-mount.spec.ts</code> and
+        <code>tests/visual/canvas-auto-switch-boundary.spec.ts</code>
+        (spec-canvas-auto-switch.md §9.2/§10). Reads <code>?taskCount=N</code> from the query
+        string (default 100) and builds a real <code>createGantt()</code> instance against a
+        synthetic flat dataset — see <code>src/canvas-mount-perf-harness.ts</code>'s header
+        comment for the exact dataset shape. Nothing mounts automatically on load: every caller
+        must invoke <code>window.__mountAndTime()</code> itself to trigger and time a real
+        <code>gantt.mount()</code> call (see that file's header comment for why — a genuine cold
+        first mount, not an auto-mounted-then-remounted one, is required for this harness's
+        calibrated performance budgets to mean anything). A separate
+        <code>window.__mountSvgDirectAndTime()</code> hook times a renderer-forced
+        <code>createSvgRenderer()</code> call at the same dataset for the one comparative
+        assertion §9.4c needs. Unlike the other (Ticket 1/2, still-temporary) canvas harnesses in
+        this directory, this one imports everything from the published
+        <code>@fluxgantt/core</code> package — no workspace-source relative imports, since this
+        ticket wires Canvas mode into the real public <code>mount()</code> path.
+      </p>
+      <div id="gantt"></div>
+      <!-- Comparative "renderer-forced" target for the raw createSvgRenderer() timing path
+           (§9.4c) — never meant to be looked at, only timed; hidden so it doesn't visually
+           double the page. -->
+      <div id="gantt-raw" style="display: none" aria-hidden="true"></div>
+    </main>
+    <script type="module" src="/src/canvas-mount-perf-harness.ts"></script>
+  </body>
+</html>
