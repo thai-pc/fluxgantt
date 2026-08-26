@@ -55,7 +55,13 @@ test.describe('hidden ARIA a11y grid layer, reached via the real mount() path', 
       'aria-rowcount',
       '2001',
     );
-    await expect(page.locator('#gantt [role="row"]')).toHaveCount(2001);
+    // The a11y layer windows DOM row construction to `A11Y_WINDOW_OVERSCAN + 1` rows centered
+    // on the focused row (canvas-renderer.ts, issue #36) — NOT every row in the project;
+    // `aria-rowcount` above still reports the true full count. Before any keyboard interaction,
+    // `focusedTaskId` falls back to row 0, so the window is exactly `A11Y_WINDOW_OVERSCAN + 1`
+    // rows (no rows exist below index 0).
+    const A11Y_WINDOW_OVERSCAN = 50; // must match canvas-renderer.ts's own constant
+    await expect(page.locator('#gantt [role="row"]')).toHaveCount(A11Y_WINDOW_OVERSCAN + 1);
     // Roving tabindex: exactly one focusable row.
     await expect(page.locator('#gantt .fg-timeline-a11y-layer [tabindex="0"]')).toHaveCount(1);
     // The canvas bitmap itself stays out of the accessibility tree.

@@ -153,7 +153,13 @@ test.describe('a11y layer still works under WebKit', () => {
       'aria-rowcount',
       String(SAFE_ROWS),
     );
-    await expect(page.locator('[role="row"]')).toHaveCount(SAFE_ROWS);
+    // The a11y layer windows DOM row construction to `A11Y_WINDOW_OVERSCAN + 1` rows centered
+    // on the focused row (canvas-renderer.ts, issue #36) — NOT every row; `aria-rowcount` above
+    // still reports the true full count. This fixture wires neither enableClickSelect nor
+    // enableKeyboardNav, so `focusedTaskId` falls back to row 0, giving a window of exactly
+    // `A11Y_WINDOW_OVERSCAN + 1` rows (no rows exist below index 0).
+    const A11Y_WINDOW_OVERSCAN = 50; // must match canvas-renderer.ts's own constant
+    await expect(page.locator('[role="row"]')).toHaveCount(A11Y_WINDOW_OVERSCAN + 1);
     // Roving tabindex: exactly one focusable row.
     await expect(page.locator('.fg-timeline-a11y-layer [tabindex="0"]')).toHaveCount(1);
     // The canvas bitmap itself stays out of the accessibility tree.
