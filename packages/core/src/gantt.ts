@@ -1232,6 +1232,7 @@ class Gantt implements GanttInstance {
       onToggle: (taskId) => this.#commitToggleSelect(taskId),
       onRangeSelect: (ids) => this.#commitRangeSelect(ids),
       onClear: () => this.#commitClearSelection(),
+      density: this.#config.density ?? 'default',
     });
     // Registered UNCONDITIONALLY (spec-keyboard-nav.md §6.2), same group as
     // enableClickSelect above, NOT gated by readOnly — Arrow/Space/Shift+Arrow/Tab-entry,

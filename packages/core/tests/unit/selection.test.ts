@@ -96,6 +96,7 @@ describe('enableClickSelect — DOM interaction', () => {
       onToggle,
       onRangeSelect,
       onClear,
+      density: 'default',
       ...options,
     });
     return { handle, dispose, onSelect, onToggle, onRangeSelect, onClear };
@@ -306,6 +307,7 @@ describe('enableClickSelect — minimal InteractiveRendererHandle mock (SVG-deco
       onToggle: vi.fn(),
       onRangeSelect: vi.fn(),
       onClear,
+      density: 'default',
     });
 
     const taskEl = root.querySelector('.fg-task[data-task-id="mock-1"]')!;
@@ -380,6 +382,7 @@ describe('canvas click-select', () => {
       onToggle,
       onRangeSelect,
       onClear,
+      density: 'default',
       ...options,
     });
     return { handle, dispose, onSelect, onToggle, onRangeSelect, onClear };
@@ -415,7 +418,7 @@ describe('canvas click-select', () => {
     expect(onSelect).not.toHaveBeenCalled();
   });
 
-  it('Shift+click after a prior click fires onRangeSelect with the correct ordered ids (via handle.interactionRoot/collectRowRange)', () => {
+  it('Shift+click after a prior click fires onRangeSelect with the correct ordered ids (via collectRowRange/layoutRows(), DOM-free)', () => {
     const { handle, onSelect, onRangeSelect } = setupCanvas();
     dispatchPointer(handle.canvas, 'pointerdown', { pointerId: 1, clientX: 100, clientY: ROW0_Y, bubbles: true });
     dispatchPointer(window, 'pointerup', { pointerId: 1, clientX: 100, clientY: ROW0_Y });
@@ -455,5 +458,92 @@ describe('canvas click-select', () => {
     dispatchPointer(window, 'pointerup', { pointerId: 1, clientX: 100, clientY: ROW0_Y });
     expect(onSelect).not.toHaveBeenCalled();
     expect(onClear).not.toHaveBeenCalled();
+  });
+
+  // --- Regression for issue #36 (spec-canvas-renderer-a11y-windowing.md, Part A) -----------
+  // `collectRowRange` used to walk `handle.interactionRoot.querySelectorAll('[data-row-index]')`
+  // directly, which depended on every row in `[lo, hi]` having a real DOM node in the hidden
+  // a11y layer. Once that layer is windowed (only `2 * A11Y_WINDOW_OVERSCAN + 1` = 101 rows
+  // around the focused row get real DOM nodes), a Shift+click range wider than the window would
+  // silently drop the out-of-window ids. `collectRowRange` is now computed purely from
+  // `layoutRows()` (Part A), so this must still return the FULL range regardless of a11y
+  // windowing/DOM state.
+  it('Shift+click range wider than the a11y window (101 rows) still selects every id in the full range', () => {
+    stubGetContext2D();
+    const bigContainer = document.createElement('div');
+    document.body.appendChild(bigContainer);
+
+    const rowCount = 401;
+    const base = new Date('2026-01-01T00:00:00.000Z');
+    const now = new Date();
+    const bigTasks: Task[] = Array.from({ length: rowCount }, (_, i) => {
+      const start = new Date(base.getTime() + i * 24 * 60 * 60 * 1000);
+      const end = new Date(start.getTime() + 8 * 60 * 60 * 1000);
+      return {
+        id: toTaskId(`t${i}`),
+        name: `t${i}`,
+        start,
+        end,
+        progress: 0,
+        type: 'task' as const,
+        createdAt: now,
+        updatedAt: now,
+      };
+    });
+
+    const handle = createCanvasRenderer(bigContainer, { tasks: bigTasks, dependencies: [] });
+    // Tall enough to fit row 400's y-coordinate — the a11y layer's DOM window is irrelevant to
+    // hitTestRow (pixel-space, DOM-free) or the range computation (now layoutRows()-based).
+    vi.spyOn(handle.canvas, 'getBoundingClientRect').mockReturnValue({
+      x: 0,
+      y: 0,
+      top: 0,
+      left: 0,
+      right: 1000,
+      bottom: 20_000,
+      width: 1000,
+      height: 20_000,
+      toJSON: () => ({}),
+    } as DOMRect);
+
+    const onSelect = vi.fn();
+    const onRangeSelect = vi.fn();
+    const dispose = enableClickSelect(handle, () => bigTasks, {
+      onSelect,
+      onToggle: vi.fn(),
+      onRangeSelect,
+      onClear: vi.fn(),
+      density: 'default',
+    });
+
+    const rowY = (rowIndex: number): number => 32 + 32 * rowIndex + 16; // HEADER_HEIGHT + rowHeight*i + rowHeight/2
+
+    const anchorRow = 5;
+    const targetRow = 400; // 395 rows away — far wider than the 101-row a11y window
+
+    dispatchPointer(handle.canvas, 'pointerdown', {
+      pointerId: 1,
+      clientX: 100,
+      clientY: rowY(anchorRow),
+      bubbles: true,
+    });
+    dispatchPointer(window, 'pointerup', { pointerId: 1, clientX: 100, clientY: rowY(anchorRow) });
+    expect(onSelect).toHaveBeenCalledWith(toTaskId(`t${anchorRow}`));
+
+    dispatchPointer(handle.canvas, 'pointerdown', {
+      pointerId: 2,
+      clientX: 100,
+      clientY: rowY(targetRow),
+      bubbles: true,
+      shiftKey: true,
+    });
+    dispatchPointer(window, 'pointerup', { pointerId: 2, clientX: 100, clientY: rowY(targetRow), shiftKey: true });
+
+    expect(onRangeSelect).toHaveBeenCalledTimes(1);
+    const expectedIds = Array.from({ length: targetRow - anchorRow + 1 }, (_, i) => toTaskId(`t${anchorRow + i}`));
+    expect(onRangeSelect).toHaveBeenCalledWith(expectedIds);
+
+    dispose();
+    bigContainer.remove();
   });
 });

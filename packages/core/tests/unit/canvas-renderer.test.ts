@@ -411,6 +411,101 @@ describe('hidden ARIA layer', () => {
   });
 });
 
+// --- Hidden ARIA layer windowing (spec-canvas-renderer-a11y-windowing.md, issue #36) -----
+// `A11Y_WINDOW_OVERSCAN` is an internal, non-exported constant in canvas-renderer.ts — its
+// value (50) is duplicated here as a literal, same posture as the file's other internal-
+// constant literals used across this test file (e.g. HEADER_HEIGHT/ROW_HEIGHT in hitTestRow
+// tests below).
+describe('hidden ARIA layer — windowing (issue #36)', () => {
+  const WINDOW_OVERSCAN = 50;
+
+  it('builds far fewer row elements than taskCount, but aria-rowcount stays the FULL taskCount', () => {
+    const mock = createMockContext2D();
+    installMockContext(mock);
+    const tasks = buildFlatTasks(300);
+    const h = createCanvasRenderer(container, { tasks, dependencies: [], focusedTaskId: toTaskId('t150') });
+
+    const rowEls = h.interactionRoot.querySelectorAll('.fg-timeline-canvas__row');
+    expect(rowEls).toHaveLength(2 * WINDOW_OVERSCAN + 1); // window fully fits, no clamping
+    expect(rowEls.length).toBeLessThan(tasks.length);
+    expect(h.interactionRoot.getAttribute('aria-rowcount')).toBe(String(tasks.length));
+  });
+
+  it('a row far outside the initial window is absent from the DOM; window-edge rows are present', () => {
+    const mock = createMockContext2D();
+    installMockContext(mock);
+    const tasks = buildFlatTasks(300);
+    const h = createCanvasRenderer(container, { tasks, dependencies: [], focusedTaskId: toTaskId('t150') });
+
+    // Window around index 150 is [100, 200] (WINDOW_OVERSCAN=50 either side).
+    expect(h.interactionRoot.querySelector('[data-task-id="t0"]')).toBeNull();
+    expect(h.interactionRoot.querySelector('[data-task-id="t299"]')).toBeNull();
+    expect(h.interactionRoot.querySelector('[data-task-id="t99"]')).toBeNull();
+    expect(h.interactionRoot.querySelector('[data-task-id="t201"]')).toBeNull();
+    expect(h.interactionRoot.querySelector('[data-task-id="t100"]')).not.toBeNull();
+    expect(h.interactionRoot.querySelector('[data-task-id="t150"]')).not.toBeNull();
+    expect(h.interactionRoot.querySelector('[data-task-id="t200"]')).not.toBeNull();
+  });
+
+  it('window clamps at the start of the row list when focusedTaskId is near index 0', () => {
+    const mock = createMockContext2D();
+    installMockContext(mock);
+    const tasks = buildFlatTasks(300);
+    const h = createCanvasRenderer(container, { tasks, dependencies: [], focusedTaskId: toTaskId('t0') });
+
+    const rowEls = h.interactionRoot.querySelectorAll('.fg-timeline-canvas__row');
+    expect(rowEls).toHaveLength(WINDOW_OVERSCAN + 1); // clamped: [0, 50]
+    expect(h.interactionRoot.querySelector('[data-task-id="t0"]')).not.toBeNull();
+    expect(h.interactionRoot.querySelector('[data-task-id="t50"]')).not.toBeNull();
+    expect(h.interactionRoot.querySelector('[data-task-id="t51"]')).toBeNull();
+  });
+
+  it('window clamps at the end of the row list when focusedTaskId is near the last row', () => {
+    const mock = createMockContext2D();
+    installMockContext(mock);
+    const tasks = buildFlatTasks(300);
+    const h = createCanvasRenderer(container, { tasks, dependencies: [], focusedTaskId: toTaskId('t299') });
+
+    const rowEls = h.interactionRoot.querySelectorAll('.fg-timeline-canvas__row');
+    expect(rowEls).toHaveLength(WINDOW_OVERSCAN + 1); // clamped: [249, 299]
+    expect(h.interactionRoot.querySelector('[data-task-id="t299"]')).not.toBeNull();
+    expect(h.interactionRoot.querySelector('[data-task-id="t249"]')).not.toBeNull();
+    expect(h.interactionRoot.querySelector('[data-task-id="t248"]')).toBeNull();
+  });
+
+  it('re-rendering with a focusedTaskId far from the previous one relocates the window: new focused row present + focused, old-window-only row gone', () => {
+    const mock = createMockContext2D();
+    installMockContext(mock);
+    const tasks = buildFlatTasks(300);
+    const h = createCanvasRenderer(container, { tasks, dependencies: [], focusedTaskId: toTaskId('t150') });
+
+    const initialRow = h.interactionRoot.querySelector<HTMLElement>('[data-task-id="t150"]')!;
+    initialRow.focus(); // hadFocusInside === true for the next render
+    expect(document.activeElement).toBe(h.interactionRoot.querySelector('[data-task-id="t150"]'));
+
+    h.update({ tasks, dependencies: [], focusedTaskId: toTaskId('t280') });
+
+    // New window around index 280 is [230, 299] (clamped at the end).
+    const newFocusedRow = h.interactionRoot.querySelector<HTMLElement>('[data-task-id="t280"]');
+    expect(newFocusedRow).not.toBeNull();
+    expect(newFocusedRow!.getAttribute('tabindex')).toBe('0');
+    expect(document.activeElement).toBe(newFocusedRow);
+
+    // t150 (old window center) is now outside [230, 299] — gone from the DOM.
+    expect(h.interactionRoot.querySelector('[data-task-id="t150"]')).toBeNull();
+  });
+
+  it('degrades safely to an empty window when there are zero rows', () => {
+    const mock = createMockContext2D();
+    installMockContext(mock);
+    const start = normalizeDate('2026-01-01T00:00', cal.timezone);
+    const end = start.add({ days: 10 });
+    const h = createCanvasRenderer(container, { tasks: [], dependencies: [] }, { timeRange: { start, end } });
+    expect(h.interactionRoot.querySelectorAll('.fg-timeline-canvas__row')).toHaveLength(0);
+    expect(h.interactionRoot.getAttribute('aria-rowcount')).toBe('0');
+  });
+});
+
 // --- hitTestRow (Ticket 2, spec §7.2 / §12.2) --------------------------------------------
 
 describe('hitTestRow', () => {
