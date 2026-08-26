@@ -10,7 +10,8 @@
 // TOUCHES THE DOM (raw Pointer Events) — this is the only layer in `@fluxgantt/core`
 // allowed to, per architecture.md "Interaction". Still does NOT import react/vue/svelte.
 import type { InteractiveRendererHandle } from '../render/index.js';
-import type { Task, TaskId } from '../types.js';
+import { layoutRows } from '../render/renderer-base.js';
+import type { Density, Task, TaskId } from '../types.js';
 import { toTaskId } from '../types.js';
 import { DEFAULT_DRAG_THRESHOLD_PX } from './pointer-drag.js';
 
@@ -31,6 +32,10 @@ export interface SelectionOptions {
    *  pointerdown→pointerup pair stops counting as a click. Default = `DEFAULT_DRAG_THRESHOLD_PX`
    *  (4) — same default the drag recognizers use, for consistency. */
   dragThresholdPx?: number;
+  /** Row density — needed to compute the Shift-click range via `layoutRows()` (same
+   *  DOM-independent source of truth `enableKeyboardNav`/`#commitKeyboardRangeSelect` already
+   *  use), rather than walking the (possibly windowed, Canvas-mode) a11y layer's DOM. */
+  density: Density;
 }
 
 /** Resolves the TaskId (and its row index, for Shift-range) for a click ANYWHERE inside a
@@ -157,7 +162,7 @@ export function enableClickSelect(
     if (event.shiftKey && anchorTaskId !== undefined && anchorRowIndex !== undefined) {
       const lo = Math.min(anchorRowIndex, hit.rowIndex);
       const hi = Math.max(anchorRowIndex, hit.rowIndex);
-      const ids = collectRowRange(handle, lo, hi);
+      const ids = collectRowRange(getTasks, options.density, lo, hi);
       options.onRangeSelect(ids);
       // Anchor is NOT moved by a Shift-click (spreadsheet/file-explorer convention).
       return;
@@ -193,27 +198,23 @@ export function enableClickSelect(
   }
 }
 
-/** Collects every rendered row's task id whose `data-row-index` falls within
- *  `[lo, hi]` inclusive, in DOM/row order — used by the Shift-range branch. Works
- *  identically for Canvas mode once the hidden ARIA layer (spec-canvas-renderer-ticket2.md
- *  §5) exists — only the initial per-click row resolution needed a Canvas-specific path.
- *  Queried by `[data-row-index]`/`[data-task-id]` attributes only, deliberately NOT by class
- *  name (`.fg-timeline__row`/`.fg-task`) — SVG and Canvas's hidden layer use different class
- *  names by design (Canvas's `fg-timeline-canvas__*` classes must stay undiscoverable to
- *  host/theme CSS written against the real visible SVG chart), but both renderers put
- *  `data-row-index`/`data-task-id` directly on the row element itself, so this stays
- *  renderer-agnostic without needing to special-case either one. */
-function collectRowRange(handle: InteractiveRendererHandle, lo: number, hi: number): TaskId[] {
-  const ids: TaskId[] = [];
-  const rowEls = handle.interactionRoot.querySelectorAll('[data-row-index]');
-  for (const rowEl of rowEls) {
-    const rowIndexAttr = rowEl.getAttribute('data-row-index');
-    if (rowIndexAttr === null) continue;
-    const rowIndex = Number(rowIndexAttr);
-    if (rowIndex < lo || rowIndex > hi) continue;
-    const idAttr = rowEl.getAttribute('data-task-id');
-    if (idAttr === null || idAttr === undefined) continue;
-    ids.push(toTaskId(idAttr));
-  }
-  return ids;
+/** Collects every task id whose *computed* row (via `layoutRows()`) falls within `[lo, hi]`
+ *  inclusive, in row order — used by the Shift-range branch. Deliberately DOM-free: this used
+ *  to query `handle.interactionRoot.querySelectorAll('[data-row-index]')` directly, which
+ *  depended on every row in range having a real DOM node in the a11y layer — a windowed a11y
+ *  layer (Canvas mode, spec-canvas-renderer-a11y-windowing.md) only builds DOM nodes for rows
+ *  near the focused one, so that DOM-walk would silently drop rows outside the window from the
+ *  range. Mirrors the precedent already set by `gantt.ts`'s `#commitKeyboardRangeSelect`, which
+ *  computes the keyboard Shift+Arrow range the same way, from the same pure `layoutRows()`
+ *  source of truth `enableKeyboardNav` already uses — identical behavior in SVG mode (whose DOM
+ *  already reflects `layoutRows()` 1:1), and now also correct in windowed-Canvas mode. */
+function collectRowRange(
+  getTasks: () => readonly Task[],
+  density: Density,
+  lo: number,
+  hi: number,
+): TaskId[] {
+  return layoutRows(getTasks(), density)
+    .filter((r) => r.rowIndex >= lo && r.rowIndex <= hi)
+    .map((r) => r.task.id);
 }

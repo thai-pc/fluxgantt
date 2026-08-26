@@ -124,6 +124,7 @@ enableClickSelect(handle, () => tasks, {
     selected = new Set();
     rerender();
   },
+  density: 'default',
 });
 
 const nav = enableKeyboardNav(handle, {

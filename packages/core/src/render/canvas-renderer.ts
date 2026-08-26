@@ -13,9 +13,18 @@
 //
 // **ACCESSIBILITY — Ticket 2 closes the gap Ticket 1 explicitly flagged.** A hidden
 // (offscreen, but focusable/AT-reachable) `role="grid"` DOM layer (`a11yLayer`, §5 in the
-// ticket-2 spec) is constructed once at setup and fully rebuilt on every `render()`, mirroring
-// `svg-renderer.ts`'s `renderRows()` attribute-for-attribute (`role="row"`/`role="gridcell"`/
-// `aria-selected`/roving `tabindex`/per-task `aria-label`). The visible `<canvas>` itself is
+// ticket-2 spec) is constructed once at setup and rebuilt on every `render()`, mirroring
+// `svg-renderer.ts`'s `renderRows()` attribute-for-attribute PER ROW (`role="row"`/
+// `role="gridcell"`/`aria-selected`/roving `tabindex`/per-task `aria-label`) — i.e. the markup
+// SHAPE of any one row is identical between the two renderers. The ROW COUNT built into the DOM
+// is NOT full parity, though: unlike `svg-renderer.ts` (which renders every row's real visible
+// DOM unconditionally), this layer is WINDOWED (spec-canvas-renderer-a11y-windowing.md, issue
+// #36) to only `2 * A11Y_WINDOW_OVERSCAN + 1` rows centered on `focusedTaskId`'s row, rebuilt
+// every render — an unbounded, full-row-count rebuild on every `render()` was an O(taskCount)
+// DOM-construction cost with no relation to what's visible or focused, and made Canvas mount
+// SLOWER than SVG at the very task counts (2000+) the Canvas auto-switch exists to speed up.
+// `aria-rowcount` on `a11yLayer` still always reports the true, FULL row count — only DOM-node
+// construction is windowed, not the grid's reported size. The visible `<canvas>` itself is
 // `aria-hidden="true"` — Ticket 1's `role="img"` stopgap is superseded, not layered on top of,
 // since exposing both would double-announce the same data to a screen reader. Click-select
 // (`hitTestRow()`, §7) and a `focusin`/`focusout`-driven on-canvas focus ring (§8) bring Canvas
@@ -195,6 +204,18 @@ const DEFAULT_VIEW_MODE: ViewMode = 'week';
 const DEFAULT_DENSITY: Density = 'default';
 const DEFAULT_LOCALE = 'en';
 const DEFAULT_ARIA_LABEL = 'Gantt chart';
+
+/**
+ * Number of rows built on EITHER side of `focusedTaskId`'s row when (re)building the hidden
+ * a11y layer's DOM (spec-canvas-renderer-a11y-windowing.md, issue #36) — the a11y layer no
+ * longer materializes one real DOM row per task on every `render()` (an O(taskCount) DOM-
+ * construction cost with no relation to what's on/near screen); it materializes only a window
+ * of `2 * A11Y_WINDOW_OVERSCAN + 1` rows centered on the currently-focused row. Module-local
+ * (not imported from `svg-renderer.ts`, which has no windowing concept at all — SVG renders
+ * every row's real visible DOM unconditionally, so there is nothing analogous to duplicate or
+ * import; see the MODULE-ISOLATION RULE in this file's header regardless).
+ */
+const A11Y_WINDOW_OVERSCAN = 50;
 
 /** Fixed, compile-time-constant font string — NEVER built from task/user data (§6). */
 const TASK_LABEL_FONT = '12px system-ui, sans-serif';
@@ -817,6 +838,19 @@ export function createCanvasRenderer(
     // headless mutation: focus is only ever RESTORED, never newly grabbed.
     const hadFocusInside = a11yLayer.contains(document.activeElement);
 
+    // Windowing (issue #36): only build DOM rows for `[windowLo, windowHi]`, a
+    // `2 * A11Y_WINDOW_OVERSCAN + 1`-row band centered on `focusedTaskId`'s row — NOT every
+    // row in `rows`. `aria-rowcount` below still reports the FULL `rows.length` (true grid
+    // size, unaffected by windowing); only DOM-node *construction* is windowed. Degrades safely
+    // when `rows.length === 0`: `focusedIndex` is `-1`, `anchorIndex` clamps to `0`, and the
+    // `Math.min(rows.length - 1, ...)` below makes `windowHi` negative, so `slice()` yields `[]`
+    // and the row-building loop simply doesn't run — identical end state to the unwindowed code.
+    const focusedIndex = rows.findIndex((r) => r.task.id === focusedTaskId);
+    const anchorIndex = focusedIndex === -1 ? 0 : focusedIndex;
+    const windowLo = Math.max(0, anchorIndex - A11Y_WINDOW_OVERSCAN);
+    const windowHi = Math.min(rows.length - 1, anchorIndex + A11Y_WINDOW_OVERSCAN);
+    const windowedRows = rows.slice(windowLo, windowHi + 1);
+
     while (a11yLayer.firstChild) a11yLayer.removeChild(a11yLayer.firstChild);
 
     a11yLayer.setAttribute('role', 'grid');
@@ -824,7 +858,7 @@ export function createCanvasRenderer(
     a11yLayer.setAttribute('aria-multiselectable', 'true');
     a11yLayer.setAttribute('aria-label', ariaLabel);
 
-    for (const row of rows) {
+    for (const row of windowedRows) {
       const isSelected = selectedIds.has(row.task.id);
       const isCritical = criticalIds.has(row.task.id);
 
