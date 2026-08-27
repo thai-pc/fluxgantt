@@ -9,27 +9,43 @@
 //
 // Reads `?rows=N` from the query string and builds N flat (no-hierarchy), same-day tasks, always
 // rendered against a FIXED, explicit 1-day `timeRange` — so `physicalWidth` is constant
-// regardless of N (`160` label column + `60` px/day * 1 day = `220` CSS px) and only
-// `physicalHeight` (and therefore the computed area) varies with the row count. This isolates
-// the WebKit-only AREA guard (`MAX_CANVAS_AREA_PX_WEBKIT`) from the pre-existing per-axis guard
-// (`MAX_CANVAS_DIMENSION_PX`), which needs a much larger single axis to ever trip on its own.
+// regardless of N (`160` label column + `60` px/day * 1 day = `220` CSS px).
 //
-// Row-count boundary math (assumes the Playwright `webkit-canvas-dimension-guard` project's
-// `devices['Desktop Safari']` preset, whose `deviceScaleFactor` is 2 — NOT 1 — confirmed via
-// `node -e "console.log(require('@playwright/test').devices['Desktop Safari'])"` while authoring
-// this harness):
+// Also reads an optional `?viewportHeight=N` and forwards it verbatim as
+// `CanvasRendererOptions.viewportHeight` (same pattern as `canvas-mount-perf-harness.ts`'s
+// `canvasViewportHeight` query param) — omitted, Canvas's own 600px default
+// (`resolveViewportHeightPx()`) applies.
+//
+// HISTORICAL NOTE (fix #37, spec-canvas-row-virtualization.md): this harness used to derive
+// `physicalHeight` (and therefore the computed area) from `rows` alone — `rows` was the ONLY
+// axis needed to isolate the WebKit-only AREA guard (`MAX_CANVAS_AREA_PX_WEBKIT`) from the
+// pre-existing per-axis guard (`MAX_CANVAS_DIMENSION_PX`). Fix #37 deliberately decoupled
+// Canvas's backing-store height from row count entirely (`physicalHeight` is now derived from
+// `resolveViewportHeightPx()`, not `totalHeight`), so row count alone can no longer trip the
+// area guard — mirrors exactly why `canvas-mount-perf-harness.ts` gained its own
+// `canvasViewportHeight` param. `viewportHeight` is now the ONLY axis that varies
+// `physicalHeight` here; `rows` no longer affects it at all (kept only so the a11y-layer test
+// below still has a real, `aria-rowcount`-bearing dataset to assert against).
+//
+// viewportHeight boundary math (assumes the Playwright `webkit-canvas-dimension-guard`
+// project's `devices['Desktop Safari']` preset, whose `deviceScaleFactor` is 2 — NOT 1 —
+// confirmed via `node -e "console.log(require('@playwright/test').devices['Desktop Safari'])"`
+// while authoring this harness):
 //   cssWidth      = 160 (LABEL_COLUMN_WIDTH) + 60 (PIXELS_PER_DAY.day) * 1 day = 220
 //   physicalWidth = round(220 * 2) = 440
-//   cssHeight(rows)      = 32 (HEADER_HEIGHT) + rows * 32 (ROW_HEIGHT.default)
-//   physicalHeight(rows) = round(cssHeight(rows) * 2) = 64 + rows * 64   (exact — always even)
-//   area(rows) = 440 * (64 + rows * 64) = 28,160 + 28,160 * rows
-// Solving `area(rows) <= 16_777_216` (MAX_CANVAS_AREA_PX_WEBKIT):
-//   rows <= (16_777_216 - 28_160) / 28_160 = 594.85...
-// So rows=594 is the exact largest SAFE row count (area = 16,755,200, margin 22,016px²) and
-// rows=595 is the exact smallest OVERFLOWING row count (area = 16,783,360, over by 6,144px²) —
-// the straddling pair `tests/visual/canvas-renderer-webkit-dimension-guard.spec.ts` asserts
-// against, mirroring the sibling Chromium fix's own precise natural-row-count boundary style
-// (no injected test-only override).
+//   physicalHeight(viewportHeight) = round(viewportHeight * 2)
+//   area(viewportHeight) = 440 * round(viewportHeight * 2)
+// Solving `area(viewportHeight) <= 16_777_216` (MAX_CANVAS_AREA_PX_WEBKIT) for the largest safe
+// EVEN physicalHeight (round() of an integer CSS px * 2 is always even):
+//   physicalHeight <= 16_777_216 / 440 = 38_130.036... -> largest safe physicalHeight = 38_130
+// So viewportHeight=19_065 is the largest SAFE value tested here
+// (physicalHeight = round(19_065 * 2) = 38_130, area = 440 * 38_130 = 16,777,200, margin 16px²)
+// and viewportHeight=19_066 is the smallest OVERFLOWING value tested here
+// (physicalHeight = round(19_066 * 2) = 38_132, area = 440 * 38_132 = 16,778,080, over by
+// 864px²) — the straddling pair `tests/visual/canvas-renderer-webkit-dimension-guard.spec.ts`
+// asserts against, mirroring the sibling Chromium fix's own precise-boundary style (no
+// injected test-only override, just the real formula solved for the smallest adjacent-integer
+// straddle of the actual input parameter).
 import { Temporal } from '@js-temporal/polyfill';
 import { createCanvasRenderer, CanvasDimensionExceededError } from '../../../packages/core/src/render/canvas-renderer.js';
 import { toTaskId, type Task } from '@fluxgantt/core';
@@ -45,6 +61,8 @@ import { toTaskId, type Task } from '@fluxgantt/core';
 
 const params = new URLSearchParams(window.location.search);
 const rowCount = Number(params.get('rows') ?? '20');
+const viewportHeightParam = params.get('viewportHeight');
+const viewportHeight = viewportHeightParam !== null ? Number(viewportHeightParam) : undefined;
 
 const now = new Date('2026-01-01T00:00:00Z');
 const tasks: Task[] = Array.from({ length: rowCount }, (_, i) => ({
@@ -65,7 +83,11 @@ try {
   const handle = createCanvasRenderer(
     container,
     { tasks, dependencies: [] },
-    { viewMode: 'day', timeRange: { start: '2026-01-01', end: '2026-01-02' } },
+    {
+      viewMode: 'day',
+      timeRange: { start: '2026-01-01', end: '2026-01-02' },
+      ...(viewportHeight !== undefined ? { viewportHeight } : {}),
+    },
   );
   document.body.dataset.result = 'ok';
   if (import.meta.env.DEV) {

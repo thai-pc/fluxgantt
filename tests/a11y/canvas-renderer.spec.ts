@@ -76,3 +76,72 @@ test('reduced motion: no violations (Canvas mode has no animation)', async ({ pa
   const results = await new AxeBuilder({ page }).include('#gantt').analyze();
   expect(results.violations).toEqual([]);
 });
+
+// --- Row-band virtualization (fix #37, spec-canvas-row-virtualization.md §5.2) -----------------
+//
+// This is the empirical re-verification the `a11yLayer`'s `position: sticky` decision needed
+// (see that layer's own construction comment in `canvas-renderer.ts` for why `sticky`, not
+// `absolute`, was chosen: an `absolute`-positioned hidden layer would scroll away with
+// `container`'s content as `scrollTop` increases, which could make the browser's own native
+// "scroll the newly focused element into view" behavior fight `ensureFocusedRowVisible()`'s
+// explicit `container.scrollTop` writes). The harness's default 600px viewport (`HEADER_HEIGHT`
+// 32px + `ROW_HEIGHT.default` 32px ⇒ a 568px row band ⇒ 17 whole rows fully visible before any
+// scroll is needed) means row index 25 is comfortably past the initial window — this test
+// deliberately targets that boundary, not an arbitrary large jump.
+test('ArrowDown past the bottom of the initial viewport scrolls the container to the correct offset, keeps the sticky canvas pinned in place (no jump/fight from native focus-scroll-into-view), and focus lands on the right row', async ({
+  page,
+}) => {
+  await page.goto('/canvas-a11y-harness.html');
+  const container = page.locator('#gantt');
+  const canvas = page.locator('.fg-timeline-canvas');
+
+  // Establish the initial Tab stop (roving tabindex starts on the first row, t0 — spec §4.2).
+  await page.locator('.fg-timeline-a11y-layer [tabindex="0"]').first().focus();
+  await expect
+    .poll(() => page.evaluate(() => document.activeElement?.getAttribute('data-task-id')))
+    .toBe('t0');
+  expect(await container.evaluate((el) => el.scrollTop)).toBe(0);
+
+  const canvasTopBefore = (await canvas.boundingBox())!.y;
+
+  // 25 real ArrowDown keydowns — each one drives a full `handle.update({ focusedTaskId })` in
+  // the harness (mirroring `gantt.ts`'s real keyboard-nav wiring), so this exercises the exact
+  // `ensureFocusedRowVisible()` code path frame by frame, not a single synthetic jump.
+  for (let i = 0; i < 25; i++) {
+    await page.keyboard.press('ArrowDown');
+  }
+
+  const focusedTaskId = await page.evaluate(
+    () => document.activeElement?.getAttribute('data-task-id') ?? null,
+  );
+  expect(focusedTaskId).toBe('t25');
+  await expect(page.locator('[data-task-id="t25"][role="row"]')).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
+
+  // Exact expected scroll offset (not just "some positive number"): row 25's band is
+  // `[800, 832)` (`rowIndex * 32`), the visible row band is 568px tall (600px viewport minus the
+  // 32px header) — `ensureFocusedRowVisible()` scrolls the minimum amount so the row's bottom
+  // edge lines up with the bottom of the view: `832 - 568 = 264`. An unexpected value here would
+  // mean either `ensureFocusedRowVisible()`'s math regressed, OR (the specific risk `sticky`
+  // guards against) the browser's native focus-scroll-into-view fought it mid-sequence.
+  const scrollTop = await container.evaluate((el) => el.scrollTop);
+  expect(scrollTop).toBe(264);
+
+  // The `<canvas>` itself never moves in viewport-relative coordinates, despite `container`
+  // having scrolled 264px internally — this is `position: sticky` doing its job.
+  const canvasTopAfter = (await canvas.boundingBox())!.y;
+  expect(canvasTopAfter).toBe(canvasTopBefore);
+
+  // Symmetric return trip: ArrowUp back to the top scrolls the container back to 0, with no
+  // residual offset left behind by the forward journey.
+  for (let i = 0; i < 25; i++) {
+    await page.keyboard.press('ArrowUp');
+  }
+  expect(await container.evaluate((el) => el.scrollTop)).toBe(0);
+  const focusedAfterReturn = await page.evaluate(
+    () => document.activeElement?.getAttribute('data-task-id') ?? null,
+  );
+  expect(focusedAfterReturn).toBe('t0');
+});

@@ -9,9 +9,18 @@
 // only through `mount()`, never imported directly here).
 //
 // Query params:
-//   ?taskCount=N   — flat (no hierarchy) synthetic dataset size, default 100. This is the ONLY
-//                    axis this harness varies — see `generateDataset()` below for the exact
-//                    shape (rolling 30-working-day window, ~30% FS-chained dependencies).
+//   ?taskCount=N             — flat (no hierarchy) synthetic dataset size, default 100. The
+//                              PRIMARY axis this harness varies — see `generateDataset()` below
+//                              for the exact shape (rolling 30-working-day window, ~30%
+//                              FS-chained dependencies).
+//   ?canvasViewportHeight=N  — forwarded verbatim to `GanttConfig.canvasViewportHeight`,
+//                              omitted (Canvas's own 600px default applies) when absent. Only
+//                              needed by `canvas-auto-switch-boundary.spec.ts`'s dimension-guard
+//                              test: since issue #37 decoupled Canvas's backing-store height from
+//                              `taskCount` entirely, `taskCount` alone can no longer be used to
+//                              force a `CanvasDimensionExceededError` fallback — an explicit,
+//                              oversized `canvasViewportHeight` is now the only way to do that
+//                              through the real `mount()` path.
 //
 // Exposes on `window` (dev-only, `import.meta.env.DEV`-guarded — matches every other harness's
 // posture, stripped from a production `vite build`). Deliberately does NOT auto-mount on page
@@ -36,17 +45,17 @@
 // `.changeset/canvas-renderer-ticket3.md`): `computeCriticalPath()` alone dominates total mount
 // cost at these task counts (~1.2s of a ~2.3s-2.5s total mount at just-over-threshold, scaling
 // with task count) — a pre-existing cost this ticket did not introduce, unrelated to which
-// renderer is chosen (`#renderNow` always computes it), and out of scope to optimize here. Once
-// that shared cost is accounted for fairly on both sides (see `mountSvgDirectAndTime()` below),
-// real Chromium measurement shows Canvas mount is NOT faster than a forced-SVG mount would have
-// been at the same task count in this v1 (non-virtualized) design — it is consistently ~1.3-1.4x
-// SLOWER, because Canvas mode's hidden ARIA a11y grid layer (Ticket 2) builds roughly the same
-// O(taskCount) DOM node count SVG's own visible tree does, ON TOP OF the (cheap) canvas draw
-// calls, rather than replacing that cost. This contradicts architecture.md's "Canvas fallback...
-// task count > 2000" framing, which assumes Canvas is the faster path — flagged prominently for
-// maintainer review, not silently worked around; see the changeset for the full numbers and
-// recommended follow-up (most likely: virtualizing the a11y layer, which today builds one DOM row
-// per task regardless of what's actually visible).
+// renderer is chosen (`#renderNow` always computes it), and out of scope to optimize here.
+//
+// HISTORICAL FINDING, now RESOLVED (see `tests/performance/canvas-mount.spec.ts`'s module comment
+// for the full history): Ticket 3's original measurement found Canvas mount ~1.3-1.4x SLOWER than
+// a fair forced-SVG mount at the same task count, root-caused to Canvas mode's hidden ARIA a11y
+// grid layer (Ticket 2) building one real DOM row per task on every render regardless of what was
+// visible. That was windowed (issue #36), and Canvas's own row rendering/hit-testing was later
+// made row-band-virtualized too (issue #37 — `computeVisibleWindow`, `canvas-renderer.ts`) so cost
+// no longer scales with total row count at all. Canvas mount is now consistently and comfortably
+// FASTER than a fair forced-SVG mount at the same task count, matching
+// architecture.md's "Canvas fallback... task count > 2000" framing.
 import { Temporal } from '@js-temporal/polyfill';
 import {
   createGantt,
@@ -92,12 +101,15 @@ function buildWorkingDayWindow(size: number): string[] {
  *  and not zero.
  *
  *  NOTE (see `tests/performance/canvas-mount.spec.ts`'s module comment, finding (2), for the full
- *  writeup): "flat" here isn't just a simplification — it's load-bearing. `layoutRows()` gives
- *  every task exactly one row with no collapse/virtualization, so at default density (32px/row)
- *  Canvas's own dimension guard (65,535px ÷ 32px ≈ 2,047 rows) makes any `taskCount` past ~2,047
- *  structurally unable to mount via Canvas at all — it always falls back to SVG. `taskCount=5000`
- *  and `taskCount=10000` in the perf spec deliberately measure that real fallback path, not a
- *  "successful Canvas mount" that cannot occur with this dataset shape. */
+ *  writeup): "flat" here isn't just a simplification — `layoutRows()` still gives every task
+ *  exactly one row with no collapse concept. Before issue #37's row/viewport-virtualization fix,
+ *  that meant Canvas's dimension guard (65,535px ÷ 32px ≈ 2,047 rows at default density) made any
+ *  `taskCount` past ~2,047 structurally unable to mount via Canvas at all. Since that fix, Canvas's
+ *  backing-store height is bound to a fixed viewport (`resolveViewportHeightPx()`, default 600px)
+ *  independent of row count, so `taskCount=5000` and `taskCount=10000` in the perf spec now
+ *  measure a genuine, successful Canvas mount — the rolling working-day window here also keeps the
+ *  derived WIDTH axis small and constant regardless of `taskCount`, so neither dimension axis is
+ *  hit by this dataset shape at any of the sizes this harness is driven at. */
 function generateDataset(taskCount: number): { tasks: Task[]; dependencies: Dependency[] } {
   const workingDayWindow = buildWorkingDayWindow(WORKING_DAY_WINDOW_SIZE);
   const now = new Date('2026-01-01T00:00:00Z');
@@ -130,9 +142,16 @@ function generateDataset(taskCount: number): { tasks: Task[]; dependencies: Depe
 const params = new URLSearchParams(window.location.search);
 const taskCount = Number(params.get('taskCount') ?? '100');
 const { tasks, dependencies } = generateDataset(taskCount);
+const canvasViewportHeightParam = params.get('canvasViewportHeight');
+const canvasViewportHeight =
+  canvasViewportHeightParam !== null ? Number(canvasViewportHeightParam) : undefined;
 
 const container = document.getElementById('gantt')!;
-const gantt: GanttInstance = createGantt({ tasks, dependencies });
+const gantt: GanttInstance = createGantt({
+  tasks,
+  dependencies,
+  ...(canvasViewportHeight !== undefined ? { canvasViewportHeight } : {}),
+});
 
 /** Times one `gantt.mount(container)` call via `renderer:selected` — resolves after the chosen
  *  renderer has fully painted, regardless of which renderer path (sync SVG / async Canvas) was

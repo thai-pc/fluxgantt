@@ -53,25 +53,36 @@ test.describe('safe-shape smoke test (reuses the existing Ticket-1 fixture, no n
 });
 
 test.describe('area-boundary straddling pair (new, parametrized harness)', () => {
-  // Exact row-count boundary derivation lives in
+  // Exact boundary derivation lives in
   // `examples/plain-html-demo/src/canvas-webkit-dimension-guard-harness.ts`'s header comment —
   // both the physicalWidth/physicalHeight formula (including the `deviceScaleFactor: 2` this
   // Playwright project's `devices['Desktop Safari']` preset actually uses) and the resulting
-  // exact boundary (rows=594 safe / rows=595 overflowing) are documented there, not
-  // re-derived here.
-  const SAFE_ROWS = 594;
-  const OVERFLOWING_ROWS = 595;
+  // exact boundary are documented there, not re-derived here.
+  //
+  // HISTORICAL NOTE (fix #37): this straddling pair used to be expressed as a row count alone
+  // (rows=594 safe / rows=595 overflowing) — fix #37 decoupled Canvas's backing-store height
+  // from row count entirely, so row count alone can no longer trip this guard. An explicit
+  // `viewportHeight` query param (forwarded to `CanvasRendererOptions.viewportHeight`) is now
+  // the only axis that varies `physicalHeight`/area here; `rows` is fixed at the harness's old
+  // SAFE_ROWS value purely so a real, non-trivial dataset still mounts.
+  const ROWS = 594;
+  const SAFE_VIEWPORT_HEIGHT = 19_065;
+  const OVERFLOWING_VIEWPORT_HEIGHT = 19_066;
 
-  test(`rows=${SAFE_ROWS}: paints, no error`, async ({ page }) => {
-    await page.goto(`/canvas-webkit-dimension-guard-harness.html?rows=${SAFE_ROWS}`);
+  test(`viewportHeight=${SAFE_VIEWPORT_HEIGHT}: paints, no error`, async ({ page }) => {
+    await page.goto(
+      `/canvas-webkit-dimension-guard-harness.html?rows=${ROWS}&viewportHeight=${SAFE_VIEWPORT_HEIGHT}`,
+    );
     await expect(page.locator('body')).toHaveAttribute('data-result', 'ok');
     await expect(page.locator('.fg-timeline-canvas')).toBeVisible();
   });
 
-  test(`rows=${OVERFLOWING_ROWS}: throws CanvasDimensionExceededError with axis "area"`, async ({
+  test(`viewportHeight=${OVERFLOWING_VIEWPORT_HEIGHT}: throws CanvasDimensionExceededError with axis "area"`, async ({
     page,
   }) => {
-    await page.goto(`/canvas-webkit-dimension-guard-harness.html?rows=${OVERFLOWING_ROWS}`);
+    await page.goto(
+      `/canvas-webkit-dimension-guard-harness.html?rows=${ROWS}&viewportHeight=${OVERFLOWING_VIEWPORT_HEIGHT}`,
+    );
     await expect(page.locator('body')).toHaveAttribute('data-result', 'error');
     await expect(page.locator('body')).toHaveAttribute('data-error-axis', 'area');
     await expect(page.locator('body')).toHaveAttribute(
@@ -92,15 +103,23 @@ test.describe('real mount() path: dimension-exceeded fallback under WebKit (spec
   // `gantt.ts`'s `#mountCanvasAsync`) behaves the same way under a second real engine. Reuses
   // `canvas-mount-perf-harness.html` (Ticket 3's own fixture, Chromium-verified already in
   // `tests/visual/canvas-auto-switch-boundary.spec.ts`) at `taskCount=2001` — the smallest
-  // over-threshold count, safe under Chromium's dimension guard but, per `devices['Desktop
-  // Safari']`'s `deviceScaleFactor: 2` (this project's own device preset — same reasoning as the
-  // `OVERFLOWING_ROWS` boundary above), pushes `physicalHeight` well past `MAX_CANVAS_
-  // DIMENSION_PX` under WebKit, triggering the exact same fallback path a much larger Chromium
-  // dataset would.
+  // over-threshold count — combined with an explicit, oversized `canvasViewportHeight` query
+  // param (same one `canvas-auto-switch-boundary.spec.ts`'s own "oversized canvasViewportHeight"
+  // Chromium test uses, forwarded to `GanttConfig.canvasViewportHeight`).
+  //
+  // HISTORICAL NOTE (fix #37): `taskCount=2001` alone used to be enough here — per
+  // `devices['Desktop Safari']`'s `deviceScaleFactor: 2` (this project's own device preset),
+  // `physicalHeight` scaled with row count and comfortably exceeded `MAX_CANVAS_DIMENSION_PX`
+  // under WebKit even below Chromium's own row-count boundary. Fix #37 decoupled
+  // `physicalHeight` from row count entirely, so `taskCount` alone no longer triggers the guard
+  // under WebKit either — an explicit `canvasViewportHeight` is now required, exactly mirroring
+  // why the equivalent Chromium test needed one too.
   test('mount() falls back to SVG, fires renderer:selected with dimension-exceeded, warns once', async ({
     page,
   }) => {
-    await page.goto('/canvas-mount-perf-harness.html?taskCount=2001');
+    await page.goto(
+      '/canvas-mount-perf-harness.html?taskCount=2001&canvasViewportHeight=70000',
+    );
 
     const warnings: string[] = [];
     page.on('console', (msg) => {
@@ -153,13 +172,17 @@ test.describe('a11y layer still works under WebKit', () => {
       'aria-rowcount',
       String(SAFE_ROWS),
     );
-    // The a11y layer windows DOM row construction to `A11Y_WINDOW_OVERSCAN + 1` rows centered
-    // on the focused row (canvas-renderer.ts, issue #36) — NOT every row; `aria-rowcount` above
-    // still reports the true full count. This fixture wires neither enableClickSelect nor
-    // enableKeyboardNav, so `focusedTaskId` falls back to row 0, giving a window of exactly
-    // `A11Y_WINDOW_OVERSCAN + 1` rows (no rows exist below index 0).
-    const A11Y_WINDOW_OVERSCAN = 50; // must match canvas-renderer.ts's own constant
-    await expect(page.locator('[role="row"]')).toHaveCount(A11Y_WINDOW_OVERSCAN + 1);
+    // The a11y layer windows DOM row construction to the SAME scroll-position-derived row band
+    // `computeVisibleWindow()` paints (issue #37, superseding issue #36's old focus-centered
+    // `A11Y_WINDOW_OVERSCAN` scheme) — NOT every row; `aria-rowcount` above still reports the
+    // true full count. This fixture doesn't set `viewportHeight`, so Canvas's own 600px default
+    // (`resolveViewportHeightPx()`) applies: minus the 32px header that's a 568px row band, at
+    // the default 32px row height that's `ceil(568/32) = 18` rows raw, padded by
+    // `CANVAS_VIRTUALIZATION_OVERSCAN_ROWS` (20) on each side (only the bottom side has room to
+    // expand into at `container.scrollTop === 0`, this fixture's default) = window `[0, 38]` =
+    // 39 rows. Matches `canvas-renderer.test.ts`'s and the Chromium
+    // `canvas-auto-switch-boundary.spec.ts`'s identical computation for the same inputs.
+    await expect(page.locator('[role="row"]')).toHaveCount(39);
     // Roving tabindex: exactly one focusable row.
     await expect(page.locator('.fg-timeline-a11y-layer [tabindex="0"]')).toHaveCount(1);
     // The canvas bitmap itself stays out of the accessibility tree.

@@ -18,18 +18,37 @@
 // `role="gridcell"`/`aria-selected`/roving `tabindex`/per-task `aria-label`) — i.e. the markup
 // SHAPE of any one row is identical between the two renderers. The ROW COUNT built into the DOM
 // is NOT full parity, though: unlike `svg-renderer.ts` (which renders every row's real visible
-// DOM unconditionally), this layer is WINDOWED (spec-canvas-renderer-a11y-windowing.md, issue
-// #36) to only `2 * A11Y_WINDOW_OVERSCAN + 1` rows centered on `focusedTaskId`'s row, rebuilt
-// every render — an unbounded, full-row-count rebuild on every `render()` was an O(taskCount)
-// DOM-construction cost with no relation to what's visible or focused, and made Canvas mount
-// SLOWER than SVG at the very task counts (2000+) the Canvas auto-switch exists to speed up.
-// `aria-rowcount` on `a11yLayer` still always reports the true, FULL row count — only DOM-node
-// construction is windowed, not the grid's reported size. The visible `<canvas>` itself is
-// `aria-hidden="true"` — Ticket 1's `role="img"` stopgap is superseded, not layered on top of,
-// since exposing both would double-announce the same data to a screen reader. Click-select
+// DOM unconditionally), this layer is WINDOWED — only `computeVisibleWindow()`'s row range (±
+// `CANVAS_VIRTUALIZATION_OVERSCAN_ROWS`) is rebuilt every render (spec-canvas-row-
+// virtualization.md §5.1, fix #37). This SUPERSEDES issue #36/PR #38's original windowing
+// mechanism (`A11Y_WINDOW_OVERSCAN`-rows centered on `focusedTaskId`'s row) now that a real
+// scroll viewport exists: the a11y DOM window is now the ACTUAL visible row range (the same one
+// the paint pass below uses — one shared window per render, not two independently-computed
+// ones), not a focus-position stand-in. #36's own goal (bounded, not-O(taskCount) DOM
+// construction per render, since an unbounded full-row-count rebuild made Canvas mount SLOWER
+// than SVG at the very task counts (2000+) the Canvas auto-switch exists to speed up) is
+// preserved by construction — see §6 of that spec for the full "supersedes, does not regress"
+// reasoning. `aria-rowcount` on `a11yLayer` still always reports the true, FULL row count — only
+// DOM-node construction is windowed, not the grid's reported size. The visible `<canvas>` itself
+// is `aria-hidden="true"` — Ticket 1's `role="img"` stopgap is superseded, not layered on top
+// of, since exposing both would double-announce the same data to a screen reader. Click-select
 // (`hitTestRow()`, §7) and a `focusin`/`focusout`-driven on-canvas focus ring (§8) bring Canvas
 // mode to full keyboard+mouse+screen-reader parity with SVG mode. Drag-move/drag-resize/
 // drag-create-dep remain SVG-only (unrelated to accessibility, out of scope for both tickets).
+//
+// **ROW VIRTUALIZATION (fix #37, spec-canvas-row-virtualization.md).** The `<canvas>` backing
+// store is no longer sized to the FULL content (`totalWidth x totalHeight`) — it is sized to a
+// small, bounded, host-controlled viewport (`resolvedViewportHeightPx`, default 600px via
+// `CanvasRendererOptions.viewportHeight`), made `position: sticky` inside `container`, which
+// itself becomes the real vertical scroll viewport (`container.style.height`/`overflowY =
+// 'auto'`, set unconditionally — a deliberate, documented Canvas-mode-only mount() contract
+// change, see that spec's §4.1). A `.fg-timeline-canvas-spacer` div gives `container` a real
+// `scrollHeight` beyond the bounded canvas. On every scroll/resize frame (rAF-throttled), only
+// the row window currently in (or near) view is repainted — this is what actually breaks the
+// `bodyHeight = rows.length * rowHeight` -> `MAX_CANVAS_DIMENSION_PX` dependency that made
+// Canvas structurally unreachable above ~2,047 rows; it now works identically at 10,000 rows as
+// at 100. `layoutRows()` itself is untouched (still full, pure, unwindowed) — windowing is
+// entirely a renderer-layer paint/DOM-construction concern.
 //
 // SECURITY (security.md, spec §6/§9 — read before touching this file): `task.name` is the
 // only free-form string painted/rendered in v1. On the bitmap it is passed ONLY as the
@@ -130,6 +149,20 @@ export interface CanvasRendererOptions {
   /** `aria-label` for the hidden a11y layer's `role="grid"` root. Default `'Gantt chart'`. The
    *  visible `<canvas>` itself carries no `aria-label` (it is `aria-hidden`, Ticket 2). */
   readonly ariaLabel?: string;
+  /**
+   * (fix #37, spec-canvas-row-virtualization.md §2/§4.2). Bounds the `<canvas>` backing
+   * store's PHYSICAL height and `container`'s visible scroll-viewport height — the canvas no
+   * longer grows with the total row count (that was the root cause of #37: Canvas mode was
+   * structurally unreachable above ~2,047 rows, since a full-content-height backing store hits
+   * `MAX_CANVAS_DIMENSION_PX` well before any realistically large flat project does). Default
+   * `DEFAULT_VIEWPORT_HEIGHT_PX` (600px) when omitted, `undefined`, non-finite, or `<= 0`.
+   * Clamped up to at least `MIN_VIEWPORT_HEIGHT_PX` (one header + one row) regardless of what
+   * is requested — a caller-provided value too small to show a single row is not honored
+   * literally. Mounting into `container` ALWAYS sets `container.style.height`/`overflowY =
+   * 'auto'` unconditionally in Canvas mode (a deliberate, documented mount()-contract change —
+   * see that spec's §4.1) — this is NOT applied in SVG mode, which has no such constraint.
+   */
+  readonly viewportHeight?: number;
   // NOTE: no `showLinkHandles` — Canvas mode has no connector-handle affordance in v1 at all
   // (drag-create-dep is excluded from Canvas mode entirely, not just deferred), so there is
   // nothing for this flag to toggle. Do not add a no-op option.
@@ -206,22 +239,83 @@ const DEFAULT_LOCALE = 'en';
 const DEFAULT_ARIA_LABEL = 'Gantt chart';
 
 /**
- * Number of rows built on EITHER side of `focusedTaskId`'s row when (re)building the hidden
- * a11y layer's DOM (spec-canvas-renderer-a11y-windowing.md, issue #36) — the a11y layer no
- * longer materializes one real DOM row per task on every `render()` (an O(taskCount) DOM-
- * construction cost with no relation to what's on/near screen); it materializes only a window
- * of `2 * A11Y_WINDOW_OVERSCAN + 1` rows centered on the currently-focused row. Module-local
- * (not imported from `svg-renderer.ts`, which has no windowing concept at all — SVG renders
- * every row's real visible DOM unconditionally, so there is nothing analogous to duplicate or
- * import; see the MODULE-ISOLATION RULE in this file's header regardless).
+ * Default bounded viewport height (px) applied when `CanvasRendererOptions.viewportHeight` is
+ * omitted (fix #37, spec-canvas-row-virtualization.md §4.2) — deliberately small and fixed,
+ * independent of row count, since that independence is the entire point of this fix.
  */
-const A11Y_WINDOW_OVERSCAN = 50;
+const DEFAULT_VIEWPORT_HEIGHT_PX = 600;
+
+/** Smallest viewport height honored — one header band plus one row at the most compact
+ *  density, so a caller can never request a viewport too short to show a single row. */
+const MIN_VIEWPORT_HEIGHT_PX = HEADER_HEIGHT + ROW_HEIGHT.compact;
+
+/**
+ * Number of rows painted/materialized on EITHER side of the currently scrolled-into-view row
+ * range (fix #37, spec-canvas-row-virtualization.md §4.3/§5.1) — supersedes issue #36/PR #38's
+ * `A11Y_WINDOW_OVERSCAN` (50, focus-centered). Now that Canvas mode has a real, bounded scroll
+ * viewport, ONE shared `computeVisibleWindow()` result (scroll-position-driven, not focus-
+ * position-driven) is used for BOTH the paint pass's windowed row repaint AND the hidden a11y
+ * layer's windowed DOM rebuild — a smaller overscan than #36 used is sufficient here because
+ * the window now tracks the REAL visible range (plus a keyboard/AT-navigation safety margin),
+ * not a synthetic stand-in centered on focus alone.
+ */
+const CANVAS_VIRTUALIZATION_OVERSCAN_ROWS = 20;
 
 /** Fixed, compile-time-constant font string — NEVER built from task/user data (§6). */
 const TASK_LABEL_FONT = '12px system-ui, sans-serif';
 
 /** ~half-size of the hand-drawn dependency arrowhead triangle (px), §5.4. */
 const ARROWHEAD_SIZE_PX = 6;
+
+/**
+ * Resolves the effective bounded viewport height in CSS px (fix #37, spec §4.2) — always
+ * `>= MIN_VIEWPORT_HEIGHT_PX`, regardless of what (if anything) the caller requested.
+ */
+export function resolveViewportHeightPx(options: CanvasRendererOptions): number {
+  const requested = options.viewportHeight;
+  if (requested !== undefined && Number.isFinite(requested) && requested > 0) {
+    return Math.max(MIN_VIEWPORT_HEIGHT_PX, requested);
+  }
+  return DEFAULT_VIEWPORT_HEIGHT_PX;
+}
+
+/** A row index range — `endIndex < startIndex` (e.g. `{ startIndex: 0, endIndex: -1 }`) is the
+ *  canonical "empty" representation, used when `rows.length === 0`. */
+export interface RowWindow {
+  readonly startIndex: number;
+  readonly endIndex: number;
+}
+
+/** The raw scroll/viewport inputs `computeVisibleWindow()` needs — kept as one small value
+ *  object (spec §3) rather than three loose positional args, so call sites read clearly and a
+ *  future added input (e.g. horizontal windowing) has an obvious place to live. */
+interface ScrollWindow {
+  readonly scrollTop: number;
+  /** Height, in CSS px, of the scrollable ROW band alone (i.e. the bounded viewport height
+   *  MINUS the sticky header) — NOT the full `resolvedViewportHeightPx`. */
+  readonly rowBandViewportPx: number;
+}
+
+/**
+ * Maps a scroll position + viewport height into the row-index range that should be
+ * painted/materialized this frame, padded by `overscanRows` on each side (fix #37, spec §4.3).
+ * Pure, DOM-free — safe to unit-test directly and to property-test with fast-check.
+ */
+export function computeVisibleWindow(
+  rows: readonly RowLayout[],
+  scrollWindow: ScrollWindow,
+  rowHeight: number,
+  overscanRows: number,
+): RowWindow {
+  if (rows.length === 0) return { startIndex: 0, endIndex: -1 };
+  const clampedScrollTop = Number.isFinite(scrollWindow.scrollTop) ? Math.max(0, scrollWindow.scrollTop) : 0;
+  const rawStart = Math.floor(clampedScrollTop / rowHeight);
+  const rawEnd = Math.ceil((clampedScrollTop + scrollWindow.rowBandViewportPx) / rowHeight);
+  const lastIndex = rows.length - 1;
+  const startIndex = Math.min(lastIndex, Math.max(0, rawStart - overscanRows));
+  const endIndex = Math.min(lastIndex, Math.max(startIndex, rawEnd + overscanRows));
+  return { startIndex, endIndex };
+}
 
 // --- Canvas backing-store dimension guard (spec-canvas-row-limit-fix.md, extended by
 // spec-canvas-webkit-dimension-limit.md for WebKit/Safari) --------------------------------
@@ -531,8 +625,33 @@ export function createCanvasRenderer(
   };
   let destroyed = false;
 
+  // Tracks the resolved `focusedTaskId` (`state.input.focusedTaskId ?? rows[0]?.task.id`) as of
+  // the END of the PREVIOUS `renderPixels()` call (fix #37 follow-up, spec §5.2). `render()` runs
+  // on every scroll/resize event, not just on a `focusedTaskId`-changing `update()` — unconditionally
+  // re-running `ensureFocusedRowVisible()` on EVERY render would immediately undo a plain user
+  // scroll (mouse wheel, scrollbar drag, or a programmatic `container.scrollTop` write) back to
+  // whichever row is currently considered "focused", which defaults to row 0 whenever no task has
+  // ever been focused yet — the common just-mounted state. Comparing against the LAST resolved
+  // value (not against `state.input.focusedTaskId` alone) means the auto-scroll-to-reveal only
+  // fires when focus actually CHANGED between renders, letting a plain scroll/resize repaint leave
+  // `container.scrollTop` exactly as the user/host left it. A `Symbol` sentinel (not `undefined`)
+  // distinguishes "never rendered yet" from "rendered once with a resolved focus of `undefined`"
+  // (only reachable when `rows` is empty) — both must still trigger the very first auto-scroll.
+  const NEVER_RENDERED = Symbol('canvas-renderer:never-rendered');
+  let lastFocusedTaskId: TaskId | undefined | typeof NEVER_RENDERED = NEVER_RENDERED;
+
+  // `container` is now the REAL scroll viewport (fix #37, spec §4.1) — canvas becomes
+  // `position: sticky` so it stays pinned at `container`'s visible top edge as `container`
+  // itself scrolls. This unconditionally sets `container`'s own height/overflow, a deliberate,
+  // documented Canvas-mode-only mount() contract change (see this file's header comment and
+  // that spec's §4.1 for the full rationale) — SVG mode has no equivalent and is unaffected.
+  container.style.overflowY = 'auto';
+
   const canvas = document.createElement('canvas');
   canvas.className = 'fg-timeline-canvas';
+  canvas.style.position = 'sticky';
+  canvas.style.top = '0';
+  canvas.style.left = '0';
   container.appendChild(canvas);
 
   const maybeCtx = canvas.getContext('2d');
@@ -548,34 +667,32 @@ export function createCanvasRenderer(
   // narrow of `maybeCtx`.
   const ctx: CanvasRenderingContext2D = maybeCtx;
 
-  // The hidden a11y layer below is positioned `absolute; top:0; left:0` — for that to anchor
-  // at `container`'s own top-left corner (co-located with `canvas`, which is `container`'s
-  // first child) rather than the nearest ANY positioned ancestor somewhere else in the host
-  // page, `container` itself must establish a positioning context. Only set when the host app
-  // hasn't already positioned it (`static` is the CSS-default, so "unset" and "explicitly
-  // static" are indistinguishable and both safe to upgrade) — never overrides a host app's own
-  // `relative`/`absolute`/`fixed`/`sticky` choice.
-  if (getComputedStyle(container).position === 'static') {
-    container.style.position = 'relative';
-  }
+  // Gives `container` a real `scrollHeight` beyond the bounded canvas (fix #37, spec §4.1) —
+  // a plain, non-positioned, zero-content block whose `style.height` is set to the FULL
+  // (unbounded) content height on every render(). `container.scrollTop` therefore ranges over
+  // the full logical content height even though the canvas backing store itself never does.
+  const spacerEl = document.createElement('div');
+  spacerEl.className = 'fg-timeline-canvas-spacer';
+  spacerEl.setAttribute('aria-hidden', 'true');
+  container.appendChild(spacerEl);
 
-  // --- Hidden ARIA grid layer construction (Ticket 2, spec §5.1) --------------------------
+  // --- Hidden ARIA grid layer construction (Ticket 2, spec §5.1; repositioned for #37) ----
   // Visually hidden, but focusable/AT-reachable — the standard "sr-only" technique, NOT
   // display:none/visibility:hidden (both remove an element from the accessibility tree AND
   // the tab order). Set via inline styles — `@fluxgantt/core` ships no base stylesheet.
-  // Deliberately OFFSCREEN, not positioned to overlay the visible canvas (spec §5.1).
   const a11yLayer = document.createElement('div');
   a11yLayer.className = 'fg-timeline-a11y-layer';
-  a11yLayer.style.position = 'absolute';
-  // `top`/`left` MUST be pinned (not left to the "static position" fallback) — without them,
-  // an unpositioned `position: absolute` element renders wherever it would fall in normal
-  // document flow, which for a tall chart (many rows -> a tall `canvas`, this layer appended
-  // right after it) can be thousands of pixels down the page. A keyboard/AT user focusing a
-  // row then drags the WHOLE PAGE (canvas included) into a huge scroll jump via the browser's
-  // built-in scroll-into-view-on-focus behavior, defeating the entire point of "offscreen but
-  // visually in place." Pinning to the container's own top-left keeps the hidden layer (and
-  // therefore the focus scroll target) co-located with the visible canvas regardless of row
-  // count. Empirically confirmed via a Playwright repro while authoring this ticket's harness.
+  // `position: sticky` (not `absolute`, as Ticket 2 originally shipped it) — now that
+  // `container` is the real scroll viewport (fix #37), an `absolute`-positioned layer would
+  // scroll away with the rest of `container`'s content as `scrollTop` increases (absolute
+  // positioning resolves against the containing block's UN-scrolled coordinate space), which
+  // could fight `ensureFocusedRowVisible()`'s own intentional `container.scrollTop` writes via
+  // the browser's native focus-scroll-into-view behavior. `sticky` keeps this layer pinned at
+  // `container`'s visible top-left corner at all times, mirroring `canvas`'s own sticky
+  // positioning above — empirically re-verified via this ticket's new Playwright a11y test
+  // (ArrowDown past the bottom of the initial window scrolls `container` correctly, with no
+  // fighting/jump), see `tests/a11y/canvas-renderer.spec.ts`.
+  a11yLayer.style.position = 'sticky';
   a11yLayer.style.top = '0';
   a11yLayer.style.left = '0';
   a11yLayer.style.width = '1px';
@@ -587,7 +704,27 @@ export function createCanvasRenderer(
   a11yLayer.style.clip = 'rect(0px, 0px, 0px, 0px)';
   a11yLayer.style.clipPath = 'inset(50%)';
   a11yLayer.style.whiteSpace = 'nowrap';
-  container.appendChild(a11yLayer);
+  // `insertBefore(a11yLayer, canvas)`, NOT `appendChild` (bug found + fixed in this change) —
+  // `position: sticky` only pins an element once its OWN natural (pre-scroll, static-flow)
+  // position has been reached by scrolling. `canvas` is inserted first specifically so its
+  // natural top-of-flow offset is ~0 and its `sticky top: 0` applies immediately, with no
+  // scrolling required (comment above `canvas.style.position = 'sticky'`). A plain
+  // `container.appendChild(a11yLayer)` here would place it AFTER `spacerEl` (which reserves the
+  // full, unbounded content height — tens of thousands of pixels at real task counts), so
+  // `a11yLayer`'s own natural static-flow offset would be ~`spacerEl`'s full height, not 0 —
+  // `sticky` would then only kick in after scrolling nearly to the BOTTOM of the content.
+  // Concretely, this made every focusable row's real `getBoundingClientRect()` sit off-screen,
+  // tens of thousands of pixels down, at `container.scrollTop = 0`: the browser's native
+  // focus-scroll-into-view behavior (triggered by a bare Tab press, or any `.focus()` call
+  // without `{ preventScroll: true }`) would then yank `container.scrollTop` almost to the
+  // bottom just to bring the tabindex="0" row into view — which in turn changed which rows
+  // `computeVisibleWindow()` materializes into `a11yLayer` on the very next render (triggered
+  // by the resulting `focusin` event), so the row the browser had just focused was gone from
+  // the DOM by the time that render finished, dropping focus back to `<body>` entirely. Placing
+  // `a11yLayer` first (natural offset ~0, sticky pinned from the very first paint) fixes all of
+  // it at the root cause. Caught empirically by `tests/a11y/canvas-renderer.spec.ts` (native Tab
+  // order, ArrowDown-from-native-Tab-focus, and the ArrowDown-past-viewport regression test).
+  container.insertBefore(a11yLayer, canvas);
 
   // Reentrancy guard (spec §5.1/§8.3) — prevents the a11y-layer rebuild's own `.focus()` call
   // (below, in render()) or DOM removal from recursively re-entering render() via focusin/
@@ -596,12 +733,36 @@ export function createCanvasRenderer(
   a11yLayer.addEventListener('focusin', handleFocusChange);
   a11yLayer.addEventListener('focusout', handleFocusChange);
 
+  // --- Scroll + resize wiring (fix #37, spec §4.5/§4.6) -----------------------------------
+  // A single shared rAF-coalescing scheduler: any number of scroll/resize events arriving
+  // within one animation frame collapse into exactly one `render()` call, never a pile-up.
+  let pendingRenderRaf: number | undefined;
+  function scheduleRender(): void {
+    if (pendingRenderRaf !== undefined || destroyed) return;
+    pendingRenderRaf = requestAnimationFrame(() => {
+      pendingRenderRaf = undefined;
+      if (!destroyed) render();
+    });
+  }
+  container.addEventListener('scroll', scheduleRender, { passive: true });
+
+  // Feature-detected (spec §4.5) — `ResizeObserver` is broadly supported in modern evergreen
+  // browsers but not universal on every embedding target; absence degrades gracefully to
+  // "repaint only on explicit update()/setOptions() calls", not a functional failure (same
+  // feature-detect posture as `ctx.roundRect` above).
+  const resizeObserver: ResizeObserver | undefined =
+    typeof ResizeObserver === 'function' ? new ResizeObserver(scheduleRender) : undefined;
+  resizeObserver?.observe(container);
+
   try {
     render();
   } catch (err) {
     // Mirrors the null-2D-context guard above (§5.3 of the fix spec) — leave no half-mounted
-    // canvas or a11y layer behind on a construction-time failure.
+    // canvas, spacer, or a11y layer behind on a construction-time failure.
+    resizeObserver?.disconnect();
+    container.removeEventListener('scroll', scheduleRender);
     canvas.remove();
+    spacerEl.remove();
     a11yLayer.remove();
     throw err;
   }
@@ -642,7 +803,14 @@ export function createCanvasRenderer(
       destroyed = true;
       a11yLayer.removeEventListener('focusin', handleFocusChange);
       a11yLayer.removeEventListener('focusout', handleFocusChange);
+      container.removeEventListener('scroll', scheduleRender);
+      resizeObserver?.disconnect();
+      if (pendingRenderRaf !== undefined) {
+        cancelAnimationFrame(pendingRenderRaf);
+        pendingRenderRaf = undefined;
+      }
       canvas.remove();
+      spacerEl.remove();
       a11yLayer.remove();
     },
     getTimeScale(): TimeScale {
@@ -660,11 +828,11 @@ export function createCanvasRenderer(
     render();
   }
 
-  /** (Ticket 2, spec §7.2) O(1) index arithmetic, not a per-row scan — safe to call on every
-   *  `pointerdown` even at 10,000+ rows, since `ROW_HEIGHT` is constant across all rows
-   *  regardless of hierarchy indentation. Reads live `state.input`/`state.options`, never a
-   *  stale cache from the last `render()` — same freshness posture `keyboard-nav.ts` already
-   *  uses for its own `layoutRows()` calls. */
+  /** (Ticket 2, spec §7.2; scroll-aware since fix #37 spec §4.7) O(1) index arithmetic, not a
+   *  per-row scan — safe to call on every `pointerdown` even at 10,000+ rows, since
+   *  `ROW_HEIGHT` is constant across all rows regardless of hierarchy indentation. Reads live
+   *  `state.input`/`state.options`, never a stale cache from the last `render()` — same
+   *  freshness posture `keyboard-nav.ts` already uses for its own `layoutRows()` calls. */
   function hitTestRow(clientX: number, clientY: number): { taskId: TaskId; rowIndex: number } | undefined {
     const rect = canvas.getBoundingClientRect();
     const x = clientX - rect.left;
@@ -679,11 +847,44 @@ export function createCanvasRenderer(
     const density = state.options.density ?? DEFAULT_DENSITY;
     const rows = layoutRows(state.input.tasks, density); // same call render() makes
     const rowHeight = ROW_HEIGHT[density]; // uniform per density, independent of hierarchy depth
-    const rowIndex = Math.floor((y - HEADER_HEIGHT) / rowHeight);
+    // `canvas` is `position: sticky` and only ever paints/hit-tests a WINDOW of rows local to
+    // its own bounded height (fix #37) — a click's y-within-canvas must be translated into
+    // content-space by adding back `container.scrollTop`, the same offset the paint pass's
+    // `ctx.translate(0, HEADER_HEIGHT - scrollTop)` subtracts when painting.
+    const rowIndex = Math.floor((y - HEADER_HEIGHT + container.scrollTop) / rowHeight);
     const row = rows[rowIndex];
     if (row === undefined) return undefined; // below the last row — empty space
 
     return { taskId: row.task.id, rowIndex };
+  }
+
+  /**
+   * (fix #37, spec §5.2) Scrolls `container` the minimum amount needed so the row at
+   * `focusedIndex` is fully within the visible row band, WITHOUT relying on the browser's
+   * native focus-scroll-into-view behavior (which `rowEl.focus({ preventScroll: true })`
+   * deliberately suppresses further down in `renderPixels()`) — this is the one, deliberate,
+   * explicit scroll adjustment instead. No-op when `focusedIndex === -1` (nothing focused, or
+   * `rows` is empty) or when the focused row is already fully visible.
+   */
+  function ensureFocusedRowVisible(
+    focusedIndex: number,
+    rows: readonly RowLayout[],
+    rowHeight: number,
+    resolvedViewportHeightPx: number,
+  ): void {
+    if (focusedIndex === -1) return;
+    const row = rows[focusedIndex];
+    if (row === undefined) return; // defensive — should be unreachable given a valid index
+    const rowTop = row.y;
+    const rowBottom = rowTop + rowHeight;
+    const viewTop = container.scrollTop;
+    const rowBandViewportPx = Math.max(0, resolvedViewportHeightPx - HEADER_HEIGHT);
+    const viewBottom = viewTop + rowBandViewportPx;
+    if (rowTop < viewTop) {
+      container.scrollTop = rowTop;
+    } else if (rowBottom > viewBottom) {
+      container.scrollTop = rowBottom - rowBandViewportPx;
+    }
   }
 
   function render(): void {
@@ -721,14 +922,42 @@ export function createCanvasRenderer(
     const rows = layoutRows(state.input.tasks, density);
 
     const offsetX = LABEL_COLUMN_WIDTH;
-    const offsetY = HEADER_HEIGHT;
     const bodyHeight = rows.length > 0 ? rows[rows.length - 1]!.y + rowHeight : rowHeight;
     const totalWidth = offsetX + timeScale.totalWidth;
-    const totalHeight = offsetY + bodyHeight;
+    // Full, UNBOUNDED content height (header + every row) — still needed to size the spacer
+    // element (so `container` gets a real `scrollHeight`) and as the scroll-range ceiling
+    // `ensureFocusedRowVisible()`/`computeVisibleWindow()` operate against below, but is NO
+    // LONGER what the canvas backing store itself is sized to (fix #37 — that dependency is
+    // exactly what made Canvas mode structurally unreachable above ~2,047 rows).
+    const totalHeight = HEADER_HEIGHT + bodyHeight;
     const dpr = (typeof window !== 'undefined' ? window.devicePixelRatio : 1) || 1;
 
+    // --- Row virtualization setup (fix #37, spec §4.1-§4.3) --------------------------------
+    const resolvedViewportHeightPx = resolveViewportHeightPx(state.options);
+    const rowBandViewportPx = Math.max(0, resolvedViewportHeightPx - HEADER_HEIGHT);
+
+    // `focusedTaskId` falls back to the FIRST row when unset — before any keyboard interaction
+    // has happened, the grid must still be exactly one native Tab stop (mirrors SVG's
+    // identical fallback). Computed early (moved up from its original position near the a11y
+    // rebuild below) because `ensureFocusedRowVisible()` needs it right here, at the top of
+    // this function, strictly BEFORE `computeVisibleWindow()` runs further down (spec §5.2) —
+    // if a keyboard ArrowDown just moved focus past the bottom of the current window, this
+    // adjusts `container.scrollTop` FIRST, so the window this frame paints/materializes is the
+    // one that actually contains the newly-focused row, not the stale pre-navigation one.
+    const focusedTaskId = state.input.focusedTaskId ?? rows[0]?.task.id;
+    const focusedIndex = rows.findIndex((r) => r.task.id === focusedTaskId);
+    // Only auto-scroll to reveal the focused row when focus actually CHANGED since the last
+    // render (see `lastFocusedTaskId`'s own comment above) — otherwise a plain scroll/resize-
+    // triggered repaint would fight the very scroll it exists to reflect.
+    if (focusedTaskId !== lastFocusedTaskId) {
+      ensureFocusedRowVisible(focusedIndex, rows, rowHeight, resolvedViewportHeightPx);
+    }
+    lastFocusedTaskId = focusedTaskId;
+
     const physicalWidth = Math.round(totalWidth * dpr);
-    const physicalHeight = Math.round(totalHeight * dpr);
+    // Bound to the VIEWPORT, not the full content height — see the `totalHeight` comment
+    // above; this is the actual fix for #37.
+    const physicalHeight = Math.round(resolvedViewportHeightPx * dpr);
 
     // --- Guards that can still throw — ALL of them MUST run before any canvas/DOM mutation,
     // before the barByTaskId loop (avoids wasted O(rows) work and a misleading
@@ -739,7 +968,11 @@ export function createCanvasRenderer(
     // above, which now rolls back `state` as one atomic unit for exactly this reason — a
     // second, independent throw site here, `computeGridColumns`'s own `MAX_GRID_COLUMNS`
     // guard, is not the dimension guard added by this fix, but must be treated identically:
-    // both run, and can both throw, before any state mutation).
+    // both run, and can both throw, before any state mutation). NOTE: `ensureFocusedRowVisible`
+    // above may already have written `container.scrollTop` — that is deliberately NOT part of
+    // this rollback contract (only the canvas bitmap, `state.input`/`state.options`, and
+    // `getTimeScale()` are), since scrolling to reveal the focused row is a harmless,
+    // idempotent UI nicety even on a frame that goes on to throw.
 
     // Dimension guard — height is checked first; both axes are independently checked, but if
     // both overflow simultaneously the error reports 'height' (documented tie-break, not
@@ -810,47 +1043,62 @@ export function createCanvasRenderer(
 
     const tokens = resolveDesignTokens(container);
 
+    // --- DOM/backing-store mutation (fix #37, spec §4.1/§4.4) — only now, after every guard
+    // above has passed, do we touch container/canvas/spacer geometry. `container` is the real
+    // scroll viewport: its own CSS height is bounded to `resolvedViewportHeightPx`, and
+    // `overflowY` is set unconditionally (idempotent re-assignment, cheap even every render).
+    container.style.height = `${resolvedViewportHeightPx}px`;
+    container.style.overflowY = 'auto';
+    spacerEl.style.width = '1px';
+    spacerEl.style.height = `${totalHeight}px`;
+
     // Reassigning .width/.height clears the bitmap AND resets any transform, per the
     // HTMLCanvasElement spec — always reassigned even if numerically unchanged, so every
     // render() starts from a truly blank, untransformed canvas (no accumulation bugs).
     canvas.width = physicalWidth;
     canvas.height = physicalHeight;
     canvas.style.width = `${totalWidth}px`;
-    canvas.style.height = `${totalHeight}px`;
+    canvas.style.height = `${resolvedViewportHeightPx}px`;
     // Defensive — stated explicitly rather than relying silently on width/height-
     // reassignment semantics.
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-    // Paint order mirrors svg-renderer.ts's DOM append order exactly (bottom → top z-order).
-    paintGrid(ctx, gridColumns, offsetX, totalHeight, tokens);
-    paintHeader(ctx, gridColumns, offsetX, timeScale.totalWidth, tokens);
-    paintDependencies(ctx, state.input.dependencies, barByTaskId, rowHeight, offsetX, offsetY, tokens);
-    paintRows(ctx, rows, barByTaskId, criticalIds, selectedIds, rowHeight, offsetX, offsetY, tokens);
-    paintLabelDivider(ctx, offsetX, totalHeight, tokens);
+    // Fresh read, taken AFTER `ensureFocusedRowVisible()` may have just written it above —
+    // this is the scroll position this frame actually paints/materializes (spec §4.3).
+    const scrollTop = container.scrollTop;
+    const windowRange = computeVisibleWindow(
+      rows,
+      { scrollTop, rowBandViewportPx },
+      rowHeight,
+      CANVAS_VIRTUALIZATION_OVERSCAN_ROWS,
+    );
+    // `windowRange.endIndex + 1` correctly yields `0` (an empty slice) in the `rows.length ===
+    // 0` sentinel case (`{ startIndex: 0, endIndex: -1 }`) — no separate empty-check needed.
+    const windowedRows = rows.slice(windowRange.startIndex, windowRange.endIndex + 1);
 
-    // --- Hidden ARIA layer rebuild (Ticket 2, spec §5.2) -----------------------------------
-    // `focusedTaskId` falls back to the FIRST row when unset — before any keyboard interaction
-    // has happened, the grid must still be exactly one native Tab stop (mirrors SVG's
-    // identical fallback).
-    const focusedTaskId = state.input.focusedTaskId ?? rows[0]?.task.id;
+    // --- Local, unwindowed paints (spec §4.3) — grid/header/divider are painted in the
+    // canvas's own bounded LOCAL space (`0..resolvedViewportHeightPx`), never translated: the
+    // header must always stay pinned at the visible top regardless of scroll, and the grid's
+    // alternating weekend/holiday/today column shading is uniform down every row band, so
+    // painting it only across the bounded viewport (rather than the full, unbounded content
+    // height) is visually indistinguishable from before.
+    paintGrid(ctx, gridColumns, offsetX, resolvedViewportHeightPx, tokens);
+    paintHeader(ctx, gridColumns, offsetX, timeScale.totalWidth, tokens);
+    paintLabelDivider(ctx, offsetX, resolvedViewportHeightPx, tokens);
+
+    // --- Hidden ARIA layer rebuild (Ticket 2, spec §5.2; windowing superseded by fix #37 §5.1)
     // Captured BEFORE the full rebuild below destroys every existing row element — the gate
     // that prevents this render pass from ever STEALING focus during a purely programmatic/
     // headless mutation: focus is only ever RESTORED, never newly grabbed.
     const hadFocusInside = a11yLayer.contains(document.activeElement);
 
-    // Windowing (issue #36): only build DOM rows for `[windowLo, windowHi]`, a
-    // `2 * A11Y_WINDOW_OVERSCAN + 1`-row band centered on `focusedTaskId`'s row — NOT every
-    // row in `rows`. `aria-rowcount` below still reports the FULL `rows.length` (true grid
-    // size, unaffected by windowing); only DOM-node *construction* is windowed. Degrades safely
-    // when `rows.length === 0`: `focusedIndex` is `-1`, `anchorIndex` clamps to `0`, and the
-    // `Math.min(rows.length - 1, ...)` below makes `windowHi` negative, so `slice()` yields `[]`
-    // and the row-building loop simply doesn't run — identical end state to the unwindowed code.
-    const focusedIndex = rows.findIndex((r) => r.task.id === focusedTaskId);
-    const anchorIndex = focusedIndex === -1 ? 0 : focusedIndex;
-    const windowLo = Math.max(0, anchorIndex - A11Y_WINDOW_OVERSCAN);
-    const windowHi = Math.min(rows.length - 1, anchorIndex + A11Y_WINDOW_OVERSCAN);
-    const windowedRows = rows.slice(windowLo, windowHi + 1);
-
+    // Reuses the EXACT SAME `windowRange`/`windowedRows` the paint pass above just computed —
+    // ONE shared window per render, not two independently-computed ones (spec §5.1). Only
+    // build DOM rows for `windowedRows`, NOT every row in `rows`. `aria-rowcount` below still
+    // reports the FULL `rows.length` (true grid size, unaffected by windowing); only DOM-node
+    // *construction* is windowed. Degrades safely when `rows.length === 0`: `windowedRows` is
+    // `[]` (see the comment above `windowedRows`), so the row-building loop simply doesn't run
+    // — identical end state to the unwindowed code.
     while (a11yLayer.firstChild) a11yLayer.removeChild(a11yLayer.firstChild);
 
     a11yLayer.setAttribute('role', 'grid');
@@ -926,10 +1174,29 @@ export function createCanvasRenderer(
       rowEl?.focus({ preventScroll: true });
     }
 
-    // Always the LAST paint step (spec §8.2) — drawn on top of everything else, so the ring
-    // is never obscured by a bar, dependency arrow, or critical-path dash.
-    const focusBar = focusedTaskId !== undefined ? barByTaskId.get(focusedTaskId) : undefined;
-    paintFocusRing(ctx, focusBar, hadFocusInside, offsetX, offsetY, tokens);
+    // --- Windowed paints (spec §4.3) — dependencies/rows/focus-ring are painted inside ONE
+    // translated save/restore block. `translate(0, HEADER_HEIGHT - scrollTop)` maps
+    // content-space y (unchanged `row.y`/`bar.y`, straight from `layoutRows()`/
+    // `layoutTaskBar()`) into the canvas's own bounded local space — so `offsetY` is passed as
+    // `0` to every call below; the translate now encodes both the header offset AND the scroll
+    // offset that `offsetY` alone used to contribute in the unwindowed/unbounded version of
+    // this function. `paintDependencies` still receives the FULL `barByTaskId` (built from the
+    // full, unwindowed `rows` above, not `windowedRows`) — a dependency arrow can span across
+    // the window boundary (e.g. one endpoint currently scrolled out of view); the canvas's own
+    // bounded physical rect already clips anything painted outside it for free (no explicit
+    // `ctx.clip()` call needed), so this stays cheap regardless of how many dependencies exist.
+    ctx.save();
+    try {
+      ctx.translate(0, HEADER_HEIGHT - scrollTop);
+      paintDependencies(ctx, state.input.dependencies, barByTaskId, rowHeight, offsetX, 0, tokens);
+      paintRows(ctx, windowedRows, barByTaskId, criticalIds, selectedIds, rowHeight, offsetX, 0, tokens);
+      // Always the LAST paint step (spec §8.2) — drawn on top of everything else, so the ring
+      // is never obscured by a bar, dependency arrow, or critical-path dash.
+      const focusBar = focusedTaskId !== undefined ? barByTaskId.get(focusedTaskId) : undefined;
+      paintFocusRing(ctx, focusBar, hadFocusInside, offsetX, 0, tokens);
+    } finally {
+      ctx.restore();
+    }
   }
 }
 
@@ -939,7 +1206,9 @@ function paintGrid(
   ctx: CanvasRenderingContext2D,
   columns: readonly GridColumn[],
   offsetX: number,
-  totalHeight: number,
+  // (fix #37) the canvas's own BOUNDED viewport height, not the full/unbounded content
+  // height — see the call site's comment in `renderPixels()` for why this is correct.
+  viewportHeightPx: number,
   tokens: DesignTokens,
 ): void {
   ctx.save();
@@ -949,14 +1218,14 @@ function paintGrid(
       if (col.isToday || col.isHoliday || col.isWeekend) {
         const fill = col.isToday ? tokens.gridToday : col.isHoliday ? tokens.gridHoliday : tokens.gridWeekend;
         ctx.fillStyle = fill;
-        ctx.fillRect(x, 0, col.width, totalHeight);
+        ctx.fillRect(x, 0, col.width, viewportHeightPx);
       }
       ctx.strokeStyle = tokens.gridLine;
       ctx.lineWidth = 1;
       ctx.setLineDash([]);
       ctx.beginPath();
       ctx.moveTo(x, 0);
-      ctx.lineTo(x, totalHeight);
+      ctx.lineTo(x, viewportHeightPx);
       ctx.stroke();
     }
   } finally {
@@ -1003,7 +1272,8 @@ function paintHeader(
 function paintLabelDivider(
   ctx: CanvasRenderingContext2D,
   offsetX: number,
-  totalHeight: number,
+  // (fix #37) the canvas's own BOUNDED viewport height — see `paintGrid`'s identical param.
+  viewportHeightPx: number,
   tokens: DesignTokens,
 ): void {
   ctx.save();
@@ -1013,7 +1283,7 @@ function paintLabelDivider(
     ctx.setLineDash([]);
     ctx.beginPath();
     ctx.moveTo(offsetX, 0);
-    ctx.lineTo(offsetX, totalHeight);
+    ctx.lineTo(offsetX, viewportHeightPx);
     ctx.stroke();
   } finally {
     ctx.restore();
