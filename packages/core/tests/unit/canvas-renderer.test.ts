@@ -18,10 +18,17 @@ import {
   CanvasDimensionExceededError,
   MAX_CANVAS_DIMENSION_PX,
   MAX_CANVAS_AREA_PX_WEBKIT,
+  resolveViewportHeightPx,
+  computeVisibleWindow,
 } from '../../src/render/canvas-renderer.js';
 import { computeCriticalPath } from '../../src/compute/critical-path.js';
 import { DEFAULT_CALENDAR, normalizeDate } from '../../src/compute/working-calendar.js';
-import { layoutDependencyPath, buildTaskAriaLabel, type TaskBarLayout } from '../../src/render/renderer-base.js';
+import {
+  layoutDependencyPath,
+  buildTaskAriaLabel,
+  type TaskBarLayout,
+  type RowLayout,
+} from '../../src/render/renderer-base.js';
 import { toTaskId, toDependencyId, type Task, type Dependency } from '../../src/types.js';
 
 const cal = DEFAULT_CALENDAR;
@@ -55,13 +62,17 @@ const baseDeps: Dependency[] = [
 
 /**
  * Distinct, non-overlapping 1-day tasks, no `parent` (spec-canvas-row-limit-fix.md §12.1) —
- * used to hit the canvas dimension guard's real row-count boundaries EXACTLY (2046/2047 at
- * dpr=1, 1022/1023 at dpr=2), rather than inventing an artificial smaller limit or a
- * test-only injectable override (deliberately not added — see the fix spec). Every task
- * shares the same tiny date span shape (1 day, offset by `i` days), so the derived
- * `TimeScale.totalWidth` stays comfortably under `MAX_CANVAS_DIMENSION_PX` regardless of
- * `n` for every case this file exercises — only `rows.length` (via `canvas.height`) is
- * intentionally being pushed toward the limit.
+ * general-purpose flat fixture used throughout this file for windowing/a11y/hit-testing
+ * coverage. Every task shares the same tiny date span shape (1 day, offset by `i` days), so
+ * the derived `TimeScale.totalWidth` stays comfortably under `MAX_CANVAS_DIMENSION_PX` for
+ * moderate `n` (roughly up to ~2,700) — beyond that, the offset-by-`i`-days shape itself
+ * starts to cross the WIDTH guard (an orthogonal axis from row count), so tests that need a
+ * LARGE row count while deliberately isolating the height axis use
+ * `buildManySameDayTasks()` below instead (fix #37, spec-canvas-row-virtualization.md).
+ * NOTE: since fix #37, the canvas HEIGHT axis is no longer row-count-driven at all (bound to
+ * `resolveViewportHeightPx()` instead) — this fixture is no longer used to hit the height
+ * guard's boundary; see the 'canvas dimension guard' describe block below for how that's now
+ * exercised (via an explicit, oversized `options.viewportHeight`).
  */
 function buildFlatTasks(n: number): Task[] {
   const base = normalizeDate('2026-01-05T09:00', cal.timezone);
@@ -70,6 +81,34 @@ function buildFlatTasks(n: number): Task[] {
   for (let i = 0; i < n; i++) {
     const start = base.add({ days: i });
     const end = start.add({ hours: 8 });
+    tasks.push({
+      id: toTaskId(`t${i}`),
+      name: `t${i}`,
+      start,
+      end,
+      progress: 0,
+      type: 'task',
+      createdAt: now,
+      updatedAt: now,
+    });
+  }
+  return tasks;
+}
+
+/**
+ * `n` distinct rows (unique `id`, no `parent`) that ALL share the exact same start/end instant
+ * (fix #37) — unlike `buildFlatTasks()` above (which offsets each task by one day, so its
+ * derived width grows with `n` and would itself cross the width guard well before 5,000 rows),
+ * this keeps the derived `TimeScale.totalWidth` a small constant regardless of `n`, so tests
+ * using this helper isolate the HEIGHT axis (row count) cleanly, with zero risk of an
+ * incidental width-axis interaction.
+ */
+function buildManySameDayTasks(n: number): Task[] {
+  const start = normalizeDate('2026-01-05T09:00', cal.timezone);
+  const end = start.add({ hours: 8 });
+  const now = new Date();
+  const tasks: Task[] = [];
+  for (let i = 0; i < n; i++) {
     tasks.push({
       id: toTaskId(`t${i}`),
       name: `t${i}`,
@@ -211,18 +250,23 @@ afterEach(() => {
  * the single shape this whole ticket's guard exists to catch on WebKit, and the single shape
  * whose behavior must NOT change on Chromium (§13.3's "must not regress" case). `viewMode:
  * 'day'` (60px/day, `renderer-base.ts`) over an exact 81-day range gives a deterministic
- * `physicalWidth = 160 (LABEL_COLUMN_WIDTH) + 81*60 = 5,020`; `buildFlatTasks(312)` (flat, no
- * hierarchy) gives a deterministic `physicalHeight = 32 (HEADER_HEIGHT) + 312*32 = 10,016`.
- * `5,020 * 10,016 = 50,280,320` — comfortably over the 16,777,216 WebKit area ceiling, and
- * both axes comfortably under 65,535.
+ * `physicalWidth = 160 (LABEL_COLUMN_WIDTH) + 81*60 = 5,020`.
+ *
+ * fix #37 (spec-canvas-row-virtualization.md): `physicalHeight` no longer scales with row
+ * count (it is bound to `resolveViewportHeightPx(options)`), so this fixture now pins height
+ * via an explicit `viewportHeight: 3_400` instead of via row count (previously
+ * `buildFlatTasks(312)` alone drove `physicalHeight` to 10,016) — `tasks` is now just a small,
+ * arbitrary flat set. `5,020 * 3,400 = 17,068,000` — comfortably over the 16,777,216 WebKit
+ * area ceiling, and both axes comfortably under 65,535.
  */
 function buildAreaOnlyOverflowFixture(): {
   tasks: Task[];
   timeRange: { start: Temporal.ZonedDateTime; end: Temporal.ZonedDateTime };
+  viewportHeight: number;
 } {
   const start = normalizeDate('2026-01-01T00:00', cal.timezone);
   const end = start.add({ days: 81 });
-  return { tasks: buildFlatTasks(312), timeRange: { start, end } };
+  return { tasks: buildFlatTasks(5), timeRange: { start, end }, viewportHeight: 3_400 };
 }
 
 // --- Structure / ARIA ---------------------------------------------------------------------
@@ -266,7 +310,13 @@ describe('hidden ARIA layer', () => {
     const mock = createMockContext2D();
     installMockContext(mock);
     const h = createCanvasRenderer(container, { tasks: baseTasks, dependencies: baseDeps });
-    expect(h.interactionRoot.style.position).toBe('absolute');
+    // `position: sticky` (not `absolute`) since fix #37 — `container` is now the real scroll
+    // viewport, and sticky keeps this hidden layer pinned at its visible top-left corner
+    // regardless of scroll position (see canvas-renderer.ts's header comment + this file's
+    // "row virtualization — a11y DOM windowing (fix #37)" describe block below).
+    expect(h.interactionRoot.style.position).toBe('sticky');
+    expect(h.interactionRoot.style.top).toBe('0px');
+    expect(h.interactionRoot.style.left).toBe('0px');
     expect(h.interactionRoot.style.width).toBe('1px');
     expect(h.interactionRoot.style.height).toBe('1px');
     expect(h.interactionRoot.style.overflow).toBe('hidden');
@@ -411,53 +461,63 @@ describe('hidden ARIA layer', () => {
   });
 });
 
-// --- Hidden ARIA layer windowing (spec-canvas-renderer-a11y-windowing.md, issue #36) -----
-// `A11Y_WINDOW_OVERSCAN` is an internal, non-exported constant in canvas-renderer.ts — its
-// value (50) is duplicated here as a literal, same posture as the file's other internal-
-// constant literals used across this test file (e.g. HEADER_HEIGHT/ROW_HEIGHT in hitTestRow
-// tests below).
-describe('hidden ARIA layer — windowing (issue #36)', () => {
-  const WINDOW_OVERSCAN = 50;
-
-  it('builds far fewer row elements than taskCount, but aria-rowcount stays the FULL taskCount', () => {
+// --- Hidden ARIA layer windowing (spec-canvas-row-virtualization.md, fix #37) -------------
+// Supersedes issue #36's focus-centered `A11Y_WINDOW_OVERSCAN` (50) windowing — the a11y DOM
+// window is now the SAME scroll-position-driven `computeVisibleWindow()` result the paint
+// pass uses (`CANVAS_VIRTUALIZATION_OVERSCAN_ROWS = 20`), not an independent focus-centered
+// one. `ensureFocusedRowVisible()` (also fix #37) still scrolls `container` to reveal the
+// focused row FIRST, so the window this frame builds still ends up centered close to
+// `focusedTaskId` in practice — but the actual boundaries below are derived from real
+// scroll-math (`DEFAULT_VIEWPORT_HEIGHT_PX = 600`, `HEADER_HEIGHT = 32` ⇒ row-band viewport
+// 568px ⇒ ~18 default-density (32px) rows visible ⇒ 18 + 2*20 = 58ish rows per window), not
+// simply `2 * overscan + 1` the way #36's focus-centered version was.
+describe('hidden ARIA layer — row-virtualization windowing (fix #37)', () => {
+  it('builds far fewer row elements than taskCount, but aria-rowcount stays the FULL taskCount; window is centered near focusedTaskId, not the full list', () => {
     const mock = createMockContext2D();
     installMockContext(mock);
     const tasks = buildFlatTasks(300);
     const h = createCanvasRenderer(container, { tasks, dependencies: [], focusedTaskId: toTaskId('t150') });
 
     const rowEls = h.interactionRoot.querySelectorAll('.fg-timeline-canvas__row');
-    expect(rowEls).toHaveLength(2 * WINDOW_OVERSCAN + 1); // window fully fits, no clamping
+    // Window = [113, 171] (59 rows) — see this describe block's header comment for the exact
+    // scroll math (`ensureFocusedRowVisible` scrolls to `scrollTop=4264` to reveal row 150,
+    // `computeVisibleWindow` then pads by ±20 rows around what's visible at that scrollTop).
+    expect(rowEls).toHaveLength(59);
     expect(rowEls.length).toBeLessThan(tasks.length);
     expect(h.interactionRoot.getAttribute('aria-rowcount')).toBe(String(tasks.length));
+    expect(h.interactionRoot.querySelector('[data-task-id="t150"]')).not.toBeNull();
   });
 
-  it('a row far outside the initial window is absent from the DOM; window-edge rows are present', () => {
+  it('a row far outside the window is absent from the DOM; window-edge rows are present', () => {
     const mock = createMockContext2D();
     installMockContext(mock);
     const tasks = buildFlatTasks(300);
     const h = createCanvasRenderer(container, { tasks, dependencies: [], focusedTaskId: toTaskId('t150') });
 
-    // Window around index 150 is [100, 200] (WINDOW_OVERSCAN=50 either side).
+    // Window = [113, 171] (see above).
     expect(h.interactionRoot.querySelector('[data-task-id="t0"]')).toBeNull();
     expect(h.interactionRoot.querySelector('[data-task-id="t299"]')).toBeNull();
-    expect(h.interactionRoot.querySelector('[data-task-id="t99"]')).toBeNull();
-    expect(h.interactionRoot.querySelector('[data-task-id="t201"]')).toBeNull();
-    expect(h.interactionRoot.querySelector('[data-task-id="t100"]')).not.toBeNull();
-    expect(h.interactionRoot.querySelector('[data-task-id="t150"]')).not.toBeNull();
-    expect(h.interactionRoot.querySelector('[data-task-id="t200"]')).not.toBeNull();
+    expect(h.interactionRoot.querySelector('[data-task-id="t112"]')).toBeNull(); // just below start
+    expect(h.interactionRoot.querySelector('[data-task-id="t172"]')).toBeNull(); // just above end
+    expect(h.interactionRoot.querySelector('[data-task-id="t113"]')).not.toBeNull(); // window start
+    expect(h.interactionRoot.querySelector('[data-task-id="t150"]')).not.toBeNull(); // focused
+    expect(h.interactionRoot.querySelector('[data-task-id="t171"]')).not.toBeNull(); // window end
   });
 
-  it('window clamps at the start of the row list when focusedTaskId is near index 0', () => {
+  it('window clamps at the start of the row list when focusedTaskId is near index 0 (no scroll needed)', () => {
     const mock = createMockContext2D();
     installMockContext(mock);
     const tasks = buildFlatTasks(300);
     const h = createCanvasRenderer(container, { tasks, dependencies: [], focusedTaskId: toTaskId('t0') });
 
+    // t0 is already within the initial (scrollTop=0) view — `ensureFocusedRowVisible` is a
+    // no-op. Window = [0, 38] (rawEnd = ceil(568/32) = 18, +20 overscan = 38).
+    expect(h.container.scrollTop).toBe(0);
     const rowEls = h.interactionRoot.querySelectorAll('.fg-timeline-canvas__row');
-    expect(rowEls).toHaveLength(WINDOW_OVERSCAN + 1); // clamped: [0, 50]
+    expect(rowEls).toHaveLength(39);
     expect(h.interactionRoot.querySelector('[data-task-id="t0"]')).not.toBeNull();
-    expect(h.interactionRoot.querySelector('[data-task-id="t50"]')).not.toBeNull();
-    expect(h.interactionRoot.querySelector('[data-task-id="t51"]')).toBeNull();
+    expect(h.interactionRoot.querySelector('[data-task-id="t38"]')).not.toBeNull();
+    expect(h.interactionRoot.querySelector('[data-task-id="t39"]')).toBeNull();
   });
 
   it('window clamps at the end of the row list when focusedTaskId is near the last row', () => {
@@ -466,11 +526,13 @@ describe('hidden ARIA layer — windowing (issue #36)', () => {
     const tasks = buildFlatTasks(300);
     const h = createCanvasRenderer(container, { tasks, dependencies: [], focusedTaskId: toTaskId('t299') });
 
+    // `ensureFocusedRowVisible` scrolls to `scrollTop = 9032` to reveal row 299; window then
+    // clamps to `[262, 299]` (endIndex clamped at `lastIndex = 299`).
     const rowEls = h.interactionRoot.querySelectorAll('.fg-timeline-canvas__row');
-    expect(rowEls).toHaveLength(WINDOW_OVERSCAN + 1); // clamped: [249, 299]
+    expect(rowEls).toHaveLength(38);
     expect(h.interactionRoot.querySelector('[data-task-id="t299"]')).not.toBeNull();
-    expect(h.interactionRoot.querySelector('[data-task-id="t249"]')).not.toBeNull();
-    expect(h.interactionRoot.querySelector('[data-task-id="t248"]')).toBeNull();
+    expect(h.interactionRoot.querySelector('[data-task-id="t262"]')).not.toBeNull();
+    expect(h.interactionRoot.querySelector('[data-task-id="t261"]')).toBeNull();
   });
 
   it('re-rendering with a focusedTaskId far from the previous one relocates the window: new focused row present + focused, old-window-only row gone', () => {
@@ -485,13 +547,13 @@ describe('hidden ARIA layer — windowing (issue #36)', () => {
 
     h.update({ tasks, dependencies: [], focusedTaskId: toTaskId('t280') });
 
-    // New window around index 280 is [230, 299] (clamped at the end).
+    // New window (see header comment's math, extended for t280) clamps to [243, 299].
     const newFocusedRow = h.interactionRoot.querySelector<HTMLElement>('[data-task-id="t280"]');
     expect(newFocusedRow).not.toBeNull();
     expect(newFocusedRow!.getAttribute('tabindex')).toBe('0');
     expect(document.activeElement).toBe(newFocusedRow);
 
-    // t150 (old window center) is now outside [230, 299] — gone from the DOM.
+    // t150 (old window center) is now outside [243, 299] — gone from the DOM.
     expect(h.interactionRoot.querySelector('[data-task-id="t150"]')).toBeNull();
   });
 
@@ -503,6 +565,16 @@ describe('hidden ARIA layer — windowing (issue #36)', () => {
     const h = createCanvasRenderer(container, { tasks: [], dependencies: [] }, { timeRange: { start, end } });
     expect(h.interactionRoot.querySelectorAll('.fg-timeline-canvas__row')).toHaveLength(0);
     expect(h.interactionRoot.getAttribute('aria-rowcount')).toBe('0');
+  });
+
+  it('a small project (fewer rows than one window) degrades to the full row set materialized, no clamping surprises', () => {
+    const mock = createMockContext2D();
+    installMockContext(mock);
+    const tasks = buildFlatTasks(5);
+    const h = createCanvasRenderer(container, { tasks, dependencies: [] });
+    const rowEls = h.interactionRoot.querySelectorAll('.fg-timeline-canvas__row');
+    expect(rowEls).toHaveLength(5);
+    expect(h.interactionRoot.getAttribute('aria-rowcount')).toBe('5');
   });
 });
 
@@ -602,6 +674,22 @@ describe('hitTestRow', () => {
     const swapped = task('z', '2026-01-05T09:00', '2026-01-07T17:00');
     h.update({ tasks: [swapped], dependencies: [] });
     expect(h.hitTestRow(100, 32 + 1)).toEqual({ taskId: swapped.id, rowIndex: 0 });
+  });
+
+  it('accounts for a non-zero container.scrollTop (fix #37) — a click at the same canvas-local pixel resolves to a different row once scrolled', () => {
+    const mock = createMockContext2D();
+    installMockContext(mock);
+    const tasks = buildFlatTasks(50);
+    const h = createCanvasRenderer(container, { tasks, dependencies: [] });
+    stubRect(h.canvas, {});
+
+    // At scrollTop=0, a click at the row-0 band midpoint resolves to row 0.
+    expect(h.hitTestRow(100, 32 + 16)).toEqual({ taskId: toTaskId('t0'), rowIndex: 0 });
+
+    // Scroll down by exactly 5 rows (5 * 32 = 160px) — the SAME canvas-local pixel now maps
+    // to content-space row 5, not row 0 (`hitTestRow` must add back `container.scrollTop`).
+    h.container.scrollTop = 160;
+    expect(h.hitTestRow(100, 32 + 16)).toEqual({ taskId: toTaskId('t5'), rowIndex: 5 });
   });
 });
 
@@ -1067,7 +1155,7 @@ describe('ctx.roundRect feature-detect fallback', () => {
   });
 });
 
-// --- Canvas dimension guard (spec-canvas-row-limit-fix.md §12.1) --------------------------
+// --- Canvas dimension guard (spec-canvas-row-limit-fix.md §12.1, extended by fix #37) -----
 //
 // No `node-canvas`, no real 65,536px canvas allocation anywhere in this block — the guard is
 // pure arithmetic on numbers `render()` already computes, checked and thrown BEFORE any
@@ -1075,24 +1163,44 @@ describe('ctx.roundRect feature-detect fallback', () => {
 // `.height` setters are plain numeric IDL properties with no real backing-store allocation
 // regardless, so even the safe-boundary cases below (which DO reach the assignment line)
 // never allocate real GPU/pixel memory.
+//
+// fix #37 (spec-canvas-row-virtualization.md) changes the HEIGHT axis's shape fundamentally:
+// `physicalHeight` is now `resolveViewportHeightPx(options) * dpr` — a small, ROW-COUNT-
+// INDEPENDENT quantity (default 600px) — instead of `totalHeight * dpr` (which grew linearly
+// with `rows.length`). The old "2046 safe / 2047 throws" row-count boundary tests below are
+// therefore replaced: the height guard is now exercised via an explicit, oversized
+// `options.viewportHeight` (the only thing that still feeds the height axis), and a NEW
+// "row-count independence" block below asserts the actual regression this fix targets — that
+// 5,000/10,000-row flat projects now construct successfully via Canvas, which was exactly the
+// structurally-unreachable case issue #37 reports. The WIDTH axis is entirely unaffected by
+// this fix (still `(LABEL_COLUMN_WIDTH + timeScale.totalWidth) * dpr`, still task/timeRange-
+// derived) — those tests are kept as-is.
 
 describe('canvas dimension guard', () => {
-  describe('height boundary — dpr=1', () => {
-    it('2046 rows: safe, canvas.height === 65_504', () => {
+  describe('height boundary — dpr=1 (via an explicit, oversized options.viewportHeight)', () => {
+    it('viewportHeight exactly at the boundary (65_535): safe, canvas.height === 65_535', () => {
       setDpr(1);
       const mock = createMockContext2D();
       installMockContext(mock);
-      const h = createCanvasRenderer(container, { tasks: buildFlatTasks(2046), dependencies: [] });
-      expect(h.canvas.height).toBe(65_504);
+      const h = createCanvasRenderer(
+        container,
+        { tasks: buildFlatTasks(5), dependencies: [] },
+        { viewportHeight: MAX_CANVAS_DIMENSION_PX },
+      );
+      expect(h.canvas.height).toBe(65_535);
     });
 
-    it('2047 rows: throws CanvasDimensionExceededError with exact fields; canvas removed', () => {
+    it('viewportHeight one past the boundary (65_536): throws CanvasDimensionExceededError with exact fields; canvas removed', () => {
       setDpr(1);
       const mock = createMockContext2D();
       installMockContext(mock);
       let thrown: unknown;
       try {
-        createCanvasRenderer(container, { tasks: buildFlatTasks(2047), dependencies: [] });
+        createCanvasRenderer(
+          container,
+          { tasks: buildFlatTasks(5), dependencies: [] },
+          { viewportHeight: MAX_CANVAS_DIMENSION_PX + 1 },
+        );
       } catch (err) {
         thrown = err;
       }
@@ -1101,7 +1209,9 @@ describe('canvas dimension guard', () => {
       expect(err.axis).toBe('height');
       expect(err.physicalPx).toBe(65_536);
       expect(err.limitPx).toBe(65_535);
-      expect(err.rowCount).toBe(2047);
+      // `rowCount` still reports the real row count — independent of what actually tripped
+      // the height axis now (viewportHeight, not row count).
+      expect(err.rowCount).toBe(5);
       expect(err.devicePixelRatio).toBe(1);
       // Construction-time failure — mirrors the existing null-2D-context test's assertion
       // style: no half-mounted canvas left behind.
@@ -1109,22 +1219,30 @@ describe('canvas dimension guard', () => {
     });
   });
 
-  describe('height boundary — dpr=2', () => {
-    it('1022 rows: safe, canvas.height === 65_472', () => {
+  describe('height boundary — dpr=2 (via an explicit, oversized options.viewportHeight)', () => {
+    it('viewportHeight 32_767 at dpr=2: safe, physicalHeight === 65_534', () => {
       setDpr(2);
       const mock = createMockContext2D();
       installMockContext(mock);
-      const h = createCanvasRenderer(container, { tasks: buildFlatTasks(1022), dependencies: [] });
-      expect(h.canvas.height).toBe(65_472);
+      const h = createCanvasRenderer(
+        container,
+        { tasks: buildFlatTasks(5), dependencies: [] },
+        { viewportHeight: 32_767 },
+      );
+      expect(h.canvas.height).toBe(65_534);
     });
 
-    it('1023 rows: throws, physicalPx === 65_536', () => {
+    it('viewportHeight 32_768 at dpr=2: throws, physicalPx === 65_536', () => {
       setDpr(2);
       const mock = createMockContext2D();
       installMockContext(mock);
       let thrown: unknown;
       try {
-        createCanvasRenderer(container, { tasks: buildFlatTasks(1023), dependencies: [] });
+        createCanvasRenderer(
+          container,
+          { tasks: buildFlatTasks(5), dependencies: [] },
+          { viewportHeight: 32_768 },
+        );
       } catch (err) {
         thrown = err;
       }
@@ -1132,8 +1250,43 @@ describe('canvas dimension guard', () => {
       const err = thrown as CanvasDimensionExceededError;
       expect(err.axis).toBe('height');
       expect(err.physicalPx).toBe(65_536);
-      expect(err.rowCount).toBe(1023);
+      expect(err.rowCount).toBe(5);
       expect(err.devicePixelRatio).toBe(2);
+    });
+  });
+
+  describe('row-count independence (fix #37 — the core regression this fix targets)', () => {
+    it('5,000 and 10,000 flat rows both construct successfully via Canvas, never throwing — canvas.height stays at the default viewport height (600px) regardless of row count', () => {
+      setDpr(1);
+
+      const mock5000 = createMockContext2D();
+      installMockContext(mock5000);
+      const h5000 = createCanvasRenderer(container, { tasks: buildManySameDayTasks(5000), dependencies: [] });
+      expect(h5000.canvas.height).toBe(600);
+      h5000.destroy();
+
+      const container2 = document.createElement('div');
+      document.body.appendChild(container2);
+      const mock10000 = createMockContext2D();
+      installMockContext(mock10000);
+      const h10000 = createCanvasRenderer(container2, { tasks: buildManySameDayTasks(10000), dependencies: [] });
+      expect(h10000.canvas.height).toBe(600);
+      h10000.destroy();
+      container2.remove();
+    });
+
+    it('the spacer element carries the FULL unbounded content height, giving `container` a real scrollHeight beyond the bounded canvas', () => {
+      setDpr(1);
+      const mock = createMockContext2D();
+      installMockContext(mock);
+      const h = createCanvasRenderer(container, { tasks: buildManySameDayTasks(5000), dependencies: [] });
+      const spacer = container.querySelector<HTMLElement>('.fg-timeline-canvas-spacer');
+      expect(spacer).not.toBeNull();
+      expect(spacer!.getAttribute('aria-hidden')).toBe('true');
+      // HEADER_HEIGHT(32) + 5000 * ROW_HEIGHT.default(32)
+      expect(spacer!.style.height).toBe(`${32 + 5000 * 32}px`);
+      // The bounded canvas itself stays tiny, independent of the spacer's real content height.
+      expect(h.canvas.height).toBe(600);
     });
   });
 
@@ -1177,34 +1330,46 @@ describe('canvas dimension guard', () => {
   });
 
   describe('0 rows', () => {
-    it('empty tasks + explicit timeRange: no throw, canvas.height stays at the small fallback', () => {
+    it('empty tasks + explicit timeRange: no throw, canvas.height stays at the default viewport height (600px, independent of row count)', () => {
       setDpr(1);
       const mock = createMockContext2D();
       installMockContext(mock);
       const start = normalizeDate('2026-01-01T00:00', cal.timezone);
       const end = start.add({ days: 10 });
       const h = createCanvasRenderer(container, { tasks: [], dependencies: [] }, { timeRange: { start, end } });
-      // HEADER_HEIGHT(32) + ROW_HEIGHT.default(32) fallback (rows.length === 0), far under
-      // the limit — the guard never trips, no behavior change.
-      expect(h.canvas.height).toBe(64);
+      // Bound to `resolveViewportHeightPx()`'s default (600px, fix #37) — no longer a
+      // `rows.length === 0` special-case fallback derived from HEADER_HEIGHT + one row.
+      expect(h.canvas.height).toBe(600);
     });
   });
 
-  describe('update() — rollback on a failed render', () => {
-    it('crossing the boundary rolls back canvas/getTimeScale/currentInput; destroy() still works afterward', () => {
+  describe('update() — rollback on a failed render (width axis, via a wide derived timeRange)', () => {
+    // `update()` only ever replaces `input` (tasks/dependencies), never `options` — and since
+    // fix #37, the HEIGHT axis is driven entirely by `options.viewportHeight`, so a plain
+    // `update()` can no longer cross the height boundary on its own (only `setOptions()` can,
+    // see below). The WIDTH axis, however, is still task/timeRange-derived, so `update()` CAN
+    // still cross it — this block now exercises that axis instead.
+    it('an update() introducing a very wide task-date spread crosses the width guard via a derived timeRange; rolls back canvas/getTimeScale/currentInput; destroy() still works afterward', () => {
       setDpr(1);
       const mock = createMockContext2D();
       installMockContext(mock);
-      const h = createCanvasRenderer(container, { tasks: buildFlatTasks(5), dependencies: [] });
-      const prevHeight = h.canvas.height;
+      const narrow = [task('a', '2026-01-05T09:00', '2026-01-06T17:00')];
+      const h = createCanvasRenderer(container, { tasks: narrow, dependencies: [] }, { viewMode: 'day' });
+      const prevWidth = h.canvas.width;
       const prevTimeScale = h.getTimeScale();
 
-      expect(() => h.update({ tasks: buildFlatTasks(2047), dependencies: [] })).toThrow(
-        CanvasDimensionExceededError,
-      );
+      // No explicit `options.timeRange` — derived from `wide`'s dates. ~1,220 days apart at
+      // viewMode 'day' (60px/day) comfortably crosses MAX_CANVAS_DIMENSION_PX once
+      // `deriveTimeRange`'s padding is added.
+      const wide = [
+        task('start', '2026-01-01T00:00', '2026-01-02T00:00'),
+        task('end', '2029-06-01T00:00', '2029-06-02T00:00'),
+      ];
+      expect(() => h.update({ tasks: wide, dependencies: [] })).toThrow(CanvasDimensionExceededError);
+
       // Rollback: the bitmap dimension and the TimeScale reference are both exactly what
       // they were before the failed update — never a half-applied new frame.
-      expect(h.canvas.height).toBe(prevHeight);
+      expect(h.canvas.width).toBe(prevWidth);
       expect(h.getTimeScale()).toBe(prevTimeScale);
 
       expect(() => h.destroy()).not.toThrow();
@@ -1215,13 +1380,19 @@ describe('canvas dimension guard', () => {
       setDpr(1);
       const mock = createMockContext2D();
       installMockContext(mock);
-      const h = createCanvasRenderer(container, { tasks: buildFlatTasks(5), dependencies: [] });
+      const narrow = [task('a', '2026-01-05T09:00', '2026-01-06T17:00')];
+      const h = createCanvasRenderer(container, { tasks: narrow, dependencies: [] }, { viewMode: 'day' });
 
-      expect(() => h.update({ tasks: buildFlatTasks(2047), dependencies: [] })).toThrow(
-        CanvasDimensionExceededError,
-      );
-      expect(() => h.update({ tasks: buildFlatTasks(10), dependencies: [] })).not.toThrow();
-      expect(h.canvas.height).toBe(32 + 10 * 32); // HEADER_HEIGHT + rows.length * ROW_HEIGHT.default
+      const wide = [
+        task('start', '2026-01-01T00:00', '2026-01-02T00:00'),
+        task('end', '2029-06-01T00:00', '2029-06-02T00:00'),
+      ];
+      expect(() => h.update({ tasks: wide, dependencies: [] })).toThrow(CanvasDimensionExceededError);
+
+      const recovered = [task('b', '2026-02-01T09:00', '2026-02-05T17:00')];
+      expect(() => h.update({ tasks: recovered, dependencies: [] })).not.toThrow();
+      // Height is entirely unaffected by any of this — always the default viewport (fix #37).
+      expect(h.canvas.height).toBe(600);
     });
   });
 
@@ -1273,19 +1444,36 @@ describe('canvas dimension guard', () => {
     });
   });
 
-  describe('setOptions() — rollback via density alone', () => {
-    it('a density change that alone crosses the boundary throws and leaves canvas.height unchanged', () => {
+  describe('setOptions() — rollback via viewportHeight crossing the boundary', () => {
+    it('a viewportHeight change that alone crosses the boundary throws and leaves canvas.height unchanged', () => {
       setDpr(1);
       const mock = createMockContext2D();
       installMockContext(mock);
-      // Exactly at the safe edge for default density (canvas.height === 65_504).
-      const h = createCanvasRenderer(container, { tasks: buildFlatTasks(2046), dependencies: [] });
-      expect(h.canvas.height).toBe(65_504);
+      // 5,000 rows at the DEFAULT viewport height — safe, and independent of row count
+      // (fix #37): this alone would have thrown pre-fix.
+      const h = createCanvasRenderer(container, { tasks: buildManySameDayTasks(5000), dependencies: [] });
+      expect(h.canvas.height).toBe(600);
 
-      // rowHeight 40 (comfortable) with the same 2046 rows would be far over the limit —
-      // row count is unchanged, only rowHeight grows, still caught by the same guard.
-      expect(() => h.setOptions({ density: 'comfortable' })).toThrow(CanvasDimensionExceededError);
-      expect(h.canvas.height).toBe(65_504);
+      // Row count is unchanged — only `viewportHeight` grows, now the ONLY thing that can
+      // cross the height axis (density no longer can either, since fix #37 decoupled the
+      // canvas height from `rowHeight * rows.length` entirely).
+      expect(() => h.setOptions({ viewportHeight: MAX_CANVAS_DIMENSION_PX + 1 })).toThrow(
+        CanvasDimensionExceededError,
+      );
+      expect(h.canvas.height).toBe(600);
+    });
+
+    it('a density change ALONE no longer crosses the height boundary at any row count (fix #37 decouples height from rowHeight * rows.length)', () => {
+      setDpr(1);
+      const mock = createMockContext2D();
+      installMockContext(mock);
+      const h = createCanvasRenderer(container, { tasks: buildManySameDayTasks(5000), dependencies: [] });
+      expect(h.canvas.height).toBe(600);
+
+      // 'comfortable' (40px rows) across 5,000 rows would have been ~40x over the old
+      // row-count-driven ceiling — now a complete no-op on the canvas height.
+      expect(() => h.setOptions({ density: 'comfortable' })).not.toThrow();
+      expect(h.canvas.height).toBe(600);
     });
   });
 
@@ -1298,7 +1486,11 @@ describe('canvas dimension guard', () => {
       installMockContext(mock);
       let thrown: unknown;
       try {
-        createCanvasRenderer(container, { tasks: buildFlatTasks(2047), dependencies: [] });
+        createCanvasRenderer(
+          container,
+          { tasks: buildFlatTasks(5), dependencies: [] },
+          { viewportHeight: MAX_CANVAS_DIMENSION_PX + 1 },
+        );
       } catch (err) {
         thrown = err;
       }
@@ -1309,15 +1501,20 @@ describe('canvas dimension guard', () => {
   });
 
   // --- spec-canvas-webkit-dimension-limit.md §13.1 (WebKit-only area guard) --------------
+  //
+  // fix #37 changes `buildAreaOnlyOverflowFixture()`'s shape: since `physicalHeight` no longer
+  // scales with row count, the fixture now pins height via an explicit `viewportHeight` option
+  // instead of via row count — same target shape (both axes individually safe, product over
+  // `MAX_CANVAS_AREA_PX_WEBKIT`), different knob.
   describe('WebKit-only area guard', () => {
     it('Chromium UA + area-only-overflowing shape: no throw (must not regress today\'s shipped behavior)', () => {
       setDpr(1);
       setUserAgent(CHROMIUM_UA);
       const mock = createMockContext2D();
       installMockContext(mock);
-      const { tasks, timeRange } = buildAreaOnlyOverflowFixture();
+      const { tasks, timeRange, viewportHeight } = buildAreaOnlyOverflowFixture();
       expect(() =>
-        createCanvasRenderer(container, { tasks, dependencies: [] }, { viewMode: 'day', timeRange }),
+        createCanvasRenderer(container, { tasks, dependencies: [] }, { viewMode: 'day', timeRange, viewportHeight }),
       ).not.toThrow();
     });
 
@@ -1326,10 +1523,10 @@ describe('canvas dimension guard', () => {
       setUserAgent(WEBKIT_UA);
       const mock = createMockContext2D();
       installMockContext(mock);
-      const { tasks, timeRange } = buildAreaOnlyOverflowFixture();
+      const { tasks, timeRange, viewportHeight } = buildAreaOnlyOverflowFixture();
       let thrown: unknown;
       try {
-        createCanvasRenderer(container, { tasks, dependencies: [] }, { viewMode: 'day', timeRange });
+        createCanvasRenderer(container, { tasks, dependencies: [] }, { viewMode: 'day', timeRange, viewportHeight });
       } catch (err) {
         thrown = err;
       }
@@ -1338,7 +1535,7 @@ describe('canvas dimension guard', () => {
       expect(err.axis).toBe('area');
       expect(err.limitPx).toBe(MAX_CANVAS_AREA_PX_WEBKIT);
       expect(err.physicalWidth).toBe(5_020);
-      expect(err.physicalHeight).toBe(10_016);
+      expect(err.physicalHeight).toBe(3_400);
       expect(err.physicalPx).toBe(err.physicalWidth! * err.physicalHeight!);
       expect(err.physicalPx).toBeGreaterThan(MAX_CANVAS_AREA_PX_WEBKIT);
       // Both axes individually stay well under the pre-existing per-axis check — confirms this
@@ -1354,7 +1551,7 @@ describe('canvas dimension guard', () => {
       const mock = createMockContext2D();
       installMockContext(mock);
       const h = createCanvasRenderer(container, { tasks: buildFlatTasks(20), dependencies: [] });
-      expect(h.canvas.height).toBe(32 + 20 * 32);
+      expect(h.canvas.height).toBe(600);
     });
 
     it('Chrome-on-Android UA (contains the substring "Safari" too): treated as NOT WebKit, no throw', () => {
@@ -1362,9 +1559,9 @@ describe('canvas dimension guard', () => {
       setUserAgent(CHROME_ANDROID_UA);
       const mock = createMockContext2D();
       installMockContext(mock);
-      const { tasks, timeRange } = buildAreaOnlyOverflowFixture();
+      const { tasks, timeRange, viewportHeight } = buildAreaOnlyOverflowFixture();
       expect(() =>
-        createCanvasRenderer(container, { tasks, dependencies: [] }, { viewMode: 'day', timeRange }),
+        createCanvasRenderer(container, { tasks, dependencies: [] }, { viewMode: 'day', timeRange, viewportHeight }),
       ).not.toThrow();
     });
 
@@ -1373,38 +1570,37 @@ describe('canvas dimension guard', () => {
       setUserAgent(EDGE_UA);
       const mock = createMockContext2D();
       installMockContext(mock);
-      const { tasks, timeRange } = buildAreaOnlyOverflowFixture();
+      const { tasks, timeRange, viewportHeight } = buildAreaOnlyOverflowFixture();
       expect(() =>
-        createCanvasRenderer(container, { tasks, dependencies: [] }, { viewMode: 'day', timeRange }),
+        createCanvasRenderer(container, { tasks, dependencies: [] }, { viewMode: 'day', timeRange, viewportHeight }),
       ).not.toThrow();
     });
 
-    it('WebKit UA: existing Chromium-shaped height boundary (2046/2047 rows) still applies identically', () => {
+    it('WebKit UA: existing height boundary (via viewportHeight) still applies identically, checked BEFORE the area branch', () => {
       setDpr(1);
       setUserAgent(WEBKIT_UA);
-      // Explicit narrow `timeRange` (rather than the default `buildFlatTasks`-derived one, which
-      // spreads tasks across `n` days and would ALSO trip the new WebKit area check at 2046/2047
-      // rows — a real, independent finding, but not what this test isolates): pins physicalWidth
-      // to 160(label) + 60(1 day @ 'day' view) = 220px, so 220 * 65_504 = 14,410,880 stays under
-      // MAX_CANVAS_AREA_PX_WEBKIT (16,777,216) — only the pre-existing height axis is exercised.
+      // Explicit narrow `timeRange` (1 day @ viewMode 'day'): pins physicalWidth to
+      // 160(label) + 60(1 day) = 220px, so 220 * 65_535 = 14,417,700 stays under
+      // MAX_CANVAS_AREA_PX_WEBKIT (16,777,216) — only the pre-existing height axis is exercised,
+      // confirming it still runs (and still wins the tie-break) identically under WebKit.
       const start = normalizeDate('2026-01-01T00:00', cal.timezone);
       const end = start.add({ days: 1 });
       const mockSafe = createMockContext2D();
       installMockContext(mockSafe);
       const safe = createCanvasRenderer(
         container,
-        { tasks: buildFlatTasks(2046), dependencies: [] },
-        { viewMode: 'day', timeRange: { start, end } },
+        { tasks: buildFlatTasks(5), dependencies: [] },
+        { viewMode: 'day', timeRange: { start, end }, viewportHeight: MAX_CANVAS_DIMENSION_PX },
       );
-      expect(safe.canvas.height).toBe(65_504);
+      expect(safe.canvas.height).toBe(MAX_CANVAS_DIMENSION_PX);
       safe.destroy();
 
       let thrown: unknown;
       try {
         createCanvasRenderer(
           container,
-          { tasks: buildFlatTasks(2047), dependencies: [] },
-          { viewMode: 'day', timeRange: { start, end } },
+          { tasks: buildFlatTasks(5), dependencies: [] },
+          { viewMode: 'day', timeRange: { start, end }, viewportHeight: MAX_CANVAS_DIMENSION_PX + 1 },
         );
       } catch (err) {
         thrown = err;
@@ -1413,43 +1609,54 @@ describe('canvas dimension guard', () => {
       expect((thrown as CanvasDimensionExceededError).axis).toBe('height');
     });
 
-    it('update() rollback also applies through the area-throw path', () => {
+    it('update() rollback also applies through the area-throw path (viewportHeight set tall via setOptions first, width crossed via update())', () => {
       setDpr(1);
       setUserAgent(WEBKIT_UA);
       const mock = createMockContext2D();
       installMockContext(mock);
       const h = createCanvasRenderer(container, { tasks: buildFlatTasks(5), dependencies: [] });
 
-      const { timeRange } = buildAreaOnlyOverflowFixture();
-      // Widens the timescale alone first (still only 5 rows tall — area stays tiny, no throw).
-      expect(() => h.setOptions({ viewMode: 'day', timeRange })).not.toThrow();
+      // Grows the viewport tall first (safe alone — width stays tiny from the small task set,
+      // so the area stays tiny too).
+      expect(() => h.setOptions({ viewportHeight: 3_400 })).not.toThrow();
+      expect(h.canvas.height).toBe(3_400);
 
+      const prevWidth = h.canvas.width;
       const prevHeight = h.canvas.height;
       const prevTimeScale = h.getTimeScale();
 
-      // Now grow the row count on top of the already-wide timescale — crosses the area
-      // ceiling via `update()`, the real supported entry point for swapping `tasks`.
-      const { tasks } = buildAreaOnlyOverflowFixture();
+      // Now widen the DERIVED timeRange on top of the already-tall viewport via `update()` (no
+      // explicit `options.timeRange` was set, so this is task-derived) — crosses the WebKit
+      // area ceiling: neither axis alone crosses MAX_CANVAS_DIMENSION_PX, only the product does.
+      const wideTasks = [
+        task('start', '2026-01-01T09:00', '2026-01-01T17:00'),
+        task('end', '2027-02-05T09:00', '2027-02-05T17:00'), // ~400 days apart
+      ];
       let thrown: unknown;
       try {
-        h.update({ tasks, dependencies: [] });
+        h.update({ tasks: wideTasks, dependencies: [] });
       } catch (err) {
         thrown = err;
       }
       expect(thrown).toBeInstanceOf(CanvasDimensionExceededError);
       expect((thrown as CanvasDimensionExceededError).axis).toBe('area');
+      expect(h.canvas.width).toBe(prevWidth);
       expect(h.canvas.height).toBe(prevHeight);
       expect(h.getTimeScale()).toBe(prevTimeScale);
     });
 
-    it('CanvasDimensionExceededError for axis "width"/"height" leaves physicalWidth/physicalHeight undefined', () => {
+    it('CanvasDimensionExceededError for axis "height" leaves physicalWidth/physicalHeight undefined', () => {
       setDpr(1);
       setUserAgent(CHROMIUM_UA);
       const mock = createMockContext2D();
       installMockContext(mock);
       let thrown: unknown;
       try {
-        createCanvasRenderer(container, { tasks: buildFlatTasks(2047), dependencies: [] });
+        createCanvasRenderer(
+          container,
+          { tasks: buildFlatTasks(5), dependencies: [] },
+          { viewportHeight: MAX_CANVAS_DIMENSION_PX + 1 },
+        );
       } catch (err) {
         thrown = err;
       }
@@ -1461,23 +1668,258 @@ describe('canvas dimension guard', () => {
   });
 
   describe('regression — clampedCount console.warn does NOT fire on a dimension-guard overflow', () => {
-    it('an overflowing render with an end-before-start task never reaches the clampedCount warning', () => {
+    it('an overflowing render (height axis, via viewportHeight) with an end-before-start task never reaches the clampedCount warning', () => {
       setDpr(1);
       const mock = createMockContext2D();
       installMockContext(mock);
       const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
-      const tasks = buildFlatTasks(2047);
+      const tasks = buildFlatTasks(5);
       // Swap start/end on one task so it WOULD trip the existing `clampedCount` warning —
       // this must never be reached, since the dimension guard (§5.2) now runs, and throws,
       // strictly before the barByTaskId loop that computes `clampedCount`.
       const clamped: Task = { ...tasks[0]!, start: tasks[0]!.end, end: tasks[0]!.start };
       const withClampedTask = [clamped, ...tasks.slice(1)];
 
-      expect(() => createCanvasRenderer(container, { tasks: withClampedTask, dependencies: [] })).toThrow(
-        CanvasDimensionExceededError,
-      );
+      expect(() =>
+        createCanvasRenderer(
+          container,
+          { tasks: withClampedTask, dependencies: [] },
+          { viewportHeight: MAX_CANVAS_DIMENSION_PX + 1 },
+        ),
+      ).toThrow(CanvasDimensionExceededError);
       expect(warnSpy).not.toHaveBeenCalled();
     });
+  });
+});
+
+// --- resolveViewportHeightPx (fix #37, spec §4.2) -------------------------------------------
+
+describe('resolveViewportHeightPx', () => {
+  it('defaults to 600 when viewportHeight is omitted', () => {
+    expect(resolveViewportHeightPx({})).toBe(600);
+  });
+
+  it('honors an explicit viewportHeight at or above the minimum (32 + 24 = 56)', () => {
+    expect(resolveViewportHeightPx({ viewportHeight: 800 })).toBe(800);
+    expect(resolveViewportHeightPx({ viewportHeight: 56 })).toBe(56);
+  });
+
+  it('clamps a too-small requested viewportHeight up to the minimum', () => {
+    expect(resolveViewportHeightPx({ viewportHeight: 10 })).toBe(56);
+    expect(resolveViewportHeightPx({ viewportHeight: 1 })).toBe(56);
+  });
+
+  it('falls back to the default (600) for zero, negative, or non-finite input', () => {
+    expect(resolveViewportHeightPx({ viewportHeight: 0 })).toBe(600);
+    expect(resolveViewportHeightPx({ viewportHeight: -100 })).toBe(600);
+    expect(resolveViewportHeightPx({ viewportHeight: Number.NaN })).toBe(600);
+    expect(resolveViewportHeightPx({ viewportHeight: Number.POSITIVE_INFINITY })).toBe(600);
+  });
+});
+
+// --- computeVisibleWindow (fix #37, spec §4.3) — property-based invariants (fast-check) -----
+
+describe('computeVisibleWindow', () => {
+  it('returns the empty-window sentinel when there are zero rows, regardless of scroll/viewport inputs', () => {
+    fc.assert(
+      fc.property(
+        fc.integer({ min: 0, max: 100_000 }),
+        fc.integer({ min: 0, max: 10_000 }),
+        fc.integer({ min: 1, max: 200 }),
+        fc.integer({ min: 0, max: 200 }),
+        (scrollTop, rowBandViewportPx, rowHeight, overscanRows) => {
+          const win = computeVisibleWindow([], { scrollTop, rowBandViewportPx }, rowHeight, overscanRows);
+          expect(win).toEqual({ startIndex: 0, endIndex: -1 });
+        },
+      ),
+      { numRuns: 50 },
+    );
+  });
+
+  it('never returns an out-of-range window, and always contains every row whose band intersects the visible range', () => {
+    fc.assert(
+      fc.property(
+        fc.integer({ min: 1, max: 500 }), // rowCount
+        fc.integer({ min: 0, max: 50_000 }), // scrollTop
+        fc.integer({ min: 0, max: 5_000 }), // rowBandViewportPx
+        fc.integer({ min: 0, max: 100 }), // overscanRows
+        fc.integer({ min: 1, max: 100 }), // rowHeight
+        (rowCount, scrollTop, rowBandViewportPx, overscanRows, rowHeight) => {
+          const rows: RowLayout[] = Array.from({ length: rowCount }, (_, i) => ({
+            task: baseTasks[0]!,
+            depth: 0,
+            rowIndex: i,
+            y: i * rowHeight,
+          }));
+          const win = computeVisibleWindow(rows, { scrollTop, rowBandViewportPx }, rowHeight, overscanRows);
+
+          // In-range, non-empty, ordered.
+          expect(win.startIndex).toBeGreaterThanOrEqual(0);
+          expect(win.endIndex).toBeLessThanOrEqual(rowCount - 1);
+          expect(win.startIndex).toBeLessThanOrEqual(win.endIndex);
+
+          // No row whose band intersects the visible scroll range is ever excluded from the
+          // window — the core "never skip a visible row" invariant.
+          const viewTop = scrollTop;
+          const viewBottom = scrollTop + rowBandViewportPx;
+          for (let i = 0; i < rowCount; i++) {
+            const bandTop = i * rowHeight;
+            const bandBottom = bandTop + rowHeight;
+            const intersectsVisible = bandBottom > viewTop && bandTop < viewBottom;
+            if (intersectsVisible) {
+              expect(i).toBeGreaterThanOrEqual(win.startIndex);
+              expect(i).toBeLessThanOrEqual(win.endIndex);
+            }
+          }
+        },
+      ),
+      { numRuns: 200 },
+    );
+  });
+
+  it('a negative or non-finite scrollTop is clamped to 0, never producing a negative startIndex', () => {
+    const rows: RowLayout[] = Array.from({ length: 50 }, (_, i) => ({
+      task: baseTasks[0]!,
+      depth: 0,
+      rowIndex: i,
+      y: i * 32,
+    }));
+    expect(computeVisibleWindow(rows, { scrollTop: -500, rowBandViewportPx: 568 }, 32, 20)).toEqual(
+      computeVisibleWindow(rows, { scrollTop: 0, rowBandViewportPx: 568 }, 32, 20),
+    );
+    expect(computeVisibleWindow(rows, { scrollTop: Number.NaN, rowBandViewportPx: 568 }, 32, 20)).toEqual(
+      computeVisibleWindow(rows, { scrollTop: 0, rowBandViewportPx: 568 }, 32, 20),
+    );
+  });
+});
+
+// --- ensureFocusedRowVisible — via focusedTaskId re-renders (fix #37 §5.2) -------------------
+// `ensureFocusedRowVisible()` itself is an internal, unexported nested function — exercised
+// here indirectly through `container.scrollTop`, the one observable side effect it produces.
+// (Exact scrollTop values for a 300-row fixture are also cross-checked in the "hidden ARIA
+// layer — row-virtualization windowing" describe block above, which shares the same math.)
+
+describe('ensureFocusedRowVisible — scroll adjustment on focusedTaskId change (fix #37 §5.2)', () => {
+  it('does not scroll when the initially-focused row is already within the default viewport', () => {
+    const mock = createMockContext2D();
+    installMockContext(mock);
+    const h = createCanvasRenderer(container, {
+      tasks: buildFlatTasks(300),
+      dependencies: [],
+      focusedTaskId: toTaskId('t5'),
+    });
+    expect(h.container.scrollTop).toBe(0);
+  });
+
+  it('scrolls down (forward) when focus jumps to a row below the current viewport, then scrolls back up (backward) when focus returns to an earlier row', () => {
+    const mock = createMockContext2D();
+    installMockContext(mock);
+    const h = createCanvasRenderer(container, {
+      tasks: buildFlatTasks(300),
+      dependencies: [],
+      focusedTaskId: toTaskId('t150'),
+    });
+    expect(h.container.scrollTop).toBeGreaterThan(0);
+    const scrolledDownTop = h.container.scrollTop;
+
+    h.update({ tasks: buildFlatTasks(300), dependencies: [], focusedTaskId: toTaskId('t0') });
+    expect(h.container.scrollTop).toBe(0);
+    expect(h.container.scrollTop).toBeLessThan(scrolledDownTop);
+  });
+
+  it('is a no-op when the focused row is already fully visible after a small scroll adjustment', () => {
+    const mock = createMockContext2D();
+    installMockContext(mock);
+    const h = createCanvasRenderer(container, {
+      tasks: buildFlatTasks(300),
+      dependencies: [],
+      focusedTaskId: toTaskId('t0'),
+    });
+    expect(h.container.scrollTop).toBe(0);
+    // Re-rendering with the SAME focusedTaskId must not perturb an already-correct scrollTop.
+    h.update({ tasks: buildFlatTasks(300), dependencies: [], focusedTaskId: toTaskId('t0') });
+    expect(h.container.scrollTop).toBe(0);
+  });
+
+  // Regression coverage for a real bug this fix's own test-writing pass caught empirically (via
+  // a real-browser Playwright a11y/visual test attempting to scroll a freshly-mounted, nothing-
+  // focused Canvas mount): a scroll/resize-triggered `render()` (no `focusedTaskId` change at
+  // all — the DEFAULT state for a just-mounted gantt, before any keyboard interaction) must NOT
+  // re-run `ensureFocusedRowVisible()` and snap `container.scrollTop` back to the (implicitly
+  // row-0) focused row. Before this fix, `ensureFocusedRowVisible()` ran unconditionally on
+  // EVERY render regardless of what triggered it, which made real mouse-wheel/scrollbar
+  // scrolling on a fresh mount completely inert (each 'scroll' event synchronously undid itself
+  // on the very next rAF-scheduled repaint).
+  it('a scroll-triggered re-render (no focusedTaskId change) does NOT undo a manual scroll — regression guard for the "scrolling a nothing-focused mount is inert" bug', () => {
+    const mock = createMockContext2D();
+    installMockContext(mock);
+    // No `focusedTaskId` supplied at all — the common just-mounted state, where focus resolves
+    // to row 0 by fallback (`state.input.focusedTaskId ?? rows[0]?.task.id`).
+    const h = createCanvasRenderer(container, { tasks: buildFlatTasks(300), dependencies: [] });
+    expect(h.container.scrollTop).toBe(0);
+
+    h.container.scrollTop = 5_000;
+    h.container.dispatchEvent(new Event('scroll'));
+    // The scroll-triggered repaint is rAF-throttled in the real implementation; this test's
+    // fixture install (`installMockContext`) does not itself flush a real rAF queue, so call
+    // `update()` with the SAME (still-unset) `focusedTaskId` to force a synchronous re-render —
+    // exactly mirroring what the throttled rAF callback would eventually do: re-run
+    // `renderPixels()` with an unchanged resolved focus.
+    h.update({ tasks: buildFlatTasks(300), dependencies: [] });
+    expect(h.container.scrollTop).toBe(5_000);
+  });
+
+  it('an update() that changes tasks/dependencies but NOT focusedTaskId (still unset both times) preserves a manual scroll position the same way', () => {
+    const mock = createMockContext2D();
+    installMockContext(mock);
+    const h = createCanvasRenderer(container, { tasks: buildFlatTasks(300), dependencies: [] });
+    h.container.scrollTop = 3_200;
+    // A genuinely different `tasks` array reference (not just a re-render of the same data) —
+    // proves this is about `focusedTaskId` specifically, not some incidental reference-equality
+    // shortcut on the whole `input` object.
+    h.update({ tasks: buildFlatTasks(300), dependencies: [] });
+    expect(h.container.scrollTop).toBe(3_200);
+  });
+});
+
+// --- destroy() cancels a pending scroll/resize-triggered rAF (fix #37 §4.5/§4.6) ------------
+
+describe('destroy() cancels a pending scroll/resize-triggered rAF', () => {
+  it('a scroll event schedules a pending render frame; destroy() cancels it before it fires, and the (now-stale) frame is a safe no-op if it were to fire anyway', async () => {
+    const mock = createMockContext2D();
+    installMockContext(mock);
+    const h = createCanvasRenderer(container, { tasks: buildFlatTasks(50), dependencies: [] });
+
+    const cancelSpy = vi.spyOn(window, 'cancelAnimationFrame');
+    const callsBeforeScroll = mock.calls.length;
+
+    h.container.dispatchEvent(new Event('scroll'));
+    // A frame is now pending — destroy() must actively cancel it, not merely ignore it.
+    h.destroy();
+    expect(cancelSpy).toHaveBeenCalledTimes(1);
+
+    // Flush a real animation frame — even if the (already-canceled) one were to fire anyway,
+    // the `destroyed` guard inside `scheduleRender()`'s callback prevents any new paint.
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    expect(mock.calls.length).toBe(callsBeforeScroll);
+  });
+
+  it('calling destroy() with no pending frame does not call cancelAnimationFrame', () => {
+    const mock = createMockContext2D();
+    installMockContext(mock);
+    const h = createCanvasRenderer(container, { tasks: buildFlatTasks(50), dependencies: [] });
+
+    const cancelSpy = vi.spyOn(window, 'cancelAnimationFrame');
+    h.destroy();
+    expect(cancelSpy).not.toHaveBeenCalled();
+  });
+
+  it('destroy() is idempotent — a second call is a harmless no-op', () => {
+    const mock = createMockContext2D();
+    installMockContext(mock);
+    const h = createCanvasRenderer(container, { tasks: buildFlatTasks(50), dependencies: [] });
+    h.destroy();
+    expect(() => h.destroy()).not.toThrow();
   });
 });

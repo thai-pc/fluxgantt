@@ -110,6 +110,16 @@ export interface GanttConfig {
   /** Passed straight through to `SvgRendererOptions.locale`. Default `'en'`. */
   readonly locale?: string;
 
+  /**
+   * (fix #37, spec-canvas-row-virtualization.md §2). Passed straight through to
+   * `CanvasRendererOptions.viewportHeight` — has NO effect in SVG mode (no equivalent
+   * concept there). Bounds the Canvas `<canvas>` backing store's physical height and the
+   * mounted `container`'s visible vertical scroll-viewport height. Default `600` (px) when
+   * omitted — see `CanvasRendererOptions.viewportHeight`'s own doc comment for the full
+   * clamping/fallback behavior.
+   */
+  readonly canvasViewportHeight?: number;
+
   /** Default `false`. When `true`, `mount()` does NOT call `enableDragMove` at all — the
    *  rendered chart is not draggable. Does NOT restrict the programmatic API
    *  (`addTask`/`updateTask`/... still work) — `readOnly` governs the rendered UI's
@@ -1962,6 +1972,9 @@ class Gantt implements GanttInstance {
       viewMode: this.#viewMode.peek(),
       ...(this.#config.density !== undefined ? { density: this.#config.density } : {}),
       ...(this.#config.locale !== undefined ? { locale: this.#config.locale } : {}),
+      ...(this.#config.canvasViewportHeight !== undefined
+        ? { viewportHeight: this.#config.canvasViewportHeight }
+        : {}),
     };
     return this.#taskStore.size === 0 ? { ...opts, timeRange: this.#emptyStateTimeRange() } : opts;
   }
