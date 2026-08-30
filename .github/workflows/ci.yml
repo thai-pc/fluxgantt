@@ -22,7 +22,10 @@ jobs:
           cache: pnpm
 
       - name: Install
-        run: pnpm install --frozen-lockfile
+        # `--force` works around a pnpm 10.2.1 bug: `--frozen-lockfile` alone fails to link the
+        # platform-matching `@rolldown/binding-*` native addon (a vocs 2.x/rolldown transitive
+        # dependency) even though it's pinned as an explicit, lockfile-resolved optionalDependency.
+        run: pnpm install --frozen-lockfile --force
 
       - name: Lint
         run: pnpm lint
@@ -57,7 +60,8 @@ jobs:
           cache: pnpm
 
       - name: Install
-        run: pnpm install --frozen-lockfile
+        # See the `build` job's Install step for why `--force` is needed here too.
+        run: pnpm install --frozen-lockfile --force
 
       - name: Build packages
         run: pnpm build

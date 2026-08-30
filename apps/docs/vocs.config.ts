@@ -1,19 +1,25 @@
-import { defineConfig } from 'vocs';
+import { defineConfig } from 'vocs/config';
 
 // FluxGantt docs + landing site. `rootDir: '.'` makes Vocs read pages from `apps/docs/pages`
 // (its default rootDir is `docs`, which would nest awkwardly since this app already lives at
-// `apps/docs`). Visual identity mirrors the design tokens in `apps/docs/fluxgantt-spec.md`
-// §8.2: indigo #6366f1 as the accent (lightened to #818cf8 for dark-mode contrast).
+// `apps/docs`). `srcDir: '.'` matches: Vocs 2.x defaults to `<rootDir>/src/pages`, but pages
+// here live directly under `<rootDir>/pages` (no `src/` nesting). Visual identity mirrors the
+// design tokens in `apps/docs/fluxgantt-spec.md` §8.2: indigo #6366f1 as the accent (lightened
+// to #818cf8 for dark-mode contrast).
 export default defineConfig({
   rootDir: '.',
+  srcDir: '.',
   title: 'FluxGantt',
   description: 'The Modern MIT-Licensed Gantt Chart Library — TypeScript-first, headless, framework-agnostic.',
   titleTemplate: '%s · FluxGantt',
-  theme: {
-    accentColor: { light: '#6366f1', dark: '#818cf8' },
-  },
-  font: {
-    google: 'Inter',
+  accentColor: 'light-dark(#6366f1, #818cf8)',
+  // Vocs 2.x dropped the `font.google` shorthand; load the Google Font via a head <link> instead.
+  head: {
+    link: [
+      { rel: 'preconnect', href: 'https://fonts.googleapis.com' },
+      { rel: 'preconnect', href: 'https://fonts.gstatic.com', crossorigin: 'anonymous' },
+      { rel: 'stylesheet', href: 'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap' },
+    ],
   },
   topNav: [
     { text: 'Docs', link: '/docs/installation' },
