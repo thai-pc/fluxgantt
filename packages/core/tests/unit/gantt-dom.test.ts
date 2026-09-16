@@ -13,7 +13,14 @@
 // creates/paints a real `<canvas>`/`<svg>` into a real `HTMLElement`), so this file's existing
 // jsdom setup (and its `container`/`PointerEventPolyfill` conventions) is the correct home.
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { createGantt, CANVAS_AUTO_SWITCH_THRESHOLD } from '../../src/gantt.js';
+import { createGantt as createGanttBase, CANVAS_AUTO_SWITCH_THRESHOLD } from '../../src/gantt.js';
+import { withIo } from '../../src/io/mixin.js';
+import type { GanttConfig } from '../../src/gantt.js';
+
+// Post-facade-split (spec-facade-split.md §3.2): IO methods live on the opt-in `withIo`
+// mixin, not on the base instance. These tests exercise the IO surface, so they compose it
+// once here rather than at every call site.
+const createGantt = (config: GanttConfig) => withIo(createGanttBase(config));
 import { createSvgRenderer } from '../../src/render/svg-renderer.js';
 import { CanvasDimensionExceededError, createCanvasRenderer } from '../../src/render/canvas-renderer.js';
 import { toTaskId, type Task } from '../../src/types.js';

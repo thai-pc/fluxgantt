@@ -15,6 +15,7 @@
 // `'manual'` (= v1's original single-task-only behavior, unchanged) — see `#maybeCascade`.
 import type { Temporal } from '@js-temporal/polyfill';
 import { effect, batch, signal, type Signal } from './signals.js';
+import { INTERNAL, type GanttInternal, type MountState as InternalMountState, type InteractionHooks } from './gantt-internal.js';
 import { TaskStore, DependencyStore, DependencyLinkError, SelectionStore } from './store/index.js';
 import type { TaskInput, TaskPatch } from './store/index.js';
 import {
@@ -46,23 +47,6 @@ import { enableDragCreateDep } from './interaction/drag-create-dep.js';
 import { enableClickSelect } from './interaction/selection.js';
 import { enableKeyboardNav } from './interaction/keyboard-nav.js';
 import { enableWheelZoom } from './interaction/wheel-zoom.js';
-import {
-  exportJson as exportJsonFn,
-  exportCsv as exportCsvFn,
-  exportSvg as exportSvgFn,
-  exportPng as exportPngFn,
-  importJson as importJsonFn,
-  importCsv as importCsvFn,
-} from './io/index.js';
-import type {
-  ExportBundle,
-  ExportCsvOptions,
-  ExportJsonOptions,
-  ExportPngOptions,
-  ExportSvgOptions,
-  ImportJsonOptions,
-  ImportCsvOptions,
-} from './io/index.js';
 import type {
   CriticalPathResult,
   DateInput,
@@ -400,77 +384,13 @@ export interface GanttInstance {
   // --- Computation -------------------------------------------------------------------------
   computeCriticalPath(): CriticalPathResult;
 
-  // --- IO (export + import, spec §7.8, security.md §2) -------------------------------------
-  /** Thin delegation over `getTasks()`/`getDependencies()` + the pure `exportJson()`
-   *  function — same post-`destroy()` posture as those two getters (returns an
-   *  empty-but-valid bundle rather than throwing; see spec-io-json-csv.md §1.2). Defaults
-   *  `options.timezone` to the instance's own calendar timezone, not `'UTC'`. */
-  exportJson(options?: ExportJsonOptions): ExportBundle;
-  /** Thin delegation over `getTasks()` + the pure `exportCsv()` function. Same posture as
-   *  `exportJson()` above. */
-  exportCsv(options?: ExportCsvOptions): string;
-
-  /**
-   * Validates `data` via the pure `importJson()` function, then wholesale-REPLACES the
-   * entire live task/dependency set — equivalent to what `createGantt({ tasks, dependencies })`
-   * would have produced from the same data (NOT a merge/append). Concretely, on success:
-   *  1. Clears BOTH `#undoStack` and `#redoStack` — prior entries reference a pre-import state
-   *     that may no longer exist post-replace. The import itself is NOT recorded as an
-   *     undoable op — same precedent as construction-time `config.tasks`/`config.dependencies`
-   *     seeding.
-   *  2. Clears the current selection, equivalent to `deselect()`.
-   *  3. Emits exactly ONE `data:imported` event — never per-item `task:added`/
-   *     `dependency:added`.
-   *  4. Triggers exactly one repaint of a mounted chart (batched), via the same
-   *     store-`revision`-driven reactive effect every other mutation uses.
-   *
-   * NOT gated by `readOnly` (matches every other programmatic mutation method).
-   *
-   * ATOMIC against the live instance: the complete replacement dataset is validated and
-   * staged BEFORE any live store is touched. A rejected import — an invalid schema (rejected
-   * by the pure `importJson()` itself) OR a cyclic dependency set (which the pure
-   * `importJson()` deliberately does NOT detect — see `io/json.ts`'s own note — and only
-   * surfaces when the staged data is linked) — leaves the live instance's tasks,
-   * dependencies, undo/redo history, and selection completely UNCHANGED, and does not fire
-   * `data:imported`.
-   *
-   * Throws if the instance is destroyed (`#assertAlive`, same posture as every other
-   * mutating method).
-   *
-   * `options` is passed straight through to the pure `importJson()` — no facade-level
-   * default injected (unlike `exportJson`'s `timezone` default: `ImportJsonOptions` has no
-   * `timezone` field to default, only `limits`).
-   */
-  importJson(data: string | object, options?: ImportJsonOptions): ImportSummary;
-
-  /**
-   * Same contract as `importJson()` above, for CSV. CSV has no dependency concept
-   * (`io/csv.ts`'s own header comment: "Tasks-only, flat scalar columns... dependencies are
-   * NOT representable in CSV at all") — `dependencyCount` is always `0` in the returned/
-   * emitted summary, and any dependency the live instance held before the call is cleared
-   * along with the task set (wholesale replace is dataset-wide, not tasks-only — importing a
-   * tasks-only CSV still wipes pre-existing dependencies, matching what
-   * `createGantt({ tasks })` with no `dependencies` key would produce).
-   */
-  importCsv(csv: string, options?: ImportCsvOptions): ImportSummary;
-
-  /**
-   * Serializes the currently-mounted SVG to a self-contained string (XML declaration,
-   * explicit xmlns, resolved computed styles baked in, no interactive-only chrome).
-   * Throws if the instance was never mounted, or has been unmounted/destroyed — unlike
-   * exportJson/exportCsv, there is no sensible empty-but-valid result to fall back to.
-   */
-  exportSvg(options?: ExportSvgOptions): string;
-
-  /**
-   * Rasterizes the currently-mounted chart to a PNG. Internally calls exportSvg() to get a
-   * baked/sanitized SVG string, then draws it onto a canvas. Async because it waits for the
-   * browser to decode the SVG image before it can rasterize. Same throw-if-not-mounted
-   * posture as exportSvg(), but delivered as a REJECTED promise, not a synchronous throw
-   * (implemented as an `async function` specifically so this holds for every validation
-   * error, not just the DOM-not-ready one).
-   */
-  exportPng(options?: ExportPngOptions): Promise<Blob>;
+  // --- IO ---------------------------------------------------------------------------------
+  // exportJson/exportCsv/importJson/importCsv/exportSvg/exportPng now live on the opt-in
+  // `IoCapability` mixin (spec-facade-split.md §3.2):
+  //   import { withIo } from '@fluxgantt/core/io';
+  //   const gantt = withIo(createGantt({ tasks }));
+  // Keeping them on the base class would keep the whole `io/*` graph in every bundle, since
+  // class prototype methods can never be tree-shaken.
 
   // --- Events --------------------------------------------------------------------------------
   on<E extends GanttEventName>(
@@ -609,6 +529,15 @@ class Gantt implements GanttInstance {
    *  transaction-wrapped method calls another transaction-wrapped method. */
   #transactionDepth = 0;
 
+  /** Internal "friend" surface handed to the opt-in mixins (`withIo`/`withRender`/
+   *  `withInteraction`) — see `gantt-internal.ts` and spec-facade-split.md §2.1. Present on
+   *  every instance from construction, deliberately absent from the public `GanttInstance`
+   *  type, so a consumer importing only `@fluxgantt/core` never sees it. */
+  readonly [INTERNAL]: GanttInternal;
+
+  /** Registered by `withInteraction`, consulted lazily by `withRender`'s `mount()`. */
+  #interactionHooks: InteractionHooks | undefined;
+
   constructor(config: GanttConfig) {
     this.#config = config;
     this.#calendar = config.calendar ?? DEFAULT_CALENDAR;
@@ -632,6 +561,50 @@ class Gantt implements GanttInstance {
     // atomically; no partial state is observable (the whole `createGantt()` call throws, no
     // instance is ever returned).
     this.#loadDataset(config.tasks ?? [], config.dependencies ?? [], this.#taskStore, this.#dependencyStore, 'createGantt');
+
+    // Built last, so every field it closes over is already initialized. Arrow functions (not
+    // bound methods) so `#private` access stays lexical — no `this` rebinding hazard for a
+    // mixin that destructures off this object.
+    this[INTERNAL] = {
+      taskStore: this.#taskStore,
+      dependencyStore: this.#dependencyStore,
+      selectionStore: this.#selectionStore,
+      calendar: this.#calendar,
+      viewMode: this.#viewMode,
+      emitEvent: (event, ...args) => {
+        this.#emit(event, ...args);
+      },
+      assertAlive: (method) => this.#assertAlive(method),
+      requireTask: (id, method) => this.#requireTask(id, method),
+      getMountState: () => this.#mount as InternalMountState | undefined,
+      setMountState: (state) => {
+        this.#mount = state as MountState | undefined;
+      },
+      bumpMountGeneration: () => ++this.#mountGeneration,
+      getMountGeneration: () => this.#mountGeneration,
+      isDestroyed: () => this.#destroyed,
+      getInteractionHooks: () => this.#interactionHooks,
+      setInteractionHooks: (hooks) => {
+        this.#interactionHooks = hooks;
+      },
+      commitScheduleChange: (id, patch, cascade) => this.#commitScheduleChange(id, patch, cascade),
+      applyCascadeShift: (id, start, end) => {
+        this.#applyCascadeShift(id, start, end);
+      },
+      beginTransaction: () => this.#beginTransaction(),
+      endTransaction: () => this.#endTransaction(),
+      recordOp: (op) => this.#recordOp(op),
+      recordOps: (ops) => this.#recordOps(ops),
+      applySelection: (ids) => {
+        this.#applySelection(ids);
+      },
+      expandWithDescendants: (ids) => this.#expandWithDescendants(ids),
+      commitImport: (tasks, dependencies, format) => this.#commitImport(tasks, dependencies, format),
+      assertMountedSvg: (method) => this.#assertMountedSvg(method),
+      renderInput: () => this.#renderInput(),
+      rendererOptions: () => this.#rendererOptions(),
+      canvasRendererOptions: () => this.#canvasRendererOptions(),
+    };
   }
 
   /**
@@ -1071,44 +1044,6 @@ class Gantt implements GanttInstance {
     this.#lastCriticalIds = result.criticalTaskIds;
     this.#emit('critical-path:computed', result.criticalTaskIds);
     return result;
-  }
-
-  // --- IO (read-only export) --------------------------------------------------------------
-
-  exportJson(options?: ExportJsonOptions): ExportBundle {
-    // No #assertAlive here — deliberately mirrors getTasks()/getDependencies()'s own
-    // post-destroy() posture (returns an empty-but-valid result rather than throwing), since
-    // this is a thin read-only delegation over exactly those two getters (spec §1.2).
-    return exportJsonFn(this.getTasks(), this.getDependencies(), {
-      timezone: this.#calendar.timezone,
-      ...options,
-    });
-  }
-
-  exportCsv(options?: ExportCsvOptions): string {
-    return exportCsvFn(this.getTasks(), { timezone: this.#calendar.timezone, ...options });
-  }
-
-  importJson(data: string | object, options?: ImportJsonOptions): ImportSummary {
-    this.#assertAlive('importJson');
-    const { tasks, dependencies } = importJsonFn(data, options); // may throw IoValidationError
-    return this.#commitImport(tasks, dependencies, 'json');
-  }
-
-  importCsv(csv: string, options?: ImportCsvOptions): ImportSummary {
-    this.#assertAlive('importCsv');
-    const { tasks } = importCsvFn(csv, options); // may throw IoValidationError
-    return this.#commitImport(tasks, [], 'csv');
-  }
-
-  exportSvg(options?: ExportSvgOptions): string {
-    const handle = this.#assertMountedSvg('exportSvg');
-    return exportSvgFn(handle.svg, options);
-  }
-
-  async exportPng(options?: ExportPngOptions): Promise<Blob> {
-    const handle = this.#assertMountedSvg('exportPng');
-    return exportPngFn(handle.svg, options);
   }
 
   // --- Events ----------------------------------------------------------------------------------

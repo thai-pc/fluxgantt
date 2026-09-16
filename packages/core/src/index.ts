@@ -72,28 +72,11 @@ export type {
   WheelZoomOptions,
 } from './interaction/index.js';
 
-// IO layer (spec §7.8, security.md §2)
-export { exportJson, importJson, exportCsv, importCsv, DEFAULT_CSV_COLUMNS } from './io/index.js';
-// SVG/PNG export (spec-export-png-svg.md) — DOM-dependent, browser-only. `exportPng` is a
-// separate named export from `exportSvg` for tree-shaking (see io/export-png.ts's header).
-export { exportSvg, exportPng } from './io/index.js';
-export { IoValidationError } from './io/index.js';
-export type {
-  ExportBundle,
-  ExportedTask,
-  ExportedDependency,
-  ExportedTaskConstraint,
-  ExportJsonOptions,
-  ExportCsvOptions,
-  ExportSvgOptions,
-  ExportPngOptions,
-  ImportJsonOptions,
-  ImportCsvOptions,
-  ImportLimits,
-  ImportResult,
-  ImportCsvResult,
-  CsvColumn,
-} from './io/index.js';
+// IO layer (spec §7.8, security.md §2) — NOT re-exported here (spec-facade-split.md §3.4).
+// Re-exporting `exportJson`/`importCsv`/`exportPng`/... from this barrel would keep the whole
+// `io/*` graph statically reachable from the main entry, so every `createGantt()`-only consumer
+// would pay for it whether or not they import it. Import from the subpath instead:
+//   import { withIo, exportJson, IoValidationError } from '@fluxgantt/core/io';
 
 // ID coercion helpers (spec §6.1)
 export { toTaskId, toResourceId, toDependencyId, toBaselineId, toProjectId } from './types.js';

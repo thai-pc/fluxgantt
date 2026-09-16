@@ -23,3 +23,8 @@ export type {
   ImportCsvResult,
   CsvColumn,
 } from './types.js';
+
+// Opt-in facade capability (spec-facade-split.md §3.2) — `withIo(createGantt(cfg))` adds the
+// instance-bound export/import methods that used to live on the `Gantt` class itself.
+export { withIo } from './mixin.js';
+export type { IoCapability } from './mixin.js';
