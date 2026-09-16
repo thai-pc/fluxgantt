@@ -13,6 +13,8 @@
 // consumer who wants to explicitly hard-close it.
 import { useEffect, useLayoutEffect, useRef } from 'react';
 import { createGantt } from '@fluxgantt/core';
+import { withRender, type RenderCapability } from '@fluxgantt/core/render';
+import { withInteraction } from '@fluxgantt/core/interaction';
 import type { GanttInstance } from '@fluxgantt/core';
 import type { UseFluxGanttConfig, UseFluxGanttResult } from './types.js';
 
@@ -38,7 +40,7 @@ export function useFluxGantt(config: UseFluxGanttConfig): UseFluxGanttResult {
   // stateful object exactly once). Survives StrictMode's dev-only double *render* because the
   // ref persists across both synchronous render calls of the same commit; the `=== null` guard
   // makes the second call a no-op.
-  const instanceRef = useRef<GanttInstance | null>(null);
+  const instanceRef = useRef<(GanttInstance & RenderCapability) | null>(null);
   if (instanceRef.current === null) {
     // Reads `config` HERE ONLY — this block runs exactly once, so `tasks`/`dependencies`/
     // `calendar`/`viewMode`/`density`/`locale`/`readOnly` are frozen at whatever the FIRST
@@ -50,16 +52,25 @@ export function useFluxGantt(config: UseFluxGanttConfig): UseFluxGanttResult {
     // property that isn't itself typed `X | undefined` is a compile error, not just redundant
     // (mirrors `gantt.ts`'s own `#rendererOptions()` pattern).
     try {
-      instanceRef.current = createGantt({
-        ...(config.tasks !== undefined ? { tasks: config.tasks } : {}),
-        ...(config.dependencies !== undefined ? { dependencies: config.dependencies } : {}),
-        ...(config.calendar !== undefined ? { calendar: config.calendar } : {}),
-        ...(config.viewMode !== undefined ? { viewMode: config.viewMode } : {}),
-        ...(config.density !== undefined ? { density: config.density } : {}),
-        ...(config.locale !== undefined ? { locale: config.locale } : {}),
-        ...(config.readOnly !== undefined ? { readOnly: config.readOnly } : {}),
-        onTaskChange: (task, prev) => configRef.current.onTaskChange?.(task, prev),
-      });
+      // `mount()`/`unmount()` and the drag/keyboard/click gestures are opt-in mixins on the
+      // core's `/render` and `/interaction` subpaths since the facade split — a wrapper
+      // component is by definition a rendering, interactive consumer, so it composes both
+      // unconditionally. IO (`/io`) is deliberately NOT composed: the wrapper exposes no
+      // import/export surface, so a consumer who never calls it never downloads it.
+      instanceRef.current = withInteraction(
+        withRender(
+          createGantt({
+            ...(config.tasks !== undefined ? { tasks: config.tasks } : {}),
+            ...(config.dependencies !== undefined ? { dependencies: config.dependencies } : {}),
+            ...(config.calendar !== undefined ? { calendar: config.calendar } : {}),
+            ...(config.viewMode !== undefined ? { viewMode: config.viewMode } : {}),
+            ...(config.density !== undefined ? { density: config.density } : {}),
+            ...(config.locale !== undefined ? { locale: config.locale } : {}),
+            ...(config.readOnly !== undefined ? { readOnly: config.readOnly } : {}),
+            onTaskChange: (task, prev) => configRef.current.onTaskChange?.(task, prev),
+          }),
+        ),
+      );
     } catch (err) {
       // `createGantt` constructs the stores synchronously and throws on invalid INITIAL data
       // (a duplicate task id, or a self/duplicate/cyclic initial dependency). Because this

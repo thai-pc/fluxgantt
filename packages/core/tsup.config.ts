@@ -14,6 +14,8 @@ export default defineConfig({
     // consumer importing `@fluxgantt/core/io` pulls ONLY that layer's graph, and, conversely,
     // a consumer who never imports it never pays for it from `dist/index.js`.
     'io/index': 'src/io/index.ts',
+    'render/index': 'src/render/index.ts',
+    'interaction/index': 'src/interaction/index.ts',
     'render/canvas-renderer': 'src/render/canvas-renderer.ts',
   },
   format: ['esm', 'cjs'],

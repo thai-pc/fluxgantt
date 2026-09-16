@@ -39,14 +39,18 @@ import type {
  * Fix: expose a plain object of PRE-BOUND methods instead of the raw instance. Each bound
  * function permanently fixes its own `this` to the real `Gantt` object via
  * `Function.prototype.bind`, so it behaves correctly no matter what object it's later
- * invoked through. Built by walking the instance's own prototype chain (not a hand-written
- * method-name list) so this can never drift from whatever methods `GanttInstance` actually
- * declares — the exact drift risk resolution #2 itself was written to avoid.
+ * invoked through. Built by walking the instance's OWN properties and then its prototype
+ * chain (not a hand-written method-name list) so this can never drift from whatever methods
+ * `GanttInstance` actually declares — the exact drift risk resolution #2 itself was written to
+ * avoid. The own-property pass is what carries the opt-in mixins (`withRender`'s
+ * `mount`/`unmount`/`refresh`, and anything a consumer composes on later): a mixin
+ * `Object.assign`s plain closures directly onto the instance, so those methods are own
+ * properties and never appear on the prototype chain the way the base class's do.
  */
 function exposableInstance(instance: GanttInstance): GanttInstance {
   const bound: Record<string, unknown> = {};
   const seen = new Set<string>();
-  let proto: object | null = Object.getPrototypeOf(instance);
+  let proto: object | null = instance;
   while (proto && proto !== Object.prototype) {
     for (const key of Object.getOwnPropertyNames(proto)) {
       if (key === 'constructor' || seen.has(key)) continue;

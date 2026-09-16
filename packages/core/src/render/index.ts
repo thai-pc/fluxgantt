@@ -23,3 +23,8 @@ export type {
   DependencyPathLayout,
   GridColumn,
 } from './renderer-base.js';
+
+// Opt-in facade capability (spec-facade-split.md §3.3) — `withRender(createGantt(cfg))` adds
+// the `mount`/`unmount`/`refresh` methods that used to live on the `Gantt` class itself.
+export { withRender, CANVAS_AUTO_SWITCH_THRESHOLD } from './mixin.js';
+export type { RenderCapability } from './mixin.js';

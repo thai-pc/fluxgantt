@@ -2,14 +2,18 @@ import { describe, it, expect, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
 import { toTaskId } from '@fluxgantt/core';
 import type { GanttInstance, TaskInput } from '@fluxgantt/core';
+import type { RenderCapability } from '@fluxgantt/core/render';
 import { FluxGantt } from '../src/FluxGantt.js';
 
 function taskInput(id: string, start: string, end: string, extra: Partial<TaskInput> = {}): TaskInput {
   return { id: toTaskId(id), name: id, start, end, progress: 0, type: 'task', ...extra };
 }
 
-function vm(wrapper: { vm: unknown }): GanttInstance {
-  return wrapper.vm as unknown as GanttInstance;
+// `RenderCapability` (`mount`/`unmount`/`refresh`) comes from the opt-in
+// `@fluxgantt/core/render` mixin the wrapper composes for the consumer — see
+// `use-flux-gantt.ts` and `FluxGanttRef` in `src/types.ts`.
+function vm(wrapper: { vm: unknown }): GanttInstance & RenderCapability {
+  return wrapper.vm as unknown as GanttInstance & RenderCapability;
 }
 
 describe('<FluxGantt>', () => {

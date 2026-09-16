@@ -3,14 +3,7 @@
 // no DOM. DOM tests (mount/unmount/drag) live in gantt-dom.test.ts (jsdom).
 import { describe, it, expect, vi } from 'vitest';
 import fc from 'fast-check';
-import { createGantt as createGanttBase } from '../../src/gantt.js';
-import { withIo } from '../../src/io/mixin.js';
-import type { GanttConfig } from '../../src/gantt.js';
-
-// Post-facade-split (spec-facade-split.md §3.2): IO methods live on the opt-in `withIo`
-// mixin, not on the base instance. These tests exercise the IO surface, so they compose it
-// once here rather than at every call site.
-const createGantt = (config: GanttConfig) => withIo(createGanttBase(config));
+import { createGantt } from '../helpers/create-gantt.js';
 import type { GanttEventName, GanttEventMap } from '../../src/gantt.js';
 import { normalizeDate } from '../../src/compute/working-calendar.js';
 import { toTaskId, type Task, type TaskId } from '../../src/types.js';

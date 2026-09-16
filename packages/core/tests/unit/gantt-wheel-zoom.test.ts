@@ -9,7 +9,7 @@
 // contradicting its documented purpose. Mirrors the existing `gantt-keyboard-nav.test.ts` /
 // `keyboard-nav.test.ts` split (facade-DOM tests vs module-level tests) for the same reason.
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { createGantt } from '../../src/gantt.js';
+import { createGantt } from '../helpers/create-gantt.js';
 import { toTaskId } from '../../src/types.js';
 import type { TaskInput } from '../../src/store/index.js';
 

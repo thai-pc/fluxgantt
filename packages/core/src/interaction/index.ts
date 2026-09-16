@@ -10,3 +10,7 @@ export { enableKeyboardNav } from './keyboard-nav.js';
 export type { KeyboardNavOptions, KeyboardNavHandle } from './keyboard-nav.js';
 export { enableWheelZoom } from './wheel-zoom.js';
 export type { WheelZoomOptions } from './wheel-zoom.js';
+
+// Opt-in facade capability (spec-facade-split.md §3.3) — `withInteraction(createGantt(cfg))`
+// makes a mounted chart interactive. Adds no public methods; requires `withRender`.
+export { withInteraction } from './mixin.js';

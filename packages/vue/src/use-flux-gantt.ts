@@ -27,6 +27,8 @@
 // call. See `FluxGantt.ts` and §6 for how the two hook pairs interleave safely.
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { createGantt } from '@fluxgantt/core';
+import { withRender, type RenderCapability } from '@fluxgantt/core/render';
+import { withInteraction } from '@fluxgantt/core/interaction';
 import type { GanttInstance } from '@fluxgantt/core';
 import type { UseFluxGanttConfig, UseFluxGanttResult } from './types.js';
 
@@ -38,20 +40,29 @@ declare const process: { readonly env?: { readonly NODE_ENV?: string } } | undef
 export function useFluxGantt(config: UseFluxGanttConfig): UseFluxGanttResult {
   const containerRef = ref<HTMLDivElement | null>(null);
 
-  let instance: GanttInstance;
+  let instance: GanttInstance & RenderCapability;
   try {
     // `exactOptionalPropertyTypes` — only include a key when actually set, same pattern
     // `gantt.ts`'s own `#rendererOptions()` and react's `use-flux-gantt.ts` use.
-    instance = createGantt({
-      ...(config.tasks !== undefined ? { tasks: config.tasks } : {}),
-      ...(config.dependencies !== undefined ? { dependencies: config.dependencies } : {}),
-      ...(config.calendar !== undefined ? { calendar: config.calendar } : {}),
-      ...(config.viewMode !== undefined ? { viewMode: config.viewMode } : {}),
-      ...(config.density !== undefined ? { density: config.density } : {}),
-      ...(config.locale !== undefined ? { locale: config.locale } : {}),
-      ...(config.readOnly !== undefined ? { readOnly: config.readOnly } : {}),
-      onTaskChange: (task, prev) => config.onTaskChange?.(task, prev),
-    });
+    // `mount()`/`unmount()` and the drag/keyboard/click gestures are opt-in mixins on the
+    // core's `/render` and `/interaction` subpaths since the facade split — a wrapper component
+    // is by definition a rendering, interactive consumer, so it composes both unconditionally.
+    // IO (`/io`) is deliberately NOT composed: the wrapper exposes no import/export surface, so
+    // a consumer who never calls it never downloads it.
+    instance = withInteraction(
+      withRender(
+        createGantt({
+          ...(config.tasks !== undefined ? { tasks: config.tasks } : {}),
+          ...(config.dependencies !== undefined ? { dependencies: config.dependencies } : {}),
+          ...(config.calendar !== undefined ? { calendar: config.calendar } : {}),
+          ...(config.viewMode !== undefined ? { viewMode: config.viewMode } : {}),
+          ...(config.density !== undefined ? { density: config.density } : {}),
+          ...(config.locale !== undefined ? { locale: config.locale } : {}),
+          ...(config.readOnly !== undefined ? { readOnly: config.readOnly } : {}),
+          onTaskChange: (task, prev) => config.onTaskChange?.(task, prev),
+        }),
+      ),
+    );
   } catch (err) {
     // Same re-throw-with-context contract as react (invalid INITIAL tasks/dependencies —
     // duplicate id, self/duplicate/cyclic link — throws synchronously from `createGantt`).

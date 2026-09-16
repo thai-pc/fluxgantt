@@ -5,6 +5,15 @@ const base = Array.isArray(config) ? config : [config];
 export default [
   ...base,
   {
+    // `pnpm size` fixtures are browser-entry bundles, not library source: they call
+    // `mount(document.body)` to make the render/interaction capabilities genuinely reachable
+    // so esbuild cannot tree-shake away the very bytes the budget exists to measure.
+    files: ['size-limit/**/*.js'],
+    languageOptions: {
+      globals: { document: 'readonly' },
+    },
+  },
+  {
     // SECURITY (security.md §1, spec-svg-renderer.md §8): the render layer writes
     // untrusted host-app strings (task.name/notes/meta) into the DOM. Enforce
     // textContent/createTextNode + setAttribute only — never HTML-parsing sinks — so an

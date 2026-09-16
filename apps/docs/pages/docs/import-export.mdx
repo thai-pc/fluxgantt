@@ -1,8 +1,18 @@
 # Import & Export
 
 FluxGantt reads and writes its data as JSON and CSV, and exports the rendered chart as SVG or
-PNG. Export methods live on the instance; import is done with pure functions you feed into
-`createGantt`.
+PNG. All of it lives behind the opt-in `withIo` mixin, so a consumer who never imports or
+exports never downloads the parsers and serializers:
+
+```ts
+import { createGantt } from '@fluxgantt/core';
+import { withIo } from '@fluxgantt/core/io';
+
+const gantt = withIo(createGantt({ tasks: [/* … */] }));
+```
+
+Compose it before you call any of the methods below. (`exportSvg`/`exportPng` additionally need
+[`withRender`](/docs/api#capability-mixins) and a live `mount()`.)
 
 ## Export JSON / CSV
 
@@ -49,17 +59,21 @@ the input and return plain `TaskInput[]` / `DependencyInput[]` you pass to `crea
 apply via `addTask` / `linkTasks`):
 
 ```ts
-import { createGantt, importJson } from '@fluxgantt/core';
+import { createGantt } from '@fluxgantt/core';
+import { importJson } from '@fluxgantt/core/io';
 
 const { tasks, dependencies } = importJson(jsonStringOrObject);
 const gantt = createGantt({ tasks, dependencies });
 ```
 
 ```ts
-import { importCsv } from '@fluxgantt/core';
+import { importCsv } from '@fluxgantt/core/io';
 
 const { tasks } = importCsv(csvString);
 ```
+
+To replace the dataset of an ALREADY-LIVE instance (atomically, undoable), use the `withIo`
+instance methods of the same name instead: `gantt.importJson(input)` / `gantt.importCsv(csv)`.
 
 ## Round-trips and validation
 
@@ -70,7 +84,8 @@ loaded), and enforces size/count limits to guard against a malicious file. Unkno
 keys (e.g. a future Pro `resources` block) are tolerated and ignored.
 
 ```ts
-import { importJson, IoValidationError } from '@fluxgantt/core';
+import { createGantt } from '@fluxgantt/core';
+import { importJson, IoValidationError } from '@fluxgantt/core/io';
 
 try {
   const { tasks, dependencies } = importJson(untrustedInput);

@@ -1,5 +1,6 @@
 // Public prop/config/result types for @fluxgantt/react (spec-react-wrapper.md §2).
 import type { CSSProperties, RefObject } from 'react';
+import type { RenderCapability } from '@fluxgantt/core/render';
 import type {
   DateInput,
   Dependency,
@@ -36,9 +37,12 @@ export interface UseFluxGanttResult {
    *  across renders (from `useRef`). NOT the raw DOM node itself as a value — an object
    *  ref, per React's ref contract. */
   readonly ref: RefObject<HTMLDivElement | null>;
-  /** The full `GanttInstance` (resolution #6 — no curated subset). Stable identity across
-   *  renders (created once — see `use-flux-gantt.ts`). */
-  readonly instance: GanttInstance;
+  /** The full `GanttInstance` (resolution #6 — no curated subset), plus `RenderCapability`
+   *  (`mount`/`unmount`/`refresh`), which lives on the opt-in `@fluxgantt/core/render` mixin
+   *  since the facade split — the wrapper composes it for you (see `use-flux-gantt.ts`), so
+   *  this surface is unchanged from a consumer's point of view. Stable identity across
+   *  renders (created once). */
+  readonly instance: GanttInstance & RenderCapability;
 }
 
 export interface FluxGanttProps extends UseFluxGanttConfig {
@@ -47,4 +51,4 @@ export interface FluxGanttProps extends UseFluxGanttConfig {
 }
 
 /** Type of the value `<FluxGantt ref={...}>` exposes via `useImperativeHandle`. */
-export type FluxGanttRef = GanttInstance;
+export type FluxGanttRef = GanttInstance & RenderCapability;

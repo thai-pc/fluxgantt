@@ -26,14 +26,15 @@ import type {
   TaskInput,
   TaskPatch,
 } from './store/index.js';
-import type { CanvasRendererHandle, CanvasRendererOptions } from './render/canvas-renderer.js';
-import type { SvgRendererHandle, SvgRendererInput, SvgRendererOptions } from './render/svg-renderer.js';
+import type { CanvasRendererHandle } from './render/canvas-renderer.js';
+import type { SvgRendererHandle } from './render/svg-renderer.js';
 import type { DateInput, Dependency, Task, TaskId, ViewMode, WorkingCalendar } from './types.js';
 // TYPE-ONLY import back into `gantt.ts` — erased at compile time, so this creates NO runtime
 // module cycle (`gantt.ts` imports this file for real; this file imports nothing back).
 // Keeps `emitEvent` exactly as type-safe for a mixin as `#emit` is inside the class.
 import type {
   DependencyInput,
+  GanttConfig,
   GanttEventMap,
   GanttEventName,
   ImportSummary,
@@ -65,6 +66,18 @@ export interface MountState {
    *  otherwise (and always a no-op in Canvas mode for the pointer-drag family). */
   readonly disposeInteractions: () => void;
   readonly getFocusedTaskId: () => TaskId | undefined;
+  /**
+   * Runs `mutate()` (a view-mode write, which synchronously repaints) between a capture and a
+   * restore of the date currently centered in the viewport, so `zoomTo()` keeps the user's
+   * anchor date on screen across a zoom.
+   *
+   * Lives on the mount state — i.e. is provided by `render/mixin.ts` — rather than in base
+   * `zoomTo()`, because the math needs the renderer's `LABEL_COLUMN_WIDTH` and `TimeScale`;
+   * importing those into `gantt.ts` would drag the SVG renderer back into the base bundle,
+   * which is exactly what this split exists to prevent. Base `zoomTo()` therefore degrades to
+   * state-only whenever no mount state exists (always, without `withRender`).
+   */
+  readonly withScrollAnchor: (mutate: () => void) => void;
 }
 
 /** Registered by `withInteraction`, consulted LAZILY by `withRender`'s `mount()` — this
@@ -89,6 +102,11 @@ export interface GanttInternal {
   readonly calendar: WorkingCalendar;
   readonly viewMode: Signal<ViewMode>;
 
+  /** The frozen-by-convention config the instance was constructed with. Read by
+   *  `interaction/mixin.ts` (`density`, `readOnly`) — the base class reads its own
+   *  `#config` field directly. */
+  readonly config: GanttConfig;
+
   emitEvent<E extends GanttEventName>(event: E, ...args: GanttEventMap[E]): void;
   assertAlive(method: string): void;
   requireTask(id: TaskId, method: string): Task;
@@ -101,6 +119,11 @@ export interface GanttInternal {
   bumpMountGeneration(): number;
   getMountGeneration(): number;
   isDestroyed(): boolean;
+  /** Renderer-agnostic teardown of whatever `setMountState()` last stored: stop the reactive
+   *  effect, dispose interactions, destroy the renderer handle, clear the slot. Lives in
+   *  `gantt.ts` (not `render/mixin.ts`) because base `destroy()` must be able to tear a mount
+   *  down without pulling the render layer into its graph. No-op when unmounted. */
+  teardownMount(): void;
 
   // --- Interaction slot (writer: interaction/mixin.ts) ---
   getInteractionHooks(): InteractionHooks | undefined;
@@ -128,10 +151,12 @@ export interface GanttInternal {
    *  in Canvas mode (no `handle.svg` to serialize). */
   assertMountedSvg(method: string): SvgRendererHandle;
 
-  // --- Render-input builders (shared with render/mixin.ts) ---
-  renderInput(): SvgRendererInput;
-  rendererOptions(): SvgRendererOptions;
-  canvasRendererOptions(): CanvasRendererOptions;
+  // --- Critical-path emit-on-change guard (shared with render/mixin.ts's render effect) ---
+  /** Records `ids` as the last emitted critical set and reports whether it actually CHANGED —
+   *  `true` means the caller should emit `critical-path:computed`. */
+  noteCriticalIds(ids: readonly TaskId[]): boolean;
+  /** Forgets the last emitted critical set, so the next non-empty compute always re-emits. */
+  resetCriticalIds(): void;
 }
 
 export interface WithInternal {

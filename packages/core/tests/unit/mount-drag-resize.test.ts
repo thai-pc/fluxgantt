@@ -5,7 +5,7 @@
 // rest of core stays `environment: 'node'`), mirroring `gantt-dom.test.ts`'s drag-move facade
 // tests + `drag-move.test.ts`'s `PointerEventCtor` polyfill.
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { createGantt } from '../../src/gantt.js';
+import { createGantt } from '../helpers/create-gantt.js';
 import {
   DEFAULT_CALENDAR,
   addWorkingHours,

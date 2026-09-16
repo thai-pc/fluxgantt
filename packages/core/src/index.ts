@@ -3,7 +3,7 @@
 export const VERSION = '0.0.0';
 
 // Public facade (spec §7)
-export { createGantt, CANVAS_AUTO_SWITCH_THRESHOLD } from './gantt.js';
+export { createGantt } from './gantt.js';
 export type {
   GanttConfig,
   GanttInstance,
@@ -45,32 +45,13 @@ export type {
 export { computeCascade } from './compute/index.js';
 export type { CascadeResult, CascadeShift } from './compute/index.js';
 
-// Render layer (spec §5.1, §8) — SVG renderer public surface only. Layout-math
-// internals (`renderer-base.ts`: TimeScale/RowLayout/layoutRows/...) are NOT re-exported
-// here — implementation detail for the Canvas renderer/interaction layer/tests, imported
-// directly from `render/index.js` (see spec-svg-renderer.md §1.3).
-export { createSvgRenderer } from './render/index.js';
-export type { SvgRendererInput, SvgRendererOptions, SvgRendererHandle } from './render/index.js';
-
-// Interaction layer (spec §8.4, spec-drag-move.md, spec-drag-resize.md,
-// spec-drag-create-dependency.md)
-export {
-  enableDragMove,
-  enableDragResize,
-  enableDragCreateDep,
-  enableClickSelect,
-  enableKeyboardNav,
-  enableWheelZoom,
-} from './interaction/index.js';
-export type {
-  DragMoveOptions,
-  DragResizeOptions,
-  DragCreateDepOptions,
-  SelectionOptions,
-  KeyboardNavOptions,
-  KeyboardNavHandle,
-  WheelZoomOptions,
-} from './interaction/index.js';
+// Render + interaction layers — NOT re-exported here (spec-facade-split.md §3.4). Both are
+// opt-in capability subpaths now: re-exporting `createSvgRenderer`/`enableDragMove`/... from this
+// barrel would keep their whole graph statically reachable from the main entry, so every
+// `createGantt()`-only consumer — including a headless one — would pay for the renderer and all
+// six interaction recognizers whether or not they ever mount. Import from the subpaths instead:
+//   import { withRender, createSvgRenderer, CANVAS_AUTO_SWITCH_THRESHOLD } from '@fluxgantt/core/render';
+//   import { withInteraction, enableDragMove } from '@fluxgantt/core/interaction';
 
 // IO layer (spec §7.8, security.md §2) — NOT re-exported here (spec-facade-split.md §3.4).
 // Re-exporting `exportJson`/`importCsv`/`exportPng`/... from this barrel would keep the whole

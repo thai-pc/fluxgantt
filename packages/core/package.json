@@ -18,6 +18,16 @@
       "types": "./dist/io/index.d.ts",
       "import": "./dist/io/index.js",
       "require": "./dist/io/index.cjs"
+    },
+    "./render": {
+      "types": "./dist/render/index.d.ts",
+      "import": "./dist/render/index.js",
+      "require": "./dist/render/index.cjs"
+    },
+    "./interaction": {
+      "types": "./dist/interaction/index.d.ts",
+      "import": "./dist/interaction/index.js",
+      "require": "./dist/interaction/index.cjs"
     }
   },
   "files": [

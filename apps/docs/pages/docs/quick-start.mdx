@@ -9,20 +9,28 @@ sync.
 
 ```ts
 import { createGantt, toTaskId } from '@fluxgantt/core';
+import { withRender } from '@fluxgantt/core/render';
+import { withInteraction } from '@fluxgantt/core/interaction';
 
-const gantt = createGantt({
-  tasks: [
-    { id: toTaskId('design'), name: 'Design', start: '2026-08-03', end: '2026-08-05', progress: 1, type: 'task' },
-    { id: toTaskId('build'), name: 'Build', start: '2026-08-05', end: '2026-08-10', progress: 0.6, type: 'task' },
-    { id: toTaskId('review'), name: 'Review', start: '2026-08-10', end: '2026-08-12', progress: 0, type: 'task' },
-    { id: toTaskId('launch'), name: 'Launch', start: '2026-08-12', end: '2026-08-12', progress: 0, type: 'milestone' },
-    { id: toTaskId('docs-task'), name: 'Write docs', start: '2026-08-06', end: '2026-08-11', progress: 0.2, type: 'task' },
-  ],
-  dependencies: [
-    { from: toTaskId('design'), to: toTaskId('build'), type: 'FS' },
-    { from: toTaskId('build'), to: toTaskId('review'), type: 'FS' },
-  ],
-});
+// Rendering and interaction are opt-in mixins — a headless consumer (server-side
+// scheduling, tests) never downloads them. Compose both for a live, editable chart.
+const gantt = withInteraction(
+  withRender(
+    createGantt({
+      tasks: [
+        { id: toTaskId('design'), name: 'Design', start: '2026-08-03', end: '2026-08-05', progress: 1, type: 'task' },
+        { id: toTaskId('build'), name: 'Build', start: '2026-08-05', end: '2026-08-10', progress: 0.6, type: 'task' },
+        { id: toTaskId('review'), name: 'Review', start: '2026-08-10', end: '2026-08-12', progress: 0, type: 'task' },
+        { id: toTaskId('launch'), name: 'Launch', start: '2026-08-12', end: '2026-08-12', progress: 0, type: 'milestone' },
+        { id: toTaskId('docs-task'), name: 'Write docs', start: '2026-08-06', end: '2026-08-11', progress: 0.2, type: 'task' },
+      ],
+      dependencies: [
+        { from: toTaskId('design'), to: toTaskId('build'), type: 'FS' },
+        { from: toTaskId('build'), to: toTaskId('review'), type: 'FS' },
+      ],
+    }),
+  ),
+);
 
 gantt.on('task:moved', (task, prevStart) => {
   console.log(`${task.name} moved from ${prevStart}`);
@@ -43,8 +51,14 @@ dashed red), and a `task:moved` event firing whenever a bar is dragged.
 ## Line by line
 
 - **`createGantt(config)`** builds a headless `GanttInstance`. Nothing is rendered yet — you can
-  already call `gantt.getTasks()`, `gantt.computeCriticalPath()`, `gantt.exportJson()` in Node
-  or a test with no DOM.
+  already call `gantt.getTasks()` or `gantt.computeCriticalPath()` in Node or a test with no
+  DOM.
+- **`withRender(...)`** and **`withInteraction(...)`** are opt-in capability mixins on their own
+  subpaths: the first adds `mount()`/`unmount()`/`refresh()`, the second wires the drag,
+  click-select and keyboard gestures into every mount. Each returns the same instance, so the
+  order does not matter — but apply them before the first `mount()`. Skip them and you get a
+  purely headless engine, and your bundle never includes the renderer.
+  (Import/export lives behind a third, [`withIo`](/docs/import-export).)
 - **`toTaskId('design')`** brands a plain string as a `TaskId`. IDs are branded types so you
   can't accidentally pass a `DependencyId` where a `TaskId` is expected. `from`/`to` on a
   dependency are `TaskId`s too, hence `toTaskId(...)` there as well.
@@ -54,8 +68,8 @@ dashed red), and a `task:moved` event firing whenever a bar is dragged.
 - **`type: 'FS'`** is Finish-to-Start — the default. FluxGantt also supports `SS`, `FF`, `SF`,
   plus a `lag` in hours. See [Dependencies](/docs/concepts/dependencies).
 - **`gantt.on('task:moved', …)`** subscribes to an event; it returns an unsubscribe function.
-- **`gantt.mount(el)`** attaches the SVG renderer and wires drag interactions (unless
-  `readOnly` is set).
+- **`gantt.mount(el)`** (from `withRender`) attaches the SVG renderer and wires drag
+  interactions (from `withInteraction`, unless `readOnly` is set).
 
 ## Where to go next
 

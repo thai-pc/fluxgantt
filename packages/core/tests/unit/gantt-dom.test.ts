@@ -13,14 +13,8 @@
 // creates/paints a real `<canvas>`/`<svg>` into a real `HTMLElement`), so this file's existing
 // jsdom setup (and its `container`/`PointerEventPolyfill` conventions) is the correct home.
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { createGantt as createGanttBase, CANVAS_AUTO_SWITCH_THRESHOLD } from '../../src/gantt.js';
-import { withIo } from '../../src/io/mixin.js';
-import type { GanttConfig } from '../../src/gantt.js';
-
-// Post-facade-split (spec-facade-split.md §3.2): IO methods live on the opt-in `withIo`
-// mixin, not on the base instance. These tests exercise the IO surface, so they compose it
-// once here rather than at every call site.
-const createGantt = (config: GanttConfig) => withIo(createGanttBase(config));
+import { createGantt } from '../helpers/create-gantt.js';
+import { CANVAS_AUTO_SWITCH_THRESHOLD } from '../../src/render/mixin.js';
 import { createSvgRenderer } from '../../src/render/svg-renderer.js';
 import { CanvasDimensionExceededError, createCanvasRenderer } from '../../src/render/canvas-renderer.js';
 import { toTaskId, type Task } from '../../src/types.js';
@@ -785,7 +779,9 @@ describe('renderer auto-switch (spec-canvas-auto-switch.md)', () => {
         throw new Error('simulated chunk-load failure');
       });
       try {
-        const { createGantt: createGanttFresh } = await import('../../src/gantt.js');
+        // Import the composing helper (not `src/gantt.js`) so the fresh graph includes a
+        // fresh `render/mixin.js` — that is the module holding the dynamic `import()` under test.
+        const { createGantt: createGanttFresh } = await import('../helpers/create-gantt.js');
         const taskCount = CANVAS_AUTO_SWITCH_THRESHOLD + 1;
         const gantt = createGanttFresh({ tasks: buildManyTasks(taskCount) });
         const selected = vi.fn();

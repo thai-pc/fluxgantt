@@ -5,7 +5,7 @@
 // rendered ARIA/roving-tabindex DOM shape after real store mutations. Runs under jsdom (per-
 // file override), mirroring gantt-dom.test.ts's setup style.
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { createGantt } from '../../src/gantt.js';
+import { createGantt } from '../helpers/create-gantt.js';
 import { toTaskId } from '../../src/types.js';
 import type { TaskInput } from '../../src/store/index.js';
 
