@@ -15,7 +15,7 @@
 // `'manual'` (= v1's original single-task-only behavior, unchanged) — see `#maybeCascade`.
 import { batch, signal, type Signal } from './signals.js';
 import { INTERNAL, type GanttInternal, type MountState, type InteractionHooks } from './gantt-internal.js';
-import { TaskStore, DependencyStore, SelectionStore } from './store/index.js';
+import { TaskStore, DependencyStore, SelectionStore, CollapseStore } from './store/index.js';
 import type { TaskInput, TaskPatch } from './store/index.js';
 import {
   DEFAULT_CALENDAR,
@@ -117,6 +117,15 @@ export interface GanttConfig {
    *  without disabling any other facade behavior — every mutation still runs normally, its
    *  history entry is just immediately evicted. */
   readonly historyLimit?: number;
+
+  /**
+   * (spec-collapse-expand.md §3.3). Ids to collapse at construction time — applied AFTER
+   * `tasks` is loaded, using the exact same "must currently have at least one child" filter
+   * as `collapseAll()`/`toggleCollapse()`. An unknown id or a leaf (no children) id is
+   * silently dropped — no throw, no `collapse:changed` event fires at construction. Default:
+   * nothing collapsed.
+   */
+  readonly initialCollapsed?: readonly TaskId[];
 }
 
 /** Shape accepted for an initial dependency in `GanttConfig.dependencies` — mirrors what
@@ -189,6 +198,11 @@ export interface GanttEventMap {
    *  resulting set actually differs from the previous one (no-op reselect is suppressed —
    *  same discipline as `critical-path:computed`'s `#sameCriticalIds` guard). */
   'selection:changed': [taskIds: readonly TaskId[]];
+  /** Full snapshot of currently-collapsed task ids (spec-collapse-expand.md §3.2) — fires once
+   *  per `toggleCollapse`/`collapseAll`/`expandAll` call that actually changes the set (no-op
+   *  suppressed, same discipline as `selection:changed`). Never fires from
+   *  `GanttConfig.initialCollapsed` at construction. */
+  'collapse:changed': [collapsedTaskIds: readonly TaskId[]];
   /** Fires exactly once per "logical gesture" that changes the undo/redo stack: after a new
    *  entry is committed (`#commitEntry` — one fire per top-level mutation call OR per grouped
    *  transaction, e.g. one fire for a whole cascade-grouped drag or a whole multi-select
@@ -307,6 +321,32 @@ export interface GanttInstance {
    *  every explicitly-selected id AND every auto-selected descendant. Same "snapshot, not
    *  reference" convention as `getTasks()`/`getDependencies()`. Returns `[]` post-`destroy()`. */
   getSelection(): TaskId[];
+
+  // --- Hierarchy (collapse/expand, spec-collapse-expand.md §3) ---------------------------
+
+  /**
+   * Toggles the given task's collapsed state. A no-op (no event, no state change) if `id`
+   * does not resolve in the store, or resolves to a task with zero children — only a task
+   * that currently HAS children can be collapsed/expanded. Fires `collapse:changed` with the
+   * full collapsed-id snapshot iff the collapsed set actually changed. Throws if the instance
+   * is destroyed (`#assertAlive`, same posture as every other mutating method).
+   */
+  toggleCollapse(id: TaskId): void;
+
+  /** `true` iff `id` is currently collapsed AND still has at least one child — a stale
+   *  collapsed-id left over for a task whose last child was removed reports `false` here
+   *  (harmless: `layoutRows()` never hides a row with no children regardless of this flag).
+   *  Safe post-`destroy()` (returns `false`, does not throw), same posture as
+   *  `getSelection()`. */
+  isCollapsed(id: TaskId): boolean;
+
+  /** Collapses every task that currently has at least one child. Fires `collapse:changed`
+   *  iff the collapsed set actually changed (idempotent — a second call is a no-op). */
+  collapseAll(): void;
+
+  /** Expands every task. Fires `collapse:changed` iff the collapsed set was non-empty
+   *  (idempotent — a second call is a no-op). */
+  expandAll(): void;
 
   // --- History (undo/redo) --------------------------------------------------------------
 
@@ -427,6 +467,7 @@ class Gantt implements GanttInstance {
   readonly #taskStore: TaskStore;
   readonly #dependencyStore: DependencyStore;
   readonly #selectionStore = new SelectionStore();
+  readonly #collapseStore = new CollapseStore();
   readonly #calendar: WorkingCalendar;
   readonly #config: GanttConfig;
   readonly #listeners = new Map<GanttEventName, Set<(...args: never[]) => void>>();
@@ -493,6 +534,15 @@ class Gantt implements GanttInstance {
     // instance is ever returned).
     this.#loadDataset(config.tasks ?? [], config.dependencies ?? [], this.#taskStore, this.#dependencyStore, 'createGantt');
 
+    // `initialCollapsed` (spec-collapse-expand.md §3.3) — applied AFTER `#taskStore` is
+    // populated (needs `children()` to resolve), using the exact same "must currently have a
+    // child" filter as `collapseAll()`. Does NOT emit `collapse:changed` — construction-time
+    // state, not a runtime mutation.
+    if (config.initialCollapsed && config.initialCollapsed.length > 0) {
+      const withChildren = config.initialCollapsed.filter((id) => this.#taskStore.children(id).length > 0);
+      this.#collapseStore.replace(withChildren);
+    }
+
     // Built last, so every field it closes over is already initialized. Arrow functions (not
     // bound methods) so `#private` access stays lexical — no `this` rebinding hazard for a
     // mixin that destructures off this object.
@@ -500,6 +550,7 @@ class Gantt implements GanttInstance {
       taskStore: this.#taskStore,
       dependencyStore: this.#dependencyStore,
       selectionStore: this.#selectionStore,
+      collapseStore: this.#collapseStore,
       calendar: this.#calendar,
       viewMode: this.#viewMode,
       config: this.#config,
@@ -790,6 +841,12 @@ class Gantt implements GanttInstance {
     // 5. Prune the selection of any removed id — correctness: getSelection() must never
     //    reference a task that no longer exists (spec-selection.md §6).
     this.#pruneSelectionOfMissingTasks();
+
+    // 6. Prune the collapse state of any removed id (spec-collapse-expand.md §0/§8) — scoped
+    //    to removeTask() only (not undo()/redo()): a stale collapsed-id left dangling there is
+    //    harmless since isCollapsed() re-checks children() live, but a hard prune here keeps
+    //    CollapseStore.size() from growing unboundedly across add/remove churn.
+    this.#pruneCollapseOfMissingTasks(removedIds);
   }
 
   getTask(id: TaskId): Task | undefined {
@@ -860,6 +917,46 @@ class Gantt implements GanttInstance {
   getSelection(): TaskId[] {
     if (this.#destroyed) return [];
     return this.#selectionStore.all();
+  }
+
+  // --- Hierarchy (collapse/expand) --------------------------------------------------------
+
+  toggleCollapse(id: TaskId): void {
+    this.#assertAlive('toggleCollapse');
+    const task = this.#taskStore.get(id);
+    if (!task || this.#taskStore.children(id).length === 0) return; // no-op: unknown id or a leaf
+    const current = new Set(this.#collapseStore.all());
+    if (current.has(id)) current.delete(id);
+    else current.add(id);
+    if (this.#collapseStore.replace([...current])) {
+      this.#emit('collapse:changed', this.#collapseStore.all());
+    }
+  }
+
+  isCollapsed(id: TaskId): boolean {
+    // Non-throwing after `destroy()` (returns `false`), matching `getSelection()`/`canUndo()`/
+    // `canRedo()` — a read-only query has nothing to corrupt, and a host app tearing down a
+    // chart should not have to guard every such read.
+    if (this.#destroyed) return false;
+    return this.#collapseStore.has(id) && this.#taskStore.children(id).length > 0;
+  }
+
+  collapseAll(): void {
+    this.#assertAlive('collapseAll');
+    const withChildren = this.#taskStore
+      .all()
+      .filter((t) => this.#taskStore.children(t.id).length > 0)
+      .map((t) => t.id);
+    if (this.#collapseStore.replace(withChildren)) {
+      this.#emit('collapse:changed', this.#collapseStore.all());
+    }
+  }
+
+  expandAll(): void {
+    this.#assertAlive('expandAll');
+    if (this.#collapseStore.replace([])) {
+      this.#emit('collapse:changed', this.#collapseStore.all());
+    }
   }
 
   // --- History (undo/redo) ---------------------------------------------------------------
@@ -1204,6 +1301,20 @@ class Gantt implements GanttInstance {
     const current = this.#selectionStore.all();
     const pruned = current.filter((id) => this.#taskStore.has(id));
     if (pruned.length !== current.length) this.#applySelection(pruned);
+  }
+
+  /** Collapse-state hygiene (spec-collapse-expand.md §0/§8): called by `removeTask()` with the
+   *  full set of ids that just disappeared (target + cascaded descendants) so `CollapseStore`
+   *  doesn't accumulate dangling ids across add/remove churn. Deliberately scoped to
+   *  `removeTask()` only, NOT `undo()`/`redo()` — unlike selection, a stale collapsed-id is
+   *  harmless (`isCollapsed()` re-checks `children()` live) so there is no correctness
+   *  requirement to prune it on every store mutation path. */
+  #pruneCollapseOfMissingTasks(removedIds: readonly TaskId[]): void {
+    let changed = false;
+    for (const id of removedIds) {
+      if (this.#collapseStore.delete(id)) changed = true;
+    }
+    if (changed) this.#emit('collapse:changed', this.#collapseStore.all());
   }
 
   #collectWithDescendants(id: TaskId): TaskId[] {

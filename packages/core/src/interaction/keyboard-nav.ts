@@ -59,6 +59,14 @@ export interface KeyboardNavOptions {
    *  `Task[]`, re-read fresh on every keydown (never cached), and fed straight into
    *  `layoutRows` for row-order resolution. */
   getTasks: () => readonly Task[];
+  /** (spec-collapse-expand.md §7.4) — threaded into every `layoutRows()` call this module
+   *  makes (initial focus resolution, per-keydown resolution, and `syncFocusToRows()`), so
+   *  keyboard navigation only ever traverses currently-VISIBLE rows. */
+  getCollapsedIds: () => ReadonlySet<TaskId>;
+  /** (spec-collapse-expand.md §7.4) — called on `Enter` when the currently-focused row has
+   *  `hasChildren === true`; no-op otherwise (mirrors `toggleCollapse()`'s own leaf no-op
+   *  contract). */
+  onToggleCollapse: (id: TaskId) => void;
   /** Density, forwarded to `layoutRows` for row-order resolution (matches the renderer's
    *  own density). */
   density: Density;
@@ -76,6 +84,19 @@ export interface KeyboardNavOptions {
 export interface KeyboardNavHandle {
   dispose: () => void;
   getFocusedTaskId: () => TaskId | undefined;
+  /**
+   * (spec-collapse-expand.md §4/§7.3) — re-resolves the currently roving-tabindex-focused id
+   * against a FRESH `layoutRows()` call and, if that id no longer resolves to any VISIBLE row
+   * (its ancestor was just collapsed, hiding it), clamps focus the same way `handleDelete()`
+   * already does when a focused row disappears. A no-op (and cheap — one `layoutRows()` call,
+   * no DOM writes) when the focused row is still visible. Called by `interaction/mixin.ts`
+   * after every programmatic `toggleCollapse()` triggered from a click, so keyboard focus never
+   * silently references a hidden row after a mouse-driven collapse — the analogous case for a
+   * keyboard-driven `Enter` toggle is handled inline in this module's own `case 'Enter':` arm,
+   * which never hides the CURRENTLY-focused row (only its descendants), so no such
+   * re-resolution is needed there.
+   */
+  syncFocusToRows: () => void;
 }
 
 /**
@@ -101,7 +122,7 @@ export function enableKeyboardNav(
 
   // --- Initial focus resolution (spec §4.2) — synchronous, once, at setup time. --------
   {
-    const rows = layoutRows(options.getTasks(), options.density);
+    const rows = layoutRows(options.getTasks(), options.density, options.getCollapsedIds());
     const selection = new Set(options.getSelection());
     if (selection.size > 0) {
       const firstSelectedRow = rows.find((r) => selection.has(r.task.id));
@@ -114,7 +135,42 @@ export function enableKeyboardNav(
 
   handle.interactionRoot.addEventListener('keydown', onKeyDown);
 
-  return { dispose, getFocusedTaskId };
+  return { dispose, getFocusedTaskId, syncFocusToRows };
+
+  function syncFocusToRows(): void {
+    if (disposed) return;
+    const rows = layoutRows(options.getTasks(), options.density, options.getCollapsedIds());
+    if (focusedTaskId !== undefined && rows.some((r) => r.task.id === focusedTaskId)) return;
+    clampFocusToNearestVisibleAncestor(rows);
+  }
+
+  /**
+   * `syncFocusToRows()`'s own clamp (spec-collapse-expand.md §4/§7.3) — deliberately DIFFERENT
+   * from `clampFocus()` below. `clampFocus()` handles the Delete/stale-arrow case, where the
+   * previously focused TASK no longer exists at all, so "the row now at the same position, or
+   * the new last row" (spec §4.6) is the only sensible fallback. Here the task still exists —
+   * it was merely HIDDEN by a newly-collapsed ancestor — so the nearest valid row is knowable
+   * and meaningful: that collapsed ancestor itself (or, if it too is hidden by a further
+   * ancestor, whichever ancestor up the chain is the first one still visible). Falls back to
+   * `clampFocus()`'s last-row behavior only if no ancestor resolves to a visible row (e.g. the
+   * task itself was removed from the store between the last render and this call, or its
+   * previous parent chain is otherwise unresolvable) — the same safe, always-valid fallback.
+   */
+  function clampFocusToNearestVisibleAncestor(rows: readonly RowLayout[]): void {
+    if (focusedTaskId !== undefined) {
+      const taskMap = new Map(options.getTasks().map((t) => [t.id, t] as const));
+      let cursor = taskMap.get(focusedTaskId)?.parent;
+      while (cursor !== undefined) {
+        if (rows.some((r) => r.task.id === cursor)) {
+          focusedTaskId = cursor;
+          anchorTaskId = cursor;
+          return;
+        }
+        cursor = taskMap.get(cursor)?.parent;
+      }
+    }
+    clampFocus(rows);
+  }
 
   function getFocusedTaskId(): TaskId | undefined {
     return focusedTaskId;
@@ -141,7 +197,7 @@ export function enableKeyboardNav(
 
     // Fresh, never cached (spec §4.3) — correctness even if tasks were added/removed by
     // any other code path between the last render and this keydown.
-    const rows = layoutRows(options.getTasks(), options.density);
+    const rows = layoutRows(options.getTasks(), options.density, options.getCollapsedIds());
     const currentIndex = rows.findIndex((r) => r.task.id === focusedTaskId);
 
     switch (event.key) {
@@ -232,8 +288,20 @@ export function enableKeyboardNav(
         event.preventDefault();
         options.onZoomOut();
         return;
+      case 'Enter': {
+        // (spec-collapse-expand.md §7.4) — Enter toggles collapse/expand on the focused row,
+        // no-op on a leaf. Not bound to ArrowLeft/ArrowRight (reserved above for future
+        // horizontal/cell nav) and not Space (already bound to selection toggle) — see the
+        // spec's own reasoning for why Enter is the conflict-free choice.
+        if (currentIndex === -1) return;
+        const row = rows[currentIndex];
+        if (!row || !row.hasChildren) return; // no-op on a leaf
+        event.preventDefault();
+        options.onToggleCollapse(row.task.id);
+        return;
+      }
       default:
-        return; // Enter unbound (v1), all other keys fall through untouched.
+        return; // all other keys fall through untouched.
     }
   }
 

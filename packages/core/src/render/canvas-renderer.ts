@@ -90,6 +90,8 @@ import { getTemporal } from '../internal/temporal.js';
 import { DEFAULT_CALENDAR, normalizeDate } from '../compute/working-calendar.js';
 import {
   ROW_HEIGHT,
+  TOGGLE_GLYPH_SIZE_PX,
+  TOGGLE_GLYPH_GUTTER_PX,
   createTimeScale,
   computeGridColumns,
   deriveTimeRange,
@@ -137,6 +139,12 @@ export interface CanvasRendererInput {
    * focus ring's target row.
    */
   readonly focusedTaskId?: TaskId | undefined;
+  /** Optional — ids currently collapsed (spec-collapse-expand.md §6.3). `undefined`/omitted
+   *  = nothing collapsed. Mirrors `SvgRendererInput.collapsedIds` field-for-field. Threaded
+   *  into BOTH `layoutRows()` call sites this file makes (`renderPixels()`'s paint pass and
+   *  `hitTestRow()`'s independent call) — updating only one would make hit-testing and the
+   *  paint pass disagree about which rows exist. */
+  readonly collapsedIds?: ReadonlySet<TaskId>;
 }
 
 export interface CanvasRendererOptions {
@@ -222,7 +230,13 @@ export interface CanvasRendererHandle extends InteractiveRendererHandle {
    * returning `undefined` for the same cases). Row-band-wide (not bar/label-precise) —
    * deliberate v1 UX design (bigger, simpler click target), documented divergence from SVG.
    */
-  hitTestRow(clientX: number, clientY: number): { taskId: TaskId; rowIndex: number } | undefined;
+  /** `hitToggle` (spec-collapse-expand.md §6.3) is `true` iff the hit fell inside the toggle
+   *  glyph's reserved gutter for that row AND the row `hasChildren` — computed purely from the
+   *  already-known row's `x` origin, no new state. */
+  hitTestRow(
+    clientX: number,
+    clientY: number,
+  ): { taskId: TaskId; rowIndex: number; hitToggle: boolean } | undefined;
 }
 
 // --- §5.1 Duplicated local constants (module-isolation rule, §2.1) --------------------
@@ -833,7 +847,10 @@ export function createCanvasRenderer(
    *  `ROW_HEIGHT` is constant across all rows regardless of hierarchy indentation. Reads live
    *  `state.input`/`state.options`, never a stale cache from the last `render()` — same
    *  freshness posture `keyboard-nav.ts` already uses for its own `layoutRows()` calls. */
-  function hitTestRow(clientX: number, clientY: number): { taskId: TaskId; rowIndex: number } | undefined {
+  function hitTestRow(
+    clientX: number,
+    clientY: number,
+  ): { taskId: TaskId; rowIndex: number; hitToggle: boolean } | undefined {
     const rect = canvas.getBoundingClientRect();
     const x = clientX - rect.left;
     const y = clientY - rect.top;
@@ -845,7 +862,10 @@ export function createCanvasRenderer(
     if (y < HEADER_HEIGHT) return undefined; // header band — not a row
 
     const density = state.options.density ?? DEFAULT_DENSITY;
-    const rows = layoutRows(state.input.tasks, density); // same call render() makes
+    // (spec-collapse-expand.md §6.3) — MUST thread `collapsedIds` here, same as `renderPixels()`'s
+    // call below: if only one call site is updated, hit-testing and the paint pass disagree
+    // about which rows exist (see the CanvasRendererInput.collapsedIds doc comment).
+    const rows = layoutRows(state.input.tasks, density, state.input.collapsedIds); // same call render() makes
     const rowHeight = ROW_HEIGHT[density]; // uniform per density, independent of hierarchy depth
     // `canvas` is `position: sticky` and only ever paints/hit-tests a WINDOW of rows local to
     // its own bounded height (fix #37) — a click's y-within-canvas must be translated into
@@ -855,7 +875,14 @@ export function createCanvasRenderer(
     const row = rows[rowIndex];
     if (row === undefined) return undefined; // below the last row — empty space
 
-    return { taskId: row.task.id, rowIndex };
+    // Toggle glyph's reserved gutter (spec §6.1/§6.3) — `[LABEL_PADDING_PX + depth *
+    // LABEL_INDENT_PX, ... + TOGGLE_GLYPH_GUTTER_PX)`, same x-origin the paint pass draws the
+    // glyph at. Only a `hasChildren` row can register a toggle hit.
+    const toggleStart = LABEL_PADDING_PX + row.depth * LABEL_INDENT_PX;
+    const toggleEnd = toggleStart + TOGGLE_GLYPH_GUTTER_PX;
+    const hitToggle = row.hasChildren && x >= toggleStart && x < toggleEnd;
+
+    return { taskId: row.task.id, rowIndex, hitToggle };
   }
 
   /**
@@ -919,7 +946,9 @@ export function createCanvasRenderer(
     // (spec-canvas-row-limit-fix.md §5.2, hardened per its own follow-up review).
 
     const rowHeight = ROW_HEIGHT[density];
-    const rows = layoutRows(state.input.tasks, density);
+    // (spec-collapse-expand.md §6.3) — MUST thread `collapsedIds` here, same as
+    // `hitTestRow()`'s own independent call above: not optional, see that call site's comment.
+    const rows = layoutRows(state.input.tasks, density, state.input.collapsedIds);
 
     const offsetX = LABEL_COLUMN_WIDTH;
     const bodyHeight = rows.length > 0 ? rows[rows.length - 1]!.y + rowHeight : rowHeight;
@@ -1101,7 +1130,13 @@ export function createCanvasRenderer(
     // — identical end state to the unwindowed code.
     while (a11yLayer.firstChild) a11yLayer.removeChild(a11yLayer.firstChild);
 
-    a11yLayer.setAttribute('role', 'grid');
+    // `treegrid` vs `grid` — mirrors svg-renderer.ts's rule exactly (see the long comment at
+    // its own `setAttribute('role', ...)` call for why `aria-expanded` forces `treegrid`, and
+    // why a flat project still gets a plain `grid`). Derived from the FULL `rows`, not the
+    // windowed slice: the root role describes the whole grid, and must not flicker between
+    // `grid` and `treegrid` as the user scrolls a container row band in and out of view.
+    const isTree = rows.some((r) => r.hasChildren);
+    a11yLayer.setAttribute('role', isTree ? 'treegrid' : 'grid');
     a11yLayer.setAttribute('aria-rowcount', String(rows.length));
     a11yLayer.setAttribute('aria-multiselectable', 'true');
     a11yLayer.setAttribute('aria-label', ariaLabel);
@@ -1125,6 +1160,11 @@ export function createCanvasRenderer(
       rowEl.setAttribute('aria-rowindex', String(row.rowIndex + 1));
       rowEl.setAttribute('aria-selected', isSelected ? 'true' : 'false');
       rowEl.setAttribute('tabindex', row.task.id === focusedTaskId ? '0' : '-1');
+      // (spec-collapse-expand.md §6.3) — mirrors svg-renderer.ts's rule exactly: omit entirely
+      // on a leaf row (WAI-ARIA: a non-expandable node must not carry `aria-expanded="false"`).
+      if (row.hasChildren) {
+        rowEl.setAttribute('aria-expanded', String(!row.isCollapsed));
+      }
 
       const cellEl = document.createElement('div');
       cellEl.className = 'fg-timeline-canvas__row-cell';
@@ -1318,18 +1358,63 @@ function paintRows(
       ctx.textAlign = 'start';
       // SECURITY: `task.name` is untrusted host-app data — passed ONLY as fillText's
       // literal text argument, never concatenated into `ctx.font` or any other property.
+      // (spec-collapse-expand.md §6.1) — uniform gutter reservation applied to EVERY row
+      // (mirrors svg-renderer.ts's identical `TOGGLE_GLYPH_GUTTER_PX` shift), so label text
+      // stays column-aligned across sibling leaf/summary rows at the same depth.
       ctx.fillText(
         row.task.name,
-        LABEL_PADDING_PX + row.depth * LABEL_INDENT_PX,
+        LABEL_PADDING_PX + row.depth * LABEL_INDENT_PX + TOGGLE_GLYPH_GUTTER_PX,
         offsetY + row.y + rowHeight / 2,
       );
     } finally {
       ctx.restore();
     }
 
+    if (row.hasChildren) {
+      paintRowToggle(ctx, row, offsetY, rowHeight, tokens);
+    }
+
     const isCritical = criticalIds.has(row.task.id);
     const isSelected = selectedIds.has(row.task.id);
     paintTaskBar(ctx, row.task, bar, offsetX, offsetY, isCritical, isSelected, tokens);
+  }
+}
+
+/** Pixel-space collapse/expand toggle glyph (spec-collapse-expand.md §6.1/§6.3) — a small
+ *  triangle, drawn using the exact same `TOGGLE_GLYPH_SIZE_PX`/`TOGGLE_GLYPH_GUTTER_PX`
+ *  constants svg-renderer.ts uses, so a screenshot-diff between the two renderers for the
+ *  same dataset shows matching glyph position. Only called for rows where `row.hasChildren`.
+ *  No task-derived string content painted here — zero new injection surface (security.md). */
+function paintRowToggle(
+  ctx: CanvasRenderingContext2D,
+  row: RowLayout,
+  offsetY: number,
+  rowHeight: number,
+  tokens: DesignTokens,
+): void {
+  const size = TOGGLE_GLYPH_SIZE_PX;
+  const cx = LABEL_PADDING_PX + row.depth * LABEL_INDENT_PX + size / 2;
+  const cy = offsetY + row.y + rowHeight / 2;
+  const half = size / 2;
+  ctx.save();
+  try {
+    ctx.fillStyle = tokens.fgMuted;
+    ctx.beginPath();
+    if (row.isCollapsed) {
+      // Right-pointing triangle (collapsed).
+      ctx.moveTo(cx - half, cy - half);
+      ctx.lineTo(cx + half, cy);
+      ctx.lineTo(cx - half, cy + half);
+    } else {
+      // Down-pointing triangle (expanded).
+      ctx.moveTo(cx - half, cy - half);
+      ctx.lineTo(cx + half, cy - half);
+      ctx.lineTo(cx, cy + half);
+    }
+    ctx.closePath();
+    ctx.fill();
+  } finally {
+    ctx.restore();
   }
 }
 

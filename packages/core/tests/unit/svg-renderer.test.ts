@@ -8,6 +8,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { createSvgRenderer } from '../../src/render/svg-renderer.js';
 import { computeCriticalPath } from '../../src/compute/critical-path.js';
 import { DEFAULT_CALENDAR } from '../../src/compute/working-calendar.js';
+import { TOGGLE_GLYPH_GUTTER_PX } from '../../src/render/renderer-base.js';
 import { toTaskId, toDependencyId, type Task, type Dependency } from '../../src/types.js';
 
 const cal = DEFAULT_CALENDAR;
@@ -54,11 +55,22 @@ describe('createSvgRenderer — structure', () => {
     const h = createSvgRenderer(container, { tasks: baseTasks, dependencies: baseDeps });
     expect(h.svg.tagName.toLowerCase()).toBe('svg');
     expect(h.svg.getAttribute('class')).toBe('fg-timeline');
-    expect(h.svg.getAttribute('role')).toBe('grid');
+    // `treegrid`, not `grid`: `baseTasks` has a summary row ('a' parents 'b'), so rows carry
+    // `aria-expanded` — which WAI-ARIA permits only under `treegrid`. See the flat-project case
+    // below for the `grid` fallback (spec-collapse-expand.md §6.4).
+    expect(h.svg.getAttribute('role')).toBe('treegrid');
     expect(h.svg.getAttribute('aria-label')).toBe('Gantt chart');
     expect(h.svg.getAttribute('aria-rowcount')).toBe(String(baseTasks.length));
     expect(h.svg.getAttribute('aria-multiselectable')).toBe('true');
     expect(container.querySelectorAll('svg.fg-timeline')).toHaveLength(1);
+  });
+
+  it('a project with no hierarchy stays a plain role="grid"', () => {
+    // No row has children -> no row emits `aria-expanded` -> `treegrid` would be an unwarranted
+    // promise of an expandable tree. The role is derived per-render from the layout.
+    const flat = baseTasks.filter((t) => t.id !== toTaskId('b') && t.type !== 'summary');
+    const h = createSvgRenderer(container, { tasks: flat, dependencies: [] });
+    expect(h.svg.getAttribute('role')).toBe('grid');
   });
 
   it('correct .fg-task count per task count, all 4 type classes + dependencies', () => {
@@ -140,6 +152,50 @@ describe('keyboard-nav — ARIA grid/row/gridcell structure (spec-keyboard-nav.m
     const styles = [...h.svg.querySelectorAll('style')].map((s) => s.textContent ?? '').join('\n');
     expect(styles).toContain('fg-task__focus-ring');
     expect(styles).toContain(':focus-visible');
+  });
+});
+
+describe('collapse/expand — toggle glyph + aria-expanded (spec-collapse-expand.md §6.2/§9.7)', () => {
+  it('a hasChildren row (summary "a") gets a .fg-timeline__row-toggle glyph and aria-expanded="true" (expanded by default)', () => {
+    const h = createSvgRenderer(container, { tasks: baseTasks, dependencies: baseDeps });
+    const rowA = h.svg.querySelector('.fg-timeline__row[data-task-id="a"]')!;
+    expect(rowA.querySelector('.fg-timeline__row-toggle')).toBeTruthy();
+    expect(rowA.getAttribute('aria-expanded')).toBe('true');
+  });
+
+  it('a leaf row (no children) gets neither the toggle glyph nor aria-expanded (never "false" on a non-expandable node)', () => {
+    const h = createSvgRenderer(container, { tasks: baseTasks, dependencies: baseDeps });
+    const rowC = h.svg.querySelector('.fg-timeline__row[data-task-id="c"]')!;
+    expect(rowC.querySelector('.fg-timeline__row-toggle')).toBeNull();
+    expect(rowC.hasAttribute('aria-expanded')).toBe(false);
+  });
+
+  it('collapsedIds threaded through input → aria-expanded="false" on the collapsed row, and its descendants are absent from the DOM entirely', () => {
+    const h = createSvgRenderer(container, {
+      tasks: baseTasks,
+      dependencies: baseDeps,
+      collapsedIds: new Set([toTaskId('a')]),
+    });
+    const rowA = h.svg.querySelector('.fg-timeline__row[data-task-id="a"]')!;
+    expect(rowA.getAttribute('aria-expanded')).toBe('false');
+    expect(h.svg.querySelector('.fg-timeline__row[data-task-id="b"]')).toBeNull();
+    expect(h.svg.getAttribute('aria-rowcount')).toBe(String(baseTasks.length - 1)); // b hidden
+  });
+
+  it('toggle glyph markup: aria-hidden="true", no task-derived text content (XSS-surface check)', () => {
+    const h = createSvgRenderer(container, { tasks: baseTasks, dependencies: baseDeps });
+    const toggle = h.svg.querySelector('.fg-timeline__row-toggle')!;
+    expect(toggle.getAttribute('aria-hidden')).toBe('true');
+    expect(toggle.textContent).toBe('');
+  });
+
+  it('label x-position is shifted uniformly by TOGGLE_GLYPH_GUTTER_PX on every row (spec §6.1 deliberate gutter shift)', () => {
+    const h = createSvgRenderer(container, { tasks: baseTasks, dependencies: baseDeps });
+    const labels = [...h.svg.querySelectorAll('.fg-timeline__row-label')] as SVGTextElement[];
+    // Row 'a' (depth 0): x = LABEL_PADDING_PX(8) + 0*LABEL_INDENT_PX(16) + TOGGLE_GLYPH_GUTTER_PX.
+    expect(Number(labels[0]!.getAttribute('x'))).toBe(8 + TOGGLE_GLYPH_GUTTER_PX);
+    // Row 'b' (depth 1): x = 8 + 1*16 + TOGGLE_GLYPH_GUTTER_PX.
+    expect(Number(labels[1]!.getAttribute('x'))).toBe(8 + 16 + TOGGLE_GLYPH_GUTTER_PX);
   });
 });
 

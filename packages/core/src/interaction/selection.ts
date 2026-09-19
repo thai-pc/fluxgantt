@@ -36,6 +36,10 @@ export interface SelectionOptions {
    *  DOM-independent source of truth `enableKeyboardNav`/`#commitKeyboardRangeSelect` already
    *  use), rather than walking the (possibly windowed, Canvas-mode) a11y layer's DOM. */
   density: Density;
+  /** (spec-collapse-expand.md §7.2) — threaded into `collectRowRange()`'s `layoutRows()` call
+   *  so a Shift-click range-select only ever includes currently-VISIBLE rows, matching what's
+   *  actually on screen (and what `enableKeyboardNav`'s own Shift+Arrow range already does). */
+  getCollapsedIds: () => ReadonlySet<TaskId>;
 }
 
 /** Resolves the TaskId (and its row index, for Shift-range) for a click ANYWHERE inside a
@@ -149,6 +153,10 @@ export function enableClickSelect(
   }
 
   function handleClick(s: DownState, event: PointerEvent): void {
+    // (spec-collapse-expand.md §7.2) — a click on the collapse/expand toggle glyph must NOT
+    // also fire row selection; `enableCollapseToggle` owns that click exclusively.
+    if (event.target instanceof Element && event.target.closest('.fg-timeline__row-toggle')) return;
+
     const hit = resolveHit(event, s.downTarget);
 
     if (!hit) {
@@ -162,7 +170,7 @@ export function enableClickSelect(
     if (event.shiftKey && anchorTaskId !== undefined && anchorRowIndex !== undefined) {
       const lo = Math.min(anchorRowIndex, hit.rowIndex);
       const hi = Math.max(anchorRowIndex, hit.rowIndex);
-      const ids = collectRowRange(getTasks, options.density, lo, hi);
+      const ids = collectRowRange(getTasks, options.density, lo, hi, options.getCollapsedIds());
       options.onRangeSelect(ids);
       // Anchor is NOT moved by a Shift-click (spreadsheet/file-explorer convention).
       return;
@@ -213,8 +221,9 @@ function collectRowRange(
   density: Density,
   lo: number,
   hi: number,
+  collapsedIds: ReadonlySet<TaskId>,
 ): TaskId[] {
-  return layoutRows(getTasks(), density)
+  return layoutRows(getTasks(), density, collapsedIds)
     .filter((r) => r.rowIndex >= lo && r.rowIndex <= hi)
     .map((r) => r.task.id);
 }

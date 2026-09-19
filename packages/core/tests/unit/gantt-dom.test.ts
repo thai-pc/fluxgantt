@@ -442,6 +442,93 @@ describe('click-select — mount() wiring (spec-selection.md §12.4)', () => {
   });
 });
 
+describe('collapse/expand — mount() wiring (spec-collapse-expand.md §7.1/§9.8)', () => {
+  it('clicking a rendered .fg-timeline__row-toggle hides descendants after the reactive re-render, and isCollapsed() reflects it', () => {
+    const gantt = createGantt({
+      tasks: [
+        taskInput('root', '2026-01-05T09:00', '2026-01-10T09:00', { type: 'summary' }),
+        taskInput('child', '2026-01-05T09:00', '2026-01-06T09:00', { parent: toTaskId('root') }),
+      ],
+    });
+    gantt.mount(container);
+    expect(container.querySelector('.fg-timeline__row[data-task-id="child"]')).toBeTruthy();
+
+    const toggle = container.querySelector('.fg-timeline__row-toggle')!;
+    toggle.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+
+    expect(gantt.isCollapsed(toTaskId('root'))).toBe(true);
+    expect(container.querySelector('.fg-timeline__row[data-task-id="child"]')).toBeNull();
+    const rowRoot = container.querySelector('.fg-timeline__row[data-task-id="root"]')!;
+    expect(rowRoot.getAttribute('aria-expanded')).toBe('false');
+  });
+
+  it('collapse:changed fires on a real toggle-glyph click via gantt.on(...)', () => {
+    const gantt = createGantt({
+      tasks: [
+        taskInput('root', '2026-01-05T09:00', '2026-01-10T09:00', { type: 'summary' }),
+        taskInput('child', '2026-01-05T09:00', '2026-01-06T09:00', { parent: toTaskId('root') }),
+      ],
+    });
+    gantt.mount(container);
+    const changed = vi.fn();
+    gantt.on('collapse:changed', changed);
+
+    const toggle = container.querySelector('.fg-timeline__row-toggle')!;
+    toggle.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+
+    expect(changed).toHaveBeenCalledTimes(1);
+  });
+
+  /**
+   * Regression for the ordering bug flagged in the collapse-expand gap review: `signals.ts`
+   * runs effects synchronously outside `batch()`, so a bare (unwrapped) `toggleCollapse()` call
+   * repaints IMMEDIATELY — before a subsequent `syncFocusToRows()` call has clamped focus away
+   * from the row that just got hidden. Since keyboard-nav's `focusedTaskId` is a plain local
+   * (not a signal), that stale clamp would trigger no further repaint at all, leaving the
+   * painted roving-tabindex/focus-ring referencing a row no longer in the DOM. This test
+   * verifies the FULL round trip through real mount()+DOM: focus a child row via the keyboard,
+   * mouse-collapse its parent via the toggle glyph, and assert the PAINTED tabindex="0"/
+   * `document.activeElement` already reference a valid, visible row in the SAME synchronous
+   * tick — not stale, not requiring a second unrelated render to correct itself.
+   */
+  it('mouse-collapsing the focused row\'s ancestor repaints with a valid, visible roving-tabindex target in the same tick (no stale focus)', () => {
+    const gantt = createGantt({
+      tasks: [
+        taskInput('root', '2026-01-05T09:00', '2026-01-10T09:00', { type: 'summary' }),
+        taskInput('child', '2026-01-05T09:00', '2026-01-06T09:00', { parent: toTaskId('root') }),
+        taskInput('other', '2026-01-11T09:00', '2026-01-12T09:00'),
+      ],
+    });
+    gantt.mount(container);
+
+    // Move keyboard focus onto the 'child' row (root -> child via ArrowDown), mirroring
+    // keyboard-nav.test.ts's own convention for moving the internally-tracked focus.
+    const rowRoot = container.querySelector('.fg-timeline__row[data-task-id="root"]') as SVGElement;
+    rowRoot.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true }));
+    const rowChildBefore = container.querySelector('.fg-timeline__row[data-task-id="child"]') as SVGElement;
+    expect(rowChildBefore.getAttribute('tabindex')).toBe('0');
+
+    // Now mouse-collapse 'root' — hides 'child', the currently keyboard-focused row. Re-query
+    // 'root' fresh: the ArrowDown keypress above already triggered a full reactive repaint
+    // (new DOM nodes), so the earlier `rowRoot` reference is stale/detached — a click dispatched
+    // on it would bubble only within its own detached subtree and never reach the real
+    // (attached) `<svg>` listener `enableCollapseToggle` registered.
+    const rowRootAfterFocus = container.querySelector('.fg-timeline__row[data-task-id="root"]') as SVGElement;
+    const toggle = rowRootAfterFocus.querySelector('.fg-timeline__row-toggle')!;
+    toggle.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+
+    // 'child' is gone; exactly one remaining row carries tabindex="0", and it must be a row
+    // that is actually still in the DOM (not the just-hidden 'child').
+    expect(container.querySelector('.fg-timeline__row[data-task-id="child"]')).toBeNull();
+    const tabbable = [...container.querySelectorAll('.fg-timeline__row[tabindex="0"]')];
+    expect(tabbable).toHaveLength(1);
+    expect(tabbable[0]!.getAttribute('data-task-id')).not.toBe('child');
+    // Nearest-visible-ancestor semantics (spec §4/§7.3): 'root' itself swallowed 'child', so
+    // focus lands on 'root', not on some unrelated last row ('other').
+    expect(tabbable[0]!.getAttribute('data-task-id')).toBe('root');
+  });
+});
+
 describe('zoomTo() — mounted repaint + scroll-anchor preservation (spec-zoom-runtime.md §13.2)', () => {
   it('zoomTo() while mounted triggers exactly one additional synchronous repaint reflecting the new viewMode', () => {
     const gantt = createGantt({

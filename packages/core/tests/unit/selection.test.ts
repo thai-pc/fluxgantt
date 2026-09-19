@@ -8,7 +8,7 @@ import { createSvgRenderer } from '../../src/render/svg-renderer.js';
 import { createCanvasRenderer } from '../../src/render/canvas-renderer.js';
 import { enableClickSelect } from '../../src/interaction/selection.js';
 import type { InteractiveRendererHandle } from '../../src/render/interactive-renderer-handle.js';
-import { toTaskId, type Task } from '../../src/types.js';
+import { toTaskId, type Task, type TaskId } from '../../src/types.js';
 
 function task(id: string, start: string, end: string, extra: Partial<Task> = {}): Task {
   const now = new Date();
@@ -97,6 +97,7 @@ describe('enableClickSelect — DOM interaction', () => {
       onRangeSelect,
       onClear,
       density: 'default',
+      getCollapsedIds: () => new Set<TaskId>(),
       ...options,
     });
     return { handle, dispose, onSelect, onToggle, onRangeSelect, onClear };
@@ -106,6 +107,43 @@ describe('enableClickSelect — DOM interaction', () => {
     const { handle } = setup();
     expect(handle.interactionRoot).toBe(handle.svg);
     expect(handle.pointerEventTarget).toBe(handle.svg);
+  });
+
+  describe('collapse toggle exclusion guard (spec-collapse-expand.md §7.2/§9.6)', () => {
+    beforeEach(() => {
+      // A real hierarchy so createSvgRenderer() actually renders a `.fg-timeline__row-toggle`
+      // glyph for the summary row — the guard under test lives in `handleClick()` itself, so this
+      // must exercise the real rendered markup, not a hand-built mock.
+      tasks = [
+        task('root', '2026-01-05T09:00', '2026-01-07T09:00', { type: 'summary' }),
+        task('child', '2026-01-05T09:00', '2026-01-06T09:00', { parent: toTaskId('root') }),
+      ];
+    });
+
+    it('a click on .fg-timeline__row-toggle fires none of onSelect/onToggle/onRangeSelect/onClear', () => {
+      const { handle, onSelect, onToggle, onRangeSelect, onClear } = setup();
+      const toggle = handle.svg.querySelector('.fg-timeline__row-toggle') as SVGElement;
+      expect(toggle).toBeTruthy();
+      dispatchPointer(toggle, 'pointerdown', { pointerId: 1, clientX: 5, clientY: 5, bubbles: true });
+      // Dispatched on the toggle itself (bubbling to the window listener, exactly as a real
+      // browser pointerup would preserve `event.target` as the originating element) — NOT on
+      // `window` directly, which would make `event.target` the window itself and vacuously pass
+      // the guard's `instanceof Element` check for the wrong reason.
+      dispatchPointer(toggle, 'pointerup', { pointerId: 1, clientX: 5, clientY: 5, bubbles: true });
+      expect(onSelect).not.toHaveBeenCalled();
+      expect(onToggle).not.toHaveBeenCalled();
+      expect(onRangeSelect).not.toHaveBeenCalled();
+      expect(onClear).not.toHaveBeenCalled();
+    });
+
+    it('a click on the row elsewhere (the task bar) still fires onSelect normally (regression against an over-broad guard)', () => {
+      const { handle, onSelect } = setup();
+      const bar = handle.svg.querySelector('.fg-task[data-task-id="root"]') as SVGElement;
+      dispatchPointer(bar, 'pointerdown', { pointerId: 1, clientX: 5, clientY: 5, bubbles: true });
+      dispatchPointer(window, 'pointerup', { pointerId: 1, clientX: 5, clientY: 5 });
+      expect(onSelect).toHaveBeenCalledTimes(1);
+      expect(onSelect).toHaveBeenCalledWith(toTaskId('root'));
+    });
   });
 
   it('below-threshold click on a .fg-task fires onSelect with the correct TaskId', () => {
@@ -308,6 +346,7 @@ describe('enableClickSelect — minimal InteractiveRendererHandle mock (SVG-deco
       onRangeSelect: vi.fn(),
       onClear,
       density: 'default',
+      getCollapsedIds: () => new Set<TaskId>(),
     });
 
     const taskEl = root.querySelector('.fg-task[data-task-id="mock-1"]')!;
@@ -383,6 +422,7 @@ describe('canvas click-select', () => {
       onRangeSelect,
       onClear,
       density: 'default',
+      getCollapsedIds: () => new Set<TaskId>(),
       ...options,
     });
     return { handle, dispose, onSelect, onToggle, onRangeSelect, onClear };
@@ -514,6 +554,7 @@ describe('canvas click-select', () => {
       onRangeSelect,
       onClear: vi.fn(),
       density: 'default',
+      getCollapsedIds: () => new Set<TaskId>(),
     });
 
     const rowY = (rowIndex: number): number => 32 + 32 * rowIndex + 16; // HEADER_HEIGHT + rowHeight*i + rowHeight/2

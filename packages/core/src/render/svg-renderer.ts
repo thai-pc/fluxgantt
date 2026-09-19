@@ -13,6 +13,8 @@ import { getTemporal } from '../internal/temporal.js';
 import { DEFAULT_CALENDAR, normalizeDate } from '../compute/working-calendar.js';
 import {
   ROW_HEIGHT,
+  TOGGLE_GLYPH_SIZE_PX,
+  TOGGLE_GLYPH_GUTTER_PX,
   createTimeScale,
   computeGridColumns,
   deriveTimeRange,
@@ -58,6 +60,10 @@ export interface SvgRendererInput {
    *  the renderer falls back to the first row so the grid remains exactly one native Tab
    *  stop even before any arrow key has been pressed. */
   readonly focusedTaskId?: TaskId | undefined;
+  /** Optional — ids currently collapsed (spec-collapse-expand.md §6.2). `undefined`/omitted
+   *  = nothing collapsed. A collapsed id whose task has no children has no effect (mirrors
+   *  `layoutRows()`'s own `hasChildren` gate on `isCollapsed`). */
+  readonly collapsedIds?: ReadonlySet<TaskId>;
 }
 
 export interface SvgRendererOptions {
@@ -304,7 +310,7 @@ export function createSvgRenderer(
     const timeScale = createTimeScale(range, viewMode, calendar);
     currentTimeScale = timeScale;
     const rowHeight = ROW_HEIGHT[density];
-    const rows = layoutRows(currentInput.tasks, density);
+    const rows = layoutRows(currentInput.tasks, density, currentInput.collapsedIds);
 
     const barByTaskId = new Map<TaskId, TaskBarLayout>();
     let clampedCount = 0;
@@ -349,7 +355,19 @@ export function createSvgRenderer(
     // ARIA grid structure (spec-keyboard-nav.md §3.2 point 1) — replaces the old placeholder
     // `role="img"`. `aria-multiselectable` is always "true": Core's selection model always
     // supports multi-select (Ctrl/Shift-click, Shift+Arrow), not gated by any config flag.
-    svg.setAttribute('role', 'grid');
+    //
+    // `treegrid` vs `grid` (spec-collapse-expand.md §6.4, REVISED): the root role is now chosen
+    // by whether the current layout actually contains an expandable row. This supersedes §0
+    // decision 1 ("defer treegrid, keep grid for v1"), which was not tenable: WAI-ARIA allows
+    // `aria-expanded` on a row only under `treegrid`, never under `grid`, so shipping §6.3's
+    // `aria-expanded` while keeping `role="grid"` produces a genuine, serious-impact violation
+    // (axe `aria-conditional-attr`: "This attribute is supported with treegrid rows, but not
+    // grid") — caught by `tests/a11y/collapse-expand.spec.ts`. A flat project emits no
+    // `aria-expanded` at all and therefore stays a plain `grid`, so this changes nothing for
+    // charts without hierarchy. Both roles take `aria-rowcount`/`aria-multiselectable`
+    // identically, and the keyboard contract (roving tabindex, arrow navigation) is unchanged.
+    const isTree = rows.some((r) => r.hasChildren);
+    svg.setAttribute('role', isTree ? 'treegrid' : 'grid');
     svg.setAttribute('aria-rowcount', String(rows.length));
     svg.setAttribute('aria-multiselectable', 'true');
 
@@ -563,6 +581,12 @@ function renderRows(
     rowGroup.setAttribute('aria-rowindex', String(row.rowIndex + 1));
     rowGroup.setAttribute('aria-selected', isSelected ? 'true' : 'false');
     rowGroup.setAttribute('tabindex', row.task.id === focusedTaskId ? '0' : '-1');
+    // (spec-collapse-expand.md §6.2) — omit entirely on a leaf row, per WAI-ARIA (a
+    // non-expandable node must not carry `aria-expanded="false"`, which would incorrectly
+    // imply it IS an expandable container).
+    if (row.hasChildren) {
+      rowGroup.setAttribute('aria-expanded', String(!row.isCollapsed));
+    }
 
     // Single-column v1 (spec §3.2 point 3): exactly one `role="gridcell"` wrapper per row,
     // a pure ARIA/structural `<g>` with no `transform` of its own — zero rendering diff
@@ -571,9 +595,16 @@ function renderRows(
     cell.setAttribute('class', 'fg-timeline__row-cell');
     cell.setAttribute('role', 'gridcell');
 
+    if (row.hasChildren) {
+      cell.appendChild(renderRowToggle(row, offsetY, rowHeight));
+    }
+
     const label = document.createElementNS(SVG_NS, 'text');
     label.setAttribute('class', 'fg-timeline__row-label');
-    label.setAttribute('x', String(LABEL_PADDING_PX + row.depth * LABEL_INDENT_PX));
+    // (spec-collapse-expand.md §6.1) — uniform gutter reservation applied to EVERY row
+    // (whether or not it has a visible toggle glyph), so label text stays column-aligned
+    // across sibling leaf/summary rows at the same depth.
+    label.setAttribute('x', String(LABEL_PADDING_PX + row.depth * LABEL_INDENT_PX + TOGGLE_GLYPH_GUTTER_PX));
     label.setAttribute('y', String(offsetY + row.y + rowHeight / 2));
     label.style.setProperty('dominant-baseline', 'middle');
     label.style.setProperty('fill', 'var(--fg-fg, #18181b)');
@@ -592,6 +623,31 @@ function renderRows(
   }
 
   return g;
+}
+
+/** Collapse/expand toggle glyph (spec-collapse-expand.md §6.1/§6.2) — a small triangle,
+ *  rotated via `transform` between "pointing right" (collapsed) and "pointing down"
+ *  (expanded), the same rotation technique already used for the milestone diamond in
+ *  `renderTaskBar`. Only called for rows where `row.hasChildren` is `true`. No task-derived
+ *  string content (`<path>`, no `<text>`) — zero new XSS surface (security.md, spec §8).
+ *  `aria-hidden` since the row itself already carries `aria-expanded` (avoids double-
+ *  announcing expanded/collapsed once on the glyph and once on the row). */
+function renderRowToggle(row: RowLayout, offsetY: number, rowHeight: number): SVGPathElement {
+  const size = TOGGLE_GLYPH_SIZE_PX;
+  const cx = LABEL_PADDING_PX + row.depth * LABEL_INDENT_PX + size / 2;
+  const cy = offsetY + row.y + rowHeight / 2;
+  const half = size / 2;
+  // Right-pointing triangle in local space, rotated to point down when expanded.
+  const d = `M ${cx - half} ${cy - half} L ${cx + half} ${cy} L ${cx - half} ${cy + half} Z`;
+  const path = document.createElementNS(SVG_NS, 'path') as SVGPathElement;
+  path.setAttribute('class', 'fg-timeline__row-toggle');
+  path.setAttribute('d', d);
+  path.setAttribute('aria-hidden', 'true');
+  path.style.setProperty('fill', 'var(--fg-fg-muted, #71717a)');
+  if (!row.isCollapsed) {
+    path.setAttribute('transform', `rotate(90 ${cx} ${cy})`);
+  }
+  return path;
 }
 
 function renderTaskBar(

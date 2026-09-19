@@ -43,8 +43,11 @@ test.beforeEach(async ({ page }) => {
   await page.goto('/selection.html');
 });
 
-test('the grid root carries role="grid" and exactly one row has tabindex="0"', async ({ page }) => {
-  await expect(page.locator('svg[role="grid"]')).toBeVisible();
+test('the grid root carries role="treegrid" and exactly one row has tabindex="0"', async ({ page }) => {
+  // `treegrid`, not `grid`: `/selection.html`'s fixture is hierarchical (`phase-1` parents two
+  // rows), so its rows carry `aria-expanded`, which WAI-ARIA permits only under `treegrid`
+  // (spec-collapse-expand.md §6.4). A flat project still renders a plain `grid`.
+  await expect(page.locator('svg[role="treegrid"]')).toBeVisible();
   await expect(page.locator('svg.fg-timeline [tabindex="0"]')).toHaveCount(1);
 });
 

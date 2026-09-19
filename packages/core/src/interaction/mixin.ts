@@ -26,7 +26,9 @@ import { enableDragResize } from './drag-resize.js';
 import { enableDragCreateDep } from './drag-create-dep.js';
 import { enableClickSelect } from './selection.js';
 import { enableKeyboardNav } from './keyboard-nav.js';
+import { enableCollapseToggle } from './collapse-toggle.js';
 import { enableWheelZoom } from './wheel-zoom.js';
+import { batch } from '../signals.js';
 // TYPE-ONLY import back into the base facade — erased at compile time, so no runtime cycle.
 import type { GanttInstance } from '../gantt.js';
 import type { TaskId } from '../types.js';
@@ -84,6 +86,7 @@ function wireInto(
     onRangeSelect: (ids) => commitRangeSelect(internal, ids),
     onClear: () => commitClearSelection(internal),
     density,
+    getCollapsedIds: () => new Set(internal.collapseStore.all()),
   });
 
   // Registered UNCONDITIONALLY (spec-keyboard-nav.md §6.2), same group as enableClickSelect
@@ -113,6 +116,36 @@ function wireInto(
     density,
     isReadOnly: () => config.readOnly === true,
     getSelection: () => internal.selectionStore.all(),
+    getCollapsedIds: () => new Set(internal.collapseStore.all()),
+    onToggleCollapse: (id) => {
+      instance.toggleCollapse(id); // reuses the public method in full — same emit contract as a programmatic call
+    },
+  });
+
+  // Registered UNCONDITIONALLY, same group as clickSelectDispose/keyboardNav above, NOT gated
+  // by readOnly (spec-collapse-expand.md §7.1/§7.3) — collapsing hides/reveals rows, it never
+  // mutates task data, so there is no reason to disable it in a read-only chart.
+  //
+  // ORDERING: `signals.ts` runs effects SYNCHRONOUSLY outside `batch()` (`Effect._notify` ->
+  // `_run` once `batchDepth` returns to 0) — so an unwrapped `instance.toggleCollapse(taskId)`
+  // call bumps `collapseStore.revision` and the render effect repaints IMMEDIATELY, before
+  // `keyboardNav.syncFocusToRows()` below ever runs. Since `focusedTaskId` lives in
+  // `keyboard-nav.ts` as a plain local (not a signal), that repaint would already have painted
+  // the stale, about-to-be-hidden roving-tabindex/focus-ring target, and the later clamp would
+  // trigger no further repaint at all — leaving the painted focus referencing a row that no
+  // longer exists in the DOM until some unrelated mutation forces the next render. `batch(...)`
+  // defers the render effect until BOTH calls below have completed, so the clamp lands before
+  // the single resulting repaint (`CollapseStore`'s own data mutation happens synchronously
+  // inside `toggleCollapse()` regardless of `batch()` — only the render EFFECT's flush is
+  // deferred — so `syncFocusToRows()`'s `getCollapsedIds()` read here already sees the toggled
+  // state).
+  const collapseToggleDispose = enableCollapseToggle(handle, () => internal.taskStore.all(), {
+    onToggleCollapse: (taskId) => {
+      batch(() => {
+        instance.toggleCollapse(taskId); // reuses the public method in full
+        keyboardNav.syncFocusToRows();
+      });
+    },
   });
 
   let dragMoveDispose: () => void = () => {};
@@ -166,6 +199,7 @@ function wireInto(
       dragMoveDispose();
       dragCreateDepDispose();
       clickSelectDispose();
+      collapseToggleDispose();
       keyboardNav.dispose();
       wheelZoomDispose();
     },
@@ -278,7 +312,11 @@ function commitRangeSelect(internal: GanttInternal, rawIds: readonly TaskId[]): 
  * Shift+Arrow the exact same semantics as Shift+click.
  */
 function commitKeyboardRangeSelect(internal: GanttInternal, anchorId: TaskId, focusId: TaskId): void {
-  const rows = layoutRows(internal.taskStore.all(), internal.config.density ?? 'default');
+  const rows = layoutRows(
+    internal.taskStore.all(),
+    internal.config.density ?? 'default',
+    new Set(internal.collapseStore.all()),
+  );
   const anchorIndex = rows.findIndex((r) => r.task.id === anchorId);
   const focusIndex = rows.findIndex((r) => r.task.id === focusId);
   if (anchorIndex === -1 || focusIndex === -1) return; // race: id no longer resolves

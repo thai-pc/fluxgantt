@@ -23,6 +23,7 @@ import type {
   TaskStore,
   DependencyStore,
   SelectionStore,
+  CollapseStore,
   TaskInput,
   TaskPatch,
 } from './store/index.js';
@@ -99,6 +100,7 @@ export interface GanttInternal {
   readonly taskStore: TaskStore;
   readonly dependencyStore: DependencyStore;
   readonly selectionStore: SelectionStore;
+  readonly collapseStore: CollapseStore;
   readonly calendar: WorkingCalendar;
   readonly viewMode: Signal<ViewMode>;
 

@@ -22,7 +22,7 @@ export { signal, computed, effect, batch, untracked, Signal } from './signals.js
 export type { ReadonlySignal } from './signals.js';
 
 // State layer (spec §5.1)
-export { TaskStore, DependencyStore, SelectionStore } from './store/index.js';
+export { TaskStore, DependencyStore, SelectionStore, CollapseStore } from './store/index.js';
 export type { TaskInput, TaskPatch, LinkOptions } from './store/index.js';
 
 // Compute layer (spec §5.1, §13)

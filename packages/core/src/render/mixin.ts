@@ -297,11 +297,16 @@ function renderNow(
   void internal.taskStore.revision.value;
   void internal.dependencyStore.revision.value;
   void internal.selectionStore.revision.value;
+  // (spec-collapse-expand.md §9) — the single most important integration assertion in this
+  // whole feature: a collapse/expand must trigger a repaint, exactly like any other store
+  // mutation this effect already tracks.
+  void internal.collapseStore.revision.value;
   const viewMode = internal.viewMode.value; // tracked — re-runs this effect on zoomTo()
 
   const tasks = internal.taskStore.all();
   const dependencies = internal.dependencyStore.all();
   const selectedTaskIds = internal.selectionStore.all();
+  const collapsedIds = new Set(internal.collapseStore.all());
 
   let criticalPath: CriticalPathResult | undefined;
   if (tasks.length === 0) {
@@ -346,7 +351,14 @@ function renderNow(
   const focusedTaskId = getFocusedTaskId();
   if (tasks.length === 0) {
     applyViewportOptionsFor(handle, renderer, viewMode, emptyStateTimeRange(internal));
-    handle.update({ tasks, dependencies, calendar: internal.calendar, selectedTaskIds, focusedTaskId });
+    handle.update({
+      tasks,
+      dependencies,
+      calendar: internal.calendar,
+      selectedTaskIds,
+      focusedTaskId,
+      collapsedIds,
+    });
   } else {
     handle.update({
       tasks,
@@ -354,6 +366,7 @@ function renderNow(
       calendar: internal.calendar,
       selectedTaskIds,
       focusedTaskId,
+      collapsedIds,
       ...(criticalPath !== undefined ? { criticalPath } : {}),
     });
     applyViewportOptionsFor(handle, renderer, viewMode, undefined);
@@ -420,6 +433,7 @@ function renderInput(internal: GanttInternal): SvgRendererInput {
     dependencies: internal.dependencyStore.all(),
     calendar: internal.calendar,
     selectedTaskIds: internal.selectionStore.all(),
+    collapsedIds: new Set(internal.collapseStore.all()),
   };
 }
 

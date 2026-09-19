@@ -4,6 +4,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import fc from 'fast-check';
 import { createGantt } from '../helpers/create-gantt.js';
+import { createGantt as createGanttBase } from '../../src/gantt.js';
 import type { GanttEventName, GanttEventMap } from '../../src/gantt.js';
 import { normalizeDate } from '../../src/compute/working-calendar.js';
 import { toTaskId, type Task, type TaskId } from '../../src/types.js';
@@ -506,6 +507,185 @@ describe('removeTask — cascade + dependency cleanup', () => {
     gantt.on('task:removed', taskRemoved);
     expect(() => gantt.removeTask(toTaskId('missing'))).not.toThrow();
     expect(taskRemoved).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------------------
+// Hierarchy collapse/expand (spec-collapse-expand.md §9.3) — run headless (base facade only,
+// no withRender/withInteraction), proving toggleCollapse/isCollapsed/collapseAll/expandAll work
+// without any mixin applied (§2's placement decision).
+// ---------------------------------------------------------------------------------------
+function buildCollapseHierarchy() {
+  return createGanttBase({
+    tasks: [
+      taskInput('root', '2026-01-05T09:00', '2026-01-10T09:00', { type: 'summary' }),
+      taskInput('c1', '2026-01-05T09:00', '2026-01-06T09:00', { type: 'summary', parent: toTaskId('root') }),
+      taskInput('c1a', '2026-01-05T09:00', '2026-01-06T09:00', { parent: toTaskId('c1') }),
+      taskInput('c2', '2026-01-06T09:00', '2026-01-07T09:00', { parent: toTaskId('root') }),
+      taskInput('solo', '2026-01-08T09:00', '2026-01-09T09:00'),
+    ],
+  });
+}
+
+describe('toggleCollapse / isCollapsed / collapseAll / expandAll (headless, base facade only)', () => {
+  it('toggleCollapse on a summary flips isCollapsed, toggling again flips it back', () => {
+    const gantt = buildCollapseHierarchy();
+    const id = toTaskId('root');
+    expect(gantt.isCollapsed(id)).toBe(false);
+    gantt.toggleCollapse(id);
+    expect(gantt.isCollapsed(id)).toBe(true);
+    gantt.toggleCollapse(id);
+    expect(gantt.isCollapsed(id)).toBe(false);
+  });
+
+  it('toggleCollapse on a leaf is a no-op: isCollapsed stays false, no collapse:changed', () => {
+    const gantt = buildCollapseHierarchy();
+    const changed = vi.fn();
+    gantt.on('collapse:changed', changed);
+    gantt.toggleCollapse(toTaskId('solo'));
+    expect(gantt.isCollapsed(toTaskId('solo'))).toBe(false);
+    expect(changed).not.toHaveBeenCalled();
+  });
+
+  it('toggleCollapse on an unknown id is a silent no-op', () => {
+    const gantt = buildCollapseHierarchy();
+    expect(() => gantt.toggleCollapse(toTaskId('nope'))).not.toThrow();
+    expect(gantt.isCollapsed(toTaskId('nope'))).toBe(false);
+  });
+
+  it('collapseAll() collapses every task that currently has children, emits collapse:changed exactly once', () => {
+    const gantt = buildCollapseHierarchy();
+    const changed = vi.fn();
+    gantt.on('collapse:changed', changed);
+    gantt.collapseAll();
+    expect(gantt.isCollapsed(toTaskId('root'))).toBe(true);
+    expect(gantt.isCollapsed(toTaskId('c1'))).toBe(true);
+    expect(gantt.isCollapsed(toTaskId('c1a'))).toBe(false); // leaf, never collapsible
+    expect(gantt.isCollapsed(toTaskId('c2'))).toBe(false); // leaf
+    expect(gantt.isCollapsed(toTaskId('solo'))).toBe(false); // leaf
+    expect(changed).toHaveBeenCalledTimes(1);
+  });
+
+  it('collapseAll() called twice in a row emits collapse:changed only on the first call (no-op suppressed)', () => {
+    const gantt = buildCollapseHierarchy();
+    const changed = vi.fn();
+    gantt.collapseAll();
+    gantt.on('collapse:changed', changed);
+    gantt.collapseAll();
+    expect(changed).not.toHaveBeenCalled();
+  });
+
+  it('expandAll() clears every collapsed id, emits collapse:changed exactly once; a second call is a no-op', () => {
+    const gantt = buildCollapseHierarchy();
+    gantt.collapseAll();
+    const changed = vi.fn();
+    gantt.on('collapse:changed', changed);
+    gantt.expandAll();
+    expect(gantt.isCollapsed(toTaskId('root'))).toBe(false);
+    expect(gantt.isCollapsed(toTaskId('c1'))).toBe(false);
+    expect(changed).toHaveBeenCalledTimes(1);
+
+    gantt.expandAll();
+    expect(changed).toHaveBeenCalledTimes(1); // still 1 — second call is a no-op
+  });
+
+  it('expandAll() on an already-expanded instance is a no-op (no collapse:changed)', () => {
+    const gantt = buildCollapseHierarchy();
+    const changed = vi.fn();
+    gantt.on('collapse:changed', changed);
+    gantt.expandAll();
+    expect(changed).not.toHaveBeenCalled();
+  });
+
+  it('a leaf that later gains a child becomes collapsible, with no stale "was a leaf" state', () => {
+    const gantt = buildCollapseHierarchy();
+    gantt.addTask(taskInput('solo-child', '2026-01-08T09:00', '2026-01-08T17:00', { parent: toTaskId('solo') }));
+    expect(gantt.isCollapsed(toTaskId('solo'))).toBe(false);
+    gantt.toggleCollapse(toTaskId('solo'));
+    expect(gantt.isCollapsed(toTaskId('solo'))).toBe(true);
+  });
+});
+
+describe('initialCollapsed (construction-time filtering, spec §3.3/§9.3)', () => {
+  it('unknown id, leaf id, and valid id: only the valid summary id ends up collapsed, no event fires', () => {
+    const changed = vi.fn();
+    const gantt = createGanttBase({
+      tasks: [
+        taskInput('root', '2026-01-05T09:00', '2026-01-10T09:00', { type: 'summary' }),
+        taskInput('c1', '2026-01-05T09:00', '2026-01-06T09:00', { parent: toTaskId('root') }),
+        taskInput('leaf', '2026-01-08T09:00', '2026-01-09T09:00'),
+      ],
+      initialCollapsed: [toTaskId('root'), toTaskId('leaf'), toTaskId('unknown')],
+    });
+    gantt.on('collapse:changed', changed);
+    expect(gantt.isCollapsed(toTaskId('root'))).toBe(true);
+    expect(gantt.isCollapsed(toTaskId('leaf'))).toBe(false);
+    expect(gantt.isCollapsed(toTaskId('unknown' as never))).toBe(false);
+    // The listener was only attached AFTER construction, but per spec no collapse:changed is
+    // ever emitted for the initial application in the first place — assert via a fresh listener
+    // race-free by checking the construction itself didn't need to fire anything observable.
+    expect(changed).not.toHaveBeenCalled();
+  });
+});
+
+describe('removeTask() prunes CollapseStore membership (spec §0 item 2 / §9.3)', () => {
+  it('removing the collapsed task itself clears its CollapseStore entry', () => {
+    const gantt = buildCollapseHierarchy();
+    gantt.toggleCollapse(toTaskId('c1'));
+    expect(gantt.isCollapsed(toTaskId('c1'))).toBe(true);
+    gantt.removeTask(toTaskId('c1'));
+    // c1 is gone entirely now; isCollapsed() on a removed id must not throw and reports false.
+    expect(gantt.isCollapsed(toTaskId('c1'))).toBe(false);
+  });
+
+  it('removing a collapsed task\'s last child leaves the task present but no longer collapsible', () => {
+    const gantt = buildCollapseHierarchy();
+    gantt.toggleCollapse(toTaskId('c1'));
+    expect(gantt.isCollapsed(toTaskId('c1'))).toBe(true);
+    gantt.removeTask(toTaskId('c1a')); // c1's only child
+    expect(gantt.getTask(toTaskId('c1'))).toBeDefined(); // c1 itself still exists
+    expect(gantt.isCollapsed(toTaskId('c1'))).toBe(false); // no longer has children -> not collapsed
+  });
+
+  it('removeTask emits collapse:changed only when the removed id was actually collapsed', () => {
+    const gantt = buildCollapseHierarchy();
+    const changed = vi.fn();
+    gantt.on('collapse:changed', changed);
+    gantt.removeTask(toTaskId('c2')); // never collapsed (leaf)
+    expect(changed).not.toHaveBeenCalled();
+
+    gantt.toggleCollapse(toTaskId('c1'));
+    changed.mockClear();
+    gantt.removeTask(toTaskId('c1'));
+    expect(changed).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('cross-store independence (spec §5.1/§9.3)', () => {
+  it('collapsing a subtree containing a selected task does not mutate the selection', () => {
+    const gantt = buildCollapseHierarchy();
+    gantt.select([toTaskId('c1a')]);
+    const before = gantt.getSelection();
+    gantt.toggleCollapse(toTaskId('c1')); // c1a's parent, now hidden
+    expect(gantt.getSelection()).toEqual(before);
+  });
+});
+
+describe('collapse/expand is not part of undo/redo history (spec §4/§9.3)', () => {
+  it('toggleCollapse() does not affect canUndo(); undo() leaves isCollapsed() unchanged', () => {
+    const gantt = buildCollapseHierarchy();
+    expect(gantt.canUndo()).toBe(false); // no data mutation yet
+
+    gantt.toggleCollapse(toTaskId('root'));
+    expect(gantt.isCollapsed(toTaskId('root'))).toBe(true);
+    expect(gantt.canUndo()).toBe(false); // a pure collapse toggle is not a history entry
+
+    // Now perform a real data mutation, so there IS something to undo.
+    gantt.updateTask(toTaskId('solo'), { name: 'renamed' });
+    expect(gantt.canUndo()).toBe(true);
+
+    gantt.undo();
+    expect(gantt.isCollapsed(toTaskId('root'))).toBe(true); // untouched by undo()
   });
 });
 

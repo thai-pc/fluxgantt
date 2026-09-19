@@ -22,13 +22,13 @@ This file is the context entry point for AI. Details are split into rules under 
 
    | Fixture | Measured | Budget |
    |---|---|---|
-   | `createGantt()` only (hello world) | 7.51 KiB | 9 KiB |
-   | `+ withIo` | 12.45 KiB | 14 KiB |
-   | `+ withRender` | 13.47 KiB | 15 KiB |
-   | `+ withRender + withInteraction` | 17.40 KiB | 19 KiB |
-   | kitchen sink (everything = the pre-split facade) | 22.01 KiB | 24 KiB |
+   | `createGantt()` only (hello world) | 7.76 KiB | 9 KiB |
+   | `+ withIo` | 12.72 KiB | 14 KiB |
+   | `+ withRender` | 14.29 KiB | 15 KiB |
+   | `+ withRender + withInteraction` | 18.55 KiB | 19 KiB |
+   | kitchen sink (everything = the pre-split facade) | 23.21 KiB | 24 KiB |
 
-   Hello world went 22.3 KiB → 7.51 KiB and the fully-composed instance 34.9 KiB → 22.01 KiB (the old "full core" check measured `dist/index.js` as a plain file, which code-splitting has since hollowed out; the kitchen-sink fixture replaces it). Non-core features are plugins.
+   Hello world went 22.3 KiB → 7.76 KiB and the fully-composed instance 34.9 KiB → 23.21 KiB (the old "full core" check measured `dist/index.js` as a plain file, which code-splitting has since hollowed out; the kitchen-sink fixture replaces it). Non-core features are plugins.
 6. **Tier-gate correctly** — Pro (resource/baseline/MSProject), Cloud (multiplayer/AI). Don't cram Pro/Cloud code into `core`.
 7. **Every new feature ships with tests.** See `.claude/rules/testing.md`.
 8. **Security**: validate every external input (file import, share link, API). See `.claude/rules/security.md`.
