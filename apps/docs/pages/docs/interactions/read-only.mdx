@@ -3,18 +3,27 @@
 Set `readOnly: true` at construction to render a chart the user cannot drag:
 
 ```ts
-const gantt = createGantt({
-  readOnly: true,
-  tasks: [/* … */],
-  dependencies: [/* … */],
-});
+import { createGantt } from '@fluxgantt/core';
+import { withRender } from '@fluxgantt/core/render';
+import { withInteraction } from '@fluxgantt/core/interaction';
+
+const gantt = withInteraction(
+  withRender(
+    createGantt({
+      readOnly: true,
+      tasks: [/* … */],
+      dependencies: [/* … */],
+    }),
+  ),
+);
 gantt.mount(document.getElementById('gantt')!);
 ```
 
 ## What it changes
 
 - **`mount()` does not wire the drag gestures.** Move, resize, and create-dependency are all
-  inert — dragging a bar does nothing.
+  inert — dragging a bar does nothing. (Composing `withInteraction` at all is optional; in
+  read-only mode it still wires click-select and keyboard navigation, which stay available.)
 - **Link handles are not rendered.** They are an interactive affordance whose recognizer isn't
   wired in read-only mode, so showing them would be a misleading dead control.
 
@@ -25,7 +34,7 @@ works — a host app can keep pushing updates into a read-only view (e.g. from a
 subscription):
 
 ```ts
-const gantt = createGantt({ readOnly: true, tasks: [/* … */] });
+const gantt = withInteraction(withRender(createGantt({ readOnly: true, tasks: [/* … */] })));
 gantt.mount(el);
 
 // still works — readOnly does not lock the API:

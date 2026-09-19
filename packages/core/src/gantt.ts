@@ -13,9 +13,9 @@
 // changes) and a drag-move commit optionally cascade dependent tasks along FS/SS/FF/SF (+lag)
 // via `computeCascade` — opt-in via `GanttConfig.schedulingMode: 'auto'`. Default remains
 // `'manual'` (= v1's original single-task-only behavior, unchanged) — see `#maybeCascade`.
-import type { Temporal } from '@js-temporal/polyfill';
-import { effect, batch, signal, type Signal } from './signals.js';
-import { TaskStore, DependencyStore, DependencyLinkError, SelectionStore } from './store/index.js';
+import { batch, signal, type Signal } from './signals.js';
+import { INTERNAL, type GanttInternal, type MountState, type InteractionHooks } from './gantt-internal.js';
+import { TaskStore, DependencyStore, SelectionStore, CollapseStore } from './store/index.js';
 import type { TaskInput, TaskPatch } from './store/index.js';
 import {
   DEFAULT_CALENDAR,
@@ -26,43 +26,10 @@ import {
 import { computeCriticalPath as computeCriticalPathFn } from './compute/critical-path.js';
 import { computeCascade } from './compute/cascade.js';
 import { getTemporal } from './internal/temporal.js';
-import { createSvgRenderer, LABEL_COLUMN_WIDTH } from './render/svg-renderer.js';
-import type { SvgRendererHandle, SvgRendererInput, SvgRendererOptions } from './render/svg-renderer.js';
-// TYPE-ONLY import — erased at compile time (`import type`), so this does NOT create a
-// runtime dependency edge into `canvas-renderer.ts`'s module graph and has zero effect on
-// which chunk esbuild puts that file's code into. The only runtime access to that module is
-// the dynamic `import('./render/canvas-renderer.js')` inside `#mountCanvasAsync` (see §3 of
-// spec-canvas-auto-switch.md) — this import exists purely so `gantt.ts` can type-check
-// against the shape of what that dynamic import resolves to.
-import type { CanvasRendererHandle, CanvasRendererOptions } from './render/canvas-renderer.js';
-// Type-only namespace import so `#mountCanvasAsync` can type the awaited dynamic-import result
-// without an inline `typeof import(...)` type query (forbidden by
-// @typescript-eslint/consistent-type-imports — erased at compile time either way, same module).
-import type * as CanvasRendererModule from './render/canvas-renderer.js';
-import { layoutRows } from './render/renderer-base.js';
-import { enableDragMove } from './interaction/drag-move.js';
-import { enableDragResize } from './interaction/drag-resize.js';
-import { enableDragCreateDep } from './interaction/drag-create-dep.js';
-import { enableClickSelect } from './interaction/selection.js';
-import { enableKeyboardNav } from './interaction/keyboard-nav.js';
-import { enableWheelZoom } from './interaction/wheel-zoom.js';
-import {
-  exportJson as exportJsonFn,
-  exportCsv as exportCsvFn,
-  exportSvg as exportSvgFn,
-  exportPng as exportPngFn,
-  importJson as importJsonFn,
-  importCsv as importCsvFn,
-} from './io/index.js';
-import type {
-  ExportBundle,
-  ExportCsvOptions,
-  ExportJsonOptions,
-  ExportPngOptions,
-  ExportSvgOptions,
-  ImportJsonOptions,
-  ImportCsvOptions,
-} from './io/index.js';
+import type { SvgRendererHandle } from './render/svg-renderer.js';
+// TYPE-ONLY import — erased at compile time, so it creates no runtime edge into the Canvas
+// renderer's module graph (which is reachable only through `render/mixin.ts`'s dynamic import).
+import type { CanvasRendererHandle } from './render/canvas-renderer.js';
 import type {
   CriticalPathResult,
   DateInput,
@@ -150,6 +117,15 @@ export interface GanttConfig {
    *  without disabling any other facade behavior — every mutation still runs normally, its
    *  history entry is just immediately evicted. */
   readonly historyLimit?: number;
+
+  /**
+   * (spec-collapse-expand.md §3.3). Ids to collapse at construction time — applied AFTER
+   * `tasks` is loaded, using the exact same "must currently have at least one child" filter
+   * as `collapseAll()`/`toggleCollapse()`. An unknown id or a leaf (no children) id is
+   * silently dropped — no throw, no `collapse:changed` event fires at construction. Default:
+   * nothing collapsed.
+   */
+  readonly initialCollapsed?: readonly TaskId[];
 }
 
 /** Shape accepted for an initial dependency in `GanttConfig.dependencies` — mirrors what
@@ -222,6 +198,11 @@ export interface GanttEventMap {
    *  resulting set actually differs from the previous one (no-op reselect is suppressed —
    *  same discipline as `critical-path:computed`'s `#sameCriticalIds` guard). */
   'selection:changed': [taskIds: readonly TaskId[]];
+  /** Full snapshot of currently-collapsed task ids (spec-collapse-expand.md §3.2) — fires once
+   *  per `toggleCollapse`/`collapseAll`/`expandAll` call that actually changes the set (no-op
+   *  suppressed, same discipline as `selection:changed`). Never fires from
+   *  `GanttConfig.initialCollapsed` at construction. */
+  'collapse:changed': [collapsedTaskIds: readonly TaskId[]];
   /** Fires exactly once per "logical gesture" that changes the undo/redo stack: after a new
    *  entry is committed (`#commitEntry` — one fire per top-level mutation call OR per grouped
    *  transaction, e.g. one fire for a whole cascade-grouped drag or a whole multi-select
@@ -248,7 +229,7 @@ export interface GanttEventMap {
    *  renderer has fully painted and all applicable interaction modules are wired — i.e. after
    *  the point at which the container is guaranteed to reflect `renderer`. For a sub-threshold
    *  project this fires synchronously, before `mount()` returns. For a project above
-   *  `CANVAS_AUTO_SWITCH_THRESHOLD`, `mount()` itself returns synchronously (unchanged
+   *  the Canvas auto-switch threshold, `mount()` itself returns synchronously (unchanged
    *  signature) but this event fires later, once the internally lazy-loaded Canvas module has
    *  resolved and painted (or, on any Canvas-path failure, once the SVG fallback has painted
    *  instead) — this is the intended way for a host to know a large-project chart has become
@@ -341,6 +322,32 @@ export interface GanttInstance {
    *  reference" convention as `getTasks()`/`getDependencies()`. Returns `[]` post-`destroy()`. */
   getSelection(): TaskId[];
 
+  // --- Hierarchy (collapse/expand, spec-collapse-expand.md §3) ---------------------------
+
+  /**
+   * Toggles the given task's collapsed state. A no-op (no event, no state change) if `id`
+   * does not resolve in the store, or resolves to a task with zero children — only a task
+   * that currently HAS children can be collapsed/expanded. Fires `collapse:changed` with the
+   * full collapsed-id snapshot iff the collapsed set actually changed. Throws if the instance
+   * is destroyed (`#assertAlive`, same posture as every other mutating method).
+   */
+  toggleCollapse(id: TaskId): void;
+
+  /** `true` iff `id` is currently collapsed AND still has at least one child — a stale
+   *  collapsed-id left over for a task whose last child was removed reports `false` here
+   *  (harmless: `layoutRows()` never hides a row with no children regardless of this flag).
+   *  Safe post-`destroy()` (returns `false`, does not throw), same posture as
+   *  `getSelection()`. */
+  isCollapsed(id: TaskId): boolean;
+
+  /** Collapses every task that currently has at least one child. Fires `collapse:changed`
+   *  iff the collapsed set actually changed (idempotent — a second call is a no-op). */
+  collapseAll(): void;
+
+  /** Expands every task. Fires `collapse:changed` iff the collapsed set was non-empty
+   *  (idempotent — a second call is a no-op). */
+  expandAll(): void;
+
   // --- History (undo/redo) --------------------------------------------------------------
 
   /**
@@ -400,77 +407,13 @@ export interface GanttInstance {
   // --- Computation -------------------------------------------------------------------------
   computeCriticalPath(): CriticalPathResult;
 
-  // --- IO (export + import, spec §7.8, security.md §2) -------------------------------------
-  /** Thin delegation over `getTasks()`/`getDependencies()` + the pure `exportJson()`
-   *  function — same post-`destroy()` posture as those two getters (returns an
-   *  empty-but-valid bundle rather than throwing; see spec-io-json-csv.md §1.2). Defaults
-   *  `options.timezone` to the instance's own calendar timezone, not `'UTC'`. */
-  exportJson(options?: ExportJsonOptions): ExportBundle;
-  /** Thin delegation over `getTasks()` + the pure `exportCsv()` function. Same posture as
-   *  `exportJson()` above. */
-  exportCsv(options?: ExportCsvOptions): string;
-
-  /**
-   * Validates `data` via the pure `importJson()` function, then wholesale-REPLACES the
-   * entire live task/dependency set — equivalent to what `createGantt({ tasks, dependencies })`
-   * would have produced from the same data (NOT a merge/append). Concretely, on success:
-   *  1. Clears BOTH `#undoStack` and `#redoStack` — prior entries reference a pre-import state
-   *     that may no longer exist post-replace. The import itself is NOT recorded as an
-   *     undoable op — same precedent as construction-time `config.tasks`/`config.dependencies`
-   *     seeding.
-   *  2. Clears the current selection, equivalent to `deselect()`.
-   *  3. Emits exactly ONE `data:imported` event — never per-item `task:added`/
-   *     `dependency:added`.
-   *  4. Triggers exactly one repaint of a mounted chart (batched), via the same
-   *     store-`revision`-driven reactive effect every other mutation uses.
-   *
-   * NOT gated by `readOnly` (matches every other programmatic mutation method).
-   *
-   * ATOMIC against the live instance: the complete replacement dataset is validated and
-   * staged BEFORE any live store is touched. A rejected import — an invalid schema (rejected
-   * by the pure `importJson()` itself) OR a cyclic dependency set (which the pure
-   * `importJson()` deliberately does NOT detect — see `io/json.ts`'s own note — and only
-   * surfaces when the staged data is linked) — leaves the live instance's tasks,
-   * dependencies, undo/redo history, and selection completely UNCHANGED, and does not fire
-   * `data:imported`.
-   *
-   * Throws if the instance is destroyed (`#assertAlive`, same posture as every other
-   * mutating method).
-   *
-   * `options` is passed straight through to the pure `importJson()` — no facade-level
-   * default injected (unlike `exportJson`'s `timezone` default: `ImportJsonOptions` has no
-   * `timezone` field to default, only `limits`).
-   */
-  importJson(data: string | object, options?: ImportJsonOptions): ImportSummary;
-
-  /**
-   * Same contract as `importJson()` above, for CSV. CSV has no dependency concept
-   * (`io/csv.ts`'s own header comment: "Tasks-only, flat scalar columns... dependencies are
-   * NOT representable in CSV at all") — `dependencyCount` is always `0` in the returned/
-   * emitted summary, and any dependency the live instance held before the call is cleared
-   * along with the task set (wholesale replace is dataset-wide, not tasks-only — importing a
-   * tasks-only CSV still wipes pre-existing dependencies, matching what
-   * `createGantt({ tasks })` with no `dependencies` key would produce).
-   */
-  importCsv(csv: string, options?: ImportCsvOptions): ImportSummary;
-
-  /**
-   * Serializes the currently-mounted SVG to a self-contained string (XML declaration,
-   * explicit xmlns, resolved computed styles baked in, no interactive-only chrome).
-   * Throws if the instance was never mounted, or has been unmounted/destroyed — unlike
-   * exportJson/exportCsv, there is no sensible empty-but-valid result to fall back to.
-   */
-  exportSvg(options?: ExportSvgOptions): string;
-
-  /**
-   * Rasterizes the currently-mounted chart to a PNG. Internally calls exportSvg() to get a
-   * baked/sanitized SVG string, then draws it onto a canvas. Async because it waits for the
-   * browser to decode the SVG image before it can rasterize. Same throw-if-not-mounted
-   * posture as exportSvg(), but delivered as a REJECTED promise, not a synchronous throw
-   * (implemented as an `async function` specifically so this holds for every validation
-   * error, not just the DOM-not-ready one).
-   */
-  exportPng(options?: ExportPngOptions): Promise<Blob>;
+  // --- IO ---------------------------------------------------------------------------------
+  // exportJson/exportCsv/importJson/importCsv/exportSvg/exportPng now live on the opt-in
+  // `IoCapability` mixin (spec-facade-split.md §3.2):
+  //   import { withIo } from '@fluxgantt/core/io';
+  //   const gantt = withIo(createGantt({ tasks }));
+  // Keeping them on the base class would keep the whole `io/*` graph in every bundle, since
+  // class prototype methods can never be tree-shaken.
 
   // --- Events --------------------------------------------------------------------------------
   on<E extends GanttEventName>(
@@ -480,68 +423,14 @@ export interface GanttInstance {
 
   // --- Lifecycle -------------------------------------------------------------------------------
   /**
-   * Mounts the chart into `container`. If already mounted, implicitly tears down the previous
-   * mount first (same posture as today).
-   *
-   * **Renderer auto-switch (spec-canvas-auto-switch.md).** The task count at THIS INSTANT
-   * (`getTasks().length`) is compared once against `CANVAS_AUTO_SWITCH_THRESHOLD` (2000, per
-   * architecture.md's "Canvas fallback automatically when task count > 2000"):
-   *  - At or below the threshold: identical to every prior release — `createSvgRenderer()` is
-   *    used, synchronously, and the container reflects the chart before `mount()` returns.
-   *  - Above the threshold: `mount()` still returns synchronously (this signature never
-   *    changes), but the Canvas renderer is loaded via an internal dynamic `import()` and the
-   *    container is EMPTY until that resolves — listen for `renderer:selected` to know when
-   *    the chart has actually become visible. If the Canvas path fails for any reason
-   *    (chunk-load failure, `CanvasDimensionExceededError`, or any other construction error),
-   *    this falls back to SVG automatically; `renderer:selected`'s `canvasFallbackReason`
-   *    reports which.
-   *
-   * **v1 limitation, by design (not an oversight):** the renderer choice is decided ONCE, at
-   * the moment `mount()` is called, from the task count at that instant. Adding/removing tasks
-   * while already mounted does NOT re-evaluate or swap renderers mid-session — a project that
-   * grows past the threshold after mounting keeps using SVG (slower, but correct) until the
-   * next explicit `unmount()`+`mount()` (or a `mount()` remount), which re-evaluates the
-   * threshold from the then-current count. Live mid-session renderer swapping is out of scope
-   * for v1 (see `.claude/work/plan-canvas-renderer.md` §3).
-   *
-   * Drag-move/drag-resize/drag-create-dependency and `exportSvg()`/`exportPng()` are SVG-only —
-   * a Canvas-rendered chart (auto-switched above the threshold) supports click-select and
-   * keyboard navigation, but not those (see `CanvasRendererHandle`'s own scope notes).
+   * Releases every resource this instance holds: tears down a live mount (if `withRender` was
+   * applied and `mount()` was called), clears all event listeners, and marks the instance dead —
+   * every subsequent mutating call throws. Idempotent.
    */
-  mount(container: HTMLElement): void;
-  unmount(): void;
   destroy(): void;
-  refresh(): void;
 }
 
 // --- Internal ------------------------------------------------------------------------------
-
-/** Task count above which `mount()` lazily loads and uses the Canvas renderer instead of SVG
- *  (architecture.md: "Canvas fallback automatically when task count > 2000"). Decided once, at
- *  the moment `mount()` is called — see `GanttInstance.mount()`'s own doc comment for the full
- *  contract. Strictly greater-than: exactly 2000 tasks still uses SVG. */
-export const CANVAS_AUTO_SWITCH_THRESHOLD = 2000;
-
-type RendererKind = 'svg' | 'canvas';
-
-interface MountState {
-  readonly renderer: RendererKind;
-  readonly rendererHandle: SvgRendererHandle | CanvasRendererHandle;
-  readonly dragMoveDispose: () => void; // no-op in Canvas mode
-  readonly dragResizeDispose: () => void; // no-op in Canvas mode
-  readonly dragCreateDepDispose: () => void; // no-op in Canvas mode
-  readonly clickSelectDispose: () => void;
-  readonly keyboardNavDispose: () => void;
-  readonly wheelZoomDispose: () => void; // no-op in Canvas mode
-  readonly getFocusedTaskId: () => TaskId | undefined;
-  readonly disposeEffect: () => void;
-}
-
-/** Fixed window used as the renderer's `timeRange` fallback whenever the task count is 0
- *  (item B) — otherwise `createSvgRenderer`'s internal `deriveTimeRange()` throws on an
- *  empty `tasks` array. Not exported — an internal `gantt.ts`-only concern; `render/` is
- *  not modified for this. */
-const EMPTY_STATE_WINDOW_DAYS = 14;
 
 /** Default `GanttConfig.historyLimit` — see its doc-comment. */
 const DEFAULT_HISTORY_LIMIT = 100;
@@ -578,6 +467,7 @@ class Gantt implements GanttInstance {
   readonly #taskStore: TaskStore;
   readonly #dependencyStore: DependencyStore;
   readonly #selectionStore = new SelectionStore();
+  readonly #collapseStore = new CollapseStore();
   readonly #calendar: WorkingCalendar;
   readonly #config: GanttConfig;
   readonly #listeners = new Map<GanttEventName, Set<(...args: never[]) => void>>();
@@ -586,7 +476,9 @@ class Gantt implements GanttInstance {
    *  every other mutation uses; read (untracked, `.peek()`) in `#rendererOptions()`, which
    *  runs once at `mount()` time outside any active effect. */
   readonly #viewMode: Signal<ViewMode>;
-  #mount: MountState | undefined; // undefined = headless
+  /** Written ONLY by `render/mixin.ts` (through `INTERNAL.setMountState`); `undefined` =
+   *  headless, which is ALWAYS the case when `withRender` was never applied. */
+  #mount: MountState | undefined;
   /** Monotonic race-guard token (spec-canvas-auto-switch.md §5). Incremented by every
    *  `mount()` call (both the sync-SVG and async-Canvas paths, for symmetry) AND by
    *  `unmount()`/`destroy()` — the async Canvas path re-checks this at every `await` boundary
@@ -608,6 +500,15 @@ class Gantt implements GanttInstance {
   /** Depth counter so `#beginTransaction`/`#endTransaction` calls compose safely if a
    *  transaction-wrapped method calls another transaction-wrapped method. */
   #transactionDepth = 0;
+
+  /** Internal "friend" surface handed to the opt-in mixins (`withIo`/`withRender`/
+   *  `withInteraction`) — see `gantt-internal.ts` and spec-facade-split.md §2.1. Present on
+   *  every instance from construction, deliberately absent from the public `GanttInstance`
+   *  type, so a consumer importing only `@fluxgantt/core` never sees it. */
+  readonly [INTERNAL]: GanttInternal;
+
+  /** Registered by `withInteraction`, consulted lazily by `withRender`'s `mount()`. */
+  #interactionHooks: InteractionHooks | undefined;
 
   constructor(config: GanttConfig) {
     this.#config = config;
@@ -632,6 +533,69 @@ class Gantt implements GanttInstance {
     // atomically; no partial state is observable (the whole `createGantt()` call throws, no
     // instance is ever returned).
     this.#loadDataset(config.tasks ?? [], config.dependencies ?? [], this.#taskStore, this.#dependencyStore, 'createGantt');
+
+    // `initialCollapsed` (spec-collapse-expand.md §3.3) — applied AFTER `#taskStore` is
+    // populated (needs `children()` to resolve), using the exact same "must currently have a
+    // child" filter as `collapseAll()`. Does NOT emit `collapse:changed` — construction-time
+    // state, not a runtime mutation.
+    if (config.initialCollapsed && config.initialCollapsed.length > 0) {
+      const withChildren = config.initialCollapsed.filter((id) => this.#taskStore.children(id).length > 0);
+      this.#collapseStore.replace(withChildren);
+    }
+
+    // Built last, so every field it closes over is already initialized. Arrow functions (not
+    // bound methods) so `#private` access stays lexical — no `this` rebinding hazard for a
+    // mixin that destructures off this object.
+    this[INTERNAL] = {
+      taskStore: this.#taskStore,
+      dependencyStore: this.#dependencyStore,
+      selectionStore: this.#selectionStore,
+      collapseStore: this.#collapseStore,
+      calendar: this.#calendar,
+      viewMode: this.#viewMode,
+      config: this.#config,
+      emitEvent: (event, ...args) => {
+        this.#emit(event, ...args);
+      },
+      assertAlive: (method) => this.#assertAlive(method),
+      requireTask: (id, method) => this.#requireTask(id, method),
+      getMountState: () => this.#mount,
+      setMountState: (state) => {
+        this.#mount = state;
+      },
+      bumpMountGeneration: () => ++this.#mountGeneration,
+      getMountGeneration: () => this.#mountGeneration,
+      isDestroyed: () => this.#destroyed,
+      teardownMount: () => {
+        this.#teardownMount();
+      },
+      getInteractionHooks: () => this.#interactionHooks,
+      setInteractionHooks: (hooks) => {
+        this.#interactionHooks = hooks;
+      },
+      commitScheduleChange: (id, patch, cascade) => this.#commitScheduleChange(id, patch, cascade),
+      applyCascadeShift: (id, start, end) => {
+        this.#applyCascadeShift(id, start, end);
+      },
+      beginTransaction: () => this.#beginTransaction(),
+      endTransaction: () => this.#endTransaction(),
+      recordOp: (op) => this.#recordOp(op),
+      recordOps: (ops) => this.#recordOps(ops),
+      applySelection: (ids) => {
+        this.#applySelection(ids);
+      },
+      expandWithDescendants: (ids) => this.#expandWithDescendants(ids),
+      commitImport: (tasks, dependencies, format) => this.#commitImport(tasks, dependencies, format),
+      assertMountedSvg: (method) => this.#assertMountedSvg(method),
+      noteCriticalIds: (ids) => {
+        if (this.#sameCriticalIds(ids)) return false;
+        this.#lastCriticalIds = ids;
+        return true;
+      },
+      resetCriticalIds: () => {
+        this.#lastCriticalIds = undefined;
+      },
+    };
   }
 
   /**
@@ -877,6 +841,12 @@ class Gantt implements GanttInstance {
     // 5. Prune the selection of any removed id — correctness: getSelection() must never
     //    reference a task that no longer exists (spec-selection.md §6).
     this.#pruneSelectionOfMissingTasks();
+
+    // 6. Prune the collapse state of any removed id (spec-collapse-expand.md §0/§8) — scoped
+    //    to removeTask() only (not undo()/redo()): a stale collapsed-id left dangling there is
+    //    harmless since isCollapsed() re-checks children() live, but a hard prune here keeps
+    //    CollapseStore.size() from growing unboundedly across add/remove churn.
+    this.#pruneCollapseOfMissingTasks(removedIds);
   }
 
   getTask(id: TaskId): Task | undefined {
@@ -949,6 +919,46 @@ class Gantt implements GanttInstance {
     return this.#selectionStore.all();
   }
 
+  // --- Hierarchy (collapse/expand) --------------------------------------------------------
+
+  toggleCollapse(id: TaskId): void {
+    this.#assertAlive('toggleCollapse');
+    const task = this.#taskStore.get(id);
+    if (!task || this.#taskStore.children(id).length === 0) return; // no-op: unknown id or a leaf
+    const current = new Set(this.#collapseStore.all());
+    if (current.has(id)) current.delete(id);
+    else current.add(id);
+    if (this.#collapseStore.replace([...current])) {
+      this.#emit('collapse:changed', this.#collapseStore.all());
+    }
+  }
+
+  isCollapsed(id: TaskId): boolean {
+    // Non-throwing after `destroy()` (returns `false`), matching `getSelection()`/`canUndo()`/
+    // `canRedo()` — a read-only query has nothing to corrupt, and a host app tearing down a
+    // chart should not have to guard every such read.
+    if (this.#destroyed) return false;
+    return this.#collapseStore.has(id) && this.#taskStore.children(id).length > 0;
+  }
+
+  collapseAll(): void {
+    this.#assertAlive('collapseAll');
+    const withChildren = this.#taskStore
+      .all()
+      .filter((t) => this.#taskStore.children(t.id).length > 0)
+      .map((t) => t.id);
+    if (this.#collapseStore.replace(withChildren)) {
+      this.#emit('collapse:changed', this.#collapseStore.all());
+    }
+  }
+
+  expandAll(): void {
+    this.#assertAlive('expandAll');
+    if (this.#collapseStore.replace([])) {
+      this.#emit('collapse:changed', this.#collapseStore.all());
+    }
+  }
+
   // --- History (undo/redo) ---------------------------------------------------------------
 
   undo(): boolean {
@@ -996,44 +1006,21 @@ class Gantt implements GanttInstance {
     }
     if (mode === this.#viewMode.peek()) return; // no-op: no event, no render, no scroll math
 
-    if (!this.#mount) {
-      // Headless / pre-mount: state only — the next mount() picks it up via
-      // #rendererOptions() reading #viewMode.peek().
+    // Mutating `#viewMode` synchronously re-runs the render effect (signals.ts's push model
+    // runs a subscribed EffectImpl's callback synchronously, not on a microtask), which repaints
+    // at the new view mode. Single write → no batch() needed (batch() exists to coalesce
+    // MULTIPLE store bumps into one flush; zoomTo() only ever performs ONE bump per call).
+    const applyViewMode = (): void => {
       this.#viewMode.value = mode;
-      this.#emit('viewport:changed', { viewMode: mode });
-      return;
-    }
+    };
 
-    const handle = this.#mount.rendererHandle;
-    const container = handle.container;
-
-    // 1. Capture the date currently at the viewport's CENTER, in the OLD time scale.
-    //    `container.scrollLeft`/`clientWidth` are measured in the renderer's PAINTED
-    //    coordinate space (which includes the LABEL_COLUMN_WIDTH offset), while
-    //    `TimeScale.dateToX`/`xToDate` operate in "content-only" space (x=0 = range.start,
-    //    no label-column offset) — the offset must be subtracted before `xToDate()` and
-    //    re-added after `dateToX()` (see render/svg-renderer.ts's LABEL_COLUMN_WIDTH doc).
-    const beforeScale = handle.getTimeScale();
-    const anchorContentX = container.scrollLeft + container.clientWidth / 2 - LABEL_COLUMN_WIDTH;
-    // No clamping — xToDate extrapolates linearly; fine even if anchorContentX is negative
-    // (e.g. all-zero DOM geometry in an unstubbed jsdom test).
-    const anchorDate = beforeScale.xToDate(anchorContentX);
-
-    // 2. Mutate — this signal write synchronously re-runs #renderNow's effect (signals.ts's
-    //    push model runs a subscribed EffectImpl's callback synchronously, not on a
-    //    microtask), which calls handle.setOptions({viewMode: mode, ...}) → one full
-    //    repaint, already reflecting the new viewMode by the time this line returns. Single
-    //    write → no batch() needed (batch() exists to coalesce MULTIPLE store bumps into one
-    //    flush; zoomTo() only ever performs ONE bump per call).
-    this.#viewMode.value = mode;
-
-    // 3. Restore, in the NEW time scale (reflects the just-completed repaint), so the same
-    //    date is centered again.
-    const afterScale = handle.getTimeScale();
-    const newAnchorContentX = afterScale.dateToX(anchorDate);
-    // Browser self-clamps scrollLeft to [0, scrollWidth - clientWidth] — no manual clamp
-    // needed.
-    container.scrollLeft = newAnchorContentX + LABEL_COLUMN_WIDTH - container.clientWidth / 2;
+    // Headless / pre-mount — ALWAYS the case when `withRender` was never applied: state only,
+    // no repaint and no scroll anchoring to do. The next mount() picks the new mode up when the
+    // render mixin builds its renderer options. Once mounted, the mount state supplies the
+    // scroll-anchor wrapper (which needs the renderer's time scale — see `MountState`), so the
+    // centered date is preserved across the zoom.
+    if (this.#mount === undefined) applyViewMode();
+    else this.#mount.withScrollAnchor(applyViewMode);
 
     this.#emit('viewport:changed', { viewMode: mode });
   }
@@ -1073,44 +1060,6 @@ class Gantt implements GanttInstance {
     return result;
   }
 
-  // --- IO (read-only export) --------------------------------------------------------------
-
-  exportJson(options?: ExportJsonOptions): ExportBundle {
-    // No #assertAlive here — deliberately mirrors getTasks()/getDependencies()'s own
-    // post-destroy() posture (returns an empty-but-valid result rather than throwing), since
-    // this is a thin read-only delegation over exactly those two getters (spec §1.2).
-    return exportJsonFn(this.getTasks(), this.getDependencies(), {
-      timezone: this.#calendar.timezone,
-      ...options,
-    });
-  }
-
-  exportCsv(options?: ExportCsvOptions): string {
-    return exportCsvFn(this.getTasks(), { timezone: this.#calendar.timezone, ...options });
-  }
-
-  importJson(data: string | object, options?: ImportJsonOptions): ImportSummary {
-    this.#assertAlive('importJson');
-    const { tasks, dependencies } = importJsonFn(data, options); // may throw IoValidationError
-    return this.#commitImport(tasks, dependencies, 'json');
-  }
-
-  importCsv(csv: string, options?: ImportCsvOptions): ImportSummary {
-    this.#assertAlive('importCsv');
-    const { tasks } = importCsvFn(csv, options); // may throw IoValidationError
-    return this.#commitImport(tasks, [], 'csv');
-  }
-
-  exportSvg(options?: ExportSvgOptions): string {
-    const handle = this.#assertMountedSvg('exportSvg');
-    return exportSvgFn(handle.svg, options);
-  }
-
-  async exportPng(options?: ExportPngOptions): Promise<Blob> {
-    const handle = this.#assertMountedSvg('exportPng');
-    return exportPngFn(handle.svg, options);
-  }
-
   // --- Events ----------------------------------------------------------------------------------
 
   on<E extends GanttEventName>(event: E, callback: (...args: GanttEventMap[E]) => void): UnsubscribeFn {
@@ -1130,238 +1079,22 @@ class Gantt implements GanttInstance {
   }
 
   // --- Lifecycle ---------------------------------------------------------------------------------
-
-  mount(container: HTMLElement): void {
-    if (this.#destroyed) return; // safe no-op
-    if (this.#mount) this.#teardownMount(); // implicit remount if already mounted (item A)
-
-    // Monotonic race-guard token (spec-canvas-auto-switch.md §5) — bumped on every mount()
-    // call (both the sync-SVG and async-Canvas paths, for symmetry), and also by unmount()/
-    // destroy() so those invalidate any in-flight Canvas attempt too.
-    const generation = ++this.#mountGeneration;
-    // Read ONCE, at this instant — the auto-switch decision is made once, at mount() time
-    // only (spec §2); adding/removing tasks later does not re-evaluate it (see this method's
-    // own JSDoc on `GanttInstance`).
-    const taskCount = this.#taskStore.size;
-
-    if (taskCount <= CANVAS_AUTO_SWITCH_THRESHOLD) {
-      this.#mountSvg(container, generation, taskCount); // fully synchronous — today's exact behavior
-      return; // mount() returns after the full paint, as always
-    }
-
-    // Above the threshold: fire-and-forget async path (Option B, spec §0) — mount() itself
-    // still returns synchronously (signature unchanged); the container stays empty until
-    // `#mountCanvasAsync` resolves (or falls back to SVG). Not awaited — `void` documents
-    // that this is intentional, not an oversight.
-    void this.#mountCanvasAsync(container, generation, taskCount);
-  }
-
-  /**
-   * Loads the Canvas renderer via a real dynamic `import()` (keeps Canvas code out of the
-   * default bundle — spec-canvas-auto-switch.md §3) and mounts it. On ANY failure along the
-   * way — the chunk failing to load, `CanvasDimensionExceededError`, or any other
-   * construction error — falls back to `#mountSvg()` rather than letting the failure
-   * propagate; a `console.warn` reports which. Re-checks the race-guard `generation` at every
-   * `await` boundary and abandons silently (no DOM touch, no `#mount` assignment, no
-   * `renderer:selected`) if a later `mount()`/`unmount()`/`destroy()` call already superseded
-   * this attempt (spec §5).
-   */
-  async #mountCanvasAsync(container: HTMLElement, generation: number, taskCount: number): Promise<void> {
-    let canvasModule: typeof CanvasRendererModule;
-    try {
-      canvasModule = await import('./render/canvas-renderer.js');
-    } catch (importErr) {
-      if (generation !== this.#mountGeneration || this.#destroyed) return; // superseded — abandon silently
-      console.warn(
-        '@fluxgantt/core: Canvas renderer failed to load — falling back to the SVG renderer.',
-        importErr,
-      );
-      this.#mountSvg(container, generation, taskCount, 'load-failed');
-      return;
-    }
-
-    if (generation !== this.#mountGeneration || this.#destroyed) return; // superseded while awaiting the import
-
-    let handle: CanvasRendererHandle;
-    try {
-      handle = canvasModule.createCanvasRenderer(container, this.#renderInput(), this.#canvasRendererOptions());
-    } catch (constructErr) {
-      if (generation !== this.#mountGeneration || this.#destroyed) return; // superseded — abandon silently
-      const reason: 'dimension-exceeded' | 'construction-failed' =
-        constructErr instanceof canvasModule.CanvasDimensionExceededError
-          ? 'dimension-exceeded'
-          : 'construction-failed';
-      console.warn(
-        `@fluxgantt/core: Canvas renderer initialization failed (${reason}) — falling back to the SVG renderer.`,
-        constructErr,
-      );
-      this.#mountSvg(container, generation, taskCount, reason);
-      return;
-    }
-
-    // Not re-checked a second time here: `createCanvasRenderer()` above is synchronous (no
-    // `await` between the check above and this call), and JS is single-threaded, so no new
-    // race window can have opened (spec §5's own reasoning).
-    this.#finishMount('canvas', handle, generation, taskCount);
-  }
-
-  /** Synchronous SVG mount — today's exact, unchanged behavior, reachable both directly from
-   *  `mount()` (sub-threshold path) and as `#mountCanvasAsync`'s fallback (any Canvas-path
-   *  failure, `fallbackReason` set accordingly). */
-  #mountSvg(
-    container: HTMLElement,
-    generation: number,
-    taskCount: number,
-    fallbackReason?: 'dimension-exceeded' | 'load-failed' | 'construction-failed',
-  ): void {
-    if (generation !== this.#mountGeneration || this.#destroyed) return; // defensive, cheap even on the sync path
-    const handle = createSvgRenderer(container, this.#renderInput(), this.#rendererOptions());
-    this.#finishMount('svg', handle, generation, taskCount, fallbackReason);
-  }
-
-  /**
-   * Shared tail of every successful mount path (SVG direct, Canvas, or SVG-as-fallback):
-   * wires the applicable interaction modules, starts the reactive render effect, assigns
-   * `#mount`, and emits `renderer:selected`. Click-select + keyboard-nav are wired
-   * identically for both renderer kinds (both already work against the
-   * `InteractiveRendererHandle`-typed structural contract, Ticket 2) — drag-move/drag-resize/
-   * drag-create-dep/wheel-zoom stay SVG-only (all four are typed strictly against
-   * `SvgRendererHandle`, confirmed by grep; their disposers are no-ops in Canvas mode).
-   */
-  #finishMount(
-    renderer: RendererKind,
-    handle: SvgRendererHandle | CanvasRendererHandle,
-    generation: number,
-    taskCount: number,
-    fallbackReason?: 'dimension-exceeded' | 'load-failed' | 'construction-failed',
-  ): void {
-    // Selection is NOT gated by readOnly (confirmed): readOnly disables drag-move/drag-resize/
-    // drag-create-dep, not click-select (spec-selection.md §5.5).
-    const clickSelectDispose = enableClickSelect(handle, () => this.#taskStore.all(), {
-      onSelect: (taskId) => this.#commitSelect(taskId),
-      onToggle: (taskId) => this.#commitToggleSelect(taskId),
-      onRangeSelect: (ids) => this.#commitRangeSelect(ids),
-      onClear: () => this.#commitClearSelection(),
-      density: this.#config.density ?? 'default',
-    });
-    // Registered UNCONDITIONALLY (spec-keyboard-nav.md §6.2), same group as
-    // enableClickSelect above, NOT gated by readOnly — Arrow/Space/Shift+Arrow/Tab-entry,
-    // Ctrl/Cmd+Plus/Minus (zoom), are all non-mutating and must stay active even in a
-    // readOnly chart; only the Delete/Backspace action and the Ctrl/Cmd+Z / Ctrl/Cmd+Shift+Z
-    // undo/redo keybindings are themselves gated (via `isReadOnly` below AND, for Delete,
-    // defense-in-depth inside #commitDeleteSelected — undo()/redo() and zoomIn()/zoomOut()
-    // need no equivalent second gate; see spec-undo-redo-keybinding.md §4 and
-    // spec-zoom-keybinding.md §4 respectively).
-    const keyboardNav = enableKeyboardNav(handle, {
-      onSelect: (id) => this.#commitSelect(id),
-      onToggle: (id) => this.#commitToggleSelect(id),
-      onRangeSelect: (anchorId, focusId) => this.#commitKeyboardRangeSelect(anchorId, focusId),
-      onDeleteSelected: () => this.#commitDeleteSelected(),
-      onUndo: () => this.undo(),
-      onRedo: () => this.redo(),
-      // Re-selects the new copies (spec-duplicate-keybinding.md §2) — `duplicateTask()` itself
-      // leaves selection on the ORIGINAL task(s) untouched (its own documented contract,
-      // spec-duplicate-task.md §3.3), so the keyboard gesture opts into the interaction-
-      // appropriate behavior here rather than changing the facade method's own contract.
-      onDuplicateSelected: () => {
-        const copies = this.duplicateTask();
-        if (copies.length > 0) this.select(copies.map((c) => c.id));
-      },
-      onZoomIn: () => this.zoomIn(),
-      onZoomOut: () => this.zoomOut(),
-      getTasks: () => this.#taskStore.all(),
-      density: this.#config.density ?? 'default',
-      isReadOnly: () => this.#config.readOnly === true,
-      getSelection: () => this.#selectionStore.all(),
-    });
-
-    let dragMoveDispose: () => void = () => {};
-    let dragResizeDispose: () => void = () => {};
-    let dragCreateDepDispose: () => void = () => {};
-    let wheelZoomDispose: () => void = () => {};
-
-    if (renderer === 'svg') {
-      // Cast, not a narrow: `renderer`/`handle` are two separate parameters, so TypeScript
-      // cannot correlate a check on one to narrow the other — this invariant (renderer ===
-      // 'svg' implies handle was produced by createSvgRenderer()) is guaranteed by
-      // construction (the only two call sites are #mountSvg, always with an SVG handle) and
-      // documented here, matching `#assertMountedSvg`'s own existing cast posture.
-      const svgHandle = handle as SvgRendererHandle;
-      if (!this.#config.readOnly) {
-        // Registration order is irrelevant to priority (pointer-drag.ts uses an explicit
-        // numeric priority, not call order) — all three wire through the SAME coordinator on
-        // `svgHandle`, so a handle claim always wins over an edge-zone claim, which always
-        // wins over a whole-bar claim.
-        dragResizeDispose = enableDragResize(svgHandle, () => this.#taskStore.all(), {
-          onTaskResized: (taskId, newEnd) => this.#commitResize(taskId, newEnd),
-        });
-        dragMoveDispose = enableDragMove(svgHandle, () => this.#taskStore.all(), {
-          onTaskMoved: (taskId, newStart, newEnd) => this.#commitDrag(taskId, newStart, newEnd),
-        });
-        dragCreateDepDispose = enableDragCreateDep(svgHandle, () => this.#taskStore.all(), {
-          onDependencyCreated: (fromTaskId, toTaskId) => this.#commitCreateDep(fromTaskId, toTaskId),
-        });
-      }
-      // Registered UNCONDITIONALLY, same posture as enableKeyboardNav's zoom case arms —
-      // Ctrl+wheel mutates no store state (zoomIn()/zoomOut() touch only the viewport signal
-      // +, when mounted, container.scrollLeft), so readOnly has nothing to protect against
-      // here. See spec-wheel-zoom.md §4.
-      wheelZoomDispose = enableWheelZoom(svgHandle, {
-        onZoomIn: () => this.zoomIn(),
-        onZoomOut: () => this.zoomOut(),
-      });
-    }
-    // Canvas mode: drag-move/drag-resize/drag-create-dep/wheel-zoom stay SVG-only (Ticket 2's
-    // scope boundary) — their disposers stay the no-op default above.
-
-    // `keyboardNav.getFocusedTaskId` is captured directly from this closure (NOT read via
-    // `this.#mount.getFocusedTaskId`) because `effect()` runs its callback synchronously,
-    // immediately, on this very call — BEFORE `this.#mount` is assigned below. Reading
-    // through `this.#mount` here would throw/crash on this first synchronous run.
-    const disposeEffect = effect(() => this.#renderNow(handle, renderer, keyboardNav.getFocusedTaskId));
-
-    this.#mount = {
-      renderer,
-      rendererHandle: handle,
-      dragMoveDispose,
-      dragResizeDispose,
-      dragCreateDepDispose,
-      clickSelectDispose,
-      keyboardNavDispose: keyboardNav.dispose,
-      wheelZoomDispose,
-      getFocusedTaskId: keyboardNav.getFocusedTaskId,
-      disposeEffect,
-    };
-
-    this.#emit('renderer:selected', {
-      renderer,
-      taskCount,
-      ...(fallbackReason ? { canvasFallbackReason: fallbackReason } : {}),
-    });
-  }
-
-  unmount(): void {
-    if (this.#destroyed) return;
-    // Bumped BEFORE the `!this.#mount` no-op check below — an in-flight async Canvas attempt
-    // (mount() called with taskCount > threshold) has no `#mount` assigned yet, but must still
-    // be invalidated here (spec §5).
-    this.#mountGeneration++;
-    if (!this.#mount) return; // no-op if never mounted / already unmounted
-    this.#teardownMount();
-  }
+  //
+  // `mount()`/`unmount()`/`refresh()` are NOT here — they live on the opt-in `withRender` mixin
+  // (`@fluxgantt/core/render`, spec-facade-split.md §3.3), so a headless consumer is never billed
+  // for the renderer's bytes. `destroy()` stays on the base because an instance must be
+  // releasable whether or not a render layer was ever attached; it tears down a live mount
+  // through `#teardownMount()`, which is renderer-agnostic (it only calls disposers the render
+  // mixin stored).
 
   destroy(): void {
     if (this.#destroyed) return; // idempotent
     this.#mountGeneration++; // invalidate any in-flight async Canvas attempt, same as unmount()
-    if (this.#mount) this.#teardownMount();
+    this.#teardownMount();
     this.#listeners.clear();
     this.#destroyed = true;
   }
 
-  refresh(): void {
-    if (this.#destroyed || !this.#mount) return; // nothing to refresh headless or post-destroy
-    this.#renderNow(this.#mount.rendererHandle, this.#mount.renderer, this.#mount.getFocusedTaskId);
-  }
 
   // --- Private: mutation → split-event pipeline (Q3 + Q6) ---------------------------------
 
@@ -1570,6 +1303,20 @@ class Gantt implements GanttInstance {
     if (pruned.length !== current.length) this.#applySelection(pruned);
   }
 
+  /** Collapse-state hygiene (spec-collapse-expand.md §0/§8): called by `removeTask()` with the
+   *  full set of ids that just disappeared (target + cascaded descendants) so `CollapseStore`
+   *  doesn't accumulate dangling ids across add/remove churn. Deliberately scoped to
+   *  `removeTask()` only, NOT `undo()`/`redo()` — unlike selection, a stale collapsed-id is
+   *  harmless (`isCollapsed()` re-checks `children()` live) so there is no correctness
+   *  requirement to prune it on every store mutation path. */
+  #pruneCollapseOfMissingTasks(removedIds: readonly TaskId[]): void {
+    let changed = false;
+    for (const id of removedIds) {
+      if (this.#collapseStore.delete(id)) changed = true;
+    }
+    if (changed) this.#emit('collapse:changed', this.#collapseStore.all());
+  }
+
   #collectWithDescendants(id: TaskId): TaskId[] {
     const out: TaskId[] = [];
     const visit = (tid: TaskId): void => {
@@ -1615,143 +1362,12 @@ class Gantt implements GanttInstance {
     }
   }
 
-  // --- Private: mount/unmount/render -----------------------------------------------------
-
-  #commitDrag(taskId: TaskId, newStart: Temporal.ZonedDateTime, newEnd: Temporal.ZonedDateTime): void {
-    if (!this.#taskStore.has(taskId)) return; // task removed mid-drag (race) — nothing to commit
-    // Reuses the SAME #commitScheduleChange pipeline as moveTask/updateTask — guarantees the
-    // exact same task:moved(task, prevStart) contract, not a separate ad hoc emit, AND groups
-    // the direct move + any cascade shifts into ONE history entry. start+end always shift by
-    // the identical instant delta (drag-move's own contract), so the instant span (end −
-    // start) is preserved → #diffAndEmit never fires task:resized from a drag.
-    this.#commitScheduleChange(taskId, { start: newStart, end: newEnd }, true);
-  }
-
-  #commitResize(taskId: TaskId, newEnd: Temporal.ZonedDateTime): void {
-    const task = this.#taskStore.get(taskId);
-    if (!task) return; // task removed mid-resize (race) — nothing to commit, mirrors #commitDrag
-    const tz = this.#calendar.timezone;
-    const startNs = normalizeDate(task.start, tz).epochNanoseconds;
-    const endNs = normalizeDate(task.end, tz).epochNanoseconds;
-    const newEndNs = newEnd.epochNanoseconds;
-    // Guard the working-hours round-trip against a mid-gesture race and a no-op commit before
-    // reaching resizeTask (review A4/C3):
-    //  - newEnd at/before the task's CURRENT start (its start advanced past the gesture's
-    //    captured origin via a host/cascade mutation while the pointer was held) →
-    //    differenceInWorkingHours would be negative and resizeTask would THROW, and onCommit
-    //    runs inside the window `pointerup` handler with no catch. Skip.
-    //  - newEnd equal to the current end (day-delta snapped to 0) → a true no-op; recomputing
-    //    the duration would overwrite an explicit task.duration and emit a phantom
-    //    task:resized for a gesture that changed nothing. Skip.
-    if (newEndNs <= startNs || newEndNs === endNs) return;
-    const newDuration = differenceInWorkingHours(task.start, newEnd, this.#calendar);
-    // Reuses the EXISTING resizeTask() pipeline in full: validates newDuration >= 0/finite,
-    // writes end+duration via #applyPatch (→ #diffAndEmit, which correctly fires
-    // task:resized here because a real resize changes the instant span — unlike drag-move's
-    // #commitDrag, no special same-span handling is needed), and calls #maybeCascade. No new
-    // facade method (resolution #7).
-    this.resizeTask(taskId, newDuration);
-  }
-
-  /**
-   * Commit point for a drag-created dependency (spec-drag-create-dependency.md §2, decision
-   * 2 — silent revert). Reuses the PUBLIC `linkTasks()` in full (same validation, same
-   * `dependency:added` event on success) — no bypass of `DependencyStore.link`'s existing
-   * self-link/duplicate-pair/cycle checks.
-   *
-   * MUST catch: `pointer-drag.ts`'s `onPointerUp` calls `recognizer.onCommit(...)` with NO
-   * surrounding try/catch (unlike `#emit`, which wraps each listener). A `linkTasks()` throw
-   * reaching this call site uncaught would escape into the `window` `pointerup` listener,
-   * i.e. out of the whole gesture pipeline — visibly breaking the page. This is the ONE
-   * place in the whole feature that MUST NOT let `DependencyStore.link`'s throw propagate.
-   */
-  #commitCreateDep(fromTaskId: TaskId, toTaskId: TaskId): void {
-    if (!this.#taskStore.has(fromTaskId) || !this.#taskStore.has(toTaskId)) return; // race: a task removed mid-drag
-    try {
-      this.linkTasks(fromTaskId, toTaskId, 'FS'); // emits dependency:added on success
-    } catch (err) {
-      // Swallow ONLY the expected validation rejections — self-link (defense-in-depth; the
-      // recognizer already filters this out) / duplicate-pair / cycle, all raised as
-      // DependencyLinkError. Silent revert (decision 2): no event, no rethrow, no new
-      // dependency:rejected event in v1. A NON-validation throw (a real bug, e.g. a
-      // #assertAlive race or a future store regression) is rethrown rather than hidden — a
-      // bare `catch {}` here would mask genuine defects as ordinary rejected drops.
-      if (err instanceof DependencyLinkError) return;
-      throw err;
-    }
-  }
-
-  #commitSelect(taskId: TaskId): void {
-    this.#applySelection(this.#expandWithDescendants([taskId]));
-  }
-
-  #commitToggleSelect(taskId: TaskId): void {
-    if (!this.#taskStore.has(taskId)) return; // race: task removed mid-click
-    const group = new Set(this.#expandWithDescendants([taskId]));
-    const current = new Set(this.#selectionStore.all());
-    const isSelected = current.has(taskId); // the group's own representative id
-    if (isSelected) for (const g of group) current.delete(g);
-    else for (const g of group) current.add(g);
-    this.#applySelection([...current]);
-  }
-
-  #commitRangeSelect(rawIds: readonly TaskId[]): void {
-    this.#applySelection(this.#expandWithDescendants(rawIds));
-  }
-
-  /**
-   * Shift+Arrow's range-select commit point (spec-keyboard-nav.md §4.4/§6.2). NOTE — a
-   * deviation from the spec's §6.2 prose, flagged explicitly: the spec claims
-   * `#commitRangeSelect` "already exists ... and takes an (anchorId, focusId) pair, walking
-   * layoutRows() between them", but the actual, pre-existing `#commitRangeSelect` (used by
-   * Shift+click via `selection.ts`) takes a raw ID ARRAY already computed by the caller
-   * (`selection.ts`'s own `collectRowRange` walks the rendered DOM) — it does not compute a
-   * range itself. Rather than change that method's signature (which would also change
-   * Shift+click's contract), this small adapter computes the inclusive row range via
-   * `layoutRows()` (the same source of truth `enableKeyboardNav` itself used to resolve
-   * `anchorId`/`focusId`) and delegates to the existing `#commitRangeSelect(ids)`, giving
-   * Shift+Arrow the exact same semantics as Shift+click (resolution #1) without touching
-   * `selection.ts` or its own commit path.
-   */
-  #commitKeyboardRangeSelect(anchorId: TaskId, focusId: TaskId): void {
-    const rows = layoutRows(this.#taskStore.all(), this.#config.density ?? 'default');
-    const anchorIndex = rows.findIndex((r) => r.task.id === anchorId);
-    const focusIndex = rows.findIndex((r) => r.task.id === focusId);
-    if (anchorIndex === -1 || focusIndex === -1) return; // race: id no longer resolves
-    const lo = Math.min(anchorIndex, focusIndex);
-    const hi = Math.max(anchorIndex, focusIndex);
-    const ids = rows.slice(lo, hi + 1).map((r) => r.task.id);
-    this.#commitRangeSelect(ids);
-  }
-
-  /**
-   * Delete/Backspace commit point (spec-keyboard-nav.md §6.3). Reuses the existing public
-   * `removeTask(id)` once per currently selected id (resolution #5: no confirmation dialog,
-   * no batch-remove primitive needed — `removeTask` already handles hierarchy-cascade
-   * removal, dependency cleanup, and selection-pruning internally per id). `ids` is
-   * snapshotted via `.all()` BEFORE the loop starts, so the shrinking selection (pruned by
-   * `removeTask` itself as it goes) never affects which ids this loop attempts — and
-   * `removeTask` already no-ops gracefully (`if (!this.#taskStore.has(id)) return;`,
-   * confirmed by inspection) on an id already removed by an earlier iteration's cascade, so
-   * no extra guard is needed here (the spec flags this as a "check during implementation" —
-   * confirmed NOT a pre-existing bug). Wrapped in a transaction (§5.3 call site 2) so N
-   * selected tasks' removals collapse into ONE history entry for the whole Delete keypress.
-   */
-  #commitDeleteSelected(): void {
-    if (this.#config.readOnly) return; // defense in depth — enableKeyboardNav's own isReadOnly() gate already prevents this call
-    const ids = this.#selectionStore.all();
-    if (ids.length === 0) return;
-    this.#beginTransaction();
-    try {
-      for (const id of ids) this.removeTask(id);
-    } finally {
-      this.#endTransaction();
-    }
-  }
-
-  #commitClearSelection(): void {
-    this.#applySelection([]);
-  }
+  // --- Private: selection ------------------------------------------------------------------
+  //
+  // The gesture commit points (`commitDrag`/`commitResize`/`commitCreateDep`/`commitSelect`/...)
+  // are NOT here — they moved to the opt-in `withInteraction` mixin
+  // (`@fluxgantt/core/interaction`, spec-facade-split.md §3.3), which reaches the primitives
+  // below through `GanttInternal`.
 
   #applySelection(ids: readonly TaskId[]): void {
     const changed = this.#selectionStore.replace(ids);
@@ -1786,197 +1402,24 @@ class Gantt implements GanttInstance {
     }
   }
 
+  /**
+   * Renderer-agnostic mount teardown. Stays on the base class (rather than in `render/mixin.ts`)
+   * so `destroy()` can release a live mount without the base bundle depending on the render
+   * layer — every call here goes through a disposer the render mixin itself stored.
+   *
+   * Order matters (the shared pointer-drag coordinator wraps `handle.destroy`):
+   *  1. Stop the reactive effect FIRST — no render call may start once teardown begins.
+   *  2. Dispose the interaction modules (a no-op unless `withInteraction` was applied) — see
+   *     `interaction/mixin.ts` for the ordering constraints among them.
+   *  3. Remove the rendered DOM.
+   */
   #teardownMount(): void {
-    const m = this.#mount!;
-    // Order matters (the shared pointer-drag coordinator wraps handle.destroy):
-    // 1. Stop the reactive effect FIRST — no render call may start once teardown begins.
+    const m = this.#mount;
+    if (!m) return; // never mounted / already unmounted / headless
     m.disposeEffect();
-    // 2. Unregister ALL THREE pointer-drag-coordinated recognizers via their returned
-    //    disposers — order among them doesn't matter; the coordinator only detaches its
-    //    pointerdown listener + unwraps handle.destroy once ALL have unregistered
-    //    (refcounted, see pointer-drag.ts). click-select never touched that coordinator (it
-    //    owns its own independent listeners), so it has no shared refcount to worry about —
-    //    still disposed here, order-independent among the four.
-    m.dragResizeDispose();
-    m.dragMoveDispose();
-    m.dragCreateDepDispose();
-    m.clickSelectDispose();
-    m.keyboardNavDispose();
-    m.wheelZoomDispose();
-    // 3. Remove the SVG.
+    m.disposeInteractions();
     m.rendererHandle.destroy();
     this.#mount = undefined;
-  }
-
-  #renderNow(
-    handle: SvgRendererHandle | CanvasRendererHandle,
-    renderer: RendererKind,
-    getFocusedTaskId: () => TaskId | undefined,
-  ): void {
-    // Track both stores' revisions — read .value unconditionally so this effect re-runs on
-    // ANY task or dependency mutation (coarse, per Q6 — no per-field granularity here). Also
-    // tracks the selection store's revision so a `select`/`selectAll`/`deselect` call (or a
-    // click-select commit) triggers a repaint (`.fg-task--selected` class).
-    void this.#taskStore.revision.value;
-    void this.#dependencyStore.revision.value;
-    void this.#selectionStore.revision.value;
-    const viewMode = this.#viewMode.value; // tracked — re-runs this effect on zoomTo()
-
-    const tasks = this.#taskStore.all();
-    const dependencies = this.#dependencyStore.all();
-    const selectedTaskIds = this.#selectionStore.all();
-
-    let criticalPath: CriticalPathResult | undefined;
-    if (tasks.length === 0) {
-      // No tasks → no critical path; reset so the next non-empty compute always re-emits.
-      this.#lastCriticalIds = undefined;
-    }
-    if (tasks.length > 0) {
-      try {
-        criticalPath = computeCriticalPathFn(tasks, dependencies, this.#calendar);
-        // Emit only when the critical set actually changed (not on every mutation / render).
-        if (!this.#sameCriticalIds(criticalPath.criticalTaskIds)) {
-          this.#lastCriticalIds = criticalPath.criticalTaskIds;
-          this.#emit('critical-path:computed', criticalPath.criticalTaskIds);
-        }
-      } catch (err) {
-        // Cyclic graph (possible if a caller used DependencyStore.link(..., {allowCycle:
-        // true}) directly, bypassing linkTasks) — the reactive render effect must NEVER
-        // throw. Swallow, render without a critical path, warn once per occurrence.
-        criticalPath = undefined;
-        console.warn(
-          '@fluxgantt/core: computeCriticalPath failed during reactive render — rendering without a critical path.',
-          err,
-        );
-      }
-    }
-
-    // `SvgRendererHandle.setOptions` merges shallowly over the previous options object, so
-    // once real tasks exist we must explicitly overwrite a previously-set empty-state
-    // `timeRange` back to "unset" (auto-derive) — a merge that simply omitted the key would
-    // leave the stale fallback range in place. `exactOptionalPropertyTypes` forbids writing
-    // `undefined` to an optional property that isn't typed `X | undefined` directly on a
-    // `Partial<SvgRendererOptions>`-typed literal, so this goes through `applyViewportOptions`,
-    // typed against render/'s own `Partial<SvgRendererOptions>` via a narrow, explicit
-    // helper type instead of fighting the literal-freshness check inline. That same helper
-    // also carries `viewMode` in the SAME `setOptions()` call (spec-zoom-runtime.md §8), so a
-    // `zoomTo()`-triggered repaint doesn't need a 3rd, independent `setOptions()` call.
-    //
-    // ORDER MATTERS (bugfix): `handle.update()` and `handle.setOptions()` (which
-    // `applyViewportOptions` calls) each trigger a full synchronous `render()` independently —
-    // one using the freshly-passed argument, the other still reading the renderer's OTHER,
-    // not-yet-updated internal field (`currentInput.tasks` vs `currentOptions.timeRange`).
-    // `render()` throws (`deriveTimeRange: tasks must not be empty`) iff BOTH `timeRange` is
-    // unset AND `tasks` is empty at the same instant — so the two calls below are ordered to
-    // never expose that combination, regardless of which state (empty <-> non-empty) the
-    // renderer is transitioning from:
-    //  - Going TO empty (`tasks.length === 0`): set the fallback `timeRange` FIRST — its
-    //    intermediate `render()` pass (still using the OLD, possibly non-empty task list) is
-    //    always safe once `timeRange` is set; the following `update({tasks: []})` pass then
-    //    also has a real `timeRange` already in place.
-    //  - Going TO non-empty (`tasks.length > 0`): push the new `tasks` FIRST — its
-    //    intermediate `render()` pass (still using the OLD `timeRange`, whatever it was) is
-    //    always safe once `tasks` is non-empty; the following `applyViewportOptions(..., undefined)`
-    //    pass then derives the range from the already-pushed, non-empty `tasks`.
-    // Reordering unconditionally (either direction, always) reintroduces the crash for the
-    // opposite transition — this must stay tasks.length-conditional.
-    const focusedTaskId = getFocusedTaskId();
-    if (tasks.length === 0) {
-      this.#applyViewportOptionsFor(handle, renderer, viewMode, this.#emptyStateTimeRange());
-      handle.update({ tasks, dependencies, calendar: this.#calendar, selectedTaskIds, focusedTaskId });
-    } else {
-      handle.update({
-        tasks,
-        dependencies,
-        calendar: this.#calendar,
-        selectedTaskIds,
-        focusedTaskId,
-        ...(criticalPath !== undefined ? { criticalPath } : {}),
-      });
-      this.#applyViewportOptionsFor(handle, renderer, viewMode, undefined);
-    }
-  }
-
-  /**
-   * Renderer-kind-aware dispatch for the `setOptions()` half of `#renderNow` (spec-canvas-
-   * auto-switch.md §6.1) — the ONE call in `#renderNow` that must branch explicitly rather than
-   * go through a unified union call: `SvgRendererOptions` carries `showLinkHandles` (a
-   * Canvas-irrelevant field, no drag-handle affordance exists in Canvas mode), while
-   * `CanvasRendererOptions` does not. `handle.update(...)` above needs no equivalent branch —
-   * `SvgRendererInput`/`CanvasRendererInput` are structurally identical.
-   */
-  #applyViewportOptionsFor(
-    handle: SvgRendererHandle | CanvasRendererHandle,
-    renderer: RendererKind,
-    viewMode: ViewMode,
-    timeRange: { start: Temporal.ZonedDateTime; end: Temporal.ZonedDateTime } | undefined,
-  ): void {
-    if (renderer === 'canvas') {
-      const clear: { viewMode: ViewMode; timeRange: { start: Temporal.ZonedDateTime; end: Temporal.ZonedDateTime } | undefined } = {
-        viewMode,
-        timeRange,
-      };
-      (handle as CanvasRendererHandle).setOptions(clear as unknown as Partial<CanvasRendererOptions>);
-      return;
-    }
-    applyViewportOptions(handle as SvgRendererHandle, viewMode, timeRange);
-  }
-
-  #emptyStateTimeRange(): { start: Temporal.ZonedDateTime; end: Temporal.ZonedDateTime } {
-    const now = getTemporal().Now.zonedDateTimeISO(this.#calendar.timezone);
-    return {
-      start: now.subtract({ days: EMPTY_STATE_WINDOW_DAYS }),
-      end: now.add({ days: EMPTY_STATE_WINDOW_DAYS }),
-    };
-  }
-
-  #renderInput(): SvgRendererInput {
-    return {
-      tasks: this.#taskStore.all(),
-      dependencies: this.#dependencyStore.all(),
-      calendar: this.#calendar,
-      selectedTaskIds: this.#selectionStore.all(),
-    };
-  }
-
-  #rendererOptions(): SvgRendererOptions {
-    // `exactOptionalPropertyTypes` — only include a key when the corresponding config
-    // value is actually set; an explicit `undefined` value on an optional property that
-    // isn't typed `X | undefined` is a compile error, not just redundant.
-    const opts: SvgRendererOptions = {
-      // `#viewMode.peek()` is ALWAYS a concrete ViewMode (never undefined), so the
-      // exactOptionalPropertyTypes conditional dance the other optional config fields need
-      // isn't needed for this one field. `.peek()`, not `.value` — this call site runs
-      // before the reactive effect exists (outside any effect()/computed() callback), so
-      // there is no active subscriber to register against regardless; `.peek()` makes that
-      // intent explicit.
-      viewMode: this.#viewMode.peek(),
-      ...(this.#config.density !== undefined ? { density: this.#config.density } : {}),
-      ...(this.#config.locale !== undefined ? { locale: this.#config.locale } : {}),
-      // A readOnly chart must not render the connector handles — they are an interactive
-      // affordance (hover-revealed, always-on for touch) whose recognizer is NOT wired when
-      // readOnly, so rendering them would be a misleading dead control.
-      showLinkHandles: !this.#config.readOnly,
-    };
-    return this.#taskStore.size === 0 ? { ...opts, timeRange: this.#emptyStateTimeRange() } : opts;
-  }
-
-  /** Canvas sibling of `#rendererOptions()` (spec-canvas-auto-switch.md §6.1) — same shape
-   *  minus `showLinkHandles` (Canvas mode has no connector-handle affordance at all, v1). The
-   *  `#taskStore.size === 0` branch can't actually co-occur with the Canvas mount path today
-   *  (Canvas is only ever chosen when `size > CANVAS_AUTO_SWITCH_THRESHOLD` at mount time) —
-   *  kept for shape-symmetry with `#rendererOptions()` and defensiveness; effectively dead in
-   *  practice, harmless. */
-  #canvasRendererOptions(): CanvasRendererOptions {
-    const opts: CanvasRendererOptions = {
-      viewMode: this.#viewMode.peek(),
-      ...(this.#config.density !== undefined ? { density: this.#config.density } : {}),
-      ...(this.#config.locale !== undefined ? { locale: this.#config.locale } : {}),
-      ...(this.#config.canvasViewportHeight !== undefined
-        ? { viewportHeight: this.#config.canvasViewportHeight }
-        : {}),
-    };
-    return this.#taskStore.size === 0 ? { ...opts, timeRange: this.#emptyStateTimeRange() } : opts;
   }
 
   // --- Private: guards ---------------------------------------------------------------------
@@ -2021,8 +1464,8 @@ class Gantt implements GanttInstance {
     if (this.#mount!.renderer !== 'svg') {
       throw new Error(
         `@fluxgantt/core: ${method} is not available while mounted in Canvas-rendering mode ` +
-          `(task count ${this.#taskStore.size} exceeds the ${CANVAS_AUTO_SWITCH_THRESHOLD}-task ` +
-          `auto-switch threshold). Canvas-mode export is not implemented yet.`,
+          `(task count ${this.#taskStore.size} exceeded the Canvas auto-switch threshold at ` +
+          `mount() time). Canvas-mode export is not implemented yet.`,
       );
     }
     return handle as SvgRendererHandle;
@@ -2031,34 +1474,4 @@ class Gantt implements GanttInstance {
 
 export function createGantt(config: GanttConfig): GanttInstance {
   return new Gantt(config);
-}
-
-/**
- * Sets `viewMode` and — or explicitly clears — `SvgRendererOptions.timeRange` in a SINGLE
- * `setOptions()` call (item B; extended per spec-zoom-runtime.md §8 to also carry
- * `viewMode`, so a `zoomTo()`-triggered repaint doesn't need a second, independent
- * `setOptions()` call alongside this one — `#renderNow` already makes exactly one
- * `handle.update(...)` + one `setOptions(...)` call per invocation regardless of whether
- * the trigger was a task/dependency/selection mutation or a view-mode change).
- * `setOptions` merges shallowly over the previous options object, so once real tasks exist
- * the facade must be able to overwrite a previously-set empty-state fallback range back to
- * "unset" (auto-derive); simply omitting the key from a `Partial<SvgRendererOptions>`
- * literal would leave the stale fallback in place. `render/svg-renderer.ts`'s
- * `SvgRendererOptions.timeRange` is optional but not typed `X | undefined`, so
- * `exactOptionalPropertyTypes` forbids writing `undefined` directly into a
- * `Partial<SvgRendererOptions>`-typed object literal — this helper isolates that one
- * narrow, deliberate cast instead of fighting the check inline in `#renderNow`. Not a
- * `render/` change (per item B's instruction) — purely a `gantt.ts` call-site concern.
- */
-function applyViewportOptions(
-  handle: SvgRendererHandle,
-  viewMode: ViewMode,
-  timeRange: { start: Temporal.ZonedDateTime; end: Temporal.ZonedDateTime } | undefined,
-): void {
-  if (timeRange) {
-    handle.setOptions({ viewMode, timeRange });
-    return;
-  }
-  const clear: { viewMode: ViewMode; timeRange: undefined } = { viewMode, timeRange: undefined };
-  handle.setOptions(clear as unknown as Partial<SvgRendererOptions>);
 }

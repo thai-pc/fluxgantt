@@ -198,6 +198,199 @@ describe('layoutRows', () => {
   });
 });
 
+// ---------------------------------------------------------------------------------------
+// layoutRows — collapse-awareness (spec-collapse-expand.md §5/§9.2)
+// ---------------------------------------------------------------------------------------
+describe('layoutRows — collapse-awareness', () => {
+  function hierarchy(): Task[] {
+    return [
+      task('root', '2026-01-05T09:00', '2026-01-05T17:00', { type: 'summary' }),
+      task('c1', '2026-01-05T09:00', '2026-01-05T17:00', { type: 'summary', parent: toTaskId('root') }),
+      task('c1a', '2026-01-05T09:00', '2026-01-05T17:00', { parent: toTaskId('c1') }),
+      task('c1b', '2026-01-05T09:00', '2026-01-05T17:00', { parent: toTaskId('c1') }),
+      task('c2', '2026-01-06T09:00', '2026-01-06T17:00', { parent: toTaskId('root') }),
+    ];
+  }
+
+  it('with no collapsedIds, every task is a visible row (baseline)', () => {
+    const rows = layoutRows(hierarchy(), 'default');
+    expect(rows.map((r) => r.task.id)).toEqual(['root', 'c1', 'c1a', 'c1b', 'c2']);
+    expect(rows.every((r) => !r.isCollapsed)).toBe(true);
+  });
+
+  it('collapsing a summary hides only its descendants, siblings stay visible', () => {
+    const rows = layoutRows(hierarchy(), 'default', new Set([toTaskId('c1')]));
+    expect(rows.map((r) => r.task.id)).toEqual(['root', 'c1', 'c2']);
+    const c1Row = rows.find((r) => r.task.id === 'c1')!;
+    expect(c1Row.hasChildren).toBe(true);
+    expect(c1Row.isCollapsed).toBe(true);
+    const rootRow = rows.find((r) => r.task.id === 'root')!;
+    expect(rootRow.hasChildren).toBe(true);
+    expect(rootRow.isCollapsed).toBe(false);
+  });
+
+  it('hasChildren === false and isCollapsed === false for a leaf task, even if force-listed in collapsedIds', () => {
+    const rows = layoutRows(hierarchy(), 'default', new Set([toTaskId('c1a')]));
+    const leaf = rows.find((r) => r.task.id === 'c1a')!;
+    expect(leaf.hasChildren).toBe(false);
+    expect(leaf.isCollapsed).toBe(false);
+  });
+
+  it('collapsing the root hides the entire subtree, only the root row remains', () => {
+    const rows = layoutRows(hierarchy(), 'default', new Set([toTaskId('root')]));
+    expect(rows.map((r) => r.task.id)).toEqual(['root']);
+  });
+
+  it('rowIndex stays contiguous 0..n-1 over the VISIBLE rows only', () => {
+    const rows = layoutRows(hierarchy(), 'default', new Set([toTaskId('c1')]));
+    expect(rows.map((r) => r.rowIndex)).toEqual([0, 1, 2]);
+  });
+
+  it('depth of an emitted row is unaffected by collapse elsewhere in the tree', () => {
+    const rows = layoutRows(hierarchy(), 'default', new Set([toTaskId('c1')]));
+    const c2Row = rows.find((r) => r.task.id === 'c2')!;
+    expect(c2Row.depth).toBe(1); // unchanged whether or not c1 (a sibling) is collapsed
+  });
+
+  it('CRITICAL: a valid, acyclic, collapsed hierarchy must NOT throw "cyclic parent chain" — ' +
+    'regression test against the naive "skip recursion" implementation (spec §5)', () => {
+    // A naive implementation that simply never recurses into a collapsed task's children would
+    // never `visit()` those hidden descendants at all, and a coverage check based on
+    // `rows.length !== tasks.length` (or any similarly naive "did every task produce a row"
+    // check) would then incorrectly conclude the tree is cyclic/dangling for this perfectly
+    // valid input, purely because fewer rows were emitted than there are tasks.
+    const tasks = hierarchy(); // 5 tasks, but only 3 rows visible when c1 is collapsed
+    expect(() => layoutRows(tasks, 'default', new Set([toTaskId('c1')]))).not.toThrow();
+    const rows = layoutRows(tasks, 'default', new Set([toTaskId('c1')]));
+    expect(rows.length).toBe(3);
+    expect(tasks.length).toBe(5);
+  });
+
+  it('a cycle entirely inside a collapsed subtree still throws — collapse must not hide it from detection', () => {
+    // `root` is a normal, real root with one real child `mid` (so root itself is collapsible);
+    // `a`/`b` form a genuine 2-node cycle that is unreachable from `root` at all (an orphaned
+    // cyclic component) — proving the fixed algorithm's full-tree coverage check still catches a
+    // cycle that isn't even nested under the collapsed task, let alone one that is.
+    const tasks = [
+      task('root', '2026-01-05T09:00', '2026-01-05T17:00', { type: 'summary' }),
+      task('mid', '2026-01-05T09:00', '2026-01-05T17:00', { parent: toTaskId('root') }),
+      task('a', '2026-01-05T09:00', '2026-01-05T17:00', { parent: toTaskId('b') }),
+      task('b', '2026-01-05T09:00', '2026-01-05T17:00', { parent: toTaskId('a') }),
+    ];
+    expect(() => layoutRows(tasks, 'default', new Set([toTaskId('root')]))).toThrow(/cyclic parent chain/);
+  });
+
+  it('MAX_HIERARCHY_DEPTH still throws for a chain deeper than the guard, even when the whole chain is collapsed', () => {
+    const deep: Task[] = [];
+    for (let i = 0; i <= MAX_HIERARCHY_DEPTH + 1; i++) {
+      deep.push(
+        task(`t${i}`, '2026-01-05T09:00', '2026-01-05T17:00', i === 0 ? {} : { parent: toTaskId(`t${i - 1}`) }),
+      );
+    }
+    expect(() => layoutRows(deep, 'default', new Set([toTaskId('t0')]))).toThrow(/exceeds max depth/);
+  });
+
+  it('a dangling-parent "root" with real children collapses identically to any other root', () => {
+    const tasks = [
+      task('ghost-root', '2026-01-05T09:00', '2026-01-05T17:00', { type: 'summary', parent: toTaskId('missing') }),
+      task('child', '2026-01-05T09:00', '2026-01-05T17:00', { parent: toTaskId('ghost-root') }),
+    ];
+    const rows = layoutRows(tasks, 'default', new Set([toTaskId('ghost-root')]));
+    expect(rows.map((r) => r.task.id)).toEqual(['ghost-root']);
+    expect(rows[0]!.depth).toBe(0);
+    expect(rows[0]!.hasChildren).toBe(true);
+    expect(rows[0]!.isCollapsed).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------------------
+// layoutRows — collapse invariants (property-based, spec §5.1/§9.2)
+// ---------------------------------------------------------------------------------------
+describe('layoutRows — collapse invariants (property-based)', () => {
+  // Generates a bounded-depth/fan-out forest of tasks, each keyed by its index in the array, with
+  // `parent` (if any) always referencing an EARLIER index — guarantees acyclicity by construction.
+  function forestArbitrary(): fc.Arbitrary<{ tasks: Task[]; collapsedIds: Set<ReturnType<typeof toTaskId>> }> {
+    return fc
+      .array(fc.integer({ min: -1, max: 40 }), { minLength: 1, maxLength: 40 })
+      .map((parentOffsets) => {
+        const tasks: Task[] = parentOffsets.map((offset, i) => {
+          // offset < 0, or offset with no valid earlier index → root (parent undefined).
+          const parentIndex = offset >= 0 && offset < i ? offset : undefined;
+          return task(
+            `n${i}`,
+            '2026-01-05T09:00',
+            '2026-01-05T17:00',
+            parentIndex === undefined ? {} : { parent: toTaskId(`n${parentIndex}`) },
+          );
+        });
+        return { tasks };
+      })
+      .chain(({ tasks }) =>
+        fc
+          .subarray(tasks.map((t) => t.id))
+          .map((collapsed) => ({ tasks, collapsedIds: new Set(collapsed) })),
+      );
+  }
+
+  function trueDepthOf(tasks: readonly Task[], id: Task['id']): number {
+    const byId = new Map(tasks.map((t) => [t.id, t]));
+    let depth = 0;
+    let current = byId.get(id);
+    while (current?.parent !== undefined && byId.has(current.parent)) {
+      depth++;
+      current = byId.get(current.parent);
+    }
+    return depth;
+  }
+
+  /** Sum of `subtreeSize(t) - 1` over every MAXIMAL collapsed ancestor (a collapsed task that
+   *  doesn't itself have a collapsed ancestor) — the expected number of rows hidden. */
+  function expectedVisibleCount(tasks: readonly Task[], collapsedIds: ReadonlySet<Task['id']>): number {
+    const byId = new Map(tasks.map((t) => [t.id, t]));
+    const childrenOf = new Map<Task['id'], Task[]>();
+    for (const t of tasks) {
+      if (t.parent !== undefined && byId.has(t.parent)) {
+        const arr = childrenOf.get(t.parent) ?? [];
+        arr.push(t);
+        childrenOf.set(t.parent, arr);
+      }
+    }
+    function isHidden(t: Task): boolean {
+      let current = t.parent !== undefined ? byId.get(t.parent) : undefined;
+      while (current) {
+        if (collapsedIds.has(current.id)) return true;
+        current = current.parent !== undefined ? byId.get(current.parent) : undefined;
+      }
+      return false;
+    }
+    return tasks.filter((t) => !isHidden(t)).length;
+  }
+
+  it('never throws, preserves depth, correct visible count, contiguous rowIndex', () => {
+    fc.assert(
+      fc.property(forestArbitrary(), ({ tasks, collapsedIds }) => {
+        let rows: ReturnType<typeof layoutRows>;
+        expect(() => {
+          rows = layoutRows(tasks, 'default', collapsedIds);
+        }).not.toThrow();
+        rows = layoutRows(tasks, 'default', collapsedIds);
+
+        // (b) depth preserved for every emitted row.
+        for (const r of rows) {
+          expect(r.depth).toBe(trueDepthOf(tasks, r.task.id));
+        }
+
+        // (c) visible row count matches the maximal-collapsed-ancestor formula.
+        expect(rows.length).toBe(expectedVisibleCount(tasks, collapsedIds));
+
+        // (d) rowIndex is contiguous 0..n-1.
+        expect(rows.map((r) => r.rowIndex)).toEqual(rows.map((_, i) => i));
+      }),
+      { numRuns: 200 },
+    );
+  });
+});
+
 describe('enum whitelist guards (N3/N5)', () => {
   it('isKnownTaskKind: true only for the 4 valid TaskKinds', () => {
     for (const k of ['task', 'summary', 'milestone', 'project']) expect(isKnownTaskKind(k)).toBe(true);
@@ -220,7 +413,7 @@ describe('layoutTaskBar', () => {
   };
   const ts: TimeScale = createTimeScale(range, 'day', cal);
   const rowHeight = ROW_HEIGHT.default;
-  const row = { task: task('_', '2026-01-01', '2026-01-01'), depth: 0, rowIndex: 0, y: 0 };
+  const row = { task: task('_', '2026-01-01', '2026-01-01'), depth: 0, rowIndex: 0, y: 0, hasChildren: false, isCollapsed: false };
 
   it('milestone: width === height (square for the diamond)', () => {
     const m = task('m', '2026-01-10T00:00', '2026-01-10T00:00', { type: 'milestone' });

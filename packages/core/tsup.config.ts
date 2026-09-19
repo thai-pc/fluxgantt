@@ -10,6 +10,12 @@ export default defineConfig({
   // `pnpm --filter @fluxgantt/core size` and a `dist/index.js` grep, not just assumed.
   entry: {
     index: 'src/index.ts',
+    // Opt-in capability subpaths (spec-facade-split.md §4) — each is its own entry so a
+    // consumer importing `@fluxgantt/core/io` pulls ONLY that layer's graph, and, conversely,
+    // a consumer who never imports it never pays for it from `dist/index.js`.
+    'io/index': 'src/io/index.ts',
+    'render/index': 'src/render/index.ts',
+    'interaction/index': 'src/interaction/index.ts',
     'render/canvas-renderer': 'src/render/canvas-renderer.ts',
   },
   format: ['esm', 'cjs'],

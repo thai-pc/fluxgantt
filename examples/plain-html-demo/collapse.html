@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>FluxGantt · collapse/expand fixture</title>
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <main>
+      <h1>FluxGantt — collapse / expand fixture</h1>
+      <p>
+        A 3-level hierarchy (Phase 1 → Group A → two leaves, plus a direct leaf and one unrelated
+        top-level task) — the Playwright <code>collapse-expand.spec.ts</code> (e2e and a11y)
+        fixture. Accepts <code>?pad=N</code> to force the Canvas renderer and
+        <code>?collapsed=id,id</code> to seed <code>initialCollapsed</code>.
+      </p>
+      <div id="gantt"></div>
+    </main>
+    <script type="module" src="/src/collapse.ts"></script>
+  </body>
+</html>

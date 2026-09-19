@@ -12,6 +12,33 @@ function createGantt(config: GanttConfig): GanttInstance;
 Builds a headless `GanttInstance`. Throws if the initial `tasks`/`dependencies` are invalid
 (duplicate id, self-link, duplicate pair, or cycle).
 
+## Capability mixins
+
+The base instance is state + compute only. Rendering, interaction and import/export each live
+behind an opt-in mixin on its own subpath, so a consumer only downloads what they compose:
+
+```ts
+import { createGantt } from '@fluxgantt/core';
+import { withRender } from '@fluxgantt/core/render';
+import { withInteraction } from '@fluxgantt/core/interaction';
+import { withIo } from '@fluxgantt/core/io';
+
+const gantt = withIo(withInteraction(withRender(createGantt({ tasks: [/* … */] }))));
+```
+
+| Mixin | Subpath | Adds |
+|---|---|---|
+| `withRender(instance)` | `@fluxgantt/core/render` | `mount()`, `unmount()`, `refresh()` |
+| `withInteraction(instance)` | `@fluxgantt/core/interaction` | No new methods — wires drag/keyboard/click into every `mount()` |
+| `withIo(instance)` | `@fluxgantt/core/io` | `exportJson()`, `exportCsv()`, `exportSvg()`, `exportPng()`, `importJson()`, `importCsv()` |
+
+Each mixin mutates and returns the SAME instance, so application order does not matter — but
+all of them must be applied **before the first `mount()`**: `mount()` reads the interaction
+hooks at mount time, so composing `withInteraction` onto an already-mounted instance takes
+effect only on the next mount.
+
+The React and Vue wrappers compose `withRender` + `withInteraction` for you.
+
 ## `GanttConfig`
 
 | Field | Type | Default | Purpose |
@@ -22,7 +49,7 @@ Builds a headless `GanttInstance`. Throws if the initial `tasks`/`dependencies` 
 | `viewMode` | `ViewMode` | `'week'` | Timeline zoom (`day`/`week`/`month`/`quarter`/`year`). |
 | `density` | `Density` | `'default'` | Row density (`compact`/`default`/`comfortable`). |
 | `locale` | `string` | `'en'` | Renderer locale. |
-| `readOnly` | `boolean` | `false` | When `true`, `mount()` wires no drag gestures. |
+| `readOnly` | `boolean` | `false` | When `true`, `mount()` wires no drag gestures (with `withInteraction` applied; click-select and keyboard nav stay live). |
 | `schedulingMode` | `SchedulingMode` | `'manual'` | `'auto'` cascades dependents on move/resize. |
 | `onTaskChange` | `(task, prev) => void` | — | Catch-all fired whenever a task field changes. |
 
@@ -59,25 +86,29 @@ Builds a headless `GanttInstance`. Throws if the initial `tasks`/`dependencies` 
 
 ### Import / Export
 
+Requires the `withIo` mixin (`@fluxgantt/core/io`).
+
 | Method | Returns | Purpose |
 |---|---|---|
 | `exportJson(options?)` | `ExportBundle` | Serialize to the JSON bundle. Headless. |
 | `exportCsv(options?)` | `string` | Serialize tasks to CSV. Headless. |
-| `exportSvg(options?)` | `string` | Serialize the mounted chart to an SVG string. Requires mount. |
-| `exportPng(options?)` | `Promise<Blob>` | Rasterize the mounted chart to PNG. Requires mount; async. |
+| `exportSvg(options?)` | `string` | Serialize the mounted chart to an SVG string. Requires `withRender` + mount. |
+| `exportPng(options?)` | `Promise<Blob>` | Rasterize the mounted chart to PNG. Requires `withRender` + mount; async. |
+| `importJson(input, options?)` | `ImportSummary` | Validate + replace the dataset atomically. |
+| `importCsv(csv, options?)` | `ImportSummary` | Same, from CSV. |
 
-(Import is done with the standalone `importJson` / `importCsv` functions — see
-[Import & Export](/docs/import-export).)
+(The pure, instance-free `importJson` / `importCsv` functions are also exported from
+`@fluxgantt/core/io` — see [Import & Export](/docs/import-export).)
 
 ### Events & lifecycle
 
 | Method | Returns | Purpose |
 |---|---|---|
 | `on(event, callback)` | `UnsubscribeFn` | Subscribe to a `GanttEventMap` event. |
-| `mount(container)` | `void` | Render into an element; wires drag unless `readOnly`. |
-| `unmount()` | `void` | Remove the rendered chart; keep the instance. |
-| `destroy()` | `void` | Unmount + clear listeners; the instance is dead afterward. |
-| `refresh()` | `void` | Force a re-render of the mounted chart. |
+| `mount(container)` | `void` | Render into an element; wires drag unless `readOnly`. Requires `withRender`. |
+| `unmount()` | `void` | Remove the rendered chart; keep the instance. Requires `withRender`. |
+| `destroy()` | `void` | Unmount + clear listeners; the instance is dead afterward. Base — always present. |
+| `refresh()` | `void` | Force a re-render of the mounted chart. Requires `withRender`. |
 
 ## `GanttEventMap`
 
@@ -99,10 +130,12 @@ Builds a headless `GanttInstance`. Throws if the initial `tasks`/`dependencies` 
 | Export | Purpose |
 |---|---|
 | `toTaskId`, `toDependencyId`, `toResourceId`, `toBaselineId`, `toProjectId` | Brand a string as the matching branded id. |
-| `importJson(input, options?)` | Validate + parse a JSON bundle → `{ tasks, dependencies }`. |
-| `importCsv(csv, options?)` | Validate + parse CSV → `{ tasks }`. |
-| `exportJson`, `exportCsv`, `exportSvg`, `exportPng` | Pure export functions (the instance methods delegate to these). |
-| `IoValidationError` | Thrown by imports on malformed input. |
+| `importJson(input, options?)` | Validate + parse a JSON bundle → `{ tasks, dependencies }`. (`@fluxgantt/core/io`) |
+| `importCsv(csv, options?)` | Validate + parse CSV → `{ tasks }`. (`@fluxgantt/core/io`) |
+| `exportJson`, `exportCsv`, `exportSvg`, `exportPng` | Pure export functions the instance methods delegate to. (`@fluxgantt/core/io`) |
+| `IoValidationError` | Thrown by imports on malformed input. (`@fluxgantt/core/io`) |
+| `createSvgRenderer`, `layoutRows`, `createTimeScale`, … | Low-level render primitives. (`@fluxgantt/core/render`) |
+| `enableDragMove`, `enableDragResize`, `enableKeyboardNav`, … | Low-level gesture recognizers. (`@fluxgantt/core/interaction`) |
 | `DEFAULT_CALENDAR` | The Mon–Fri 9–17 UTC default calendar. |
 | `isWorkingDay`, `isHoliday`, `addWorkingHours`, `subtractWorkingHours`, `differenceInWorkingHours`, `normalizeDate` | Calendar-aware date helpers. |
 | `computeCriticalPath` | The pure CPM function (the instance method delegates to it). |

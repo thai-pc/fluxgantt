@@ -1,8 +1,22 @@
 # Drag & Drop
 
-When you `mount()` a chart, FluxGantt wires three drag gestures automatically — unless the
-instance is [`readOnly`](/docs/interactions/read-only). You don't call anything extra; mounting
-is enough.
+Compose `withInteraction` and FluxGantt wires three drag gestures into every `mount()`
+automatically — unless the instance is [`readOnly`](/docs/interactions/read-only). You don't
+call anything per gesture; the mixin plus mounting is enough:
+
+```ts
+import { createGantt } from '@fluxgantt/core';
+import { withRender } from '@fluxgantt/core/render';
+import { withInteraction } from '@fluxgantt/core/interaction';
+
+const gantt = withInteraction(withRender(createGantt({ tasks: [/* … */] })));
+gantt.mount(document.getElementById('gantt')!);
+```
+
+Interaction is opt-in so a consumer who only needs a static painted chart (a report, a
+thumbnail, a print view) never downloads the gesture recognizers. Apply both mixins **before**
+the first `mount()` call — hooks are read at mount time, so composing `withInteraction` onto an
+already-mounted instance takes effect only on the next mount.
 
 ## The three gestures
 
@@ -60,7 +74,9 @@ By default a move/resize affects only the dragged task (`schedulingMode: 'manual
 links (+lag) when you drag — each shifted task emits its own `task:moved`:
 
 ```ts
-const gantt = createGantt({ tasks: [/* … */], dependencies: [/* … */], schedulingMode: 'auto' });
+const gantt = withInteraction(
+  withRender(createGantt({ tasks: [/* … */], dependencies: [/* … */], schedulingMode: 'auto' })),
+);
 ```
 
 ## Invalid drops are silently reverted

@@ -5,7 +5,11 @@ import { defineConfig } from 'vite';
 // Canvas-renderer harnesses. The read-only page exists specifically as the Playwright
 // `read-only.spec.ts` fixture (drag must be inert when `readOnly: true`). The selection page
 // exists for `tests/e2e/selection.spec.ts` and the `.fg-task--selected` visual-regression
-// snapshots (2-level hierarchy + 3 flat siblings — see `src/selection.ts`). The canvas-harness
+// snapshots (2-level hierarchy + 3 flat siblings — see `src/selection.ts`). The collapse page exists for
+// `tests/e2e/collapse-expand.spec.ts` and `tests/a11y/collapse-expand.spec.ts` — a 3-level
+// hierarchy (see `src/collapse.ts`), parametrized via `?pad=N` (pad the dataset past the 2000-task
+// Canvas auto-switch threshold, the only way to exercise the Canvas path through the real public
+// `mount()`) and `?collapsed=id,id` (seed `GanttConfig.initialCollapsed`). The canvas-harness
 // page exists for `tests/visual/canvas-renderer.spec.ts` — a TEMPORARY, Ticket-1-only fixture
 // (spec-canvas-renderer-ticket1.md §9.2). The canvas-a11y-harness page exists for
 // `tests/a11y/canvas-renderer.spec.ts` and `tests/visual/canvas-renderer-focus-ring.spec.ts` —
@@ -41,6 +45,7 @@ export default defineConfig({
         main: fileURLToPath(new URL('./index.html', import.meta.url)),
         readOnly: fileURLToPath(new URL('./read-only.html', import.meta.url)),
         selection: fileURLToPath(new URL('./selection.html', import.meta.url)),
+        collapse: fileURLToPath(new URL('./collapse.html', import.meta.url)),
         canvasHarness: fileURLToPath(new URL('./canvas-harness.html', import.meta.url)),
         canvasA11yHarness: fileURLToPath(new URL('./canvas-a11y-harness.html', import.meta.url)),
         canvasWebkitDimensionGuardHarness: fileURLToPath(

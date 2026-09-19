@@ -44,7 +44,9 @@ export class SelectionStore {
   }
 }
 
-function setsEqual<T>(a: ReadonlySet<T>, b: ReadonlySet<T>): boolean {
+/** Exported for reuse by `collapse-store.ts` — order-independent content compare, single
+ *  source of truth for both stores' no-op-replace suppression. */
+export function setsEqual<T>(a: ReadonlySet<T>, b: ReadonlySet<T>): boolean {
   if (a.size !== b.size) return false;
   for (const v of a) if (!b.has(v)) return false;
   return true;

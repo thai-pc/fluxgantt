@@ -12,7 +12,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { exportSvg, isSafeStyleValue } from '../../src/io/export-svg.js';
 import { createSvgRenderer } from '../../src/render/svg-renderer.js';
-import { createGantt } from '../../src/gantt.js';
+import { createGantt } from '../helpers/create-gantt.js';
 import { computeCriticalPath } from '../../src/compute/critical-path.js';
 import { DEFAULT_CALENDAR } from '../../src/compute/working-calendar.js';
 import { toTaskId, toDependencyId, type Task, type Dependency } from '../../src/types.js';

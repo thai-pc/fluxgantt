@@ -13,6 +13,7 @@
 import type { Temporal } from '@js-temporal/polyfill';
 import { getTemporal } from '../internal/temporal.js';
 import { normalizeDate, isWorkingDay, isHoliday } from '../compute/working-calendar.js';
+import { MAX_HIERARCHY_DEPTH } from '../compute/hierarchy.js';
 import type {
   DateInput,
   Density,
@@ -50,7 +51,11 @@ export function buildTaskAriaLabel(
   const name = task.name.slice(0, MAX_ARIA_TASK_NAME_LENGTH);
   const start = normalizeDate(task.start, calendar.timezone).toPlainDate();
   const end = normalizeDate(task.end, calendar.timezone).toPlainDate();
-  const dateOptions: Intl.DateTimeFormatOptions = { year: 'numeric', month: 'short', day: 'numeric' };
+  const dateOptions: Intl.DateTimeFormatOptions = {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+  };
   const startLabel = start.toLocaleString(locale, dateOptions);
   const endLabel = end.toLocaleString(locale, dateOptions);
   const progressPct = Math.round((task.progress ?? 0) * 100);
@@ -177,8 +182,19 @@ export function createTimeScale(
 export interface RowLayout {
   readonly task: Task;
   readonly depth: number;
+  /** 0-based index into the VISIBLE row array (i.e. this array itself) — unchanged in meaning
+   *  from before collapse/expand existed; a collapsed subtree's hidden rows are simply absent,
+   *  so this stays contiguous `0..n-1` over what's actually returned. */
   readonly rowIndex: number;
   readonly y: number;
+  /** True iff `task.id` has at least one child among `tasks` — independent of collapsed state.
+   *  Renderers use this to decide whether to draw a toggle affordance at all. */
+  readonly hasChildren: boolean;
+  /** True iff `hasChildren` AND `task.id ∈ collapsedIds`. A `collapsedIds` entry for a
+   *  childless task has no effect (mirrors `toggleCollapse()`'s own no-op contract on a leaf) —
+   *  this field, not raw `collapsedIds` membership, is what a renderer should read for chevron
+   *  orientation / `aria-expanded`. */
+  readonly isCollapsed: boolean;
 }
 
 /** Row height (px) per `Density` — MUST match `--fg-row-height-*` (spec §8.2). */
@@ -188,23 +204,50 @@ export const ROW_HEIGHT: Readonly<Record<Density, number>> = {
   comfortable: 40,
 };
 
-/**
- * Max hierarchy nesting depth (review N1). The `visiting` set already rejects genuine
- * cycles, but a very deep *acyclic* parent chain (e.g. 50k tasks each parenting the next,
- * from untrusted host data) would recurse deep enough to blow the call stack with an
- * opaque `RangeError` instead of a controlled, explainable throw. 1,000 levels is far
- * beyond any real project WBS.
- */
-export const MAX_HIERARCHY_DEPTH = 1_000;
+/** Re-exported from `compute/hierarchy.ts`, which is the shared home because `computeRollup`
+ *  walks the same parent graph under the same bound and the compute layer may not import from
+ *  `render/`. Re-exported (not moved silently) so this module's existing public import path —
+ *  used by `renderer-base.test.ts` and the barrel — keeps working. */
+export { MAX_HIERARCHY_DEPTH };
 
 /**
- * Pre-order hierarchy layout with cycle guard (spec §5.3). A task whose `parent` does
- * not resolve to any task in `tasks` (dangling reference) is treated as a root at
- * depth 0 — resilient, not thrown (spec §4). A genuine cycle in the parent chain
- * (`A → B → A`, arbitrarily long) throws, mirroring `CyclicDependencyError`'s
- * "detect, don't infinite-loop" contract in the compute layer.
+ * Toggle-affordance geometry (spec-collapse-expand.md §6.1), shared by both renderers for
+ * pixel parity — both already import `ROW_HEIGHT` from here, so this is the correct shared
+ * home rather than per-renderer duplication (unlike the small layout constants each renderer
+ * duplicates BY HAND per the module-isolation rule, which only applies to constants private
+ * to one renderer's own internal layout).
  */
-export function layoutRows(tasks: readonly Task[], density: Density): RowLayout[] {
+export const TOGGLE_GLYPH_SIZE_PX = 10;
+/** Reserved horizontal gutter width, applied uniformly to every row's label `x` regardless of
+ *  whether that row has a visible glyph — keeps label text column-aligned across sibling
+ *  leaf/summary rows at the same depth. */
+export const TOGGLE_GLYPH_GUTTER_PX = 14;
+
+/**
+ * Pre-order hierarchy layout with cycle guard (spec §5.3), collapse/expand-aware
+ * (spec-collapse-expand.md §5). A task whose `parent` does not resolve to any task in
+ * `tasks` (dangling reference) is treated as a root at depth 0 — resilient, not thrown
+ * (spec §4). A genuine cycle in the parent chain (`A → B → A`, arbitrarily long) throws,
+ * mirroring `CyclicDependencyError`'s "detect, don't infinite-loop" contract in the
+ * compute layer.
+ *
+ * `collapsedIds` (optional — omitted/`undefined` means "nothing collapsed", identical to
+ * pre-collapse-expand behavior) hides the descendant rows of any collapsed task from the
+ * OUTPUT, but must NOT change what is traversed for cycle/depth-guard purposes: this
+ * function always walks the FULL tree (every task, hidden or not) and tracks that full-tree
+ * coverage via an independent `visited` set — NOT via `rows.length`, which now differs from
+ * `tasks.length` for any hierarchy with at least one collapsed ancestor. Using
+ * `rows.length !== tasks.length` here would make a valid, merely-collapsed hierarchy
+ * spuriously throw "cyclic parent chain" (see the regression test guarding exactly this).
+ * Row emission — and whether a subtree's children are walked *as visible* — is governed by
+ * a separate `hiddenByAncestor` flag threaded down the recursion, independent of the
+ * cycle/depth guards.
+ */
+export function layoutRows(
+  tasks: readonly Task[],
+  density: Density,
+  collapsedIds?: ReadonlySet<TaskId>,
+): RowLayout[] {
   const rowHeight = ROW_HEIGHT[density];
   const byId = new Set<TaskId>(tasks.map((t) => t.id));
   const childrenOf = new Map<TaskId, Task[]>();
@@ -219,10 +262,11 @@ export function layoutRows(tasks: readonly Task[], density: Density): RowLayout[
   const roots = tasks.filter((t) => t.parent === undefined || !byId.has(t.parent));
 
   const rows: RowLayout[] = [];
-  const visiting = new Set<TaskId>();
+  const visiting = new Set<TaskId>(); // cycle guard — unchanged in purpose
+  const visited = new Set<TaskId>(); // full-tree coverage check — independent of row emission
   let y = 0;
 
-  function visit(task: Task, depth: number): void {
+  function visit(task: Task, depth: number, hiddenByAncestor: boolean): void {
     if (depth > MAX_HIERARCHY_DEPTH) {
       throw new Error(
         `layoutRows: hierarchy nesting exceeds max depth (${MAX_HIERARCHY_DEPTH}) at task "${task.id}" — ` +
@@ -233,19 +277,30 @@ export function layoutRows(tasks: readonly Task[], density: Density): RowLayout[
       throw new Error(`layoutRows: cyclic parent chain involving task "${task.id}"`);
     }
     visiting.add(task.id);
-    rows.push({ task, depth, rowIndex: rows.length, y });
-    y += rowHeight;
-    for (const child of childrenOf.get(task.id) ?? []) visit(child, depth + 1);
+    visited.add(task.id);
+
+    const children = childrenOf.get(task.id) ?? [];
+    const hasChildren = children.length > 0;
+    const isCollapsed = hasChildren && (collapsedIds?.has(task.id) ?? false);
+
+    if (!hiddenByAncestor) {
+      rows.push({ task, depth, rowIndex: rows.length, y, hasChildren, isCollapsed });
+      y += rowHeight;
+    }
+
+    const childHidden = hiddenByAncestor || isCollapsed;
+    for (const child of children) visit(child, depth + 1, childHidden);
+
     visiting.delete(task.id);
   }
 
-  for (const root of roots) visit(root, 0);
+  for (const root of roots) visit(root, 0, false);
 
   // A task not reached from any root, by construction, sits entirely inside a cycle of
   // tasks whose `parent` ids all resolve to one another (a dangling/undefined parent
   // would already have made it a root above). Throw instead of silently dropping it.
-  if (rows.length !== tasks.length) {
-    const visited = new Set(rows.map((r) => r.task.id));
+  // Uses full-tree `visited` coverage, NOT `rows.length` — see the doc comment above.
+  if (visited.size !== tasks.length) {
     const remaining = tasks.filter((t) => !visited.has(t.id)).map((t) => t.id);
     throw new Error(`layoutRows: cyclic parent chain involving task(s) ${remaining.join(', ')}`);
   }
@@ -315,7 +370,12 @@ const DEPENDENCY_EDGES: Readonly<Record<DependencyType, readonly [BarEdge, BarEd
   SF: ['start', 'end'],
 };
 
-const TASK_KINDS: ReadonlySet<string> = new Set<TaskKind>(['task', 'summary', 'milestone', 'project']);
+const TASK_KINDS: ReadonlySet<string> = new Set<TaskKind>([
+  'task',
+  'summary',
+  'milestone',
+  'project',
+]);
 
 /**
  * Runtime whitelist guards for the two enums that get folded into CSS class names

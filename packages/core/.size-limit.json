@@ -1,16 +1,37 @@
 [
   {
-    "name": "Full core (dist/index.js, gzip)",
-    "path": "dist/index.js",
-    "limit": "36 KiB",
-    "gzip": true,
-    "disablePlugins": ["@size-limit/esbuild"]
-  },
-  {
     "name": "Hello world (createGantt only, tree-shaken, gzip)",
     "path": "size-limit/hello-world.js",
     "config": "size-limit/hello-world.esbuild-config.mjs",
-    "limit": "22 KiB",
+    "limit": "9 KiB",
+    "gzip": true
+  },
+  {
+    "name": "Base + withIo (import/export, no rendering, gzip)",
+    "path": "size-limit/with-io.js",
+    "config": "size-limit/with-io.esbuild-config.mjs",
+    "limit": "14 KiB",
+    "gzip": true
+  },
+  {
+    "name": "Base + withRender (static painted chart, gzip)",
+    "path": "size-limit/with-render.js",
+    "config": "size-limit/with-render.esbuild-config.mjs",
+    "limit": "15 KiB",
+    "gzip": true
+  },
+  {
+    "name": "Base + withRender + withInteraction (editable chart, gzip)",
+    "path": "size-limit/with-render-interaction.js",
+    "config": "size-limit/with-render-interaction.esbuild-config.mjs",
+    "limit": "19 KiB",
+    "gzip": true
+  },
+  {
+    "name": "Kitchen sink (every capability composed, gzip)",
+    "path": "size-limit/kitchen-sink.js",
+    "config": "size-limit/kitchen-sink.esbuild-config.mjs",
+    "limit": "24 KiB",
     "gzip": true
   }
 ]

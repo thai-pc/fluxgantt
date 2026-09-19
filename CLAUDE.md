@@ -18,7 +18,17 @@ This file is the context entry point for AI. Details are split into rules under 
 2. **Framework-agnostic core** — `@fluxgantt/core` must NOT import `react`/`vue`/`svelte`. Framework opinions live only in wrappers.
 3. **Date = Temporal API**, never native `Date` for any computation (timezone/DST). Native `Date` only at the I/O boundary.
 4. **TypeScript strict** — no implicit `any`, branded IDs (`TaskId`, `ResourceId`...) never mixed.
-5. **Tree-shakable + bundle budget** — core "hello world" < 22kb gzip (re-baselined 2026-08 from an aspirational, never-actually-measured 15kb once CI enforcement landed and revealed `createGantt()` alone pulls in ~21.3kb — the `Gantt` facade is currently one monolithic class, so partial imports barely tree-shake; splitting it into tree-shakable pieces to earn back headroom is a known follow-up, not yet scheduled; **now measured at ~22.3kb (CI, PR #39)** after the Canvas row-virtualization fix (#37) added `canvasViewportHeight` pass-through wiring to `gantt.ts` — only ~0.25kb of headroom left before this budget needs raising again), full core < 36kb gzip (raised from 30kb→32kb after keyboard-nav/a11y landed, 32kb→34kb after undo/redo landed, then 34kb→36kb after import/export facade wiring landed — all are Core-wide editor baseline UX, not plugin candidates; **now measured at ~34.9kb (CI, PR #39)** after #37). This budget is enforced mechanically in CI via `pnpm size` (`packages/core/.size-limit.json`) — see `.claude/work/spec-bundle-size-ci.md`. Non-core features are plugins.
+5. **Tree-shakable + bundle budget** — the `Gantt` facade was split into a base class plus three opt-in mixins on their own subpath exports (`@fluxgantt/core/io`, `/render`, `/interaction`) in 2026-09, because class prototype methods can never be tree-shaken: the monolithic facade billed every consumer for IO + render + interaction bytes whether they used them or not. Budgets (gzip, all CI-measured against real fixtures in `packages/core/size-limit/`, enforced via `pnpm size` + `packages/core/.size-limit.json` — see `.claude/work/spec-bundle-size-ci.md`):
+
+   | Fixture | Measured | Budget |
+   |---|---|---|
+   | `createGantt()` only (hello world) | 7.76 KiB | 9 KiB |
+   | `+ withIo` | 12.72 KiB | 14 KiB |
+   | `+ withRender` | 14.29 KiB | 15 KiB |
+   | `+ withRender + withInteraction` | 18.55 KiB | 19 KiB |
+   | kitchen sink (everything = the pre-split facade) | 23.21 KiB | 24 KiB |
+
+   Hello world went 22.3 KiB → 7.76 KiB and the fully-composed instance 34.9 KiB → 23.21 KiB (the old "full core" check measured `dist/index.js` as a plain file, which code-splitting has since hollowed out; the kitchen-sink fixture replaces it). Non-core features are plugins.
 6. **Tier-gate correctly** — Pro (resource/baseline/MSProject), Cloud (multiplayer/AI). Don't cram Pro/Cloud code into `core`.
 7. **Every new feature ships with tests.** See `.claude/rules/testing.md`.
 8. **Security**: validate every external input (file import, share link, API). See `.claude/rules/security.md`.

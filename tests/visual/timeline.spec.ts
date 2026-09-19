@@ -18,10 +18,6 @@ test.skip('gantt timeline — visual baseline', async ({ page }) => {
 // properties, so a task that is both critical AND selected shows both signals at once
 // (dashed red stroke inside, solid indigo outline ring outside), never one silently
 // overwriting the other.
-//
-// Baselines are generated fresh in this change (no prior screenshot existed for this
-// spec — see PR notes): run `pnpm test:visual --update-snapshots` on the CI image before
-// treating `*-snapshots/*.png` as ground truth, and have a human review the generated PNGs.
 
 async function callGantt<T>(page: Page, fn: (g: any) => T): Promise<T> {
   return page.evaluate((fnSource) => {

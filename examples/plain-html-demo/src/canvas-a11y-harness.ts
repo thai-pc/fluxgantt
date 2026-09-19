@@ -92,6 +92,9 @@ function rerender(): void {
  *  row order — same semantics `enableClickSelect`'s Shift+click range-select already uses,
  *  reimplemented here for the keyboard path since `KeyboardNavOptions.onRangeSelect` only
  *  hands back the two endpoint ids, not the resolved range. */
+/** Permanently-empty collapsed set — see the `getCollapsedIds` call sites below. */
+const NO_COLLAPSED: ReadonlySet<TaskId> = new Set<TaskId>();
+
 function resolveRange(anchorId: TaskId, focusId: TaskId): TaskId[] {
   const rows = layoutRows(tasks, 'default');
   const anchorIndex = rows.findIndex((r) => r.task.id === anchorId);
@@ -125,9 +128,18 @@ enableClickSelect(handle, () => tasks, {
     rerender();
   },
   density: 'default',
+  // This harness's dataset is deliberately FLAT (no `parent` anywhere — see TASK_COUNT above),
+  // so no row is ever collapsible and the collapsed set is permanently empty
+  // (spec-collapse-expand.md §7.1/§7.4). Passed as a stable frozen constant rather than a fresh
+  // `new Set()` per call: these accessors are invoked on every click/keydown.
+  getCollapsedIds: () => NO_COLLAPSED,
 });
 
 const nav = enableKeyboardNav(handle, {
+  getCollapsedIds: () => NO_COLLAPSED,
+  // Enter is inert here for the same reason: nothing in this flat dataset has children, so
+  // `keyboard-nav.ts`'s own `hasChildren` guard never calls through.
+  onToggleCollapse: () => {},
   onSelect(id) {
     selected = new Set([id]);
     focusedTaskId = id;

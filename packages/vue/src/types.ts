@@ -1,5 +1,6 @@
 // Public prop/emit/config/result types for @fluxgantt/vue (spec-vue-wrapper.md §2).
 import type { Ref } from 'vue';
+import type { RenderCapability } from '@fluxgantt/core/render';
 import type {
   DateInput,
   Dependency,
@@ -40,7 +41,7 @@ export interface UseFluxGanttResult {
    *  because a Vue composable's body runs exactly once per owning component instance
    *  (`setup()` itself only runs once; Vue does not re-invoke it the way React re-invokes a
    *  hook on every render) — see `use-flux-gantt.ts`'s module doc-comment. */
-  readonly instance: GanttInstance;
+  readonly instance: GanttInstance & RenderCapability;
 }
 
 /**
@@ -82,7 +83,7 @@ export interface FluxGanttEmits {
 }
 
 /** Type of the value `<FluxGantt ref="...">` exposes via `setup()`'s `expose()`. */
-export type FluxGanttRef = GanttInstance;
+export type FluxGanttRef = GanttInstance & RenderCapability;
 
 // Re-exported for FluxGantt.ts's `PropType<T>` casts (kept here, not inlined, so the prop
 // declaration and this file's own type surface stay adjacent and easy to audit together).

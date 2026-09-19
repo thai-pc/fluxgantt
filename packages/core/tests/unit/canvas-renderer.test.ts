@@ -21,6 +21,7 @@ import {
   resolveViewportHeightPx,
   computeVisibleWindow,
 } from '../../src/render/canvas-renderer.js';
+import { createSvgRenderer } from '../../src/render/svg-renderer.js';
 import { computeCriticalPath } from '../../src/compute/critical-path.js';
 import { DEFAULT_CALENDAR, normalizeDate } from '../../src/compute/working-calendar.js';
 import {
@@ -324,14 +325,25 @@ describe('hidden ARIA layer', () => {
     expect(h.interactionRoot.style.clipPath).toBe('inset(50%)');
   });
 
-  it('layer root: role="grid", aria-rowcount, aria-multiselectable, aria-label', () => {
+  it('layer root: role="treegrid" for a hierarchical project, aria-rowcount, aria-multiselectable, aria-label', () => {
     const mock = createMockContext2D();
     installMockContext(mock);
     const h = createCanvasRenderer(container, { tasks: baseTasks, dependencies: baseDeps }, { ariaLabel: 'My chart' });
-    expect(h.interactionRoot.getAttribute('role')).toBe('grid');
+    // `treegrid`, not `grid` — mirrors svg-renderer.ts: `baseTasks` has a summary row, whose
+    // rows carry `aria-expanded`, valid only under `treegrid` (spec-collapse-expand.md §6.4).
+    expect(h.interactionRoot.getAttribute('role')).toBe('treegrid');
     expect(h.interactionRoot.getAttribute('aria-rowcount')).toBe(String(baseTasks.length));
     expect(h.interactionRoot.getAttribute('aria-multiselectable')).toBe('true');
     expect(h.interactionRoot.getAttribute('aria-label')).toBe('My chart');
+  });
+
+  it('layer root: a flat project stays a plain role="grid"', () => {
+    // No row has children -> no `aria-expanded` is emitted -> plain `grid`, same rule as
+    // svg-renderer.ts (spec-collapse-expand.md §6.4).
+    const mock = createMockContext2D();
+    installMockContext(mock);
+    const h = createCanvasRenderer(container, { tasks: buildFlatTasks(5), dependencies: [] });
+    expect(h.interactionRoot.getAttribute('role')).toBe('grid');
   });
 
   it('one .fg-timeline-canvas__row per task, correct role/data-row-index/data-task-id/aria-rowindex/aria-selected', () => {
@@ -458,6 +470,149 @@ describe('hidden ARIA layer', () => {
       expect(taskEl.classList.contains('fg-timeline-canvas__task--task')).toBe(true);
       expect(taskEl.classList.contains('fg-timeline-canvas__task--bogus')).toBe(false);
     });
+  });
+});
+
+// --- collapse/expand — hidden a11y layer + hitTestRow.hitToggle (spec-collapse-expand.md
+// §6.3/§9.7) -------------------------------------------------------------------------------
+
+describe('collapse/expand — hidden a11y layer', () => {
+  it('a hasChildren row ("a") gets aria-expanded="true" (expanded by default); a leaf row ("c") gets neither', () => {
+    const mock = createMockContext2D();
+    installMockContext(mock);
+    const h = createCanvasRenderer(container, { tasks: baseTasks, dependencies: baseDeps });
+    const rowA = h.interactionRoot.querySelector('.fg-timeline-canvas__row[data-task-id="a"]')!;
+    expect(rowA.getAttribute('aria-expanded')).toBe('true');
+    const rowC = h.interactionRoot.querySelector('.fg-timeline-canvas__row[data-task-id="c"]')!;
+    expect(rowC.hasAttribute('aria-expanded')).toBe(false);
+  });
+
+  it('collapsedIds in the input reduces aria-rowcount and removes the hidden descendant row element', () => {
+    const mock = createMockContext2D();
+    installMockContext(mock);
+    const h = createCanvasRenderer(container, {
+      tasks: baseTasks,
+      dependencies: baseDeps,
+      collapsedIds: new Set([toTaskId('a')]),
+    });
+    const rowA = h.interactionRoot.querySelector('.fg-timeline-canvas__row[data-task-id="a"]')!;
+    expect(rowA.getAttribute('aria-expanded')).toBe('false');
+    expect(h.interactionRoot.querySelector('.fg-timeline-canvas__row[data-task-id="b"]')).toBeNull();
+    expect(h.interactionRoot.getAttribute('aria-rowcount')).toBe(String(baseTasks.length - 1)); // 'b' hidden
+  });
+
+  it('collapsedIds correctly threads through a SUBSEQUENT update() call, not just the first render (regression: both layoutRows() call sites must agree)', () => {
+    const mock = createMockContext2D();
+    installMockContext(mock);
+    const h = createCanvasRenderer(container, { tasks: baseTasks, dependencies: baseDeps });
+    expect(h.interactionRoot.querySelector('.fg-timeline-canvas__row[data-task-id="b"]')).not.toBeNull();
+    expect(h.interactionRoot.getAttribute('aria-rowcount')).toBe(String(baseTasks.length));
+
+    h.update({ tasks: baseTasks, dependencies: baseDeps, collapsedIds: new Set([toTaskId('a')]) });
+    expect(h.interactionRoot.querySelector('.fg-timeline-canvas__row[data-task-id="b"]')).toBeNull();
+    expect(h.interactionRoot.getAttribute('aria-rowcount')).toBe(String(baseTasks.length - 1));
+
+    // Expand again — the hidden row must reappear.
+    h.update({ tasks: baseTasks, dependencies: baseDeps, collapsedIds: new Set() });
+    expect(h.interactionRoot.querySelector('.fg-timeline-canvas__row[data-task-id="b"]')).not.toBeNull();
+    expect(h.interactionRoot.getAttribute('aria-rowcount')).toBe(String(baseTasks.length));
+  });
+});
+
+describe('collapse/expand — hitTestRow().hitToggle (spec-collapse-expand.md §6.3)', () => {
+  // Local copy of the `hitTestRow` describe block's `stubRect` helper (that one is scoped to
+  // its own describe block) — gives `canvas.getBoundingClientRect()` a deterministic origin so
+  // `clientX`/`clientY` map to canvas-local pixels 1:1.
+  function stubRect(canvas: HTMLCanvasElement, rect: Partial<DOMRect>): void {
+    vi.spyOn(canvas, 'getBoundingClientRect').mockReturnValue({
+      x: 0,
+      y: 0,
+      top: 0,
+      left: 0,
+      right: 1000,
+      bottom: 1000,
+      width: 1000,
+      height: 1000,
+      toJSON: () => ({}),
+      ...rect,
+    } as DOMRect);
+  }
+
+  it('a click landing inside the toggle-glyph gutter of a hasChildren row resolves hitToggle: true', () => {
+    const mock = createMockContext2D();
+    installMockContext(mock);
+    const h = createCanvasRenderer(container, { tasks: baseTasks, dependencies: baseDeps });
+    stubRect(h.canvas, {});
+    // Row 'a' (index 0, depth 0, hasChildren): toggle gutter = [LABEL_PADDING_PX(8),
+    // 8 + TOGGLE_GLYPH_GUTTER_PX(14)) = [8, 22) — x=10 lands inside it.
+    const hit = h.hitTestRow(10, 32 + 16);
+    expect(hit).toBeDefined();
+    expect(hit!.taskId).toBe(baseTasks[0]!.id);
+    expect(hit!.hitToggle).toBe(true);
+  });
+
+  it('a click on the same row but past the toggle gutter (e.g. on the label/bar area) resolves hitToggle: false', () => {
+    const mock = createMockContext2D();
+    installMockContext(mock);
+    const h = createCanvasRenderer(container, { tasks: baseTasks, dependencies: baseDeps });
+    stubRect(h.canvas, {});
+    const hit = h.hitTestRow(140, 32 + 16);
+    expect(hit).toBeDefined();
+    expect(hit!.taskId).toBe(baseTasks[0]!.id);
+    expect(hit!.hitToggle).toBe(false);
+  });
+
+  it('a click inside the toggle-glyph gutter of a LEAF row (no children) resolves hitToggle: false — nothing to toggle', () => {
+    const mock = createMockContext2D();
+    installMockContext(mock);
+    const h = createCanvasRenderer(container, { tasks: baseTasks, dependencies: baseDeps });
+    stubRect(h.canvas, {});
+    // Row 'c' (index 2, leaf, no children) — same gutter x-range as row 'a' (depth 0), but
+    // `hasChildren` is false so `hitToggle` must be false regardless of x.
+    const hit = h.hitTestRow(10, 32 + 16 * 5);
+    expect(hit).toBeDefined();
+    expect(hit!.taskId).toBe(baseTasks[2]!.id);
+    expect(hit!.hitToggle).toBe(false);
+  });
+});
+
+describe('collapse/expand — SVG/Canvas parity (spec-collapse-expand.md §6.3, regression for "forgot to thread collapsedIds into Canvas\'s second layoutRows() call site")', () => {
+  it('an identical dataset + identical collapsedIds renders the same visible row order and the same hasChildren/aria-expanded per row in BOTH renderers', () => {
+    const mock = createMockContext2D();
+    installMockContext(mock);
+    const collapsedIds = new Set([toTaskId('a')]);
+
+    const canvasHandle = createCanvasRenderer(container, { tasks: baseTasks, dependencies: baseDeps, collapsedIds });
+    const svgContainer = document.createElement('div');
+    document.body.appendChild(svgContainer);
+    const svgHandle = createSvgRenderer(svgContainer, { tasks: baseTasks, dependencies: baseDeps, collapsedIds });
+
+    const canvasRows = [...canvasHandle.interactionRoot.querySelectorAll<HTMLElement>('.fg-timeline-canvas__row')];
+    const svgRows = [...svgHandle.svg.querySelectorAll<SVGElement>('.fg-timeline__row')];
+
+    // Same visible task-id order.
+    expect(canvasRows.map((r) => r.getAttribute('data-task-id'))).toEqual(
+      svgRows.map((r) => r.getAttribute('data-task-id')),
+    );
+    // Same visible row count, reflected identically in aria-rowcount on both hidden/visible roots.
+    expect(canvasHandle.interactionRoot.getAttribute('aria-rowcount')).toBe(svgHandle.svg.getAttribute('aria-rowcount'));
+    expect(canvasRows).toHaveLength(baseTasks.length - 1); // 'b' (child of collapsed 'a') hidden
+
+    // Same aria-expanded per row (hasChildren computed identically by both layoutRows() call
+    // sites) — this is the assertion that would have caught a "forgot to thread collapsedIds
+    // into the SECOND layoutRows() call" regression mechanically rather than by inspection.
+    for (let i = 0; i < canvasRows.length; i++) {
+      const canvasRow = canvasRows[i]!;
+      const svgRow = svgRows[i]!;
+      expect(canvasRow.getAttribute('data-task-id')).toBe(svgRow.getAttribute('data-task-id'));
+      expect(canvasRow.hasAttribute('aria-expanded')).toBe(svgRow.hasAttribute('aria-expanded'));
+      if (canvasRow.hasAttribute('aria-expanded')) {
+        expect(canvasRow.getAttribute('aria-expanded')).toBe(svgRow.getAttribute('aria-expanded'));
+      }
+    }
+
+    svgHandle.destroy();
+    svgContainer.remove();
   });
 });
 
@@ -603,7 +758,7 @@ describe('hitTestRow', () => {
     stubRect(h.canvas, {});
     // HEADER_HEIGHT = 32, ROW_HEIGHT.default = 32 — midpoint of row 0's band.
     const hit = h.hitTestRow(100, 32 + 16);
-    expect(hit).toEqual({ taskId: baseTasks[0]!.id, rowIndex: 0 });
+    expect(hit).toEqual({ taskId: baseTasks[0]!.id, rowIndex: 0, hitToggle: false });
   });
 
   it('click inside a deeply-nested row band resolves correctly regardless of label indentation', () => {
@@ -613,7 +768,7 @@ describe('hitTestRow', () => {
     const h = createCanvasRenderer(container, { tasks: baseTasks, dependencies: baseDeps });
     stubRect(h.canvas, {});
     const hit = h.hitTestRow(100, 32 + 32 + 16); // row index 1's band midpoint
-    expect(hit).toEqual({ taskId: baseTasks[1]!.id, rowIndex: 1 });
+    expect(hit).toEqual({ taskId: baseTasks[1]!.id, rowIndex: 1, hitToggle: false });
   });
 
   it('click in the header band (y < HEADER_HEIGHT) resolves to undefined', () => {
@@ -651,7 +806,7 @@ describe('hitTestRow', () => {
     stubRect(h.canvas, {});
     // Exact boundary between row 0 and row 1: y = HEADER_HEIGHT + ROW_HEIGHT = 64.
     const hit = h.hitTestRow(100, 64);
-    expect(hit).toEqual({ taskId: baseTasks[1]!.id, rowIndex: 1 });
+    expect(hit).toEqual({ taskId: baseTasks[1]!.id, rowIndex: 1, hitToggle: false });
   });
 
   it.each(['compact', 'default', 'comfortable'] as const)('resolves correctly at density=%s', (density) => {
@@ -669,11 +824,11 @@ describe('hitTestRow', () => {
     installMockContext(mock);
     const h = createCanvasRenderer(container, { tasks: [baseTasks[0]!], dependencies: [] });
     stubRect(h.canvas, {});
-    expect(h.hitTestRow(100, 32 + 1)).toEqual({ taskId: baseTasks[0]!.id, rowIndex: 0 });
+    expect(h.hitTestRow(100, 32 + 1)).toEqual({ taskId: baseTasks[0]!.id, rowIndex: 0, hitToggle: false });
 
     const swapped = task('z', '2026-01-05T09:00', '2026-01-07T17:00');
     h.update({ tasks: [swapped], dependencies: [] });
-    expect(h.hitTestRow(100, 32 + 1)).toEqual({ taskId: swapped.id, rowIndex: 0 });
+    expect(h.hitTestRow(100, 32 + 1)).toEqual({ taskId: swapped.id, rowIndex: 0, hitToggle: false });
   });
 
   it('accounts for a non-zero container.scrollTop (fix #37) — a click at the same canvas-local pixel resolves to a different row once scrolled', () => {
@@ -684,12 +839,12 @@ describe('hitTestRow', () => {
     stubRect(h.canvas, {});
 
     // At scrollTop=0, a click at the row-0 band midpoint resolves to row 0.
-    expect(h.hitTestRow(100, 32 + 16)).toEqual({ taskId: toTaskId('t0'), rowIndex: 0 });
+    expect(h.hitTestRow(100, 32 + 16)).toEqual({ taskId: toTaskId('t0'), rowIndex: 0, hitToggle: false });
 
     // Scroll down by exactly 5 rows (5 * 32 = 160px) — the SAME canvas-local pixel now maps
     // to content-space row 5, not row 0 (`hitTestRow` must add back `container.scrollTop`).
     h.container.scrollTop = 160;
-    expect(h.hitTestRow(100, 32 + 16)).toEqual({ taskId: toTaskId('t5'), rowIndex: 5 });
+    expect(h.hitTestRow(100, 32 + 16)).toEqual({ taskId: toTaskId('t5'), rowIndex: 5, hitToggle: false });
   });
 });
 
@@ -1751,6 +1906,8 @@ describe('computeVisibleWindow', () => {
             depth: 0,
             rowIndex: i,
             y: i * rowHeight,
+            hasChildren: false,
+            isCollapsed: false,
           }));
           const win = computeVisibleWindow(rows, { scrollTop, rowBandViewportPx }, rowHeight, overscanRows);
 
@@ -1784,6 +1941,8 @@ describe('computeVisibleWindow', () => {
       depth: 0,
       rowIndex: i,
       y: i * 32,
+      hasChildren: false,
+      isCollapsed: false,
     }));
     expect(computeVisibleWindow(rows, { scrollTop: -500, rowBandViewportPx: 568 }, 32, 20)).toEqual(
       computeVisibleWindow(rows, { scrollTop: 0, rowBandViewportPx: 568 }, 32, 20),

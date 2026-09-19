@@ -17,11 +17,6 @@ import { test, expect } from '@playwright/test';
 // harness's own header comment for the exact dataset shape (rolling 30-working-day window, ~30%
 // FS-chained dependencies) and why it keeps the derived canvas WIDTH small and constant regardless
 // of `taskCount` (isolating this test to the height/row-virtualization axis fix #37 targets).
-//
-// Baseline generated fresh in this change (no prior screenshot existed): run
-// `pnpm test:visual --update-snapshots` on the CI image before treating `*-snapshots/*.png` as
-// ground truth, and have a human review the generated PNG (same convention documented in
-// `tests/visual/timeline.spec.ts` and `tests/visual/canvas-renderer.spec.ts`).
 
 declare global {
   interface Window {

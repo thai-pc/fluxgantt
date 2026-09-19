@@ -59,7 +59,6 @@
 import { Temporal } from '@js-temporal/polyfill';
 import {
   createGantt,
-  createSvgRenderer,
   computeCriticalPath,
   DEFAULT_CALENDAR,
   toTaskId,
@@ -68,6 +67,9 @@ import {
   type Dependency,
   type GanttInstance,
 } from '@fluxgantt/core';
+// `createSvgRenderer` moved off the main barrel in the facade split (it is render-layer code,
+// and re-exporting it from `.` pinned the SVG renderer into every consumer's graph).
+import { createSvgRenderer, withRender, type RenderCapability } from '@fluxgantt/core/render';
 
 // `@fluxgantt/core` treats Temporal as an optional peerDependency and reads `globalThis.Temporal`
 // — it is the HOST APP's job to install it (`packages/core/src/internal/temporal.ts`). Guarded
@@ -147,11 +149,16 @@ const canvasViewportHeight =
   canvasViewportHeightParam !== null ? Number(canvasViewportHeightParam) : undefined;
 
 const container = document.getElementById('gantt')!;
-const gantt: GanttInstance = createGantt({
-  tasks,
-  dependencies,
-  ...(canvasViewportHeight !== undefined ? { canvasViewportHeight } : {}),
-});
+// `mount()` lives on the opt-in `withRender` mixin since the facade split — this harness times
+// that exact path, so it composes it. `withInteraction` is deliberately NOT composed: gesture
+// wiring is not part of what §9.4 measures.
+const gantt: GanttInstance & RenderCapability = withRender(
+  createGantt({
+    tasks,
+    dependencies,
+    ...(canvasViewportHeight !== undefined ? { canvasViewportHeight } : {}),
+  }),
+);
 
 /** Times one `gantt.mount(container)` call via `renderer:selected` — resolves after the chosen
  *  renderer has fully painted, regardless of which renderer path (sync SVG / async Canvas) was

@@ -7,7 +7,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { exportPng, MAX_PNG_DIMENSION_PX } from '../../src/io/export-png.js';
 import { exportSvg } from '../../src/io/export-svg.js';
-import { createGantt } from '../../src/gantt.js';
+import { createGantt } from '../helpers/create-gantt.js';
 import { toTaskId } from '../../src/types.js';
 import type { TaskInput } from '../../src/store/index.js';
 

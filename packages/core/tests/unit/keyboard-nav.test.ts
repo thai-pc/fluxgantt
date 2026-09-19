@@ -87,6 +87,8 @@ describe('enableKeyboardNav — DOM interaction', () => {
       density: 'default',
       isReadOnly: () => false,
       getSelection: () => [...selection],
+      getCollapsedIds: () => new Set<TaskId>(),
+      onToggleCollapse: vi.fn(),
       ...options,
     });
     return {
@@ -199,13 +201,18 @@ describe('enableKeyboardNav — DOM interaction', () => {
     expect(onSelect).not.toHaveBeenCalled();
   });
 
-  it('Enter is unbound (v1): no callback fires', () => {
-    const { handle, onSelect, onToggle, onRangeSelect, onDeleteSelected } = setup();
-    dispatchKey(rowFor(handle, 't1'), 'Enter');
+  it('Enter on a leaf row (no children) is a true no-op: no callback fires, no preventDefault', () => {
+    const onToggleCollapse = vi.fn();
+    const { handle, onSelect, onToggle, onRangeSelect, onDeleteSelected } = setup({ onToggleCollapse });
+    const event = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true });
+    const spy = vi.spyOn(event, 'preventDefault');
+    rowFor(handle, 't1').dispatchEvent(event);
     expect(onSelect).not.toHaveBeenCalled();
     expect(onToggle).not.toHaveBeenCalled();
     expect(onRangeSelect).not.toHaveBeenCalled();
     expect(onDeleteSelected).not.toHaveBeenCalled();
+    expect(onToggleCollapse).not.toHaveBeenCalled();
+    expect(spy).not.toHaveBeenCalled();
   });
 
   it('Delete calls onDeleteSelected when the focused row is selected', () => {
@@ -377,6 +384,88 @@ describe('enableKeyboardNav — DOM interaction', () => {
     const { handle, onSelect } = setup();
     dispatchKey(handle.svg, 'ArrowDown'); // svg root itself, not inside a .fg-timeline__row
     expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  describe('Enter — collapse/expand toggle (spec-collapse-expand.md §7.4/§9.4)', () => {
+    beforeEach(() => {
+      tasks = [
+        task('root', '2026-01-05T09:00', '2026-01-05T17:00', { type: 'summary' }),
+        task('child', '2026-01-05T09:00', '2026-01-05T17:00', { parent: toTaskId('root') }),
+        task('leaf', '2026-01-10T09:00', '2026-01-12T09:00'),
+      ];
+    });
+
+    it('Enter on a hasChildren row calls onToggleCollapse with the right id and preventDefault', () => {
+      const onToggleCollapse = vi.fn();
+      const { handle } = setup({ onToggleCollapse });
+      const event = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true });
+      const spy = vi.spyOn(event, 'preventDefault');
+      rowFor(handle, 'root').dispatchEvent(event);
+      expect(onToggleCollapse).toHaveBeenCalledTimes(1);
+      expect(onToggleCollapse).toHaveBeenCalledWith(toTaskId('root'));
+      expect(spy).toHaveBeenCalled();
+    });
+
+    it('Enter on a leaf row (within a hierarchy that has other summary rows) is still a no-op', () => {
+      const onToggleCollapse = vi.fn();
+      const { handle, nav } = setup({ onToggleCollapse });
+      // Move focus from the initial row (root) down to the leaf row before testing Enter — the
+      // module tracks focus internally via its own navigation, not via which DOM node an event
+      // happens to be dispatched on.
+      dispatchKey(rowFor(handle, 'root'), 'ArrowDown'); // root -> child
+      dispatchKey(rowFor(handle, 'child'), 'ArrowDown'); // child -> leaf
+      expect(nav.getFocusedTaskId()).toBe(toTaskId('leaf'));
+
+      const event = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true });
+      const spy = vi.spyOn(event, 'preventDefault');
+      rowFor(handle, 'leaf').dispatchEvent(event);
+      expect(onToggleCollapse).not.toHaveBeenCalled();
+      expect(spy).not.toHaveBeenCalled();
+    });
+
+    it('Enter with no focused row (currentIndex === -1) is a no-op', () => {
+      const onToggleCollapse = vi.fn();
+      const { handle, nav } = setup({ onToggleCollapse });
+      tasks = tasks.filter((t) => t.id !== toTaskId('root')); // stale focus, forces currentIndex === -1 path
+      const rootRow = rowFor(handle, 'root'); // DOM node still present from last render, target only
+      expect(() => dispatchKey(rootRow, 'Enter')).not.toThrow();
+      expect(onToggleCollapse).not.toHaveBeenCalled();
+      void nav;
+    });
+  });
+
+  describe('syncFocusToRows() (spec-collapse-expand.md §4/§7.3/§9.4)', () => {
+    beforeEach(() => {
+      tasks = [
+        task('root', '2026-01-05T09:00', '2026-01-05T17:00', { type: 'summary' }),
+        task('child', '2026-01-05T09:00', '2026-01-05T17:00', { parent: toTaskId('root') }),
+        task('other', '2026-01-10T09:00', '2026-01-12T09:00'),
+      ];
+    });
+
+    it('is a no-op when the focused id still resolves to a visible row', () => {
+      const collapsed = new Set<TaskId>();
+      const { nav, handle } = setup({ getCollapsedIds: () => collapsed });
+      dispatchKey(rowFor(handle, 'root'), 'ArrowDown'); // focus -> child
+      expect(nav.getFocusedTaskId()).toBe(toTaskId('child'));
+      expect(() => nav.syncFocusToRows()).not.toThrow();
+      expect(nav.getFocusedTaskId()).toBe(toTaskId('child')); // unchanged
+    });
+
+    it('clamps focus to a valid visible row when an ancestor was collapsed externally, hiding the focused row', () => {
+      let collapsed = new Set<TaskId>();
+      const { nav, handle } = setup({ getCollapsedIds: () => collapsed });
+      dispatchKey(rowFor(handle, 'root'), 'ArrowDown'); // focus -> child
+      expect(nav.getFocusedTaskId()).toBe(toTaskId('child'));
+
+      // Simulate an externally-driven collapse of `root` (e.g. a mouse click via
+      // interaction/collapse-toggle.ts) — `child` is no longer visible.
+      collapsed = new Set([toTaskId('root')]);
+      nav.syncFocusToRows();
+      // child no longer resolves -> clamps to the last visible row (root, other).
+      expect(nav.getFocusedTaskId()).not.toBe(toTaskId('child'));
+      expect([toTaskId('root'), toTaskId('other')]).toContain(nav.getFocusedTaskId());
+    });
   });
 
   it('disposer: called once -> subsequent keydowns have no effect; called twice does not throw', () => {
@@ -636,6 +725,8 @@ describe('enableKeyboardNav — minimal InteractiveRendererHandle mock (SVG-deco
       density: 'default',
       isReadOnly: () => false,
       getSelection: () => [],
+      getCollapsedIds: () => new Set<TaskId>(),
+      onToggleCollapse: vi.fn(),
     });
 
     expect(nav.getFocusedTaskId()).toBe(toTaskId('mock-1'));

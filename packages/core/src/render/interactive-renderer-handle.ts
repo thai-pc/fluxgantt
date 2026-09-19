@@ -20,9 +20,19 @@ import type { TaskId } from '../types.js';
  * pixel↔content-space conversion) — those stay on `SvgRendererHandle` only, consumed only by
  * `drag-move.ts`/`drag-resize.ts`/`drag-create-dep.ts`/`wheel-zoom.ts`, unchanged, out of this
  * ticket's scope.
+ *
+ * `hitTestRow`'s result carries `hitToggle` (spec-collapse-expand.md §6.3/§7.1) — `true` iff the
+ * hit fell inside that row's collapse/expand toggle glyph gutter AND the row `hasChildren`. This
+ * widened shape is declared here (not just on `CanvasRendererHandle`, its only implementor) so
+ * `interaction/collapse-toggle.ts` can read `hit.hitToggle` through the shared structural type
+ * without a defensive `'hitToggle' in hit` runtime check — the type itself is now the source of
+ * truth, matching what the implementation actually returns.
  */
 export interface InteractiveRendererHandle {
   readonly interactionRoot: Element;
   readonly pointerEventTarget: Element;
-  hitTestRow?(clientX: number, clientY: number): { taskId: TaskId; rowIndex: number } | undefined;
+  hitTestRow?(
+    clientX: number,
+    clientY: number,
+  ): { taskId: TaskId; rowIndex: number; hitToggle: boolean } | undefined;
 }

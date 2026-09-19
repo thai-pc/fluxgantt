@@ -5,7 +5,7 @@
 // under jsdom (per-file override; the rest of core stays `environment: 'node'`), mirroring
 // `mount-drag-resize.test.ts`'s `PointerEventCtor` polyfill + `mountWithTask()` helper.
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { createGantt } from '../../src/gantt.js';
+import { createGantt } from '../helpers/create-gantt.js';
 import { toTaskId, type Dependency, type Task } from '../../src/types.js';
 import type { TaskInput } from '../../src/store/index.js';
 
