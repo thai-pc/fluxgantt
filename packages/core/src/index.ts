@@ -44,6 +44,8 @@ export type {
 } from './compute/index.js';
 export { computeCascade } from './compute/index.js';
 export type { CascadeResult, CascadeShift } from './compute/index.js';
+export { computeRollup } from './compute/index.js';
+export type { RollupResult } from './compute/index.js';
 
 // Render + interaction layers — NOT re-exported here (spec-facade-split.md §3.4). Both are
 // opt-in capability subpaths now: re-exporting `createSvgRenderer`/`enableDragMove`/... from this

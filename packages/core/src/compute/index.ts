@@ -17,3 +17,8 @@ export type {
 
 export { computeCascade } from './cascade.js';
 export type { CascadeResult, CascadeShift } from './cascade.js';
+
+export { computeRollup } from './rollup.js';
+export type { RollupResult } from './rollup.js';
+
+export { MAX_HIERARCHY_DEPTH } from './hierarchy.js';

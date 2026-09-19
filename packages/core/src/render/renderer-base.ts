@@ -13,6 +13,7 @@
 import type { Temporal } from '@js-temporal/polyfill';
 import { getTemporal } from '../internal/temporal.js';
 import { normalizeDate, isWorkingDay, isHoliday } from '../compute/working-calendar.js';
+import { MAX_HIERARCHY_DEPTH } from '../compute/hierarchy.js';
 import type {
   DateInput,
   Density,
@@ -203,14 +204,11 @@ export const ROW_HEIGHT: Readonly<Record<Density, number>> = {
   comfortable: 40,
 };
 
-/**
- * Max hierarchy nesting depth (review N1). The `visiting` set already rejects genuine
- * cycles, but a very deep *acyclic* parent chain (e.g. 50k tasks each parenting the next,
- * from untrusted host data) would recurse deep enough to blow the call stack with an
- * opaque `RangeError` instead of a controlled, explainable throw. 1,000 levels is far
- * beyond any real project WBS.
- */
-export const MAX_HIERARCHY_DEPTH = 1_000;
+/** Re-exported from `compute/hierarchy.ts`, which is the shared home because `computeRollup`
+ *  walks the same parent graph under the same bound and the compute layer may not import from
+ *  `render/`. Re-exported (not moved silently) so this module's existing public import path —
+ *  used by `renderer-base.test.ts` and the barrel — keeps working. */
+export { MAX_HIERARCHY_DEPTH };
 
 /**
  * Toggle-affordance geometry (spec-collapse-expand.md §6.1), shared by both renderers for
