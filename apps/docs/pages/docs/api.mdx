@@ -51,6 +51,7 @@ The React and Vue wrappers compose `withRender` + `withInteraction` for you.
 | `locale` | `string` | `'en'` | Renderer locale. |
 | `readOnly` | `boolean` | `false` | When `true`, `mount()` wires no drag gestures (with `withInteraction` applied; click-select and keyboard nav stay live). |
 | `schedulingMode` | `SchedulingMode` | `'manual'` | `'auto'` cascades dependents on move/resize. |
+| `initialCollapsed` | `readonly TaskId[]` | `[]` | Tasks to start collapsed. Unknown or leaf ids are dropped silently; fires no `collapse:changed`. |
 | `onTaskChange` | `(task, prev) => void` | — | Catch-all fired whenever a task field changes. |
 
 ## `GanttInstance` methods
@@ -77,6 +78,17 @@ The React and Vue wrappers compose `withRender` + `withInteraction` for you.
 | `unlinkTasks(from, to)` | `void` | Remove links between two tasks; emits `dependency:removed`. |
 | `getDependencies()` | `Dependency[]` | All dependencies. |
 | `getDependenciesOf(taskId)` | `Dependency[]` | Links touching a task. |
+
+### Hierarchy (collapse / expand)
+
+Base — always present, no mixin required; collapse state is headless.
+
+| Method | Returns | Purpose |
+|---|---|---|
+| `toggleCollapse(id)` | `void` | Toggle a task's collapsed state, hiding/showing its whole subtree. No-op on a leaf or unknown id. Emits `collapse:changed` iff the set changed. |
+| `isCollapsed(id)` | `boolean` | Whether `id` is collapsed **and** still has children. Safe after `destroy()` (returns `false`). |
+| `collapseAll()` | `void` | Collapse every task that has children. Idempotent. |
+| `expandAll()` | `void` | Expand everything. Idempotent. |
 
 ### Computation
 
@@ -122,6 +134,7 @@ Requires the `withIo` mixin (`@fluxgantt/core/io`).
 | `dependency:added` | `(dependency: Dependency)` |
 | `dependency:removed` | `(dependencyId: DependencyId)` |
 | `critical-path:computed` | `(criticalTaskIds: readonly TaskId[])` |
+| `collapse:changed` | `(collapsedTaskIds: readonly TaskId[])` — the full collapsed set, not a delta |
 
 `on()` returns an `UnsubscribeFn` (`() => void`).
 
@@ -139,6 +152,7 @@ Requires the `withIo` mixin (`@fluxgantt/core/io`).
 | `DEFAULT_CALENDAR` | The Mon–Fri 9–17 UTC default calendar. |
 | `isWorkingDay`, `isHoliday`, `addWorkingHours`, `subtractWorkingHours`, `differenceInWorkingHours`, `normalizeDate` | Calendar-aware date helpers. |
 | `computeCriticalPath` | The pure CPM function (the instance method delegates to it). |
+| `computeRollup(tasks, calendar?)` | Derive each parent's span/progress/duration from its children → `ReadonlyMap<TaskId, RollupResult>`. Pure; never mutates. Throws on a cyclic parent chain. See [Hierarchy](/docs/concepts/hierarchy). |
 | `CyclicDependencyError` | Thrown by CPM on a cyclic graph. |
 | `signal`, `computed`, `effect`, `batch`, `untracked` | The reactive primitives the store is built on. |
 
@@ -147,6 +161,6 @@ Requires the `withIo` mixin (`@fluxgantt/core/io`).
 `TaskId`, `DependencyId`, `ResourceId`, `BaselineId`, `ProjectId` (branded strings) ·
 `Task`, `TaskInput`, `TaskPatch`, `TaskKind`, `TaskConstraint` · `Dependency`,
 `DependencyInput`, `DependencyType` · `DateInput` · `WorkingCalendar`, `WeekdayCode`,
-`WorkingHours` · `CriticalPathResult`, `TaskSchedule` · `ViewMode`, `Density`,
+`WorkingHours` · `CriticalPathResult`, `TaskSchedule`, `RollupResult` · `ViewMode`, `Density`,
 `SchedulingMode` · `GanttConfig`, `GanttInstance`, `GanttEventMap`, `GanttEventName`,
 `UnsubscribeFn`.
