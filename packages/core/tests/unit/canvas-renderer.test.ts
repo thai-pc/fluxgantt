@@ -487,6 +487,55 @@ describe('collapse/expand — hidden a11y layer', () => {
     expect(rowC.hasAttribute('aria-expanded')).toBe(false);
   });
 
+  it('aria-level is the 1-based depth on every row of a tree, and absent on a flat project', () => {
+    const mock = createMockContext2D();
+    installMockContext(mock);
+    const h = createCanvasRenderer(container, { tasks: baseTasks, dependencies: baseDeps });
+    const level = (id: string) =>
+      h.interactionRoot
+        .querySelector(`.fg-timeline-canvas__row[data-task-id="${id}"]`)!
+        .getAttribute('aria-level');
+    // 1-based, so a root row is level 1 even though `RowLayout.depth` is 0 there. Leaves carry
+    // it too — unlike `aria-expanded`, which is omitted on non-expandable rows.
+    expect(level('a')).toBe('1');
+    expect(level('b')).toBe('2');
+    expect(level('c')).toBe('1');
+
+    // Flat project -> `role="grid"` -> no row may carry `aria-level` at all (axe lists it in
+    // `invalidTableRowAttrs` next to `aria-expanded`: valid only under a `treegrid` owner).
+    const flat = baseTasks.filter((t) => t.id !== toTaskId('b') && t.type !== 'summary');
+    installMockContext(createMockContext2D());
+    const h2 = createCanvasRenderer(container, { tasks: flat, dependencies: [] });
+    expect(h2.interactionRoot.getAttribute('role')).toBe('grid');
+    const rows = [...h2.interactionRoot.querySelectorAll('.fg-timeline-canvas__row')];
+    expect(rows.length).toBeGreaterThan(0);
+    for (const row of rows) expect(row.hasAttribute('aria-level')).toBe(false);
+  });
+
+  it('SVG and Canvas agree on aria-level for the same input (cross-renderer parity)', () => {
+    // The two renderers emit ARIA from separate code paths; this is the guard that keeps them
+    // from drifting, mirroring the parity checks already used for the dependency layout.
+    installMockContext(createMockContext2D());
+    const canvasHost = document.createElement('div');
+    document.body.appendChild(canvasHost);
+    const svgHost = document.createElement('div');
+    document.body.appendChild(svgHost);
+    try {
+      const c = createCanvasRenderer(canvasHost, { tasks: baseTasks, dependencies: baseDeps });
+      const svg = createSvgRenderer(svgHost, { tasks: baseTasks, dependencies: baseDeps });
+      const read = (root: ParentNode, sel: string) =>
+        [...root.querySelectorAll(sel)].map(
+          (r) => `${r.getAttribute('data-task-id')}=${r.getAttribute('aria-level')}`,
+        );
+      expect(read(c.interactionRoot, '.fg-timeline-canvas__row')).toEqual(
+        read(svg.svg, '.fg-timeline__row'),
+      );
+    } finally {
+      canvasHost.remove();
+      svgHost.remove();
+    }
+  });
+
   it('collapsedIds in the input reduces aria-rowcount and removes the hidden descendant row element', () => {
     const mock = createMockContext2D();
     installMockContext(mock);
