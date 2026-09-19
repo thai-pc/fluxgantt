@@ -18,7 +18,12 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          # Read from .nvmrc so CI and local dev cannot drift. A bare `22` silently resolves to
+          # the newest 22.x, which hid a real local breakage: `size-limit` 13 requires Node
+          # >= 22.18 (it calls `fs.glob` with `withFileTypes`, added in 22.2), so on an older
+          # 22.x `pnpm size` died with an opaque `TypeError: i.isFile is not a function` while
+          # CI stayed green.
+          node-version-file: .nvmrc
           cache: pnpm
 
       - name: Install
@@ -36,7 +41,7 @@ jobs:
       - name: Build (packages + docs site + example apps)
         run: pnpm build
 
-      - name: "Bundle size (@fluxgantt/core budget: full <36kb gzip, hello-world <22kb gzip)"
+      - name: "Bundle size (5 gzip fixtures, budgets in packages/core/.size-limit.json)"
         run: pnpm size
 
       - name: Unit tests
@@ -56,7 +61,12 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          # Read from .nvmrc so CI and local dev cannot drift. A bare `22` silently resolves to
+          # the newest 22.x, which hid a real local breakage: `size-limit` 13 requires Node
+          # >= 22.18 (it calls `fs.glob` with `withFileTypes`, added in 22.2), so on an older
+          # 22.x `pnpm size` died with an opaque `TypeError: i.isFile is not a function` while
+          # CI stayed green.
+          node-version-file: .nvmrc
           cache: pnpm
 
       - name: Install
