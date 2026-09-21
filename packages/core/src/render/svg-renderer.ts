@@ -20,6 +20,7 @@ import {
   deriveTimeRange,
   layoutDependencyPath,
   layoutRows,
+  isTreeLayout,
   layoutTaskBar,
   validateTaskColor,
   isKnownTaskKind,
@@ -374,7 +375,7 @@ export function createSvgRenderer(
     // `aria-expanded` at all and therefore stays a plain `grid`, so this changes nothing for
     // charts without hierarchy. Both roles take `aria-rowcount`/`aria-multiselectable`
     // identically, and the keyboard contract (roving tabindex, arrow navigation) is unchanged.
-    const isTree = rows.some((r) => r.hasChildren);
+    const isTree = isTreeLayout(rows);
     svg.setAttribute('role', isTree ? 'treegrid' : 'grid');
     svg.setAttribute('aria-rowcount', String(rows.length));
     svg.setAttribute('aria-multiselectable', 'true');
@@ -572,6 +573,9 @@ function renderRows(
   const g = document.createElementNS(SVG_NS, 'g') as SVGGElement;
   g.setAttribute('class', 'fg-timeline__rows');
 
+  // Same predicate the root `role` is chosen from — see `isTreeLayout`.
+  const isTree = isTreeLayout(rows);
+
   for (const row of rows) {
     const bar = barByTaskId.get(row.task.id);
     if (!bar) continue;
@@ -596,6 +600,18 @@ function renderRows(
     // imply it IS an expandable container).
     if (row.hasChildren) {
       rowGroup.setAttribute('aria-expanded', String(!row.isCollapsed));
+    }
+    // `aria-level` — 1-based nesting depth, so a root row is level 1. Gated on `isTree` for
+    // exactly the same reason as `aria-expanded` above: axe's `invalidTableRowAttrs` list puts
+    // `aria-level` alongside `aria-expanded`/`aria-posinset`/`aria-setsize` as attributes a row
+    // may carry only when its owner is a `treegrid`, so emitting it under a plain `grid` would
+    // be the same serious-impact violation. Unlike `aria-expanded` it goes on EVERY row of a
+    // tree, leaves included — a leaf still has a real depth, and an assistive technology needs
+    // it to announce nesting. In a flat project `isTree` is false and no row carries it, which
+    // is correct rather than a gap: with no hierarchy every row is trivially level 1, and ATs
+    // already default to that.
+    if (isTree) {
+      rowGroup.setAttribute('aria-level', String(row.depth + 1));
     }
 
     // Single-column v1 (spec §3.2 point 3): exactly one `role="gridcell"` wrapper per row,

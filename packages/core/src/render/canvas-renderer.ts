@@ -97,6 +97,7 @@ import {
   deriveTimeRange,
   layoutDependencyPath,
   layoutRows,
+  isTreeLayout,
   layoutTaskBar,
   validateTaskColor,
   isKnownTaskKind,
@@ -1141,7 +1142,7 @@ export function createCanvasRenderer(
     // why a flat project still gets a plain `grid`). Derived from the FULL `rows`, not the
     // windowed slice: the root role describes the whole grid, and must not flicker between
     // `grid` and `treegrid` as the user scrolls a container row band in and out of view.
-    const isTree = rows.some((r) => r.hasChildren);
+    const isTree = isTreeLayout(rows);
     a11yLayer.setAttribute('role', isTree ? 'treegrid' : 'grid');
     a11yLayer.setAttribute('aria-rowcount', String(rows.length));
     a11yLayer.setAttribute('aria-multiselectable', 'true');
@@ -1170,6 +1171,14 @@ export function createCanvasRenderer(
       // on a leaf row (WAI-ARIA: a non-expandable node must not carry `aria-expanded="false"`).
       if (row.hasChildren) {
         rowEl.setAttribute('aria-expanded', String(!row.isCollapsed));
+      }
+      // `aria-level` — 1-based depth, mirroring svg-renderer.ts exactly (see the rationale at
+      // its own `aria-level` call: same `isTree` gate as `aria-expanded`, but emitted on every
+      // row of a tree rather than only expandable ones). `row.depth` comes from the FULL-tree
+      // walk in `layoutRows`, so windowing cannot distort it: a row scrolled into view reports
+      // the same level it would in an unwindowed render.
+      if (isTree) {
+        rowEl.setAttribute('aria-level', String(row.depth + 1));
       }
 
       const cellEl = document.createElement('div');

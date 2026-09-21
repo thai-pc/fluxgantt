@@ -33,11 +33,130 @@ gantt.removeTask(toTaskId('phase-1'));
 This keeps the store consistent — you never end up with an orphaned child pointing at a
 `parent` that no longer exists, or a dependency referencing a deleted task.
 
+## Collapse & expand
+
+A task that has children can be collapsed, which hides its **entire subtree** — not just its
+direct children:
+
+```ts
+gantt.toggleCollapse(toTaskId('phase-1')); // hide Design + Build
+gantt.isCollapsed(toTaskId('phase-1')); // true
+gantt.toggleCollapse(toTaskId('phase-1')); // show them again
+
+gantt.collapseAll(); // collapse every task that has children
+gantt.expandAll(); // expand everything
+```
+
+Collapse state is **headless**: it lives in the store, not the renderer, so an instance with no
+renderer attached can still toggle it and emit events. That is what makes it usable
+server-side or in a test.
+
+Only a task that currently **has children** can be collapsed. Calling `toggleCollapse()` with a
+leaf id or an id that is not in the store is a silent no-op — no throw, no event. The same
+applies to `collapseAll()`, which skips leaves.
+
+### Starting collapsed
+
+Pass `initialCollapsed` to start with a subtree already folded:
+
+```ts
+const gantt = createGantt({
+  tasks: [
+    /* … */
+  ],
+  initialCollapsed: [toTaskId('phase-1')],
+});
+```
+
+Ids in `initialCollapsed` that are unknown or refer to a leaf are dropped silently, and **no
+`collapse:changed` event fires at construction** — the event reports changes, and the initial
+state is not a change.
+
+### Reacting to changes
+
+`collapse:changed` fires once per call that actually changes the set, carrying the full
+collapsed-id snapshot (not a delta):
+
+```ts
+const off = gantt.on('collapse:changed', (collapsedIds) => {
+  console.log(`${collapsedIds.length} task(s) collapsed`);
+});
+```
+
+Idempotent calls emit nothing: collapsing an already-collapsed task, or `expandAll()` when
+nothing is collapsed, is a no-op.
+
+### In the chart
+
+With `withRender` applied, every row that has children gets a chevron you can click, and
+pressing <kbd>Enter</kbd> toggles the focused row (inert on a leaf). If a collapse hides the
+row that currently has keyboard focus, focus moves to the **nearest visible ancestor** rather
+than being lost.
+
+Rows with children carry `aria-expanded` for screen readers; leaves deliberately omit the
+attribute rather than reporting `aria-expanded="false"`, which would announce them as collapsed
+containers.
+
 ## Summary bars
 
-A `summary`/`project` task is intended to span its children on the timeline. You still provide
-its `start`/`end`/`progress` explicitly in v1 (there is no automatic roll-up computation yet) —
-set them to bracket the child date range.
+A `summary`/`project` task is intended to span its children on the timeline. You can either set
+its `start`/`end`/`progress` yourself, or derive them from the children with `computeRollup()`.
 
-> Automatic summary roll-up (deriving a summary's span/progress from its children) is on the
-> roadmap; for now, set the summary's own dates.
+### `computeRollup()`
+
+`computeRollup()` is a pure function: it reads your tasks and returns what each parent's span
+and progress *would* be, keyed only by tasks that actually have children. It **does not mutate
+anything** — you decide whether to apply the result:
+
+```ts
+import { computeRollup, toTaskId } from '@fluxgantt/core';
+
+const rollup = computeRollup(gantt.getTasks());
+
+for (const [id, r] of rollup) {
+  gantt.updateTask(id, { start: r.start, end: r.end, progress: r.progress });
+}
+```
+
+Each `RollupResult` carries `start`, `end`, `progress` and `durationHours` (working hours
+between the rolled-up `start` and `end`, per the calendar).
+
+That "does not mutate" design is deliberate. If you want author-controlled summary dates —
+a summary bar that intentionally extends past its children, say — simply don't apply the
+result, or apply only the fields you want.
+
+### What it derives
+
+Rollup is bottom-up: a parent whose children are themselves parents aggregates their
+*already-rolled-up* values, so a three-level tree resolves in one pass.
+
+`start`/`end` are the min/max over the whole subtree. **Progress is duration-weighted**, not a
+plain average — an 80-hour task at 100% and a 20-hour task at 0% roll up to `0.8`, not `0.5`:
+
+```
+progress = Σ(durationᵢ × progressᵢ) / Σ(durationᵢ)
+```
+
+When every child has zero duration (all milestones) that denominator would be zero, so it falls
+back to the plain mean instead of producing `NaN`.
+
+Two consequences worth knowing:
+
+- **Authored values on a parent are ignored.** A task that has children contributes its
+  children's aggregate, never its own `start`/`end`/`progress`. A summary bar that disagrees
+  with its own subtree is a data-entry bug, not a value to preserve.
+- **A childless task is never a key** in the returned map, including a `type: 'summary'` task
+  with no children. Rollup follows the actual parent graph, not the `type` field.
+
+Pass a calendar as the second argument if yours is not the default:
+
+```ts
+const rollup = computeRollup(gantt.getTasks(), myCalendar);
+```
+
+### Cycles
+
+A cyclic parent chain (`A → B → A`, or a task parenting itself) throws rather than looping
+forever, as does a chain nested deeper than 1,000 levels. A task whose `parent` points at an id
+that does not exist is treated as a root instead — dangling references are tolerated, genuine
+cycles are not.

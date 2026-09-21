@@ -340,6 +340,22 @@ export interface TaskBarLayout {
 }
 
 /**
+ * Whether a laid-out chart is a tree (at least one expandable row) rather than a flat list.
+ *
+ * Shared by both renderers so the root `role` and the per-row ARIA attributes can never drift.
+ * `aria-expanded` and `aria-level` both sit in axe's `invalidTableRowAttrs` list: a row may
+ * carry either one only when its owner resolves to `treegrid`, never under a plain `grid`. By
+ * deriving the role and both attribute gates from this single predicate, that pairing is
+ * structural rather than something two call sites have to remember.
+ *
+ * Pass the FULL row list, not a windowed slice — otherwise a canvas viewport scrolled past
+ * every summary row would silently demote itself to `grid` mid-scroll.
+ */
+export function isTreeLayout(rows: readonly RowLayout[]): boolean {
+  return rows.some((r) => r.hasChildren);
+}
+
+/**
  * Computes one task bar's geometry (spec §5.4). Milestones render as a square (the
  * caller rotates it 45° for the diamond shape — geometry stays a plain rect here, no
  * DOM). Non-milestones clamp `end < start` to width 0 instead of throwing — resilient
@@ -349,10 +365,6 @@ export interface TaskBarLayout {
  * `timeScale.dateToX(task.end) < timeScale.dateToX(task.start)` themselves (pure
  * arithmetic on values already produced by `TimeScale`, not a re-implementation of date
  * math).
- */
-
-/**
- * Bar geometry for one row.
  *
  * `rollup` — optional map from `computeRollup()`. When an entry exists for `task.id`, the bar is
  * drawn at the rolled-up span INSTEAD of the task's authored `start`/`end`; otherwise the
