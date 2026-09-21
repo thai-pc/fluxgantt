@@ -411,6 +411,28 @@ export function layoutTaskBar(
   return { task, x: x0, y: row.y + (rowHeight - height) / 2, width, height };
 }
 
+/**
+ * Width in pixels of a task bar's completed portion (spec §5.4, `.fg-task__progress`).
+ *
+ * Resolution mirrors `buildTaskAriaLabel` exactly — `rolled?.progress ?? task.progress` — so the
+ * painted fraction can never disagree with the percentage the label already announces, which is
+ * the WCAG name/role/value pairing this element exists to complete.
+ *
+ * - A `milestone` row returns 0: it is a rotated square, and a partial fill on a diamond reads as
+ *   a different shape rather than a different value. Same gate as `layoutTaskBar`.
+ * - `progress` is clamped locally. `Task.progress` is documented 0..1 and validated at the IO
+ *   boundary and in `setProgress`, but NOT in `addTask` or the store — so an out-of-range or `NaN`
+ *   value genuinely reaches the renderer, where unclamped it would paint past the bar's own edge.
+ * - Returning 0 (rather than a zero-width geometry) lets callers skip emitting an element at all,
+ *   keeping the DOM and the Canvas call log free of no-op nodes.
+ */
+export function progressFillWidth(task: Task, bar: TaskBarLayout, rolled?: RolledUpRow): number {
+  if (task.type === 'milestone') return 0;
+  const raw = rolled?.progress ?? task.progress ?? 0;
+  const fraction = Number.isNaN(raw) ? 0 : raw <= 0 ? 0 : raw >= 1 ? 1 : raw;
+  return bar.width * fraction;
+}
+
 // --- Dependency routing ----------------------------------------------------------------
 
 export interface DependencyPathLayout {

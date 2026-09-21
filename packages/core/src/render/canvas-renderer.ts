@@ -99,6 +99,7 @@ import {
   layoutRows,
   isTreeLayout,
   layoutTaskBar,
+  progressFillWidth,
   validateTaskColor,
   isKnownTaskKind,
   isKnownDependencyType,
@@ -515,6 +516,7 @@ interface DesignTokens {
   readonly fg: string;
   readonly taskMilestone: string;
   readonly taskDefault: string;
+  readonly taskCompleted: string;
   readonly taskCritical: string;
   readonly taskCriticalDash: readonly number[];
   readonly taskCriticalStrokeWidth: number;
@@ -560,6 +562,7 @@ function resolveDesignTokens(container: HTMLElement): DesignTokens {
     fg: color('--fg-fg', '#18181b'),
     taskMilestone: color('--fg-task-milestone', '#f59e0b'),
     taskDefault: color('--fg-task-default', '#6366f1'),
+    taskCompleted: color('--fg-task-completed', '#10b981'),
     taskCritical: color('--fg-task-critical', '#ef4444'),
     taskCriticalDash: dash('--fg-task-critical-dash', [4, 2]),
     taskCriticalStrokeWidth: num('--fg-task-critical-stroke-width', 2),
@@ -1254,7 +1257,18 @@ export function createCanvasRenderer(
     try {
       ctx.translate(0, HEADER_HEIGHT - scrollTop);
       paintDependencies(ctx, state.input.dependencies, barByTaskId, rowHeight, offsetX, 0, tokens);
-      paintRows(ctx, windowedRows, barByTaskId, criticalIds, selectedIds, rowHeight, offsetX, 0, tokens);
+      paintRows(
+        ctx,
+        windowedRows,
+        barByTaskId,
+        criticalIds,
+        selectedIds,
+        rowHeight,
+        offsetX,
+        0,
+        tokens,
+        state.input.rollup,
+      );
       // Always the LAST paint step (spec §8.2) — drawn on top of everything else, so the ring
       // is never obscured by a bar, dependency arrow, or critical-path dash.
       const focusBar = focusedTaskId !== undefined ? barByTaskId.get(focusedTaskId) : undefined;
@@ -1365,6 +1379,7 @@ function paintRows(
   offsetX: number,
   offsetY: number,
   tokens: DesignTokens,
+  rollup: ReadonlyMap<TaskId, RolledUpRow> | undefined,
 ): void {
   for (const row of rows) {
     const bar = barByTaskId.get(row.task.id);
@@ -1401,7 +1416,17 @@ function paintRows(
 
     const isCritical = criticalIds.has(row.task.id);
     const isSelected = selectedIds.has(row.task.id);
-    paintTaskBar(ctx, row.task, bar, offsetX, offsetY, isCritical, isSelected, tokens);
+    paintTaskBar(
+      ctx,
+      row.task,
+      bar,
+      offsetX,
+      offsetY,
+      isCritical,
+      isSelected,
+      tokens,
+      rollup?.get(row.task.id),
+    );
   }
 }
 
@@ -1456,6 +1481,7 @@ function paintTaskBar(
   isCritical: boolean,
   isSelected: boolean,
   tokens: DesignTokens,
+  rolled: RolledUpRow | undefined,
 ): void {
   const x = bar.x + offsetX;
   const y = bar.y + offsetY;
@@ -1486,6 +1512,19 @@ function paintTaskBar(
       ctx.fill();
       if (isCritical) {
         strokeCriticalOutline(ctx, x, y, bar.width, bar.height, tokens);
+      }
+
+      // Completed portion (`.fg-task__progress`'s Canvas counterpart), painted over the bar and
+      // under the selection outline — the same z-order as SVG's append order. Milestones are
+      // excluded by `progressFillWidth` itself, so this lives in the non-milestone branch where
+      // the context is also free of the diamond's rotated frame.
+      // `fillStyle` is mutated inside the enclosing save()/restore() pair, so nothing leaks to
+      // the next task.
+      const progressWidth = progressFillWidth(task, bar, rolled);
+      if (progressWidth > 0) {
+        ctx.fillStyle = tokens.taskCompleted;
+        drawRoundedRect(ctx, x, y, progressWidth, bar.height, 3);
+        ctx.fill();
       }
     }
   } finally {

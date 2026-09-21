@@ -428,6 +428,34 @@ describe('enableDragResize — DOM interaction', () => {
     expect(onTaskResized).not.toHaveBeenCalled();
   });
 
+  it('the progress fill tracks the bar live during a resize and is restored on Escape', () => {
+    // `onMove` writes `width` straight onto `.fg-task__bar`. A sibling `.fg-task__progress`
+    // left untouched would keep its old width — visibly overflowing a shrinking bar for the
+    // whole gesture. It is scaled by the ratio captured at gesture start, because progress is
+    // a fraction OF THE BAR.
+    const { groupEl, handle } = setup({ onTaskResized: vi.fn() });
+    const { x, width } = barGeometry(handle, 't1');
+    const { pixelsPerDay } = handle.getTimeScale();
+    const rightEdgeX = x + width;
+    const barEl = groupEl.querySelector('.fg-task__bar')!;
+    const progressEl = groupEl.querySelector('.fg-task__progress')!;
+    const originalProgressWidth = Number(progressEl.getAttribute('width'));
+    const ratio = originalProgressWidth / width;
+    expect(ratio).toBeCloseTo(0.5, 6); // sanity: the fixture's tasks are at progress 0.5
+
+    dispatchPointer(groupEl, 'pointerdown', { pointerId: 1, clientX: rightEdgeX, clientY: 50, bubbles: true });
+    dispatchPointer(window, 'pointermove', { pointerId: 1, clientX: rightEdgeX + 2 * pixelsPerDay, clientY: 50 });
+
+    const liveWidth = Number(barEl.getAttribute('width'));
+    expect(liveWidth).toBe(width + 2 * pixelsPerDay);
+    expect(Number(progressEl.getAttribute('width'))).toBeCloseTo(liveWidth * ratio, 6);
+
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+
+    expect(Number(barEl.getAttribute('width'))).toBe(width);
+    expect(Number(progressEl.getAttribute('width'))).toBeCloseTo(originalProgressWidth, 6);
+  });
+
   it('custom edgeHitZonePx/dragThresholdPx are respected', () => {
     const onTaskResized = vi.fn();
     const { handle, groupEl } = setup({ onTaskResized, edgeHitZonePx: 20, dragThresholdPx: 10 });
