@@ -104,6 +104,7 @@ import {
   isKnownDependencyType,
   buildTaskAriaLabel,
   type GridColumn,
+  type RolledUpRow,
   type RowLayout,
   type TaskBarLayout,
   type TimeScale,
@@ -146,6 +147,11 @@ export interface CanvasRendererInput {
    *  `hitTestRow()`'s independent call) — updating only one would make hit-testing and the
    *  paint pass disagree about which rows exist. */
   readonly collapsedIds?: ReadonlySet<TaskId>;
+  /** Optional — output of `computeRollup()`. Mirrors `SvgRendererInput.rollup` field-for-field:
+   *  a parent row with an entry is painted at its aggregate span and announces its aggregate
+   *  progress. `undefined`/omitted = no rollup, identical to the pre-B2 behavior
+   *  (spec-summary-rollup.md Ticket B2). */
+  readonly rollup?: ReadonlyMap<TaskId, RolledUpRow>;
 }
 
 export interface CanvasRendererOptions {
@@ -1051,7 +1057,7 @@ export function createCanvasRenderer(
     const barByTaskId = new Map<TaskId, TaskBarLayout>();
     let clampedCount = 0;
     for (const row of rows) {
-      const bar = layoutTaskBar(row.task, timeScale, row, rowHeight);
+      const bar = layoutTaskBar(row.task, timeScale, row, rowHeight, state.input.rollup);
       barByTaskId.set(row.task.id, bar);
       if (
         row.task.type !== 'milestone' &&
@@ -1197,7 +1203,17 @@ export function createCanvasRenderer(
       // `task.id` is a branded TaskId (developer-controlled, not free-text host input) — safe
       // as an attribute value via setAttribute regardless.
       taskEl.setAttribute('data-task-id', row.task.id);
-      taskEl.setAttribute('aria-label', buildTaskAriaLabel(row.task, isCritical, isSelected, calendar, locale));
+      taskEl.setAttribute(
+        'aria-label',
+        buildTaskAriaLabel(
+          row.task,
+          isCritical,
+          isSelected,
+          calendar,
+          locale,
+          state.input.rollup?.get(row.task.id),
+        ),
+      );
 
       cellEl.appendChild(labelEl);
       cellEl.appendChild(taskEl);

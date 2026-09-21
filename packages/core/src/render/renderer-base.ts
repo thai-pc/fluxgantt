@@ -19,12 +19,19 @@ import type {
   Density,
   Dependency,
   DependencyType,
+  RolledUpRow,
+  RolledUpSpan,
   Task,
   TaskId,
   TaskKind,
   ViewMode,
   WorkingCalendar,
 } from '../types.js';
+
+// Re-exported (not redefined) so the render layer's own modules and tests keep importing these
+// from here, while `types.ts` stays their single definition — the render layer may not import
+// from `compute/`, so they cannot live next to `RollupResult`.
+export type { RolledUpRow, RolledUpSpan };
 
 // --- Accessible-name string builder (spec-canvas-renderer-ticket2.md §2.1) ---------------
 //
@@ -41,16 +48,30 @@ import type {
  *  OPTION string, a separate concern) — avoids a same-named-but-different-purpose shadow. */
 export const MAX_ARIA_TASK_NAME_LENGTH = 200;
 
+/**
+ * `rolled` — optional rollup entry for this task (Ticket B2). When present, the dates and
+ * percentage announced are the AGGREGATE ones, matching what the bar is actually drawn at.
+ * Keeping the two in sync matters more here than anywhere else in the renderer: a summary bar
+ * painted across its children's span while its label announced its own stale authored dates
+ * would make the chart say one thing visually and another to a screen reader — the exact
+ * failure mode WCAG's name/role/value requirement exists to prevent. Omitted/`undefined`
+ * reproduces the pre-B2 label byte for byte.
+ *
+ * A milestone deliberately ignores `rolled`, mirroring `layoutTaskBar`: its bar is not redrawn
+ * at an aggregate span, so its label must not claim one either.
+ */
 export function buildTaskAriaLabel(
   task: Task,
   isCritical: boolean,
   isSelected: boolean,
   calendar: WorkingCalendar,
   locale: string,
+  rolled?: RolledUpRow,
 ): string {
+  const effective = task.type === 'milestone' ? undefined : rolled;
   const name = task.name.slice(0, MAX_ARIA_TASK_NAME_LENGTH);
-  const start = normalizeDate(task.start, calendar.timezone).toPlainDate();
-  const end = normalizeDate(task.end, calendar.timezone).toPlainDate();
+  const start = normalizeDate(effective?.start ?? task.start, calendar.timezone).toPlainDate();
+  const end = normalizeDate(effective?.end ?? task.end, calendar.timezone).toPlainDate();
   const dateOptions: Intl.DateTimeFormatOptions = {
     year: 'numeric',
     month: 'short',
@@ -58,7 +79,7 @@ export function buildTaskAriaLabel(
   };
   const startLabel = start.toLocaleString(locale, dateOptions);
   const endLabel = end.toLocaleString(locale, dateOptions);
-  const progressPct = Math.round((task.progress ?? 0) * 100);
+  const progressPct = Math.round((effective?.progress ?? task.progress ?? 0) * 100);
   const base = `${name}, ${startLabel}–${endLabel} (${progressPct}% complete)`;
   const withCritical = isCritical ? `${base}, critical path` : base;
   return isSelected ? `${withCritical}, selected` : withCritical;
@@ -319,17 +340,6 @@ export interface TaskBarLayout {
 }
 
 /**
- * Computes one task bar's geometry (spec §5.4). Milestones render as a square (the
- * caller rotates it 45° for the diamond shape — geometry stays a plain rect here, no
- * DOM). Non-milestones clamp `end < start` to width 0 instead of throwing — resilient
- * rendering, deliberately diverging from CPM's `resolveDuration`, which throws on the
- * same condition (spec §4, §11 Q5): a single malformed record must not crash the whole
- * chart. Callers that want to warn about clamped tasks compare
- * `timeScale.dateToX(task.end) < timeScale.dateToX(task.start)` themselves (pure
- * arithmetic on values already produced by `TimeScale`, not a re-implementation of date
- * math).
- */
-/**
  * Whether a laid-out chart is a tree (at least one expandable row) rather than a flat list.
  *
  * Shared by both renderers so the root `role` and the per-row ARIA attributes can never drift.
@@ -345,11 +355,41 @@ export function isTreeLayout(rows: readonly RowLayout[]): boolean {
   return rows.some((r) => r.hasChildren);
 }
 
+/**
+ * Computes one task bar's geometry (spec §5.4). Milestones render as a square (the
+ * caller rotates it 45° for the diamond shape — geometry stays a plain rect here, no
+ * DOM). Non-milestones clamp `end < start` to width 0 instead of throwing — resilient
+ * rendering, deliberately diverging from CPM's `resolveDuration`, which throws on the
+ * same condition (spec §4, §11 Q5): a single malformed record must not crash the whole
+ * chart. Callers that want to warn about clamped tasks compare
+ * `timeScale.dateToX(task.end) < timeScale.dateToX(task.start)` themselves (pure
+ * arithmetic on values already produced by `TimeScale`, not a re-implementation of date
+ * math).
+ *
+ * `rollup` — optional map from `computeRollup()`. When an entry exists for `task.id`, the bar is
+ * drawn at the rolled-up span INSTEAD of the task's authored `start`/`end`; otherwise the
+ * authored dates are used unchanged. Omitting the argument entirely reproduces the pre-B2
+ * behavior exactly, which is what keeps this additive for every existing caller.
+ *
+ * Two deliberate restrictions:
+ *
+ * - A `milestone` row ignores `rollup` even when an entry exists. A milestone is a
+ *   zero-duration marker drawn as a centered diamond; stretching it across an aggregate span
+ *   would turn it into a different shape and contradict its own `type`. `computeRollup` does
+ *   emit entries for parented-under-a-milestone cases (it is structural and does not trust
+ *   `type` — spec §6.12), so this has to be handled here rather than assumed impossible.
+ * - The span is used for geometry only. The task object on the returned layout is the ORIGINAL
+ *   task, never a synthesized one: `TaskBarLayout.task` flows into `data-task-id`, hit-testing
+ *   and `aria-label`, and substituting a fabricated task there would make the renderer disagree
+ *   with the store about what a row actually is. Rollup is derived-on-read (spec §4) and must
+ *   not leak into identity.
+ */
 export function layoutTaskBar(
   task: Task,
   timeScale: TimeScale,
   row: RowLayout,
   rowHeight: number,
+  rollup?: ReadonlyMap<TaskId, RolledUpSpan>,
 ): TaskBarLayout {
   if (task.type === 'milestone') {
     const cx = timeScale.dateToX(task.start);
@@ -362,8 +402,9 @@ export function layoutTaskBar(
       height: size,
     };
   }
-  const x0 = timeScale.dateToX(task.start);
-  const x1 = timeScale.dateToX(task.end);
+  const span = rollup?.get(task.id);
+  const x0 = timeScale.dateToX(span?.start ?? task.start);
+  const x1 = timeScale.dateToX(span?.end ?? task.end);
   const width = Math.max(0, x1 - x0);
   const heightRatio = task.type === 'task' ? 0.6 : 0.4; // summary/project drawn thinner
   const height = rowHeight * heightRatio;

@@ -17,6 +17,7 @@ import { createGantt } from '../helpers/create-gantt.js';
 import { CANVAS_AUTO_SWITCH_THRESHOLD } from '../../src/render/mixin.js';
 import { createSvgRenderer } from '../../src/render/svg-renderer.js';
 import { CanvasDimensionExceededError, createCanvasRenderer } from '../../src/render/canvas-renderer.js';
+import { computeRollup } from '../../src/compute/rollup.js';
 import { toTaskId, type Task } from '../../src/types.js';
 import type { TaskInput } from '../../src/store/index.js';
 // Type-only namespace import so `importOriginal`'s generic below can reference the module's
@@ -38,6 +39,86 @@ vi.mock('../../src/render/canvas-renderer.js', async (importOriginal) => {
 function taskInput(id: string, start: string, end: string, extra: Partial<TaskInput> = {}): TaskInput {
   return { id: toTaskId(id), name: id, start, end, progress: 0, type: 'task', ...extra };
 }
+
+// --- GanttConfig.rollup (spec-summary-rollup.md Ticket B2) -----------------------------------
+
+describe('config.rollup — facade wiring', () => {
+  /** Parent 'p' authored Jan 5–6 but its children run to Jan 20, so a rolled-up 'p' is visibly
+   *  wider than its authored span. */
+  const hierarchy: TaskInput[] = [
+    taskInput('p', '2026-01-05T09:00', '2026-01-06T17:00', { type: 'summary' }),
+    taskInput('c1', '2026-01-05T09:00', '2026-01-10T17:00', { parent: toTaskId('p') }),
+    taskInput('c2', '2026-01-12T09:00', '2026-01-20T17:00', { parent: toTaskId('p') }),
+  ];
+
+  const barWidth = (id: string): number =>
+    Number(
+      (container.querySelector(`.fg-task[data-task-id="${id}"] .fg-task__bar`) as SVGElement).getAttribute('width'),
+    );
+
+  it('omitted by default — the summary row is drawn at its own authored span', () => {
+    const gantt = createGantt({ tasks: hierarchy });
+    gantt.mount(container);
+    expect(container.querySelector('.fg-task[data-task-id="p"]')!.getAttribute('data-rolled-up')).toBeNull();
+    const authored = barWidth('p');
+    gantt.destroy();
+
+    const rolled = createGantt({ tasks: hierarchy, rollup: computeRollup });
+    rolled.mount(container);
+    expect(barWidth('p')).toBeGreaterThan(authored);
+    rolled.destroy();
+  });
+
+  it('a provider that throws is swallowed: authored dates are drawn and one warning is emitted', () => {
+    // The provider is HOST code, so the never-throw guard inside the reactive render effect is
+    // load-bearing, not merely defensive — letting it propagate would wedge the whole chart.
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const plain = createGantt({ tasks: hierarchy });
+    plain.mount(container);
+    const authored = barWidth('p');
+    plain.destroy();
+
+    const gantt = createGantt({
+      tasks: hierarchy,
+      rollup: () => {
+        throw new Error('boom');
+      },
+    });
+    expect(() => gantt.mount(container)).not.toThrow();
+    expect(barWidth('p')).toBe(authored);
+    expect(warn).toHaveBeenCalled();
+    gantt.destroy();
+  });
+
+  it('applies on the FIRST paint, not only after the next store mutation', () => {
+    // Regression guard for seeding `renderInput()` as well as the reactive effect: otherwise a
+    // hierarchical chart paints one frame of authored geometry and visibly jumps.
+    const gantt = createGantt({ tasks: hierarchy, rollup: computeRollup });
+    gantt.mount(container);
+    expect(container.querySelector('.fg-task[data-task-id="p"]')!.getAttribute('data-rolled-up')).toBe('true');
+    gantt.destroy();
+  });
+
+  it('recomputes reactively: moving a child widens the parent bar', () => {
+    const gantt = createGantt({ tasks: hierarchy, rollup: computeRollup });
+    gantt.mount(container);
+    const before = barWidth('p');
+    gantt.moveTask(toTaskId('c2'), '2026-02-01T09:00');
+    expect(barWidth('p')).toBeGreaterThan(before);
+    gantt.destroy();
+  });
+
+  it('never writes back: getTasks() still reports the AUTHORED dates (derived on read)', () => {
+    const gantt = createGantt({ tasks: hierarchy, rollup: computeRollup });
+    gantt.mount(container);
+    const p = gantt.getTask(toTaskId('p'))!;
+    expect(String(p.start)).toContain('2026-01-05');
+    expect(String(p.end)).toContain('2026-01-06');
+    gantt.destroy();
+  });
+});
+
+
 
 // --- Minimal PointerEvent polyfill — jsdom@25.0.1 doesn't ship one (see drag-move.test.ts §8.1). ----
 class PointerEventPolyfill extends MouseEvent {

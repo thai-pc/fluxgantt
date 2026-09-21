@@ -635,4 +635,31 @@ describe('coordinator hardening', () => {
     dispatchPointer(window, 'pointerup', { pointerId: 2, clientX: scaledEdge + 48, clientY: 50 });
     expect(onTaskResized).toHaveBeenCalledTimes(1);
   });
+
+  // --- rollup gate (spec-summary-rollup.md Ticket B2) -------------------------------------
+
+  it('a bar marked data-rolled-up is not resizable — its right edge is inert, not just move-only', () => {
+    const onTaskResized = vi.fn();
+    const rollup = new Map([
+      [
+        toTaskId('t1'),
+        {
+          start: normalizeDate('2026-01-05T09:00', DEFAULT_CALENDAR.timezone),
+          end: normalizeDate('2026-01-15T09:00', DEFAULT_CALENDAR.timezone),
+          progress: 0.5,
+        },
+      ],
+    ]);
+    const handle = createSvgRenderer(container, { tasks, dependencies: [], rollup });
+    enableDragResize(handle, () => tasks, { onTaskResized });
+    const groupEl = handle.svg.querySelector('.fg-task[data-task-id="t1"]') as SVGGElement;
+    const { x, width } = barGeometry(handle, 't1');
+    const rightEdgeX = x + width;
+
+    dispatchPointer(groupEl, 'pointerdown', { pointerId: 1, clientX: rightEdgeX, clientY: 50, bubbles: true });
+    dispatchPointer(window, 'pointermove', { pointerId: 1, clientX: rightEdgeX + 48, clientY: 50 });
+    dispatchPointer(window, 'pointerup', { pointerId: 1, clientX: rightEdgeX + 48, clientY: 50 });
+
+    expect(onTaskResized).not.toHaveBeenCalled();
+  });
 });

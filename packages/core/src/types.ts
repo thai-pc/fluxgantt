@@ -121,3 +121,48 @@ export interface CriticalPathResult {
   readonly criticalTaskIds: readonly TaskId[];
   readonly projectEnd: Temporal.ZonedDateTime;
 }
+
+/**
+ * The rolled-up span a row should be DRAWN at, or `undefined` to use the task's own authored
+ * dates (spec-summary-rollup.md Ticket B2).
+ *
+ * Deliberately a narrow structural type rather than `RollupResult` itself, and deliberately here
+ * in `types.ts` rather than in `render/`: the render layer may not import from `compute/`
+ * (architecture.md principle 1, the same rule that put `MAX_HIERARCHY_DEPTH` in
+ * `compute/hierarchy.ts`), and geometry needs only the two instants anyway. `RollupResult` is
+ * assignable to this structurally, so a caller passes `computeRollup()`'s map straight through
+ * with no adapter and no cast.
+ */
+export interface RolledUpSpan {
+  readonly start: Temporal.ZonedDateTime;
+  readonly end: Temporal.ZonedDateTime;
+}
+
+/**
+ * What a renderer needs from a rollup entry: the span for geometry plus the aggregate
+ * `progress` for the row's `aria-label`. Split from `RolledUpSpan` so `layoutTaskBar`, which is
+ * pure geometry, cannot accidentally read a field it has no business in.
+ *
+ * `RollupResult` (which also carries `durationHours`) is structurally assignable to this, so a
+ * caller passes `computeRollup()`'s map through unchanged.
+ */
+export interface RolledUpRow extends RolledUpSpan {
+  /** Duration-weighted aggregate progress, 0..1 — already clamped by `computeRollup`. */
+  readonly progress: number;
+}
+
+/**
+ * Aggregation a mounted chart calls to decide where each parent row's bar is DRAWN
+ * (`GanttConfig.rollup`, spec-summary-rollup.md Ticket B2). `computeRollup` satisfies it as
+ * written — `RollupResult` carries a `durationHours` this shape simply ignores.
+ *
+ * Injected rather than imported by the render layer so `compute/rollup.js` stays out of every
+ * `@fluxgantt/core/render` bundle that doesn't use it (~400 B gzip); see `GanttConfig.rollup`.
+ *
+ * Contract: pure, must not mutate `tasks`, and may return an entry for any subset of ids — a
+ * task with no entry is drawn at its authored dates.
+ */
+export type RollupProvider = (
+  tasks: readonly Task[],
+  calendar: WorkingCalendar,
+) => ReadonlyMap<TaskId, RolledUpRow>;

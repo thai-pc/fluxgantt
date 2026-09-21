@@ -7,7 +7,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { createSvgRenderer } from '../../src/render/svg-renderer.js';
 import { computeCriticalPath } from '../../src/compute/critical-path.js';
-import { DEFAULT_CALENDAR } from '../../src/compute/working-calendar.js';
+import { DEFAULT_CALENDAR, normalizeDate } from '../../src/compute/working-calendar.js';
 import { TOGGLE_GLYPH_GUTTER_PX } from '../../src/render/renderer-base.js';
 import { toTaskId, toDependencyId, type Task, type Dependency } from '../../src/types.js';
 
@@ -358,6 +358,78 @@ describe('SECURITY — enum whitelist (N3/N5, CSS-token spoofing)', () => {
     ];
     const h = createSvgRenderer(container, { tasks: [t1, t2], dependencies: deps });
     expect(h.svg.querySelectorAll('.fg-dependency')).toHaveLength(1); // only the valid FS
+  });
+});
+
+describe('rollup — bar geometry + a11y + drag gate (spec-summary-rollup.md Ticket B2)', () => {
+  // 'a' is the summary row in `baseTasks`; its authored span is Jan 5–7, its child 'b' runs to
+  // Jan 8, so a real `computeRollup` would widen it. Built by hand here so this file stays a
+  // renderer test and does not depend on the compute layer's own behavior.
+  const rollup = new Map([
+    [
+      toTaskId('a'),
+      {
+        start: normalizeDate('2026-01-05T09:00', cal.timezone),
+        end: normalizeDate('2026-01-08T17:00', cal.timezone),
+        progress: 0.25,
+      },
+    ],
+  ]);
+
+  const barWidthOf = (h: { svg: SVGSVGElement }, id: string): number =>
+    Number(
+      (h.svg.querySelector(`.fg-task[data-task-id="${id}"] .fg-task__bar`) as SVGElement).getAttribute('width'),
+    );
+
+  it('draws the summary bar at its rolled-up span, leaving every other bar untouched', () => {
+    const plain = createSvgRenderer(container, { tasks: baseTasks, dependencies: baseDeps });
+    const authoredA = barWidthOf(plain, 'a');
+    const authoredC = barWidthOf(plain, 'c');
+    plain.destroy();
+
+    const h = createSvgRenderer(container, { tasks: baseTasks, dependencies: baseDeps, rollup });
+    expect(barWidthOf(h, 'a')).toBeGreaterThan(authoredA);
+    expect(barWidthOf(h, 'c')).toBe(authoredC); // no entry → authored, unchanged
+  });
+
+  it("the rolled-up bar's aria-label announces the aggregate progress, not the authored one", () => {
+    const h = createSvgRenderer(container, { tasks: baseTasks, dependencies: baseDeps, rollup });
+    const label = h.svg.querySelector('.fg-task[data-task-id="a"]')!.getAttribute('aria-label')!;
+    expect(label).toContain('25% complete');
+    expect(label).not.toContain('50% complete'); // `task()`'s authored default
+  });
+
+  it('marks the rolled-up bar with data-rolled-up so the interaction layer can decline it', () => {
+    const h = createSvgRenderer(container, { tasks: baseTasks, dependencies: baseDeps, rollup });
+    expect(h.svg.querySelector('.fg-task[data-task-id="a"]')!.getAttribute('data-rolled-up')).toBe('true');
+    // Every other bar stays draggable — the marker is per-bar, not per-chart.
+    expect(h.svg.querySelector('.fg-task[data-task-id="c"]')!.getAttribute('data-rolled-up')).toBeNull();
+  });
+
+  it('a milestone with a rollup entry is neither re-spanned nor marked', () => {
+    // `computeRollup` emits an entry for any task with children regardless of `type`; a diamond
+    // has no span to stretch, so it must stay at its authored instant AND stay draggable.
+    const withM = new Map(rollup);
+    withM.set(toTaskId('m'), {
+      start: normalizeDate('2026-01-01T09:00', cal.timezone),
+      end: normalizeDate('2026-01-25T17:00', cal.timezone),
+      progress: 0.25,
+    });
+    const plain = createSvgRenderer(container, { tasks: baseTasks, dependencies: baseDeps });
+    const authoredM = barWidthOf(plain, 'm');
+    plain.destroy();
+
+    const h = createSvgRenderer(container, { tasks: baseTasks, dependencies: baseDeps, rollup: withM });
+    expect(barWidthOf(h, 'm')).toBe(authoredM);
+    expect(h.svg.querySelector('.fg-task[data-task-id="m"]')!.getAttribute('data-rolled-up')).toBeNull();
+  });
+
+  it('omitting `rollup` renders exactly as before (opt-in, no behavior change)', () => {
+    const a = createSvgRenderer(container, { tasks: baseTasks, dependencies: baseDeps });
+    const html = a.svg.outerHTML;
+    a.destroy();
+    const b = createSvgRenderer(container, { tasks: baseTasks, dependencies: baseDeps, rollup: new Map() });
+    expect(b.svg.outerHTML).toBe(html);
   });
 });
 

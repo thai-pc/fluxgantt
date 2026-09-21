@@ -37,6 +37,7 @@ import type {
   Dependency,
   DependencyId,
   DependencyType,
+  RollupProvider,
   SchedulingMode,
   Task,
   TaskId,
@@ -126,6 +127,41 @@ export interface GanttConfig {
    * nothing collapsed.
    */
   readonly initialCollapsed?: readonly TaskId[];
+
+  /**
+   * (spec-summary-rollup.md Ticket B2). Aggregation used to draw every task that has children
+   * at its ROLLED-UP span — earliest descendant start to latest descendant end, with
+   * duration-weighted aggregate progress in its `aria-label` — instead of at its own authored
+   * `start`/`end`. Omitted (the default) = every bar is drawn at its authored dates, exactly as
+   * before. Only consulted by a MOUNTED chart; a headless instance ignores it.
+   *
+   * Pass the core implementation to opt in:
+   *
+   * ```ts
+   * import { computeRollup } from '@fluxgantt/core';
+   * withRender(createGantt({ tasks, rollup: computeRollup }));
+   * ```
+   *
+   * **A function, not a boolean flag**, for a measured reason: making `render/mixin.ts` import
+   * `computeRollup` itself costs ~400 B gzip in every `@fluxgantt/core/render` bundle — enough
+   * to push the `withRender + withInteraction` fixture past its budget (golden rule 5) — and
+   * bills it to consumers who never enable it. Injecting keeps those bytes in the graph of the
+   * host that actually asked for them, and makes a custom aggregation (different weighting, a
+   * baseline span) a supported case rather than a fork. The signature is `computeRollup`'s own,
+   * so it can be passed by reference with no adapter.
+   *
+   * **Derived on read, never written back.** `getTasks()`, `exportJson()`, undo/redo and
+   * `computeCriticalPath()` all keep seeing the AUTHORED dates — this changes what is painted,
+   * nothing else (spec §4). The one behavioral consequence beyond pixels: a bar drawn at a
+   * rolled-up span is not drag-movable or drag-resizable, because the geometry under the cursor
+   * is not an authored value there is any well-defined way to commit (see `data-rolled-up` in
+   * `svg-renderer.ts`).
+   *
+   * Re-run on every store mutation. It must be PURE and must not mutate `tasks`; if it throws,
+   * the chart renders authored dates and warns rather than wedging the render effect.
+   * Immutable for the life of the instance in v1 (same posture as `calendar`/`schedulingMode`).
+   */
+  readonly rollup?: RollupProvider;
 }
 
 /** Shape accepted for an initial dependency in `GanttConfig.dependencies` — mirrors what

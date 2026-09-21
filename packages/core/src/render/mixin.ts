@@ -26,7 +26,8 @@ import type { CanvasRendererHandle, CanvasRendererOptions } from './canvas-rende
 import type * as CanvasRendererModule from './canvas-renderer.js';
 // TYPE-ONLY import back into the base facade — erased at compile time, so no runtime cycle.
 import type { GanttInstance } from '../gantt.js';
-import type { CriticalPathResult, TaskId, ViewMode } from '../types.js';
+import type { CriticalPathResult, Task, TaskId, ViewMode } from '../types.js';
+import type { RolledUpRow } from './renderer-base.js';
 
 /** Task count above which `mount()` lazily loads and uses the Canvas renderer instead of SVG
  *  (architecture.md: "Canvas fallback automatically when task count > 2000"). Decided once, at
@@ -309,6 +310,10 @@ function renderNow(
   const collapsedIds = new Set(internal.collapseStore.all());
 
   let criticalPath: CriticalPathResult | undefined;
+  // `undefined` (not an empty map) when no `config.rollup` provider is supplied, so the
+  // renderer's own `rollup?.get(...)` fast-path short-circuits instead of probing an
+  // always-empty map on every bar of every repaint.
+  let rollup: ReadonlyMap<TaskId, RolledUpRow> | undefined;
   if (tasks.length === 0) {
     // No tasks → no critical path; reset so the next non-empty compute always re-emits.
     internal.resetCriticalIds();
@@ -330,6 +335,8 @@ function renderNow(
         err,
       );
     }
+
+    rollup = rollupFor(internal, tasks);
   }
 
   // `SvgRendererHandle.setOptions` merges shallowly over the previous options object, so once
@@ -368,6 +375,7 @@ function renderNow(
       focusedTaskId,
       collapsedIds,
       ...(criticalPath !== undefined ? { criticalPath } : {}),
+      ...(rollup !== undefined ? { rollup } : {}),
     });
     applyViewportOptionsFor(handle, renderer, viewMode, undefined);
   }
@@ -427,13 +435,63 @@ function emptyStateTimeRange(
   };
 }
 
+/**
+ * The rollup map to paint with, or `undefined` when no `config.rollup` provider was supplied
+ * or the aggregation failed (spec-summary-rollup.md Ticket B2).
+ *
+ * `undefined` rather than an empty map on the off path, so the renderers' `rollup?.get(...)`
+ * short-circuits instead of probing an always-empty map once per bar per repaint.
+ *
+ * WHY THE HOST INJECTS THE FUNCTION rather than this module importing `computeRollup` behind a
+ * boolean flag: measured, not guessed. A static `import { computeRollup } from
+ * '../compute/rollup.js'` here costs ~400 B gzip in EVERY `@fluxgantt/core/render` bundle — it
+ * pushed the `withRender + withInteraction` fixture 50 B past its 19.46 KiB budget (golden
+ * rule 5), and spec-summary-rollup.md §0.1's gate says to change the shape rather than bump the
+ * budget. Injection keeps `compute/rollup.js` out of the render graph entirely: a host that
+ * wants rolled-up bars writes `rollup: computeRollup` and pays for those bytes in its own
+ * graph; one that doesn't pays nothing. It also makes a custom aggregation (different
+ * weighting, a baseline span) a supported case rather than a fork.
+ *
+ * NEVER THROWS — the same contract as the `computeCriticalPath` call in `renderNow`, and for
+ * the same reason: this runs inside the reactive render effect, so a cyclic parent chain, an
+ * over-deep hierarchy or one malformed `end < start` record must not wedge the whole chart.
+ * Falling back to `undefined` renders authored dates, exactly like the no-provider path. The
+ * provider is host code, which makes this guard load-bearing rather than merely defensive.
+ *
+ * `RollupResult` is structurally assignable to `RolledUpRow` (`start`/`end`/`progress`, plus a
+ * `durationHours` the render layer ignores), so `computeRollup` satisfies `RollupProvider` as
+ * written — no adapter, and no `compute/` type crossing into `render/`'s public input shape.
+ */
+function rollupFor(
+  internal: GanttInternal,
+  tasks: readonly Task[],
+): ReadonlyMap<TaskId, RolledUpRow> | undefined {
+  const provider = internal.config.rollup;
+  if (provider === undefined || tasks.length === 0) return undefined;
+  try {
+    return provider(tasks, internal.calendar);
+  } catch (err) {
+    console.warn(
+      '@fluxgantt/core: the config.rollup provider threw during reactive render — rendering authored dates instead.',
+      err,
+    );
+    return undefined;
+  }
+}
+
 function renderInput(internal: GanttInternal): SvgRendererInput {
+  const tasks = internal.taskStore.all();
+  // Seeded on the FIRST paint too, not only from the reactive effect's first run — otherwise a
+  // hierarchical chart with a `rollup` provider would paint one frame of authored geometry and
+  // then visibly jump to the aggregate spans.
+  const rollup = rollupFor(internal, tasks);
   return {
-    tasks: internal.taskStore.all(),
+    tasks,
     dependencies: internal.dependencyStore.all(),
     calendar: internal.calendar,
     selectedTaskIds: internal.selectionStore.all(),
     collapsedIds: new Set(internal.collapseStore.all()),
+    ...(rollup !== undefined ? { rollup } : {}),
   };
 }
 
