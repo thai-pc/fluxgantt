@@ -11,7 +11,9 @@ import AxeBuilder from '@axe-core/playwright';
 // decision 1 ("defer treegrid, keep grid for v1"), which was not tenable: WAI-ARIA allows
 // `aria-expanded` on a row only under `treegrid`, and shipping §6.3's `aria-expanded` under
 // `role="grid"` is a serious-impact axe violation (`aria-conditional-attr`) — caught by the axe
-// scans below. `aria-level` remains DEFERRED to its own ticket.
+// scans below. `aria-level` follows the SAME gate for the same reason — axe lists it in
+// `invalidTableRowAttrs` alongside `aria-expanded`, so both are emitted only when the layout is
+// a tree, and both are covered by the scans below.
 
 const SVG_ROW = '.fg-timeline__row';
 const CANVAS_ROW = '.fg-timeline-canvas__row';
@@ -29,6 +31,24 @@ async function ariaExpandedByTaskId(
       const id = el.getAttribute('data-task-id');
       if (id === null) continue;
       out[id] = el.getAttribute('aria-expanded');
+    }
+    return out;
+  }, rowSelector);
+}
+
+/** Same shape as `ariaExpandedByTaskId`, for `aria-level`: `null` means ABSENT. A flat chart
+ *  must report every row as `null`, which axe cannot distinguish from a wrong-but-present value
+ *  the way it can for an outright invalid attribute. */
+async function ariaLevelByTaskId(
+  page: Page,
+  rowSelector: string,
+): Promise<Record<string, string | null>> {
+  return page.evaluate((sel) => {
+    const out: Record<string, string | null> = {};
+    for (const el of document.querySelectorAll(sel)) {
+      const id = el.getAttribute('data-task-id');
+      if (id === null) continue;
+      out[id] = el.getAttribute('aria-level');
     }
     return out;
   }, rowSelector);
@@ -127,6 +147,39 @@ test.describe('SVG renderer', () => {
     expect(after['phase-1']).toBe('false');
   });
 
+  test('`aria-level` is the 1-based depth on every row, containers and leaves alike', async ({
+    page,
+  }) => {
+    // The fixture is 3 levels deep: phase-1 > group-a > leaf-a1/leaf-a2, plus leaf-b directly
+    // under phase-1 and one unrelated top-level leaf. That covers root, mid and deepest at once.
+    const levels = await ariaLevelByTaskId(page, SVG_ROW);
+    expect(levels).toMatchObject({
+      'phase-1': '1',
+      'group-a': '2',
+      'leaf-a1': '3',
+      'leaf-a2': '3',
+      'leaf-b': '2',
+      standalone: '1',
+    });
+  });
+
+  test('`aria-level` survives a collapse — the still-visible rows keep their real depth', async ({
+    page,
+  }) => {
+    await page.locator(`${SVG_ROW}[data-task-id="group-a"] .fg-timeline__row-toggle`).click();
+
+    const after = await ariaLevelByTaskId(page, SVG_ROW);
+    // A collapsed container is still a container, so it keeps its own level; hiding its
+    // children must not renumber anything that remains.
+    expect(after['group-a']).toBe('2');
+    expect(after['phase-1']).toBe('1');
+    expect(after['leaf-b']).toBe('2');
+    expect(after['leaf-a1']).toBeUndefined(); // out of the a11y tree entirely
+
+    const results = await new AxeBuilder({ page }).include('#gantt').analyze();
+    expect(results.violations).toEqual([]);
+  });
+
   test('`initialCollapsed` produces a correct accessibility tree with no axe violations', async ({
     page,
   }) => {
@@ -179,5 +232,29 @@ test.describe('Canvas renderer', () => {
     const after = await ariaExpandedByTaskId(page, CANVAS_ROW);
     expect(after['phase-1']).toBe('false');
     expect(after['group-a']).toBeUndefined(); // out of the a11y tree, not just invisible
+  });
+
+  test('`aria-level` parity with SVG, and windowing does not distort it', async ({ page }) => {
+    const levels = await ariaLevelByTaskId(page, CANVAS_ROW);
+    expect(levels).toMatchObject({
+      'phase-1': '1',
+      'group-a': '2',
+      'leaf-a1': '3',
+      'leaf-b': '2',
+      standalone: '1',
+    });
+    // The `?pad=` filler is flat and appended after the real rows, so every windowed filler row
+    // must report level 1. This is the real windowing guard: `row.depth` comes from the
+    // full-tree walk in `layoutRows`, not from the visible slice, so a row's level cannot
+    // change as it scrolls into view.
+    const fillerLevels = new Set(
+      Object.entries(levels)
+        .filter(
+          ([id]) =>
+            !['phase-1', 'group-a', 'leaf-a1', 'leaf-a2', 'leaf-b', 'standalone'].includes(id),
+        )
+        .map(([, level]) => level),
+    );
+    expect([...fillerLevels]).toEqual(['1']);
   });
 });

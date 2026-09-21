@@ -189,6 +189,60 @@ describe('collapse/expand — toggle glyph + aria-expanded (spec-collapse-expand
     expect(toggle.textContent).toBe('');
   });
 
+  it('aria-level is the 1-based depth on EVERY row of a tree, leaves included', () => {
+    const h = createSvgRenderer(container, { tasks: baseTasks, dependencies: baseDeps });
+    const level = (id: string) =>
+      h.svg.querySelector(`.fg-timeline__row[data-task-id="${id}"]`)!.getAttribute('aria-level');
+    // 'a' is a root summary -> level 1, NOT 0: `aria-level` is 1-based while `RowLayout.depth`
+    // is 0-based, so an off-by-one here would be invisible to a type check but wrong to a
+    // screen reader.
+    expect(level('a')).toBe('1');
+    expect(level('b')).toBe('2'); // child of 'a'
+    // 'c' and 'm' are leaves at the root, and they still carry a level — unlike
+    // `aria-expanded`, which is omitted on a leaf. Depth is a real fact about a leaf row.
+    expect(level('c')).toBe('1');
+    expect(level('m')).toBe('1');
+  });
+
+  it('aria-level tracks depth beyond 2 levels (grandchild -> "3")', () => {
+    const deep: Task[] = [
+      task('a', '2026-01-05T09:00', '2026-01-09T17:00', { type: 'summary' }),
+      task('b', '2026-01-05T09:00', '2026-01-08T17:00', { type: 'summary', parent: toTaskId('a') }),
+      task('c', '2026-01-06T09:00', '2026-01-07T17:00', { parent: toTaskId('b') }),
+    ];
+    const h = createSvgRenderer(container, { tasks: deep, dependencies: [] });
+    const levels = [...h.svg.querySelectorAll('.fg-timeline__row')].map((r) =>
+      r.getAttribute('aria-level'),
+    );
+    expect(levels).toEqual(['1', '2', '3']);
+  });
+
+  it('a flat project (role="grid") emits NO aria-level on any row', () => {
+    // Same constraint as `aria-expanded`: axe lists `aria-level` in `invalidTableRowAttrs`, so a
+    // row may carry it only when its owner resolves to `treegrid`. Emitting it under a plain
+    // `grid` would be a serious-impact `aria-conditional-attr` violation, not a harmless extra.
+    const flat = baseTasks.filter((t) => t.id !== toTaskId('b') && t.type !== 'summary');
+    const h = createSvgRenderer(container, { tasks: flat, dependencies: [] });
+    expect(h.svg.getAttribute('role')).toBe('grid');
+    const rows = [...h.svg.querySelectorAll('.fg-timeline__row')];
+    expect(rows.length).toBeGreaterThan(0);
+    for (const row of rows) expect(row.hasAttribute('aria-level')).toBe(false);
+  });
+
+  it('collapsing every summary keeps role="treegrid" and keeps aria-level on the still-visible rows', () => {
+    // A collapsed parent is still expandable, so `hasChildren` stays true and the chart stays a
+    // tree. Regression guard: `aria-level` must be derived from the same predicate as the root
+    // role, never from "are any CHILD rows currently visible".
+    const h = createSvgRenderer(container, {
+      tasks: baseTasks,
+      dependencies: baseDeps,
+      collapsedIds: new Set([toTaskId('a')]),
+    });
+    expect(h.svg.getAttribute('role')).toBe('treegrid');
+    const rowA = h.svg.querySelector('.fg-timeline__row[data-task-id="a"]')!;
+    expect(rowA.getAttribute('aria-level')).toBe('1');
+  });
+
   it('label x-position is shifted uniformly by TOGGLE_GLYPH_GUTTER_PX on every row (spec §6.1 deliberate gutter shift)', () => {
     const h = createSvgRenderer(container, { tasks: baseTasks, dependencies: baseDeps });
     const labels = [...h.svg.querySelectorAll('.fg-timeline__row-label')] as SVGTextElement[];
