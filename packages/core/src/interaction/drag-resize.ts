@@ -113,6 +113,10 @@ export function enableDragResize(
     hitTest(event, groupEl) {
       const taskIdAttr = groupEl.getAttribute('data-task-id');
       if (taskIdAttr === null) return null;
+      // Same gate as drag-move: a rolled-up bar has no authored edge under the cursor
+      // (spec-summary-rollup.md Ticket B2). Declining here also frees the edge zone, so a
+      // rolled-up bar is inert rather than resize-only.
+      if (groupEl.getAttribute('data-rolled-up') !== null) return null;
       const taskId = toTaskId(taskIdAttr);
       const task = getTasks().find((t) => t.id === taskId);
       // Race between the rendered DOM and the latest `tasks` — skip, don't throw (mirrors

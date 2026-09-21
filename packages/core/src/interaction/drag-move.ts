@@ -113,6 +113,13 @@ export function enableDragMove(
     hitTest(event, groupEl) {
       const taskIdAttr = groupEl.getAttribute('data-task-id');
       if (taskIdAttr === null) return null;
+      // A bar drawn at its ROLLED-UP span (spec-summary-rollup.md Ticket B2) is not draggable:
+      // the painted geometry is derived on read from its descendants, so `task.start`/`end`
+      // below — the only thing this gesture can commit — is NOT what the user is pointing at.
+      // Dragging it would jump the bar to those unpainted dates on the first move and commit a
+      // displacement measured from a position that was never on screen. The renderer marks the
+      // bar; `interaction/` never sees the rollup map itself.
+      if (groupEl.getAttribute('data-rolled-up') !== null) return null;
       const taskId = toTaskId(taskIdAttr);
       const task = getTasks().find((t) => t.id === taskId);
       // Race between the rendered DOM and the latest `tasks` — skip, don't throw.

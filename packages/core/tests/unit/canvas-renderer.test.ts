@@ -2042,6 +2042,94 @@ describe('ensureFocusedRowVisible — scroll adjustment on focusedTaskId change 
   });
 });
 
+// --- rollup (spec-summary-rollup.md Ticket B2) ----------------------------------------------
+
+describe('rollup — Canvas geometry + a11y label + SVG parity', () => {
+  const rollup = new Map([
+    [
+      toTaskId('a'),
+      {
+        start: normalizeDate('2026-01-05T09:00', cal.timezone),
+        end: normalizeDate('2026-01-08T17:00', cal.timezone),
+        progress: 0.25,
+      },
+    ],
+  ]);
+
+  /** Widths of every rect the renderer painted. Canvas has no DOM to inspect, so bar geometry
+   *  is read back off the mock's call log — including non-bar rects (grid bands, the backdrop),
+   *  which is why the assertions below look for an EXACT expected width rather than a max. */
+  const rectWidths = (mock: MockContext2D): number[] =>
+    mock.calls
+      .filter((c) => c.op === 'fillRect' || c.op === 'roundRect')
+      .map((c) => Number(c.args[2]))
+      .filter((w) => Number.isFinite(w));
+
+  it('paints the summary bar at the rolled-up width instead of the authored one', () => {
+    const plainMock = createMockContext2D();
+    installMockContext(plainMock);
+    const plain = createCanvasRenderer(container, { tasks: baseTasks, dependencies: baseDeps });
+    const ts = plain.getTimeScale();
+    // Both widths derived from the renderer's OWN TimeScale, so this asserts the geometry
+    // actually changed rather than merely that "some rect got bigger".
+    const authoredWidth = ts.dateToX(baseTasks[0]!.end) - ts.dateToX(baseTasks[0]!.start);
+    const rolledWidth = ts.dateToX(rollup.get(toTaskId('a'))!.end) - ts.dateToX(baseTasks[0]!.start);
+    expect(rolledWidth).toBeGreaterThan(authoredWidth);
+    const plainWidths = rectWidths(plainMock);
+    plain.destroy();
+    vi.restoreAllMocks();
+
+    const rolledMock = createMockContext2D();
+    installMockContext(rolledMock);
+    const rolled = createCanvasRenderer(container, { tasks: baseTasks, dependencies: baseDeps, rollup });
+    const rolledWidths = rectWidths(rolledMock);
+    rolled.destroy();
+
+    // Compared as MULTISETS with one substitution applied, not by "some width got bigger": the
+    // fixture's other bars legitimately share widths with each other, so a bare
+    // `toContain`/`Math.max` assertion can pass (or fail) for the wrong reason. Swapping exactly
+    // one `authoredWidth` for one `rolledWidth` pins down both that 'a' changed and that no
+    // other bar did.
+    const expected = [...plainWidths];
+    expected.splice(expected.indexOf(authoredWidth), 1, rolledWidth);
+    expect([...rolledWidths].sort((x, y) => x - y)).toEqual(expected.sort((x, y) => x - y));
+  });
+
+  it("the a11y layer's task aria-label announces the aggregate progress", () => {
+    const mock = createMockContext2D();
+    installMockContext(mock);
+    const h = createCanvasRenderer(container, { tasks: baseTasks, dependencies: baseDeps, rollup });
+    const taskEl = h.interactionRoot.querySelector<HTMLElement>('.fg-timeline-canvas__task[data-task-id="a"]')!;
+    expect(taskEl.getAttribute('aria-label')).toBe(
+      buildTaskAriaLabel(baseTasks[0]!, false, false, cal, 'en', rollup.get(toTaskId('a'))),
+    );
+    expect(taskEl.getAttribute('aria-label')).toContain('25% complete');
+  });
+
+  it('SVG/Canvas parity: the same rollup map produces identical per-task aria-labels in both renderers', () => {
+    // The mirror of the collapse/expand parity test above, and for the same reason: `rollup` is
+    // threaded through TWO independent call sites (SVG's `renderTaskBar`, Canvas's a11y layer),
+    // so "forgot to thread it into the second one" must fail mechanically.
+    const mock = createMockContext2D();
+    installMockContext(mock);
+    const canvasHandle = createCanvasRenderer(container, { tasks: baseTasks, dependencies: baseDeps, rollup });
+    const svgContainer = document.createElement('div');
+    document.body.appendChild(svgContainer);
+    const svgHandle = createSvgRenderer(svgContainer, { tasks: baseTasks, dependencies: baseDeps, rollup });
+
+    for (const t of baseTasks) {
+      const canvasLabel = canvasHandle.interactionRoot
+        .querySelector(`.fg-timeline-canvas__task[data-task-id="${t.id}"]`)
+        ?.getAttribute('aria-label');
+      const svgLabel = svgHandle.svg.querySelector(`.fg-task[data-task-id="${t.id}"]`)?.getAttribute('aria-label');
+      expect(canvasLabel).toBe(svgLabel);
+    }
+
+    svgHandle.destroy();
+    svgContainer.remove();
+  });
+});
+
 // --- destroy() cancels a pending scroll/resize-triggered rAF (fix #37 §4.5/§4.6) ------------
 
 describe('destroy() cancels a pending scroll/resize-triggered rAF', () => {

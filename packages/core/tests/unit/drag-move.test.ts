@@ -525,4 +525,43 @@ describe('enableDragMove — DOM interaction', () => {
     expect(onTaskMoved).toHaveBeenCalledTimes(1);
     expect(onTaskMoved.mock.calls[0]![0]).toBe('t1');
   });
+
+  // --- rollup gate (spec-summary-rollup.md Ticket B2) -------------------------------------
+
+  it('a bar marked data-rolled-up is not draggable — no transform, no commit', () => {
+    const onTaskMoved = vi.fn();
+    // The renderer sets this attribute for any bar drawn at a rolled-up span. Such a bar's
+    // painted geometry is derived from its descendants, so `task.start`/`end` — the only thing
+    // this gesture can commit — is NOT what the user is pointing at; a drag would jump the bar
+    // to those unpainted dates and commit a displacement measured from off-screen.
+    const rollup = new Map([
+      [
+        toTaskId('t1'),
+        {
+          start: normalizeDate('2026-01-05T09:00', CAL.timezone),
+          end: normalizeDate('2026-01-09T09:00', CAL.timezone),
+          progress: 0.5,
+        },
+      ],
+    ]);
+    const handle = createSvgRenderer(container, { tasks, dependencies: [], rollup });
+    enableDragMove(handle, () => tasks, { onTaskMoved });
+    const groupEl = handle.svg.querySelector('.fg-task[data-task-id="t1"]') as SVGGElement;
+    expect(groupEl.getAttribute('data-rolled-up')).toBe('true');
+
+    dispatchPointer(groupEl, 'pointerdown', { pointerId: 1, clientX: 100, clientY: 50, bubbles: true });
+    dispatchPointer(window, 'pointermove', { pointerId: 1, clientX: 148, clientY: 50 });
+    dispatchPointer(window, 'pointerup', { pointerId: 1, clientX: 148, clientY: 50 });
+
+    expect(groupEl.getAttribute('transform')).toBeNull();
+    expect(onTaskMoved).not.toHaveBeenCalled();
+
+    // The gate is per-bar: an unrolled sibling in the same chart still drags normally.
+    const group2 = handle.svg.querySelector('.fg-task[data-task-id="t2"]') as SVGGElement;
+    dispatchPointer(group2, 'pointerdown', { pointerId: 2, clientX: 400, clientY: 80, bubbles: true });
+    dispatchPointer(window, 'pointermove', { pointerId: 2, clientX: 448, clientY: 80 });
+    dispatchPointer(window, 'pointerup', { pointerId: 2, clientX: 448, clientY: 80 });
+    expect(onTaskMoved).toHaveBeenCalledTimes(1);
+    expect(onTaskMoved.mock.calls[0]![0]).toBe('t2');
+  });
 });

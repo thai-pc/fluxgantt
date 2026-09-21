@@ -27,6 +27,7 @@ import {
   anchorOf,
   buildTaskAriaLabel,
   type GridColumn,
+  type RolledUpRow,
   type RowLayout,
   type TaskBarLayout,
   type TimeScale,
@@ -64,6 +65,13 @@ export interface SvgRendererInput {
    *  = nothing collapsed. A collapsed id whose task has no children has no effect (mirrors
    *  `layoutRows()`'s own `hasChildren` gate on `isCollapsed`). */
   readonly collapsedIds?: ReadonlySet<TaskId>;
+  /** Optional — output of `computeRollup()` called by the caller, exactly like `criticalPath`
+   *  is the caller's `computeCriticalPath()` output. A parent row with an entry is drawn at its
+   *  aggregate span and announces its aggregate progress instead of its authored values;
+   *  everything else renders unchanged. `undefined`/omitted = no rollup, byte-identical to the
+   *  pre-B2 behavior. `RollupResult` is structurally assignable to `RolledUpRow`, so the map
+   *  passes straight through with no adapter (spec-summary-rollup.md Ticket B2). */
+  readonly rollup?: ReadonlyMap<TaskId, RolledUpRow>;
 }
 
 export interface SvgRendererOptions {
@@ -315,7 +323,7 @@ export function createSvgRenderer(
     const barByTaskId = new Map<TaskId, TaskBarLayout>();
     let clampedCount = 0;
     for (const row of rows) {
-      const bar = layoutTaskBar(row.task, timeScale, row, rowHeight);
+      const bar = layoutTaskBar(row.task, timeScale, row, rowHeight, currentInput.rollup);
       barByTaskId.set(row.task.id, bar);
       if (
         row.task.type !== 'milestone' &&
@@ -398,6 +406,7 @@ export function createSvgRenderer(
         offsetX,
         offsetY,
         showLinkHandles,
+        currentInput.rollup,
       ),
     );
     svg.appendChild(renderLabelDivider(offsetX, totalHeight));
@@ -558,6 +567,7 @@ function renderRows(
   offsetX: number,
   offsetY: number,
   showLinkHandles: boolean,
+  rollup: ReadonlyMap<TaskId, RolledUpRow> | undefined,
 ): SVGGElement {
   const g = document.createElementNS(SVG_NS, 'g') as SVGGElement;
   g.setAttribute('class', 'fg-timeline__rows');
@@ -615,7 +625,7 @@ function renderRows(
 
     const isCritical = criticalIds.has(row.task.id);
     cell.appendChild(
-      renderTaskBar(row.task, bar, offsetX, offsetY, isCritical, isSelected, calendar, locale, showLinkHandles),
+      renderTaskBar(row.task, bar, offsetX, offsetY, isCritical, isSelected, calendar, locale, showLinkHandles, rollup?.get(row.task.id)),
     );
 
     rowGroup.appendChild(cell);
@@ -660,6 +670,7 @@ function renderTaskBar(
   calendar: WorkingCalendar,
   locale: string,
   showLinkHandles: boolean,
+  rolled: RolledUpRow | undefined,
 ): SVGGElement {
   const wrapper = document.createElementNS(SVG_NS, 'g') as SVGGElement;
   // Whitelist `task.type` before folding it into a class token (review N3): fall back to
@@ -673,7 +684,21 @@ function renderTaskBar(
   // `task.id` is a branded TaskId (developer-controlled, not free-text host input) —
   // safe as an attribute value via setAttribute regardless.
   wrapper.setAttribute('data-task-id', task.id);
-  wrapper.setAttribute('aria-label', buildTaskAriaLabel(task, isCritical, isSelected, calendar, locale));
+  // Marks a bar whose geometry came from `computeRollup` rather than from `task.start`/`end`
+  // (spec-summary-rollup.md Ticket B2). This is the ONLY channel by which the interaction
+  // layer can learn that fact: `interaction/` receives an `SvgRendererHandle`, never the
+  // rollup map, and it may not call `computeRollup` itself. Drag-move and drag-resize both
+  // decline such a bar — a rolled-up span is DERIVED ON READ, so there is no authored value
+  // under the cursor to edit; grabbing one would snap the bar to the task's own (unpainted)
+  // dates and then commit a move the user never saw the start of.
+  //
+  // Gated exactly like `layoutTaskBar`'s own rollup branch: a milestone is drawn at its
+  // authored `start` even when `computeRollup` emitted an entry for it, so its bar is NOT
+  // rolled up and must stay draggable.
+  if (rolled !== undefined && task.type !== 'milestone') {
+    wrapper.setAttribute('data-rolled-up', 'true');
+  }
+  wrapper.setAttribute('aria-label', buildTaskAriaLabel(task, isCritical, isSelected, calendar, locale, rolled));
 
   const x = bar.x + offsetX;
   const y = bar.y + offsetY;

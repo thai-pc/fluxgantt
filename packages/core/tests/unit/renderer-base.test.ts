@@ -14,6 +14,8 @@ import {
   MAX_HIERARCHY_DEPTH,
   isKnownTaskKind,
   isKnownDependencyType,
+  buildTaskAriaLabel,
+  type RolledUpRow,
   type TimeScale,
   type TaskBarLayout,
 } from '../../src/render/renderer-base.js';
@@ -24,7 +26,7 @@ import {
   isHoliday,
 } from '../../src/compute/working-calendar.js';
 import { getTemporal } from '../../src/internal/temporal.js';
-import { toTaskId, toDependencyId, type Task, type WorkingCalendar } from '../../src/types.js';
+import { toTaskId, toDependencyId, type Task, type TaskId, type WorkingCalendar } from '../../src/types.js';
 
 const cal = DEFAULT_CALENDAR;
 const T = getTemporal();
@@ -452,6 +454,84 @@ describe('layoutTaskBar', () => {
         expect(Number.isFinite(bar.width)).toBe(true);
       }),
     );
+  });
+
+  // --- rollup override (spec-summary-rollup.md Ticket B2) ---------------------------------
+
+  const rollupOf = (start: string, end: string): ReadonlyMap<TaskId, RolledUpRow> =>
+    new Map([
+      [
+        toTaskId('s'),
+        {
+          start: normalizeDate(start, cal.timezone),
+          end: normalizeDate(end, cal.timezone),
+          progress: 0.25,
+        },
+      ],
+    ]);
+
+  it('a rollup entry overrides the authored span the bar is drawn at', () => {
+    const t = task('s', '2026-01-05T00:00', '2026-01-06T00:00');
+    const authored = layoutTaskBar(t, ts, row, rowHeight);
+    const rolled = layoutTaskBar(t, ts, row, rowHeight, rollupOf('2026-01-05T00:00', '2026-01-15T00:00'));
+    expect(rolled.x).toBeCloseTo(authored.x, 4);
+    // 10 days vs the authored 1 — geometry comes from the map, not from `task.end`.
+    expect(rolled.width).toBeCloseTo(authored.width * 10, 4);
+  });
+
+  it('`task` on the returned layout stays the ORIGINAL task (rollup is geometry, never identity)', () => {
+    const t = task('s', '2026-01-05T00:00', '2026-01-06T00:00');
+    const rolled = layoutTaskBar(t, ts, row, rowHeight, rollupOf('2026-01-01T00:00', '2026-01-20T00:00'));
+    expect(rolled.task).toBe(t);
+    expect(rolled.task.start).toBe('2026-01-05T00:00');
+  });
+
+  it('a task with no entry in the map falls back to its authored dates', () => {
+    const t = task('other', '2026-01-05T00:00', '2026-01-10T00:00');
+    const withMap = layoutTaskBar(t, ts, row, rowHeight, rollupOf('2026-01-01T00:00', '2026-01-20T00:00'));
+    const without = layoutTaskBar(t, ts, row, rowHeight);
+    expect(withMap).toEqual(without);
+  });
+
+  it('a milestone ignores its rollup entry (drawn at its authored instant, still square)', () => {
+    // `computeRollup` is structural — it emits an entry for ANY task with children, including
+    // one typed `milestone`. A diamond has no span to stretch, so the override must not apply.
+    const m = task('s', '2026-01-10T00:00', '2026-01-10T00:00', { type: 'milestone' });
+    const rolled = layoutTaskBar(m, ts, row, rowHeight, rollupOf('2026-01-01T00:00', '2026-01-20T00:00'));
+    const plain = layoutTaskBar(m, ts, row, rowHeight);
+    expect(rolled).toEqual(plain);
+    expect(rolled.width).toBe(rolled.height);
+  });
+});
+
+describe('buildTaskAriaLabel — rollup (spec-summary-rollup.md Ticket B2)', () => {
+  const summary = task('s', '2026-01-05T09:00', '2026-01-06T17:00', { type: 'summary', progress: 0.9 });
+
+  it('announces the rolled-up dates and aggregate progress, not the authored ones', () => {
+    const label = buildTaskAriaLabel(summary, false, false, cal, 'en', {
+      start: normalizeDate('2026-01-05T09:00', cal.timezone),
+      end: normalizeDate('2026-01-20T17:00', cal.timezone),
+      progress: 0.25,
+    });
+    // A bar painted across its children's span while its label read the authored dates would be
+    // exactly the name/role/value mismatch WCAG exists to prevent.
+    expect(label).toContain('25% complete');
+    expect(label).not.toContain('90% complete');
+    expect(label).toContain('Jan 20');
+  });
+
+  it('without a rollup argument the label is unchanged (authored dates + authored progress)', () => {
+    expect(buildTaskAriaLabel(summary, false, false, cal, 'en')).toContain('90% complete');
+  });
+
+  it('a milestone ignores the rollup argument, matching `layoutTaskBar`', () => {
+    const m = task('s', '2026-01-10T09:00', '2026-01-10T09:00', { type: 'milestone', progress: 0.5 });
+    const rolled = buildTaskAriaLabel(m, false, false, cal, 'en', {
+      start: normalizeDate('2026-01-01T09:00', cal.timezone),
+      end: normalizeDate('2026-01-20T17:00', cal.timezone),
+      progress: 0.25,
+    });
+    expect(rolled).toBe(buildTaskAriaLabel(m, false, false, cal, 'en'));
   });
 });
 
