@@ -22,13 +22,15 @@ This file is the context entry point for AI. Details are split into rules under 
 
    | Fixture | Measured | Budget |
    |---|---|---|
-   | `createGantt()` only (hello world) | 7.76 KiB | 9 KiB |
-   | `+ withIo` | 12.72 KiB | 14 KiB |
-   | `+ withRender` | 14.29 KiB | 15 KiB |
-   | `+ withRender + withInteraction` | 18.55 KiB | 19 KiB |
-   | kitchen sink (everything = the pre-split facade) | 23.21 KiB | 24 KiB |
+   | `createGantt()` only (hello world) | 7.71 KiB | 9 KiB |
+   | `+ withIo` | 12.67 KiB | 14 KiB |
+   | `+ withRender` | 14.21 KiB | 15 KiB |
+   | `+ withRender + withInteraction` | 18.46 KiB | 19 KiB |
+   | kitchen sink (everything = the pre-split facade) | 23.11 KiB | 24 KiB |
 
-   Hello world went 22.3 KiB → 7.76 KiB and the fully-composed instance 34.9 KiB → 23.21 KiB (the old "full core" check measured `dist/index.js` as a plain file, which code-splitting has since hollowed out; the kitchen-sink fixture replaces it). Non-core features are plugins.
+   Hello world went 22.3 KiB → 7.71 KiB and the fully-composed instance 34.9 KiB → 23.11 KiB (the old "full core" check measured `dist/index.js` as a plain file, which code-splitting has since hollowed out; the kitchen-sink fixture replaces it). Non-core features are plugins.
+
+   Run `pnpm size` from `packages/core` (or `pnpm size` at the root via turbo) to re-measure; the numbers above are its output, converted from its decimal-kB report to KiB. **It needs Node >= 22.18** — `size-limit` 13 calls `fs.glob` with `withFileTypes`, added in Node 22.2, and on an older 22.x it dies with an opaque `TypeError: i.isFile is not a function` that looks like a repo misconfiguration but is not. `.nvmrc` pins an exact version for this reason; CI reads it via `node-version-file`.
 6. **Tier-gate correctly** — Pro (resource/baseline/MSProject), Cloud (multiplayer/AI). Don't cram Pro/Cloud code into `core`.
 7. **Every new feature ships with tests.** See `.claude/rules/testing.md`.
 8. **Security**: validate every external input (file import, share link, API). See `.claude/rules/security.md`.
