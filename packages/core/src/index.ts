@@ -86,6 +86,8 @@ export type {
   RolledUpSpan,
   RolledUpRow,
   RollupProvider,
+  GanttMessages,
+  TaskLabelParams,
   ViewMode,
   Density,
   SchedulingMode,

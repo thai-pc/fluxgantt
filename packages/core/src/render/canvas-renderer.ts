@@ -105,6 +105,7 @@ import {
   isKnownTaskKind,
   isKnownDependencyType,
   buildTaskAriaLabel,
+  type GanttMessages,
   type GridColumn,
   type RolledUpRow,
   type RowLayout,
@@ -166,6 +167,9 @@ export interface CanvasRendererOptions {
   /** `aria-label` for the hidden a11y layer's `role="grid"` root. Default `'Gantt chart'`. The
    *  visible `<canvas>` itself carries no `aria-label` (it is `aria-hidden`, Ticket 2). */
   readonly ariaLabel?: string;
+  /** Host-supplied accessible-name builders (spec §6.3 i18n scaffold). Omitted → the built-in
+   *  English sentences. Only `taskLabel` is consulted by this renderer today. */
+  readonly messages?: GanttMessages;
   /**
    * (fix #37, spec-canvas-row-virtualization.md §2/§4.2). Bounds the `<canvas>` backing
    * store's PHYSICAL height and `container`'s visible scroll-viewport height — the canvas no
@@ -1225,6 +1229,7 @@ export function createCanvasRenderer(
           calendar,
           locale,
           state.input.rollup?.get(row.task.id),
+          state.options.messages,
         ),
       );
 

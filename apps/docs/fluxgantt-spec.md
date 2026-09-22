@@ -454,8 +454,19 @@ type GanttConfig = {
   viewMode?:     'day' | 'week' | 'month' | 'quarter' | 'year';  // default 'week'
   density?:      'compact' | 'default' | 'comfortable';          // default 'default'
   theme?:        'light' | 'dark' | 'auto';                      // default 'auto'
-  rtl?:          boolean;                                        // default false
-  locale?:       string;          // default 'en'
+  rtl?:          boolean;   // default false — DECLARED ONLY, NOT IMPLEMENTED, no wave assigned,
+                            // and deliberately absent from GanttConfig: an inert public field
+                            // is a promise. Text surfaces already get browser bidi for free;
+                            // the unimplemented part is chart GEOMETRY (mirrored time axis,
+                            // label column on the right).
+  locale?:       string;          // default 'en' — construction-time only, no setLocale()
+  ariaLabel?:    string;          // default 'Gantt chart' — accessible name of the chart, and
+                                  // the <title> of every exported SVG/PNG
+  messages?:     GanttMessages;   // i18n scaffold: host-supplied WHOLE-SENTENCE accessible-name
+                                  // builders. English is the only language core ships; a
+                                  // fragment table was rejected because the old suffix-append
+                                  // shape (base + ', critical path' + ', selected') cannot be
+                                  // reordered or inflected. Construction-time only.
 
   // Calendar
   calendar?:     WorkingCalendar;
@@ -873,7 +884,7 @@ Prefer:
 - Import/export JSON / CSV
 - Milestone (diamond marker)
 - Read-only mode
-- Scaffold i18n (English-only at launch, structure ready to extend)
+- ~~Scaffold i18n (English-only at launch, structure ready to extend)~~ ✅ `GanttConfig.messages`/`ariaLabel`
 - Responsive mobile
 
 **Week 8: Documentation & Launch Prep**

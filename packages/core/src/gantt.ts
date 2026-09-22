@@ -37,6 +37,7 @@ import type {
   Dependency,
   DependencyId,
   DependencyType,
+  GanttMessages,
   RollupProvider,
   SchedulingMode,
   Task,
@@ -75,8 +76,31 @@ export interface GanttConfig {
   /** Passed straight through to `SvgRendererOptions.density`. Default `'default'`. */
   readonly density?: Density;
 
-  /** Passed straight through to `SvgRendererOptions.locale`. Default `'en'`. */
+  /** Passed straight through to `SvgRendererOptions.locale`. Default `'en'`.
+   *
+   *  Read ONCE, at `mount()` — there is no `setLocale()`. Change it by recreating the
+   *  instance (in React, change the `key` prop). */
   readonly locale?: string;
+
+  /** Passed straight through to `SvgRendererOptions.ariaLabel` — the accessible name of the
+   *  chart as a whole, and (via `exportSvg()`'s `<title>`) of every exported SVG/PNG.
+   *  Default `'Gantt chart'`. A plain string rather than a `messages` key on purpose: this is
+   *  a VALUE, not a grammar, so routing it through a callback would make every host who
+   *  merely wants to rename their chart write a function. */
+  readonly ariaLabel?: string;
+
+  /**
+   * Accessible-name builders for a non-English host (spec §6.3). Core ships English only;
+   * supplying this REPLACES the built-in sentence wholesale rather than patching fragments of
+   * it — see `GanttMessages` for why whole sentences are the only translatable shape.
+   *
+   * Read ONCE at `mount()`, exactly like `locale` — there is no `setMessages()`.
+   *
+   * Imported as a direct type, unlike `theme` (typed structurally to keep the base type graph
+   * off the `/theme` subpath): `GanttMessages` lives in `types.js`, already in the base graph,
+   * so there is no subpath to stay independent of. Type-only either way — 0 runtime bytes.
+   */
+  readonly messages?: GanttMessages;
 
   /**
    * Initial light/dark theme. Read ONLY by the opt-in `withTheme()` mixin

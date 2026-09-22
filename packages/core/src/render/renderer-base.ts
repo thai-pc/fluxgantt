@@ -19,6 +19,7 @@ import type {
   Density,
   Dependency,
   DependencyType,
+  GanttMessages,
   RolledUpRow,
   RolledUpSpan,
   Task,
@@ -31,7 +32,8 @@ import type {
 // Re-exported (not redefined) so the render layer's own modules and tests keep importing these
 // from here, while `types.ts` stays their single definition — the render layer may not import
 // from `compute/`, so they cannot live next to `RollupResult`.
-export type { RolledUpRow, RolledUpSpan };
+export type { GanttMessages, RolledUpRow, RolledUpSpan };
+export type { TaskLabelParams } from '../types.js';
 
 // --- Accessible-name string builder (spec-canvas-renderer-ticket2.md §2.1) ---------------
 //
@@ -47,6 +49,20 @@ export type { RolledUpRow, RolledUpSpan };
  *  renderer's own local `MAX_ARIA_NAME_LENGTH` (which caps the whole-chart `ariaLabel`
  *  OPTION string, a separate concern) — avoids a same-named-but-different-purpose shadow. */
 export const MAX_ARIA_TASK_NAME_LENGTH = 200;
+
+/** Companion cap applied to the FINISHED label — `MAX_ARIA_TASK_NAME_LENGTH` guards only the
+ *  name going in, which is enough while core composes the sentence but not once a host-supplied
+ *  `messages.taskLabel` can return a string of any length (security.md "limit string length":
+ *  an unbounded value written into an attribute once per task per paint is a DoS surface). */
+const MAX_ARIA_TASK_LABEL_LENGTH = 400;
+
+/** Hoisted to module scope rather than re-allocated on every `buildTaskAriaLabel` call — this
+ *  runs once per task per paint. */
+const DATE_OPTIONS: Intl.DateTimeFormatOptions = {
+  year: 'numeric',
+  month: 'short',
+  day: 'numeric',
+};
 
 /**
  * `rolled` — optional rollup entry for this task (Ticket B2). When present, the dates and
@@ -67,22 +83,45 @@ export function buildTaskAriaLabel(
   calendar: WorkingCalendar,
   locale: string,
   rolled?: RolledUpRow,
+  messages?: GanttMessages,
 ): string {
   const effective = task.type === 'milestone' ? undefined : rolled;
-  const name = task.name.slice(0, MAX_ARIA_TASK_NAME_LENGTH);
   const start = normalizeDate(effective?.start ?? task.start, calendar.timezone).toPlainDate();
   const end = normalizeDate(effective?.end ?? task.end, calendar.timezone).toPlainDate();
-  const dateOptions: Intl.DateTimeFormatOptions = {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-  };
-  const startLabel = start.toLocaleString(locale, dateOptions);
-  const endLabel = end.toLocaleString(locale, dateOptions);
-  const progressPct = Math.round((effective?.progress ?? task.progress ?? 0) * 100);
-  const base = `${name}, ${startLabel}–${endLabel} (${progressPct}% complete)`;
-  const withCritical = isCritical ? `${base}, critical path` : base;
-  return isSelected ? `${withCritical}, selected` : withCritical;
+  const name = task.name.slice(0, MAX_ARIA_TASK_NAME_LENGTH);
+  const startLabel = start.toLocaleString(locale, DATE_OPTIONS);
+  const endLabel = end.toLocaleString(locale, DATE_OPTIONS);
+  // `Number.prototype.toLocaleString`, NOT `new Intl.NumberFormat(...)` — identical digits, but
+  // no Intl constructor (the expensive half) per task per paint and no format cache to key or
+  // invalidate. Localized because an `ar-EG` host was otherwise getting Western Arabic digits
+  // sitting next to Intl-formatted dates in the same sentence.
+  const progressPct = Math.round(
+    (effective?.progress ?? task.progress ?? 0) * 100,
+  ).toLocaleString(locale);
+
+  const custom = messages?.taskLabel;
+  if (custom) {
+    try {
+      // Coerced, then capped: a host function is untrusted input like any other (security.md
+      // §1). Silent fallback on throw — see `GanttMessages.taskLabel`'s doc comment for why
+      // there is deliberately no `console.warn` here. The params object is built ONLY on this
+      // branch, so a host that never supplies `messages` allocates nothing extra per task.
+      return String(
+        custom({ name, startLabel, endLabel, progressPct, isCritical, isSelected, locale }),
+      ).slice(0, MAX_ARIA_TASK_LABEL_LENGTH);
+    } catch {
+      // fall through to the built-in English sentence
+    }
+  }
+
+  // The built-in English sentence, byte-identical to what core emitted before `messages`
+  // existed. Composed with `+=` rather than the old `base`/`withCritical`/`isSelected ? …`
+  // ternary chain purely for size; the SHAPE that made it untranslatable — appending fixed
+  // fragments — is gone from the public contract, which is what the scaffold is about.
+  let label = `${name}, ${startLabel}–${endLabel} (${progressPct}% complete)`;
+  if (isCritical) label += ', critical path';
+  if (isSelected) label += ', selected';
+  return label;
 }
 
 type ZDT = Temporal.ZonedDateTime;

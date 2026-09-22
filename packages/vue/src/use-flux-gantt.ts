@@ -5,7 +5,8 @@
 // a hook on every render. This is a load-bearing difference from `@fluxgantt/react`:
 //   - No lazy-`useRef`-guard pattern is needed to construct the `GanttInstance` "only once" —
 //     this function's top-level `createGantt(...)` call already runs exactly once by
-//     construction. `tasks`/`dependencies`/`calendar`/`viewMode`/`density`/`locale`/`readOnly`
+//     construction. `tasks`/`dependencies`/`calendar`/`viewMode`/`density`/`locale`/
+//     `ariaLabel`/`messages`/`readOnly`
 //     are naturally construction-time-only (resolution #5) as a side effect of this, not
 //     something the composable has to defend against re-running.
 //   - No `configRef.current = config` "always latest" indirection is needed either. `config`

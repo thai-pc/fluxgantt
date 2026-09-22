@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import fc from 'fast-check';
 import {
   deriveTimeRange,
@@ -533,6 +533,140 @@ describe('buildTaskAriaLabel — rollup (spec-summary-rollup.md Ticket B2)', () 
       progress: 0.25,
     });
     expect(rolled).toBe(buildTaskAriaLabel(m, false, false, cal, 'en'));
+  });
+});
+
+describe('buildTaskAriaLabel — i18n scaffold (spec §6.3)', () => {
+  const t = task('a', '2026-01-05T09:00', '2026-01-08T17:00', { progress: 0.5 });
+
+  it('with no `messages` the English label is byte-identical, in all 4 critical×selected combos', () => {
+    // The whole point of the scaffold is that it changes the SHAPE without changing the OUTPUT.
+    expect(buildTaskAriaLabel(t, false, false, cal, 'en')).toBe('a, Jan 5, 2026–Jan 8, 2026 (50% complete)');
+    expect(buildTaskAriaLabel(t, true, false, cal, 'en')).toBe('a, Jan 5, 2026–Jan 8, 2026 (50% complete), critical path');
+    expect(buildTaskAriaLabel(t, false, true, cal, 'en')).toBe('a, Jan 5, 2026–Jan 8, 2026 (50% complete), selected');
+    expect(buildTaskAriaLabel(t, true, true, cal, 'en')).toBe('a, Jan 5, 2026–Jan 8, 2026 (50% complete), critical path, selected');
+  });
+
+  it('`messages.taskLabel` replaces the whole sentence', () => {
+    const label = buildTaskAriaLabel(t, false, false, cal, 'en', undefined, {
+      taskLabel: (p) => `${p.name}: ${p.progressPct}%`,
+    });
+    expect(label).toBe('a: 50%');
+  });
+
+  it('the host can REORDER clauses — the suffix shape is genuinely gone', () => {
+    // This is the test that proves the ticket did its job: `, critical path` / `, selected`
+    // used to be appended after the fact, so no caller could ever put them first. A
+    // verb-final or inflecting language needs exactly this freedom.
+    const label = buildTaskAriaLabel(t, true, true, cal, 'en', undefined, {
+      taskLabel: (p) =>
+        `[${p.isSelected ? 'selected' : ''}] 名前 ${p.name} — ${p.progressPct}%` +
+        (p.isCritical ? ' (critical)' : ''),
+    });
+    expect(label).toBe('[selected] 名前 a — 50% (critical)');
+  });
+
+  it('hands the host locale-formatted dates and percent, plus the raw flags and locale', () => {
+    let seen: Record<string, unknown> | undefined;
+    buildTaskAriaLabel(t, true, false, cal, 'de-DE', undefined, {
+      taskLabel: (p) => {
+        seen = { ...p };
+        return 'x';
+      },
+    });
+    expect(seen).toMatchObject({ name: 'a', isCritical: true, isSelected: false, locale: 'de-DE' });
+    // Formatted for the CONFIGURED locale, not hardcoded 'en' — a German host must not get
+    // "Jan 5, 2026".
+    expect(seen!.startLabel).not.toBe('Jan 5, 2026');
+    expect(String(seen!.startLabel)).toContain('2026');
+  });
+
+  it('hands the host the ROLLED-UP span and progress when the row is a summary', () => {
+    const summary = task('s', '2026-01-05T09:00', '2026-01-06T17:00', { type: 'summary', progress: 0.9 });
+    const label = buildTaskAriaLabel(
+      summary,
+      false,
+      false,
+      cal,
+      'en',
+      {
+        start: normalizeDate('2026-01-05T09:00', cal.timezone),
+        end: normalizeDate('2026-01-20T17:00', cal.timezone),
+        progress: 0.25,
+      },
+      { taskLabel: (p) => `${p.startLabel}|${p.endLabel}|${p.progressPct}` },
+    );
+    expect(label).toBe('Jan 5, 2026|Jan 20, 2026|25');
+  });
+
+  it('caps the task name at MAX_ARIA_TASK_NAME_LENGTH before the host ever sees it', () => {
+    const long = task('a', '2026-01-05T09:00', '2026-01-08T17:00');
+    const wide = { ...long, name: 'x'.repeat(5_000) } as Task;
+    let seenName = '';
+    buildTaskAriaLabel(wide, false, false, cal, 'en', undefined, {
+      taskLabel: (p) => ((seenName = p.name), 'x'),
+    });
+    expect(seenName).toHaveLength(200);
+  });
+
+  it('`messages: {}` and an absent `taskLabel` both take the English default branch', () => {
+    const expected = buildTaskAriaLabel(t, false, false, cal, 'en');
+    expect(buildTaskAriaLabel(t, false, false, cal, 'en', undefined, {})).toBe(expected);
+    expect(buildTaskAriaLabel(t, false, false, cal, 'en', undefined, undefined)).toBe(expected);
+  });
+
+  it('localizes the percent digits — an ar-EG host no longer gets mixed numeral systems', () => {
+    // Regression guard: the dates went through Intl but `Math.round()` did not, so an Arabic
+    // locale used to render Western Arabic digits beside Arabic-Indic ones in one sentence.
+    const arabic = buildTaskAriaLabel(t, false, false, cal, 'ar-EG', undefined, {
+      taskLabel: (p) => p.progressPct,
+    });
+    expect(arabic).not.toBe('50');
+    expect(buildTaskAriaLabel(t, false, false, cal, 'en', undefined, { taskLabel: (p) => p.progressPct })).toBe('50');
+  });
+
+  it('caps a host-returned string (security.md — unbounded attribute value is a DoS surface)', () => {
+    const label = buildTaskAriaLabel(t, false, false, cal, 'en', undefined, {
+      taskLabel: () => 'y'.repeat(10_000),
+    });
+    expect(label).toHaveLength(400);
+  });
+
+  it('coerces a non-string return rather than writing a non-string into an attribute', () => {
+    const label = buildTaskAriaLabel(t, false, false, cal, 'en', undefined, {
+      taskLabel: () => 42 as unknown as string,
+    });
+    expect(label).toBe('42');
+  });
+
+  it('property: ANY host return value yields a string of at most 400 chars', () => {
+    fc.assert(
+      fc.property(fc.anything(), (value) => {
+        const label = buildTaskAriaLabel(t, false, false, cal, 'en', undefined, {
+          taskLabel: () => value as string,
+        });
+        expect(typeof label).toBe('string');
+        expect(label.length).toBeLessThanOrEqual(400);
+      }),
+    );
+  });
+
+  it('a throwing host function falls back to English — silently, with no console.warn', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const label = buildTaskAriaLabel(t, true, false, cal, 'en', undefined, {
+        taskLabel: () => {
+          throw new Error('boom');
+        },
+      });
+      // A broken formatter must degrade to correct English, not wedge the render effect.
+      expect(label).toBe(buildTaskAriaLabel(t, true, false, cal, 'en'));
+      // Deliberately silent: this runs once per task per paint, so a warn would emit thousands
+      // of identical lines in a single paint of a large chart.
+      expect(warn).not.toHaveBeenCalled();
+    } finally {
+      warn.mockRestore();
+    }
   });
 });
 

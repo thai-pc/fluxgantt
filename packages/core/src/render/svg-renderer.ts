@@ -29,6 +29,7 @@ import {
   isKnownDependencyType,
   anchorOf,
   buildTaskAriaLabel,
+  type GanttMessages,
   type GridColumn,
   type RolledUpRow,
   type RowLayout,
@@ -86,6 +87,9 @@ export interface SvgRendererOptions {
   readonly locale?: string;
   /** `aria-label` for the root `<svg>`. Default `'Gantt chart'`. */
   readonly ariaLabel?: string;
+  /** Host-supplied accessible-name builders (spec §6.3 i18n scaffold). Omitted → the built-in
+   *  English sentences. Only `taskLabel` is consulted by this renderer today. */
+  readonly messages?: GanttMessages;
   /** Render the `.fg-task__link-handle` connector handles (+ their hover-reveal `<style>`).
    *  Default `true`. The facade sets this to `false` for a `readOnly` Gantt so a
    *  non-editable chart shows no interactive link affordance. */
@@ -308,6 +312,7 @@ export function createSvgRenderer(
     const viewMode = currentOptions.viewMode ?? DEFAULT_VIEW_MODE;
     const density = currentOptions.density ?? DEFAULT_DENSITY;
     const locale = currentOptions.locale ?? DEFAULT_LOCALE;
+    const messages = currentOptions.messages;
     const ariaLabel = (currentOptions.ariaLabel ?? DEFAULT_ARIA_LABEL).slice(0, MAX_ARIA_NAME_LENGTH);
 
     const optionRange = currentOptions.timeRange;
@@ -410,6 +415,7 @@ export function createSvgRenderer(
         offsetY,
         showLinkHandles,
         currentInput.rollup,
+        messages,
       ),
     );
     // Today marker (spec §9.1). Appended after the rows so it crosses OVER bars and
@@ -613,6 +619,7 @@ function renderRows(
   offsetY: number,
   showLinkHandles: boolean,
   rollup: ReadonlyMap<TaskId, RolledUpRow> | undefined,
+  messages: GanttMessages | undefined,
 ): SVGGElement {
   const g = document.createElementNS(SVG_NS, 'g') as SVGGElement;
   g.setAttribute('class', 'fg-timeline__rows');
@@ -685,7 +692,7 @@ function renderRows(
 
     const isCritical = criticalIds.has(row.task.id);
     cell.appendChild(
-      renderTaskBar(row.task, bar, offsetX, offsetY, isCritical, isSelected, calendar, locale, showLinkHandles, rollup?.get(row.task.id)),
+      renderTaskBar(row.task, bar, offsetX, offsetY, isCritical, isSelected, calendar, locale, showLinkHandles, rollup?.get(row.task.id), messages),
     );
 
     rowGroup.appendChild(cell);
@@ -731,6 +738,7 @@ function renderTaskBar(
   locale: string,
   showLinkHandles: boolean,
   rolled: RolledUpRow | undefined,
+  messages: GanttMessages | undefined,
 ): SVGGElement {
   const wrapper = document.createElementNS(SVG_NS, 'g') as SVGGElement;
   // Whitelist `task.type` before folding it into a class token (review N3): fall back to
@@ -758,7 +766,10 @@ function renderTaskBar(
   if (rolled !== undefined && task.type !== 'milestone') {
     wrapper.setAttribute('data-rolled-up', 'true');
   }
-  wrapper.setAttribute('aria-label', buildTaskAriaLabel(task, isCritical, isSelected, calendar, locale, rolled));
+  wrapper.setAttribute(
+    'aria-label',
+    buildTaskAriaLabel(task, isCritical, isSelected, calendar, locale, rolled, messages),
+  );
 
   const x = bar.x + offsetX;
   const y = bar.y + offsetY;

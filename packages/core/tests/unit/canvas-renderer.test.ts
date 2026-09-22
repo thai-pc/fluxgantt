@@ -381,6 +381,21 @@ describe('hidden ARIA layer', () => {
     expect(taskEl!.getAttribute('aria-label')).toBe(expected);
   });
 
+  it('options.messages.taskLabel drives the hidden a11y layer too — both renderers share one catalog', () => {
+    // `renderer-base.ts` centralises `buildTaskAriaLabel` precisely so a screen-reader user
+    // never hears different text depending on which renderer happens to be active. That
+    // argument applies verbatim to host-supplied messages: Canvas must consult them as well.
+    const mock = createMockContext2D();
+    installMockContext(mock);
+    const h = createCanvasRenderer(
+      container,
+      { tasks: baseTasks, dependencies: baseDeps },
+      { messages: { taskLabel: (p) => `canvas:${p.name}` } },
+    );
+    const taskEl = h.interactionRoot.querySelector<HTMLElement>('.fg-timeline-canvas__task[data-task-id="c"]')!;
+    expect(taskEl.getAttribute('aria-label')).toBe('canvas:c');
+  });
+
   it('roving tabindex: exactly one [tabindex="0"], matching focusedTaskId; unset falls back to rows[0]', () => {
     const mock = createMockContext2D();
     installMockContext(mock);
