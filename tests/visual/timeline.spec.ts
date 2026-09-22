@@ -207,3 +207,29 @@ test('the today marker draws a full-height red rule over the today column wash',
   const chart = page.locator('#gantt');
   await expect(chart).toHaveScreenshot('timeline-today-marker.png');
 });
+
+// --- Dark mode visual regression (spec §7.6) -------------------------------------------------
+//
+// `withTheme` adds NO renderer code: it redefines the `--fg-*` custom properties on the mount
+// container and lets the browser re-resolve the `var()` declarations the SVG already writes
+// inline. That is a claim about the whole painted surface at once, which is exactly what a
+// screenshot is good for — the DOM assertions below are the portable half, and the baseline is
+// the one that would catch a token the renderer reads but the dark table forgot.
+//
+// This adds ONE new baseline and regenerates none: the existing ones all render in light mode,
+// which is still what the demo loads with (`'auto'`, under a light-preferring test browser).
+
+test('a dark-themed chart repaints ground, grid, header and text', async ({ page }) => {
+  await page.goto('/');
+
+  const button = page.locator('#theme-toggle');
+  await button.click(); // auto -> light
+  await button.click(); // light -> dark
+  await expect(button).toHaveText('Theme: dark');
+
+  const chart = page.locator('#gantt');
+  // DOM state first, screenshot second (these baselines are darwin-only; CI runs e2e, not
+  // visual). `rgb(10, 10, 10)` === the `--fg-bg` dark value, resolved through the cascade.
+  await expect(chart).toHaveCSS('background-color', 'rgb(10, 10, 10)');
+  await expect(chart).toHaveScreenshot('timeline-dark.png');
+});

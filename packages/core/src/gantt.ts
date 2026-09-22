@@ -79,6 +79,19 @@ export interface GanttConfig {
   readonly locale?: string;
 
   /**
+   * Initial light/dark theme. Read ONLY by the opt-in `withTheme()` mixin
+   * (`@fluxgantt/core/theme`) — inert on an instance that never applies it, exactly as
+   * `density`/`locale` are inert without `withRender`. Default `'auto'`, which follows the
+   * host OS's `prefers-color-scheme` and keeps following it. Change it at runtime with
+   * `withTheme(...).setTheme()`; there is no `gantt.setTheme()` on the base facade (the
+   * bundle budgets, spec §0.1 / golden rule 5).
+   *
+   * Typed structurally rather than importing `ThemeName` from `theme/tokens.js`, so the base
+   * bundle's type graph stays independent of the theme subpath.
+   */
+  readonly theme?: 'light' | 'dark' | 'auto';
+
+  /**
    * (fix #37, spec-canvas-row-virtualization.md §2). Passed straight through to
    * `CanvasRendererOptions.viewportHeight` — has NO effect in SVG mode (no equivalent
    * concept there). Bounds the Canvas `<canvas>` backing store's physical height and the

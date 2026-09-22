@@ -30,6 +30,7 @@ import {
   type TaskBarLayout,
   type RowLayout,
 } from '../../src/render/renderer-base.js';
+import { DARK_TOKENS } from '../../src/theme/tokens.js';
 import { toTaskId, toDependencyId, type Task, type Dependency } from '../../src/types.js';
 
 const cal = DEFAULT_CALENDAR;
@@ -2384,5 +2385,79 @@ describe('createCanvasRenderer — today marker', () => {
     svgHost.remove();
 
     expect(canvasX).toBeCloseTo(svgX, 6);
+  });
+});
+
+// --- Theming: the Canvas half of `withTheme` (spec §8.2) ------------------------------------
+//
+// Canvas is the renderer that CANNOT resolve `var(--fg-*)` — a 2D context's `fillStyle`/
+// `strokeStyle` take an already-resolved string — so `resolveDesignTokens()` reads the tokens
+// off the container through `getComputedStyle` on every `render()`. That makes two things
+// worth pinning here: that a dark container actually reaches the paint calls, and that the
+// empty `setOptions({})` poke `withTheme` uses really does re-resolve (an SVG chart repaints
+// itself on the property change; Canvas does not, so this is the whole mechanism).
+describe('canvas renderer — design tokens re-resolve per render (theming)', () => {
+  /** Stubs `getComputedStyle` so `--fg-*` lookups answer from `tokens`, counting how many
+   *  times the container was queried. Everything else passes through to real jsdom. */
+  function stubTokens(tokens: Record<string, string>): { queries: () => number } {
+    let queries = 0;
+    const real = window.getComputedStyle.bind(window);
+    vi.spyOn(window, 'getComputedStyle').mockImplementation((el: Element, pseudo?: string | null) => {
+      const cs = real(el, pseudo ?? undefined);
+      if (el !== container) return cs;
+      queries++;
+      return {
+        getPropertyValue: (prop: string) => tokens[prop] ?? cs.getPropertyValue(prop),
+      } as CSSStyleDeclaration;
+    });
+    return { queries: () => queries };
+  }
+
+  it('paints with the dark token values when the container carries them', () => {
+    const mock = createMockContext2D();
+    installMockContext(mock);
+    // The FULL dark table, not a two-token subset: several tokens share a light fallback
+    // (`--fg-grid-line` and `--fg-border` are both `#e5e7eb`), so stubbing only some would
+    // leave the other still painting that value and make the negative assertions meaningless.
+    stubTokens({ ...DARK_TOKENS });
+
+    createCanvasRenderer(container, { tasks: baseTasks, dependencies: baseDeps, calendar: cal });
+
+    const painted = mock.calls
+      .filter((c) => c.op === 'set' && (c.prop === 'strokeStyle' || c.prop === 'fillStyle'))
+      .map((c) => c.args[0]);
+    expect(painted).toContain('#27272a');
+    expect(painted).toContain('#18181b');
+    // The light fallbacks those two tokens would otherwise have resolved to.
+    expect(painted).not.toContain('#e5e7eb');
+    expect(painted).not.toContain('#f3f4f6');
+  });
+
+  it('an empty setOptions({}) re-resolves the tokens — the poke withTheme relies on', () => {
+    const mock = createMockContext2D();
+    installMockContext(mock);
+    // Starts light (no overrides at all, i.e. every renderer fallback), then goes fully dark.
+    const tokens: Record<string, string> = {};
+    const probe = stubTokens(tokens);
+
+    const handle = createCanvasRenderer(container, {
+      tasks: baseTasks,
+      dependencies: baseDeps,
+      calendar: cal,
+    });
+    const afterFirstRender = probe.queries();
+    expect(afterFirstRender).toBeGreaterThan(0);
+
+    // Simulate `withTheme` switching the container to dark, then poking the handle.
+    Object.assign(tokens, DARK_TOKENS);
+    mock.calls.length = 0;
+    handle.setOptions({});
+
+    expect(probe.queries()).toBeGreaterThan(afterFirstRender);
+    const repainted = mock.calls
+      .filter((c) => c.op === 'set' && c.prop === 'strokeStyle')
+      .map((c) => c.args[0]);
+    expect(repainted).toContain('#27272a');
+    expect(repainted).not.toContain('#e5e7eb');
   });
 });

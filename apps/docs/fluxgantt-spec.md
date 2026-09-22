@@ -550,8 +550,26 @@ gantt.zoomTo(level: 'day' | 'week' | 'month' | 'quarter' | 'year'): void
 gantt.scrollToTask(id: TaskId): void
 gantt.scrollToDate(date: Date): void
 gantt.setDensity(density: 'compact' | 'default' | 'comfortable'): void
-gantt.setTheme(theme: 'light' | 'dark' | 'auto'): void
 ```
+
+**Theming is an opt-in mixin, not a facade method.** `setTheme` was originally specified here as
+`gantt.setTheme()`, but a base-facade method is billed to every consumer (class prototype methods
+never tree-shake), and the `withRender + withInteraction` bundle had ~30 B of headroom when this
+shipped. Golden rule 5 says change the shape rather than the budget, so theming lives on its own
+subpath — the same move the facade split already made for IO/render/interaction:
+
+```typescript
+import { withTheme } from '@fluxgantt/core/theme';
+
+const gantt = withTheme(withRender(createGantt({ tasks })));
+gantt.setTheme(theme: 'light' | 'dark' | 'auto'): void
+gantt.getTheme(): 'light' | 'dark' | 'auto'   // configured
+gantt.getResolvedTheme(): 'light' | 'dark'    // painted ('auto' collapsed)
+```
+
+`GanttConfig.theme` (§7.1) seeds the initial value and is inert on an instance that never applies
+`withTheme` — exactly as `density`/`locale` are inert without `withRender`. `'auto'` tracks
+`prefers-color-scheme` live and unsubscribes on `destroy()`.
 
 ### 7.7 Selection
 
@@ -701,7 +719,11 @@ Prefer:
   --fg-border:           #e5e7eb;
   --fg-border-strong:    #d4d4d8;
 
-  /* Dark theme */
+  /* Dark theme — the PALETTE, not a switch. The renderers only ever read the base names
+     above, so going dark means REDEFINING those base names with these values (plus dark
+     grid/dependency values); nothing reads a `*-dark` token at paint time. `withTheme`
+     (§7.6) does this by setting the base names as inline custom properties on the mount
+     container, and light is simply the absence of those overrides. */
   --fg-bg-dark:          #0a0a0a;
   --fg-bg-subtle-dark:   #18181b;
   --fg-fg-dark:          #fafafa;

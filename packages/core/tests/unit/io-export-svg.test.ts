@@ -219,6 +219,24 @@ describe('exportSvg — computed-style baking', () => {
     expect(out).not.toContain('var(--fg-task-default');
   });
 
+  it('bakes BEFORE the <style> strip, so a themed chart exports its theme', () => {
+    // The ordering inside `exportSvg` is load-bearing for theming: `bakeComputedStyles()` runs
+    // at step 3, the `<style>` removal at step 5. Were it reversed, a dark-themed chart would
+    // still export its LIGHT fallbacks. jsdom does not resolve `var()` (see the header note), so
+    // the browser's half is mocked here and asserted for real in the Playwright dark-mode case;
+    // what this test pins is that the baked value reaches the output at all, and that the
+    // `<style>` elements are gone from that same output.
+    const h = createSvgRenderer(container, { tasks: baseTasks, dependencies: baseDeps });
+    mockComputedStyle({ fill: '#0a0a0a', stroke: '#27272a' });
+    const out = exportSvg(h.svg);
+
+    expect(out).toContain('#0a0a0a');
+    expect(out).toContain('#27272a');
+    expect(out).not.toContain('<style');
+    // And nothing fell back to the light token defaults the renderer declared inline.
+    expect(out).not.toContain('var(--fg-');
+  });
+
   it('a bad prop/value fails isSafeStyleValue and is skipped', () => {
     expect(isSafeStyleValue('fill', 'javascript:alert(1)')).toBe(false);
     expect(isSafeStyleValue('fill', 'expression(alert(1))')).toBe(false);

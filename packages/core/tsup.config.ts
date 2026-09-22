@@ -16,6 +16,7 @@ export default defineConfig({
     'io/index': 'src/io/index.ts',
     'render/index': 'src/render/index.ts',
     'interaction/index': 'src/interaction/index.ts',
+    'theme/index': 'src/theme/index.ts',
     'render/canvas-renderer': 'src/render/canvas-renderer.ts',
   },
   format: ['esm', 'cjs'],
