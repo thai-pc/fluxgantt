@@ -134,6 +134,21 @@ describe('exportSvg — structure', () => {
     expect(criticalBar!.getAttribute('style') ?? '').toContain('stroke-dasharray');
   });
 
+  it('a progress fill survives export with a concrete baked fill, never SVG-default black', () => {
+    // The trap this guards: `exportSvg` strips EVERY <style> element from the clone, so a
+    // rule-based fill would export as an unstyled rect — which SVG paints black. The fill is
+    // written inline precisely so baking has something to resolve.
+    const h = createSvgRenderer(container, { tasks: baseTasks, dependencies: baseDeps });
+    expect(h.svg.querySelectorAll('.fg-task__progress').length).toBeGreaterThan(0); // sanity
+    mockComputedStyle({ fill: 'rgb(16, 185, 129)' });
+    const out = exportSvg(h.svg);
+    const doc = new DOMParser().parseFromString(out, 'image/svg+xml');
+    const fill = doc.querySelector('.fg-task__progress');
+    expect(fill).not.toBeNull();
+    expect(fill!.getAttribute('style') ?? '').toContain('rgb(16, 185, 129)');
+    expect(out).not.toContain('var(--fg-task-completed');
+  });
+
   it('leaves a legitimate marker-end attribute reference untouched (only BAKED_STYLE_PROPERTIES are touched)', () => {
     const h = createSvgRenderer(container, { tasks: baseTasks, dependencies: baseDeps });
     const out = exportSvg(h.svg);

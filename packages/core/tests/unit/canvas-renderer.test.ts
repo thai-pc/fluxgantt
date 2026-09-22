@@ -2134,12 +2134,17 @@ describe('rollup — Canvas geometry + a11y label + SVG parity', () => {
     const rolledWidths = rectWidths(rolledMock);
     rolled.destroy();
 
-    // Compared as MULTISETS with one substitution applied, not by "some width got bigger": the
+    // Compared as MULTISETS with the substitutions applied, not by "some width got bigger": the
     // fixture's other bars legitimately share widths with each other, so a bare
     // `toContain`/`Math.max` assertion can pass (or fail) for the wrong reason. Swapping exactly
-    // one `authoredWidth` for one `rolledWidth` pins down both that 'a' changed and that no
-    // other bar did.
+    // the rects belonging to 'a' pins down both that 'a' changed and that no other bar did.
+    //
+    // TWO rects move, not one: every non-milestone bar also paints a `.fg-task__progress` fill,
+    // and for 'a' both the span AND the fraction come from the rollup entry — the bar goes
+    // authored → rolled, and its fill goes `authored * task.progress` → `rolled * rolled.progress`.
+    const rolledProgress = rollup.get(toTaskId('a'))!.progress;
     const expected = [...plainWidths];
+    expected.splice(expected.indexOf(authoredWidth * baseTasks[0]!.progress), 1, rolledWidth * rolledProgress);
     expected.splice(expected.indexOf(authoredWidth), 1, rolledWidth);
     expect([...rolledWidths].sort((x, y) => x - y)).toEqual(expected.sort((x, y) => x - y));
   });
@@ -2217,5 +2222,78 @@ describe('destroy() cancels a pending scroll/resize-triggered rAF', () => {
     const h = createCanvasRenderer(container, { tasks: buildFlatTasks(50), dependencies: [] });
     h.destroy();
     expect(() => h.destroy()).not.toThrow();
+  });
+});
+
+// --- progress fill (spec §5.4, `.fg-task__progress`'s Canvas counterpart) --------------------
+
+describe('progress fill — Canvas paint + SVG parity', () => {
+  /** Rect ops paired with the `fillStyle` in effect when each was issued. Canvas has no DOM, so
+   *  "which color painted this rect" is recovered by replaying the call log in order — the last
+   *  `{op:'set', prop:'fillStyle'}` before a rect is the one that applied to it. */
+  const filledRects = (mock: MockContext2D): Array<{ width: number; fill: unknown }> => {
+    let fill: unknown;
+    const out: Array<{ width: number; fill: unknown }> = [];
+    for (const c of mock.calls) {
+      if (c.op === 'set' && c.prop === 'fillStyle') fill = c.args[0];
+      else if (c.op === 'fillRect' || c.op === 'roundRect' || c.op === 'rect') {
+        const width = Number(c.args[2]);
+        if (Number.isFinite(width)) out.push({ width, fill });
+      }
+    }
+    return out;
+  };
+
+  it('paints a rect of `barWidth * progress` in the completed token color', () => {
+    const mock = createMockContext2D();
+    installMockContext(mock);
+    const h = createCanvasRenderer(container, { tasks: baseTasks, dependencies: baseDeps });
+    const ts = h.getTimeScale();
+    const barWidth = ts.dateToX(baseTasks[2]!.end) - ts.dateToX(baseTasks[2]!.start);
+    const rects = filledRects(mock);
+    // Matched on width AND color together: the fixture's bars legitimately share widths, so
+    // width alone could be satisfied by an unrelated rect.
+    expect(rects).toContainEqual({ width: barWidth * 0.5, fill: '#10b981' });
+    h.destroy();
+  });
+
+  it('paints no completed-color rect for a milestone or for `progress: 0`', () => {
+    const mock = createMockContext2D();
+    installMockContext(mock);
+    const h = createCanvasRenderer(container, {
+      tasks: [
+        task('m2', '2026-01-13T09:00', '2026-01-13T09:00', { type: 'milestone' }),
+        task('zero', '2026-01-14T09:00', '2026-01-16T17:00', { progress: 0 }),
+      ],
+      dependencies: [],
+    });
+    expect(filledRects(mock).filter((r) => r.fill === '#10b981')).toHaveLength(0);
+    h.destroy();
+  });
+
+  it('agrees with the SVG renderer on every fill width', () => {
+    // Guards the classic "threaded the new param into one of the two call sites" bug — the same
+    // reason the rollup aria-label parity test above exists.
+    const mock = createMockContext2D();
+    installMockContext(mock);
+    const canvas = createCanvasRenderer(container, { tasks: baseTasks, dependencies: baseDeps });
+    const canvasWidths = filledRects(mock)
+      .filter((r) => r.fill === '#10b981')
+      .map((r) => r.width)
+      .sort((a, b) => a - b);
+    canvas.destroy();
+    vi.restoreAllMocks();
+
+    const svgContainer = document.createElement('div');
+    document.body.appendChild(svgContainer);
+    const svg = createSvgRenderer(svgContainer, { tasks: baseTasks, dependencies: baseDeps });
+    const svgWidths = [...svg.svg.querySelectorAll('.fg-task__progress')]
+      .map((el) => Number(el.getAttribute('width')))
+      .sort((a, b) => a - b);
+    svg.destroy();
+    svgContainer.remove();
+
+    expect(canvasWidths).toHaveLength(svgWidths.length);
+    expect(canvasWidths).toEqual(svgWidths);
   });
 });

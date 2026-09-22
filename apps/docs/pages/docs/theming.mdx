@@ -60,6 +60,12 @@ Override any of these on a container (or `:root`) to retheme. Values below are t
 --fg-task-milestone: #f59e0b; /* amber — diamond marker */
 ```
 
+`--fg-task-completed` paints the `.fg-task__progress` overlay — the completed portion of each
+bar, drawn over `--fg-task-default` at a width of `task.progress` (0..1) times the bar. It is
+the same percentage the bar's `aria-label` announces, so overriding the color never changes
+what a screen reader reports. Milestones have no fill (a partial diamond would read as a
+different shape), and a task at `progress: 0` emits no overlay element at all.
+
 ### Grid & dependencies
 
 ```css

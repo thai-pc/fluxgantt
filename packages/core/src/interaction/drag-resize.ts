@@ -84,6 +84,15 @@ interface ResizeState {
   /** The `.fg-task__bar` element — `width` is written live during the gesture, `x` is
    *  NEVER written (resolution #1 — "keep `start`"). */
   readonly barEl: Element;
+  /** The `.fg-task__progress` rect, when the bar has one (absent at `progress === 0`, and on a
+   *  milestone — which never reaches here anyway). Its `width` is scaled live alongside `barEl`
+   *  so the completed fraction stays proportional throughout the gesture instead of overflowing
+   *  a shrinking bar. */
+  readonly progressEl: Element | null;
+  /** The fill's share of the bar, captured at gesture start. Progress is a fraction OF THE BAR,
+   *  so tracking the live width by ratio is what keeps it correct — re-deriving from
+   *  `task.progress` would duplicate the renderer's own clamp here. */
+  readonly progressRatio: number;
   readonly originalStart: DateInput;
   readonly originalEnd: DateInput;
   readonly originalWidth: number;
@@ -151,9 +160,17 @@ export function enableDragResize(
       // landed on `barEl`, so `event.clientX` is already within the bar's client-space span.
       if (event.clientX < rightEdgeX - edgeHitZonePx || event.clientX > rightEdgeX + edgeHitZonePx) return null;
 
+      const progressEl = groupEl.querySelector('.fg-task__progress');
+      const progressWidth = progressEl ? Number(progressEl.getAttribute('width')) : NaN;
+      // Guarded to 0 on a missing or malformed attribute — a NaN ratio would write `NaN` widths
+      // into the DOM for the rest of the gesture.
+      const progressRatio = barWidth > 0 && Number.isFinite(progressWidth) ? progressWidth / barWidth : 0;
+
       return {
         taskId,
         barEl,
+        progressEl,
+        progressRatio,
         originalStart: task.start,
         originalEnd: task.end,
         originalWidth: barWidth,
@@ -186,6 +203,9 @@ export function enableDragResize(
         ctx.timeScale.dateToX(tentativeEnd) - ctx.timeScale.dateToX(ctx.state.originalStart),
       );
       ctx.state.barEl.setAttribute('width', String(newWidth));
+      if (ctx.state.progressEl) {
+        ctx.state.progressEl.setAttribute('width', String(newWidth * ctx.state.progressRatio));
+      }
       options.onResizing?.(ctx.state.taskId, tentativeEnd);
     },
     onCommit(ctx, dxPixels) {
@@ -203,6 +223,9 @@ export function enableDragResize(
     onCancel(ctx) {
       // Exact restore — width was mutated live during the gesture, `x` was never touched.
       ctx.state.barEl.setAttribute('width', String(ctx.state.originalWidth));
+      if (ctx.state.progressEl) {
+        ctx.state.progressEl.setAttribute('width', String(ctx.state.originalWidth * ctx.state.progressRatio));
+      }
       ctx.groupEl.classList.remove(RESIZING_CLASS);
       document.body.style.cursor = '';
     },

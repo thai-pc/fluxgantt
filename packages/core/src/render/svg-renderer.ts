@@ -22,6 +22,7 @@ import {
   layoutRows,
   isTreeLayout,
   layoutTaskBar,
+  progressFillWidth,
   validateTaskColor,
   isKnownTaskKind,
   isKnownDependencyType,
@@ -750,6 +751,31 @@ function renderTaskBar(
   }
 
   wrapper.appendChild(shape);
+
+  // Completed portion (`.fg-task__progress`), painted over the bar. Appended here — after the
+  // bar, before the focus ring and link handles — because SVG paints in document order, so the
+  // z-order falls out of the append order with no explicit stacking.
+  //
+  // SECURITY/EXPORT: the fill is an inline CSSOM property, NOT a CSS rule. `exportSvg()` strips
+  // every `<style>` element from its clone and bakes only inline/computed values for
+  // `BAKED_STYLE_PROPERTIES`, so a rule-based fill would export as SVG's default black.
+  // The value is a host-CSS design token — a different trust boundary from `task.color`, which
+  // alone needs `validateTaskColor`.
+  //
+  // The class is deliberately NOT `fg-task__bar`: `interaction/drag-resize.ts` resolves the bar
+  // by that exact selector and must keep matching the bar itself.
+  const progressWidth = progressFillWidth(task, bar, rolled);
+  if (progressWidth > 0) {
+    const progressShape = document.createElementNS(SVG_NS, 'rect');
+    progressShape.setAttribute('class', 'fg-task__progress');
+    progressShape.setAttribute('x', String(x));
+    progressShape.setAttribute('y', String(y));
+    progressShape.setAttribute('width', String(progressWidth));
+    progressShape.setAttribute('height', String(bar.height));
+    progressShape.setAttribute('rx', '3');
+    progressShape.style.setProperty('fill', 'var(--fg-task-completed, #10b981)');
+    wrapper.appendChild(progressShape);
+  }
 
   // Keyboard-focus ring (spec-keyboard-nav.md §5.2, mechanism corrected — see
   // `FOCUS_STYLE_TEXT`'s doc comment): a purpose-built `<rect>` sibling of the bar, offset

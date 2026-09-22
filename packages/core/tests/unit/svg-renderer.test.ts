@@ -475,3 +475,101 @@ describe('update / setOptions / destroy — idempotent (spec §9.2)', () => {
     expect(container.children).toHaveLength(0);
   });
 });
+
+// --- progress fill (spec §5.4, `.fg-task__progress`) -----------------------------------------
+
+describe('progress fill', () => {
+  /** The `<rect>` for one task, resolved through its own `.fg-task` group so a sibling task's
+   *  fill can never be mistaken for it. */
+  const progressOf = (h: { svg: SVGSVGElement }, id: string): SVGElement | null =>
+    h.svg.querySelector(`.fg-task[data-task-id="${id}"] .fg-task__progress`);
+  const barOf = (h: { svg: SVGSVGElement }, id: string): SVGElement =>
+    h.svg.querySelector(`.fg-task[data-task-id="${id}"] .fg-task__bar`) as SVGElement;
+  const widthOf = (el: Element | null): number => Number(el?.getAttribute('width'));
+
+  it('paints a fill at `barWidth * progress`, matching the bar on every other geometry axis', () => {
+    const h = createSvgRenderer(container, { tasks: baseTasks, dependencies: baseDeps });
+    const bar = barOf(h, 'c');
+    const fill = progressOf(h, 'c');
+    expect(fill).not.toBeNull();
+    expect(widthOf(fill)).toBeCloseTo(Number(bar.getAttribute('width')) * 0.5, 6);
+    // Same origin and height — only the width encodes the fraction.
+    expect(fill!.getAttribute('x')).toBe(bar.getAttribute('x'));
+    expect(fill!.getAttribute('y')).toBe(bar.getAttribute('y'));
+    expect(fill!.getAttribute('height')).toBe(bar.getAttribute('height'));
+  });
+
+  it('sets the fill INLINE via a design token — the property `exportSvg()` bakes', () => {
+    // A CSS-rule fill would be stripped with the `<style>` blocks on export and land as SVG's
+    // default black; export-svg.test.ts guards the exported artifact, this guards the source.
+    const h = createSvgRenderer(container, { tasks: baseTasks, dependencies: baseDeps });
+    expect(progressOf(h, 'c')!.style.getPropertyValue('fill')).toBe('var(--fg-task-completed, #10b981)');
+  });
+
+  it('emits no fill for a milestone, for `progress: 0`, or for a zero-width bar', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const h = createSvgRenderer(container, {
+      tasks: [
+        ...baseTasks,
+        task('zero', '2026-01-14T09:00', '2026-01-16T17:00', { progress: 0 }),
+        task('inverted', '2026-01-20T09:00', '2026-01-10T09:00'),
+      ],
+      dependencies: [],
+    });
+    expect(progressOf(h, 'm')).toBeNull();
+    expect(progressOf(h, 'zero')).toBeNull();
+    expect(progressOf(h, 'inverted')).toBeNull();
+    warn.mockRestore();
+  });
+
+  it('clamps an out-of-range or NaN progress instead of painting past the bar', () => {
+    // `addTask` and the store do NOT validate `progress` (only `setProgress` and the IO
+    // boundary do), so these values genuinely reach the renderer.
+    const h = createSvgRenderer(container, {
+      tasks: [
+        task('over', '2026-01-05T09:00', '2026-01-07T17:00', { progress: 1.7 }),
+        task('under', '2026-01-09T09:00', '2026-01-12T17:00', { progress: -0.3 }),
+        task('nan', '2026-01-14T09:00', '2026-01-16T17:00', { progress: Number.NaN }),
+      ],
+      dependencies: [],
+    });
+    expect(widthOf(progressOf(h, 'over'))).toBe(Number(barOf(h, 'over').getAttribute('width')));
+    expect(progressOf(h, 'under')).toBeNull();
+    expect(progressOf(h, 'nan')).toBeNull();
+  });
+
+  it('is painted above the bar and below the focus ring', () => {
+    const h = createSvgRenderer(container, { tasks: baseTasks, dependencies: baseDeps });
+    const children = [...h.svg.querySelector('.fg-task[data-task-id="c"]')!.children];
+    const indexOf = (cls: string): number => children.findIndex((el) => el.classList.contains(cls));
+    // SVG paints in document order, so append order IS z-order.
+    expect(indexOf('fg-task__bar')).toBeLessThan(indexOf('fg-task__progress'));
+    expect(indexOf('fg-task__progress')).toBeLessThan(indexOf('fg-task__focus-ring'));
+  });
+
+  it('uses the ROLLED-UP progress, and agrees with the percentage its own aria-label announces', () => {
+    // The whole point of the element: the a11y layer has always announced a percentage that
+    // nothing painted. Both now resolve `rolled?.progress ?? task.progress` identically.
+    const rollup = new Map([
+      [
+        toTaskId('a'),
+        {
+          start: normalizeDate('2026-01-05T09:00', cal.timezone),
+          end: normalizeDate('2026-01-08T17:00', cal.timezone),
+          progress: 0.25,
+        },
+      ],
+    ]);
+    const h = createSvgRenderer(container, { tasks: baseTasks, dependencies: baseDeps, rollup });
+    const group = h.svg.querySelector('.fg-task[data-task-id="a"]')!;
+    expect(widthOf(progressOf(h, 'a'))).toBeCloseTo(Number(barOf(h, 'a').getAttribute('width')) * 0.25, 6);
+    expect(group.getAttribute('aria-label')).toContain('25% complete');
+  });
+
+  it('two renders of the same input produce byte-identical markup', () => {
+    const h = createSvgRenderer(container, { tasks: baseTasks, dependencies: baseDeps });
+    const before = h.svg.outerHTML;
+    h.update({ tasks: baseTasks, dependencies: baseDeps });
+    expect(h.svg.outerHTML).toBe(before);
+  });
+});

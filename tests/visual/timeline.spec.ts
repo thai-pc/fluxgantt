@@ -122,3 +122,43 @@ test('the focus ring is still visible under prefers-reduced-motion (no reliance 
   const chart = page.locator('#gantt');
   await expect(chart).toHaveScreenshot('timeline-focused-reduced-motion.png');
 });
+
+// --- Progress fill visual regression (spec §5.4) --------------------------------------------
+//
+// The quick-start demo spans the whole range of the feature in one screenshot: `design` at
+// progress 1 (fully filled), `build` at 0.6, `docs-task` at 0.2, `review` at 0 (no overlay
+// element at all), and the `launch` milestone (exempt — a partial diamond would read as a
+// different shape rather than a different value).
+
+test('progress fills render at their authored fractions, with none on a milestone or at zero', async ({
+  page,
+}) => {
+  await page.goto('/');
+
+  // DOM state first, screenshot second: a PNG diff alone cannot distinguish "the fill is
+  // absent" from "the fill is present but wrong", and these baselines are darwin-only (CI runs
+  // the e2e project, not visual), so the assertions below are the portable half of this test.
+  const fillRatio = async (taskId: string): Promise<number | null> =>
+    page.locator(`.fg-task[data-task-id="${taskId}"]`).evaluate((group) => {
+      const fill = group.querySelector('.fg-task__progress');
+      if (!fill) return null;
+      const bar = group.querySelector('.fg-task__bar')!;
+      return Number(fill.getAttribute('width')) / Number(bar.getAttribute('width'));
+    });
+
+  expect(await fillRatio('design')).toBeCloseTo(1, 3);
+  expect(await fillRatio('build')).toBeCloseTo(0.6, 3);
+  expect(await fillRatio('docs-task')).toBeCloseTo(0.2, 3);
+  expect(await fillRatio('review')).toBeNull(); // progress 0 → no element
+  expect(await fillRatio('launch')).toBeNull(); // milestone → exempt
+
+  // Resolved through the real CSS cascade, which jsdom cannot do — this is the only place the
+  // `var(--fg-task-completed, …)` fallback is proven to actually paint the emerald token.
+  const painted = await page
+    .locator('.fg-task[data-task-id="build"] .fg-task__progress')
+    .evaluate((el) => getComputedStyle(el).fill);
+  expect(painted).toBe('rgb(16, 185, 129)');
+
+  const chart = page.locator('#gantt');
+  await expect(chart).toHaveScreenshot('timeline-progress-fill.png');
+});
