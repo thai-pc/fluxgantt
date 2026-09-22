@@ -28,7 +28,7 @@ const gantt = withInteraction(
           type: 'task',
         },
       ],
-      dependencies: [{ from: toTaskId('thiet-ke'), to: toTaskId('trien-khai') }],
+      dependencies: [{ from: toTaskId('thiet-ke'), to: toTaskId('trien-khai'), type: 'FS' }],
       locale: 'vi',
       ariaLabel: 'Kế hoạch dự án',
       messages: {

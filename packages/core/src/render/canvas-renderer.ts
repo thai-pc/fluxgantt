@@ -943,7 +943,11 @@ export function createCanvasRenderer(
     const viewMode = state.options.viewMode ?? DEFAULT_VIEW_MODE;
     const density = state.options.density ?? DEFAULT_DENSITY;
     const locale = state.options.locale ?? DEFAULT_LOCALE;
-    const ariaLabel = (state.options.ariaLabel ?? DEFAULT_ARIA_LABEL).slice(0, MAX_ARIA_NAME_LENGTH);
+    // Coerced for the same reason as the SVG renderer: `??` does not guard a non-string.
+    const ariaLabel = String(state.options.ariaLabel ?? DEFAULT_ARIA_LABEL).slice(
+      0,
+      MAX_ARIA_NAME_LENGTH,
+    );
 
     const optionRange = state.options.timeRange;
     const range = optionRange

@@ -541,6 +541,19 @@ describe('click-select — mount() wiring (spec-selection.md §12.4)', () => {
     expect(label.length).toBeLessThan(500);
   });
 
+  it('a non-string config.ariaLabel from a loosely-typed JS host is coerced, not thrown on', () => {
+    // `??` only guards null/undefined, so a plain-JS caller (no TS checking) reaches the
+    // renderer with a number here and the old bare `.slice` threw mid-render, taking the whole
+    // mount down over a cosmetic value. security.md: treat host input as untrusted at runtime,
+    // not merely at compile time.
+    const gantt = createGantt({
+      tasks: [taskInput('a', '2026-01-05T09:00', '2026-01-06T09:00')],
+      ariaLabel: 42 as unknown as string,
+    });
+    expect(() => gantt.mount(container)).not.toThrow();
+    expect((container.querySelector('svg') as SVGSVGElement).getAttribute('aria-label')).toBe('42');
+  });
+
   it('aria-selected reflects selection state on every row (spec-keyboard-nav.md §3.2 supersedes the old §8 "no aria-selected" decision)', () => {
     const gantt = createGantt({
       tasks: [

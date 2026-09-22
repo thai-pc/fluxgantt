@@ -313,7 +313,13 @@ export function createSvgRenderer(
     const density = currentOptions.density ?? DEFAULT_DENSITY;
     const locale = currentOptions.locale ?? DEFAULT_LOCALE;
     const messages = currentOptions.messages;
-    const ariaLabel = (currentOptions.ariaLabel ?? DEFAULT_ARIA_LABEL).slice(0, MAX_ARIA_NAME_LENGTH);
+    // `String()` because `??` only guards null/undefined: a loosely-typed JS host can hand us a
+    // number or an object here, and a bare `.slice` would throw mid-render. Same coercion the
+    // custom `messages.taskLabel` return value gets in `renderer-base.ts`.
+    const ariaLabel = String(currentOptions.ariaLabel ?? DEFAULT_ARIA_LABEL).slice(
+      0,
+      MAX_ARIA_NAME_LENGTH,
+    );
 
     const optionRange = currentOptions.timeRange;
     const range = optionRange
