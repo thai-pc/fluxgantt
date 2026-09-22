@@ -2297,3 +2297,92 @@ describe('progress fill — Canvas paint + SVG parity', () => {
     expect(canvasWidths).toEqual(svgWidths);
   });
 });
+
+// ---------------------------------------------------------------------------------------
+// Today marker — Canvas (spec §9.1)
+// ---------------------------------------------------------------------------------------
+//
+// The Canvas twin of `svg-renderer.test.ts`'s today-marker block. Asserted through the
+// call log rather than pixels: the mock records `moveTo`/`lineTo`/`stroke` plus every
+// tracked property assignment, which is exactly the surface `paintTodayLine` touches.
+describe('createCanvasRenderer — today marker', () => {
+  // Inside `baseTasks`' 2026-01-05..01-13 span, mid-day so the line cannot coincide with a
+  // day-column edge.
+  const INSIDE = new Date('2026-01-08T12:00:00.000Z');
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(INSIDE);
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  /** The vertical `moveTo`→`lineTo` pair emitted while `strokeStyle` is the critical red. */
+  function findTodayStroke(calls: readonly DrawCall[]): { x: number; height: number } | null {
+    let critical = false;
+    for (let i = 0; i < calls.length; i += 1) {
+      const call = calls[i]!;
+      if (call.op === 'set' && call.prop === 'strokeStyle') {
+        critical = call.args[0] === '#ef4444';
+        continue;
+      }
+      if (!critical || call.op !== 'moveTo') continue;
+      const next = calls[i + 1];
+      if (next?.op !== 'lineTo') continue;
+      const [x0, y0] = call.args as number[];
+      const [x1, y1] = next.args as number[];
+      if (x0 === x1 && y0 === 0 && (y1 as number) > 0) return { x: x0 as number, height: y1 as number };
+    }
+    return null;
+  }
+
+  it('strokes a vertical rule in the critical-path red, spanning the viewport height', () => {
+    const mock = createMockContext2D();
+    installMockContext(mock);
+    createCanvasRenderer(container, { tasks: baseTasks, dependencies: baseDeps });
+
+    const stroke = findTodayStroke(mock.calls);
+    expect(stroke).not.toBeNull();
+    expect(stroke!.x).toBeGreaterThan(0);
+    expect(stroke!.height).toBe(resolveViewportHeightPx({}));
+  });
+
+  it('emits nothing at all when the clock is outside the chart range', () => {
+    vi.setSystemTime(new Date('2030-06-01T12:00:00.000Z'));
+    const mock = createMockContext2D();
+    installMockContext(mock);
+    createCanvasRenderer(container, { tasks: baseTasks, dependencies: baseDeps });
+
+    expect(findTodayStroke(mock.calls)).toBeNull();
+  });
+
+  it('leaves the context state machine clean (save/restore balanced around the marker)', () => {
+    const mock = createMockContext2D();
+    installMockContext(mock);
+    createCanvasRenderer(container, { tasks: baseTasks, dependencies: baseDeps });
+
+    const saves = mock.calls.filter((c) => c.op === 'save').length;
+    const restores = mock.calls.filter((c) => c.op === 'restore').length;
+    expect(saves).toBe(restores);
+  });
+
+  it('SVG and Canvas put the line at the same x for the same input (cross-renderer parity)', () => {
+    // The established guard against a geometry helper being threaded into only one renderer:
+    // both must consume `todayLineX` in the same content space, plus the same `offsetX`.
+    const mock = createMockContext2D();
+    installMockContext(mock);
+    createCanvasRenderer(container, { tasks: baseTasks, dependencies: baseDeps });
+    const canvasX = findTodayStroke(mock.calls)!.x;
+
+    vi.restoreAllMocks();
+    const svgHost = document.createElement('div');
+    document.body.appendChild(svgHost);
+    const svg = createSvgRenderer(svgHost, { tasks: baseTasks, dependencies: baseDeps });
+    const svgX = Number(svg.svg.querySelector('.fg-timeline__today-line')!.getAttribute('x1'));
+    svg.destroy();
+    svgHost.remove();
+
+    expect(canvasX).toBeCloseTo(svgX, 6);
+  });
+});

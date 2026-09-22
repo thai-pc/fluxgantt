@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { pinToday } from '../helpers/pin-today.js';
 
 // Sample visual regression — currently SKIPPED because the baseline screenshot is
 // platform-dependent (macOS dev ≠ Linux CI) and the renderer has no stable output yet.
@@ -161,4 +162,48 @@ test('progress fills render at their authored fractions, with none on a mileston
 
   const chart = page.locator('#gantt');
   await expect(chart).toHaveScreenshot('timeline-progress-fill.png');
+});
+
+// --- Today marker visual regression (spec §9.1) ----------------------------------------
+//
+// `now` is pinned INSIDE the demo's 2026-08-03..08-12 range before `goto` — with the real
+// clock the marker is correctly absent (today is outside every fixture's range), which is also
+// why this change adds one new baseline and regenerates none of the existing ones.
+
+test('the today marker draws a full-height red rule over the today column wash', async ({
+  page,
+}) => {
+  await pinToday(page, '2026-08-07T12:00:00Z');
+  await page.goto('/');
+
+  // DOM state first, screenshot second — these baselines are darwin-only (CI runs the e2e
+  // project, not visual), so the assertions below are the portable half of this test.
+  const line = page.locator('#gantt .fg-timeline__today-line');
+  await expect(line).toHaveCount(1);
+
+  // Spans the whole chart, header band included.
+  const { y1, y2, x } = await line.evaluate((el) => ({
+    y1: Number(el.getAttribute('y1')),
+    y2: Number(el.getAttribute('y2')),
+    x: Number(el.getAttribute('x1')),
+  }));
+  expect(y1).toBe(0);
+  expect(y2).toBe(Number(await page.locator('svg.fg-timeline').getAttribute('height')));
+  expect(x).toBeGreaterThan(160); // past the label column, inside the timeline
+
+  // Resolved through the real CSS cascade, which jsdom cannot do — the only place the
+  // `var(--fg-task-critical, …)` fallback is proven to actually paint red.
+  const painted = await line.evaluate((el) => getComputedStyle(el).stroke);
+  expect(painted).toBe('rgb(239, 68, 68)');
+
+  // The column wash and the line are different layers and must BOTH be visible (the explicit
+  // decision behind this feature) — exactly one grid cell still carries the yellow
+  // `--fg-grid-today` wash behind the red rule.
+  const washed = await page
+    .locator('#gantt .fg-timeline__grid-cell')
+    .evaluateAll((els) => els.filter((el) => getComputedStyle(el).fill === 'rgb(254, 243, 199)').length);
+  expect(washed).toBe(1);
+
+  const chart = page.locator('#gantt');
+  await expect(chart).toHaveScreenshot('timeline-today-marker.png');
 });

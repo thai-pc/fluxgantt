@@ -60,6 +60,18 @@ Override any of these on a container (or `:root`) to retheme. Values below are t
 --fg-task-milestone: #f59e0b; /* amber — diamond marker */
 ```
 
+`--fg-task-critical` does double duty: the critical-path bars, and the **today marker** — a
+vertical rule at the current instant (`.fg-timeline__today-line`), drawn across the full chart
+height, header band included. Retheme it by overriding that one token. The marker is always
+on, needs no configuration, and is recomputed on each render; it is omitted entirely when
+"now" falls outside the chart's range, rather than clamped onto an edge where it would read as
+"today is the first day of this project".
+
+The marker and the `--fg-grid-today` column wash are two different layers, and both are drawn:
+the wash is a `fill` saying *this day is today*, the line is a `stroke` saying *we are here
+within it*. At `viewMode: 'year'` (1 px/day) the wash is a hairline and the line is the only
+legible signal, which is why it exists.
+
 `--fg-task-completed` paints the `.fg-task__progress` overlay — the completed portion of each
 bar, drawn over `--fg-task-default` at a width of `task.progress` (0..1) times the bar. It is
 the same percentage the bar's `aria-label` announces, so overriding the color never changes
@@ -107,7 +119,11 @@ The renderer uses BEM classes, all `fg-`-prefixed so they never clash with your 
 .fg-task  .fg-task__bar  .fg-task__progress
 .fg-task--critical  .fg-task--selected  .fg-task--milestone
 .fg-dependency  .fg-dependency--fs
+.fg-timeline__today-line
 ```
+
+`.fg-timeline__today-line` is `aria-hidden` — it is decoration, and the chart root is a
+`role="grid"`/`"treegrid"` whose children must be row-structured.
 
 ## Critical path without color
 

@@ -573,3 +573,78 @@ describe('progress fill', () => {
     expect(h.svg.outerHTML).toBe(before);
   });
 });
+
+// ---------------------------------------------------------------------------------------
+// Today marker (spec §9.1)
+// ---------------------------------------------------------------------------------------
+//
+// The clock is faked rather than injected: the renderer reads `Temporal.Now` at its single
+// DOM boundary, and the polyfill's `Now` derives from `Date.now` — so `vi.setSystemTime`
+// controls it, the same way it controls `TaskStore`'s `new Date()` stamps elsewhere.
+describe('createSvgRenderer — today marker', () => {
+  // Inside `baseTasks`' 2026-01-05..01-13 span, and deliberately mid-day so the line cannot
+  // coincide with a day-column edge.
+  const INSIDE = new Date('2026-01-08T12:00:00.000Z');
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(INSIDE);
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('renders exactly one full-height line at the current instant', () => {
+    const h = createSvgRenderer(container, { tasks: baseTasks, dependencies: baseDeps });
+    const lines = h.svg.querySelectorAll('.fg-timeline__today-line');
+    expect(lines).toHaveLength(1);
+
+    const line = lines[0] as SVGLineElement;
+    expect(line.getAttribute('x1')).toBe(line.getAttribute('x2'));
+    expect(line.getAttribute('y1')).toBe('0');
+    // Spans the whole chart, header band included — not just the row body.
+    expect(Number(line.getAttribute('y2'))).toBe(Number(h.svg.getAttribute('height')));
+    expect(Number(line.getAttribute('x1'))).toBeGreaterThan(0);
+  });
+
+  it('paints via an inline stroke token, never a CSS rule (survives exportSvg style-stripping)', () => {
+    const h = createSvgRenderer(container, { tasks: baseTasks, dependencies: baseDeps });
+    const line = h.svg.querySelector('.fg-timeline__today-line') as SVGLineElement;
+    expect(line.style.getPropertyValue('stroke')).toBe('var(--fg-task-critical, #ef4444)');
+    expect(line.style.getPropertyValue('stroke-width')).toBe('2');
+  });
+
+  it('marks the line aria-hidden (decoration under a role="grid"/"treegrid" root)', () => {
+    const h = createSvgRenderer(container, { tasks: baseTasks, dependencies: baseDeps });
+    const line = h.svg.querySelector('.fg-timeline__today-line')!;
+    expect(line.getAttribute('aria-hidden')).toBe('true');
+  });
+
+  it('emits nothing at all when the clock is outside the chart range', () => {
+    // A clamped line on the chart edge would read as "today is the first day of this
+    // project" — a confident, wrong statement. Absence is the correct answer.
+    vi.setSystemTime(new Date('2030-06-01T12:00:00.000Z'));
+    const h = createSvgRenderer(container, { tasks: baseTasks, dependencies: baseDeps });
+    expect(h.svg.querySelector('.fg-timeline__today-line')).toBeNull();
+  });
+
+  it('paints over the rows but under the label divider (document order is z-order)', () => {
+    const h = createSvgRenderer(container, { tasks: baseTasks, dependencies: baseDeps });
+    const children = Array.from(h.svg.children);
+    const indexOf = (selector: string): number =>
+      children.findIndex((el) => el.matches(selector) || el.querySelector(selector) !== null);
+
+    const rows = indexOf('.fg-timeline__row');
+    const today = indexOf('.fg-timeline__today-line');
+    const divider = indexOf('.fg-timeline__label-divider');
+    expect(rows).toBeLessThan(today);
+    expect(today).toBeLessThan(divider);
+  });
+
+  it('re-renders byte-identically for the same clock (idempotence)', () => {
+    const h = createSvgRenderer(container, { tasks: baseTasks, dependencies: baseDeps });
+    const before = h.svg.outerHTML;
+    h.update({ tasks: baseTasks, dependencies: baseDeps });
+    expect(h.svg.outerHTML).toBe(before);
+  });
+});

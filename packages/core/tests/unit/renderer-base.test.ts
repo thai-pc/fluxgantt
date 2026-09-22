@@ -7,6 +7,7 @@ import {
   layoutTaskBar,
   layoutDependencyPath,
   computeGridColumns,
+  todayLineX,
   validateTaskColor,
   PIXELS_PER_DAY,
   ROW_HEIGHT,
@@ -651,6 +652,47 @@ describe('computeGridColumns', () => {
     const range = { start, end: start.add({ days: MAX_GRID_COLUMNS + 10 }) };
     const ts = createTimeScale(range, 'year', cal);
     expect(() => computeGridColumns(ts, 'year', cal, 'en', now)).toThrow(/max column guard/);
+  });
+});
+
+// ---------------------------------------------------------------------------------------
+// todayLineX — the today marker (spec §9.1)
+// ---------------------------------------------------------------------------------------
+describe('todayLineX', () => {
+  const cal = DEFAULT_CALENDAR;
+  const range = {
+    start: normalizeDate('2026-01-05T00:00', cal.timezone),
+    end: normalizeDate('2026-01-12T00:00', cal.timezone),
+  };
+  const ts = createTimeScale(range, 'week', cal);
+
+  it('returns the same x `dateToX` would, in content space', () => {
+    const now = normalizeDate('2026-01-08T09:30', cal.timezone);
+    expect(todayLineX(ts, now)).toBe(ts.dateToX(now));
+  });
+
+  it('returns null when `now` is before the range start', () => {
+    expect(todayLineX(ts, normalizeDate('2026-01-04T23:59', cal.timezone))).toBeNull();
+  });
+
+  it('returns null when `now` is after the range end', () => {
+    expect(todayLineX(ts, normalizeDate('2026-01-12T00:01', cal.timezone))).toBeNull();
+  });
+
+  it('includes both exact boundaries (inclusive range)', () => {
+    expect(todayLineX(ts, range.start)).toBe(0);
+    expect(todayLineX(ts, range.end)).not.toBeNull();
+  });
+
+  // The property that makes this a LINE and not the `isToday` column wash: a mid-day `now`
+  // lands strictly INSIDE its day column, not on either edge of it.
+  it('a mid-day `now` lands strictly between its column edges', () => {
+    const now = normalizeDate('2026-01-08T12:00', cal.timezone);
+    const cols = computeGridColumns(ts, 'week', cal, 'en', now);
+    const todayCol = cols.find((col) => col.isToday)!;
+    const x = todayLineX(ts, now)!;
+    expect(x).toBeGreaterThan(todayCol.x);
+    expect(x).toBeLessThan(todayCol.x + todayCol.width);
   });
 });
 
