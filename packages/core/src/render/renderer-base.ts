@@ -586,6 +586,31 @@ export function computeGridColumns(
   return cols;
 }
 
+/**
+ * Horizontal position of the "today" marker, in CONTENT space (no `LABEL_COLUMN_WIDTH`
+ * offset) — the same space `computeGridColumns` and `layoutTaskBar` return, so each renderer
+ * adds its own `offsetX` exactly as it already does for those.
+ *
+ * Distinct from `GridColumn.isToday`, which shades the whole calendar DAY: this is the exact
+ * instant within that day. At `viewMode: 'year'` (1 px/day) the shaded column is a hairline,
+ * and the marker is the only thing still legible.
+ *
+ * Returns `null` when `now` is outside `timeScale.range` so the caller emits nothing at all.
+ * A clamped line would sit on the chart's edge and read as "today is the first/last day of
+ * this project" — a confident, wrong statement, worse than no marker. The bound is tested on
+ * the DATES via `ZonedDateTime.compare`, not on the derived pixel against `totalWidth`, which
+ * drifts at the boundary.
+ *
+ * `now` is injected (never `Temporal.Now` read here) so this module stays clock-free and
+ * deterministic — the same contract `computeGridColumns` has.
+ */
+export function todayLineX(timeScale: TimeScale, now: Temporal.ZonedDateTime): number | null {
+  const compare = getTemporal().ZonedDateTime.compare;
+  if (compare(now, timeScale.range.start) < 0 || compare(now, timeScale.range.end) > 0) return null;
+  return timeScale.dateToX(now);
+}
+
+
 // --- Security: color whitelist ------------------------------------------------------------
 
 // Full-match (`^...$`) whitelist only — no `.includes()`/partial match, which would let

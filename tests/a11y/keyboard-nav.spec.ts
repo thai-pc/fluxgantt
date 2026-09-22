@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
+import { pinToday } from '../helpers/pin-today.js';
 
 // Accessibility coverage for keyboard-nav (spec-keyboard-nav.md §12.4, WCAG 2.1 AA per
 // testing.md). Uses the same fixtures as keyboard-nav.spec.ts (tests/e2e) —
@@ -57,6 +58,25 @@ test('the focused task bar remains visually distinguishable under prefers-reduce
 
 test('read-only chart: axe-clean even though Delete/drag are inert', async ({ page }) => {
   await page.goto('/read-only.html');
+  const results = await new AxeBuilder({ page }).include('#gantt').analyze();
+  expect(results.violations).toEqual([]);
+});
+
+// --- Today marker (spec §9.1) ---------------------------------------------------------
+//
+// The marker is a decorative `<g>` appended as a DIRECT child of the `role="grid"`/
+// `"treegrid"` root, whose children must be row-structured — so without `aria-hidden` it
+// would be an `aria-required-children` violation. `now` has to be pinned inside the
+// fixture's 2026-08-03..08-12 range before `goto`, or the marker is (correctly) absent and
+// this scan proves nothing.
+test('the today marker introduces no axe violation under the grid role', async ({ page }) => {
+  await pinToday(page, '2026-08-07T12:00:00Z');
+  await page.goto('/selection.html');
+
+  const marker = page.locator('#gantt .fg-timeline__today-line');
+  await expect(marker).toHaveCount(1);
+  await expect(marker).toHaveAttribute('aria-hidden', 'true');
+
   const results = await new AxeBuilder({ page }).include('#gantt').analyze();
   expect(results.violations).toEqual([]);
 });

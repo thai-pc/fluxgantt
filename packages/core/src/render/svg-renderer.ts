@@ -23,6 +23,7 @@ import {
   isTreeLayout,
   layoutTaskBar,
   progressFillWidth,
+  todayLineX,
   validateTaskColor,
   isKnownTaskKind,
   isKnownDependencyType,
@@ -411,6 +412,13 @@ export function createSvgRenderer(
         currentInput.rollup,
       ),
     );
+    // Today marker (spec §9.1). Appended after the rows so it crosses OVER bars and
+    // dependency arrows — document order is z-order — but before the label divider, which must
+    // stay the topmost thing along the label column's own edge.
+    const todayX = todayLineX(timeScale, now);
+    if (todayX !== null) {
+      svg.appendChild(renderTodayLine(todayX, offsetX, totalHeight));
+    }
     svg.appendChild(renderLabelDivider(offsetX, totalHeight));
 
     // Focus restoration (spec §4.5 point 4) — MUST run after every element above is already
@@ -544,6 +552,41 @@ function renderHeader(columns: readonly GridColumn[], offsetX: number, timelineW
   g.appendChild(divider);
 
   return g;
+}
+
+/**
+ * The today marker: a full-height rule at the current instant (spec §9.1). `x` is CONTENT
+ * space from `todayLineX` — `offsetX` is added here, the same way every other renderer in
+ * this file localizes its coordinates.
+ *
+ * Complements, never replaces, `GridColumn.isToday`'s column wash: that is a `fill` saying
+ * "this DAY is today", this is a `stroke` saying "we are HERE within it". Both are visible at
+ * once by construction (different properties, different elements).
+ *
+ * There is no "Today" text label: it did not fit the `withRender + withInteraction` gzip
+ * budget, and golden rule 5 says shrink the feature rather than the budget. The rule alone
+ * carries the meaning; revisit if the budget ever gains headroom.
+ *
+ * SECURITY/EXPORT: `stroke` is an inline CSSOM property, NOT a CSS rule. `exportSvg()` strips
+ * every `<style>` element from its clone and bakes only inline/computed values for
+ * `BAKED_STYLE_PROPERTIES`, so a rule-based stroke would export as SVG's default black.
+ *
+ * `aria-hidden`: this is decoration, and the root is a `grid`/`treegrid` whose children must
+ * be row-structured — an exposed element here would be an axe `aria-required-children`
+ * violation. Same treatment as the row toggle and the focus ring.
+ */
+function renderTodayLine(x: number, offsetX: number, totalHeight: number): SVGLineElement {
+  const lineX = x + offsetX;
+  const line = document.createElementNS(SVG_NS, 'line') as SVGLineElement;
+  line.setAttribute('class', 'fg-timeline__today-line');
+  line.setAttribute('aria-hidden', 'true');
+  line.setAttribute('x1', String(lineX));
+  line.setAttribute('x2', String(lineX));
+  line.setAttribute('y1', '0');
+  line.setAttribute('y2', String(totalHeight));
+  line.style.setProperty('stroke', 'var(--fg-task-critical, #ef4444)');
+  line.style.setProperty('stroke-width', '2');
+  return line;
 }
 
 function renderLabelDivider(offsetX: number, totalHeight: number): SVGLineElement {

@@ -149,6 +149,28 @@ describe('exportSvg — structure', () => {
     expect(out).not.toContain('var(--fg-task-completed');
   });
 
+  it('the today marker survives export with a concrete baked stroke, never SVG-default black', () => {
+    // Same trap as the progress fill above, on the other axis: `stroke` is in
+    // `BAKED_STYLE_PROPERTIES`, and the marker writes it inline for exactly this reason.
+    // `baseTasks` spans 2026-01-05..01-09, so the clock must be pinned inside it — with the
+    // real clock the marker is (correctly) absent and this test would assert nothing.
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-01-07T12:00:00.000Z'));
+    try {
+      const h = createSvgRenderer(container, { tasks: baseTasks, dependencies: baseDeps });
+      expect(h.svg.querySelector('.fg-timeline__today-line')).not.toBeNull(); // sanity
+      mockComputedStyle({ stroke: 'rgb(239, 68, 68)' });
+      const out = exportSvg(h.svg);
+      const doc = new DOMParser().parseFromString(out, 'image/svg+xml');
+      const line = doc.querySelector('.fg-timeline__today-line');
+      expect(line).not.toBeNull();
+      expect(line!.getAttribute('style') ?? '').toContain('rgb(239, 68, 68)');
+      expect(out).not.toContain('var(--fg-task-critical');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('leaves a legitimate marker-end attribute reference untouched (only BAKED_STYLE_PROPERTIES are touched)', () => {
     const h = createSvgRenderer(container, { tasks: baseTasks, dependencies: baseDeps });
     const out = exportSvg(h.svg);

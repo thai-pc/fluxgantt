@@ -100,6 +100,7 @@ import {
   isTreeLayout,
   layoutTaskBar,
   progressFillWidth,
+  todayLineX,
   validateTaskColor,
   isKnownTaskKind,
   isKnownDependencyType,
@@ -1125,6 +1126,15 @@ export function createCanvasRenderer(
     paintHeader(ctx, gridColumns, offsetX, timeScale.totalWidth, tokens);
     paintLabelDivider(ctx, offsetX, resolvedViewportHeightPx, tokens);
 
+    // Today marker (spec §9.1) — local/unwindowed for the same reason the three paints above
+    // are: it is a VERTICAL rule at a fixed x, so it is scroll-invariant, and its label lives
+    // in the header band that stays pinned at the visible top. Painted last of the local
+    // group so it crosses over the grid wash rather than under it.
+    const todayX = todayLineX(timeScale, now);
+    if (todayX !== null) {
+      paintTodayLine(ctx, todayX, offsetX, resolvedViewportHeightPx, tokens);
+    }
+
     // --- Hidden ARIA layer rebuild (Ticket 2, spec §5.2; windowing superseded by fix #37 §5.1)
     // Captured BEFORE the full rebuild below destroys every existing row element — the gate
     // that prevents this render pass from ever STEALING focus during a purely programmatic/
@@ -1342,6 +1352,43 @@ function paintHeader(
     ctx.beginPath();
     ctx.moveTo(offsetX, HEADER_HEIGHT);
     ctx.lineTo(offsetX + timelineWidth, HEADER_HEIGHT);
+    ctx.stroke();
+  } finally {
+    ctx.restore();
+  }
+}
+
+/**
+ * Canvas twin of `svg-renderer.ts`'s `renderTodayLine`: a full-height rule at the current
+ * instant (spec §9.1). `x` is CONTENT space from `todayLineX`; `offsetX` is added here, as
+ * everywhere else in this file. There is no text label — it did not fit the gzip budget, and
+ * golden rule 5 says shrink the feature rather than the budget.
+ *
+ * Complements — never replaces — `paintGrid`'s `--fg-grid-today` column wash: that is a
+ * `fillRect` saying "this DAY is today", this is a `stroke` saying "we are HERE within it".
+ * At `viewMode: 'year'` (1 px/day) the wash is a hairline and this is the only legible signal.
+ *
+ * The canvas 2D context is one shared mutable state machine, so every property touched here
+ * (`strokeStyle`, `lineWidth`, `lineDash`) is confined to a `save()`/`try`/`finally restore()`
+ * pair — no paint after this one may inherit a 2px-wide solid red stroke from it.
+ */
+function paintTodayLine(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  offsetX: number,
+  // The canvas's own BOUNDED viewport height — see `paintGrid`'s identical param.
+  viewportHeightPx: number,
+  tokens: DesignTokens,
+): void {
+  ctx.save();
+  try {
+    const lineX = x + offsetX;
+    ctx.strokeStyle = tokens.taskCritical;
+    ctx.lineWidth = 2;
+    ctx.setLineDash([]);
+    ctx.beginPath();
+    ctx.moveTo(lineX, 0);
+    ctx.lineTo(lineX, viewportHeightPx);
     ctx.stroke();
   } finally {
     ctx.restore();
