@@ -6,6 +6,10 @@
 // (The `withIo` import below sits outside the region on purpose — it is dev-only plumbing for
 // the e2e specs, not part of the quick-start.)
 import { withIo } from '@fluxgantt/core/io';
+// Theming is its own opt-in mixin too (`@fluxgantt/core/theme`). Kept outside the quick-start
+// region deliberately: the region is byte-compared against the README and docs copies, and the
+// quick-start is about getting a chart on screen, not about every capability.
+import { withTheme } from '@fluxgantt/core/theme';
 
 // #region quickstart
 import { createGantt, toTaskId } from '@fluxgantt/core';
@@ -38,6 +42,39 @@ gantt.on('task:moved', (task, prevStart) => {
 
 gantt.mount(document.getElementById('gantt')!);
 // #endregion quickstart
+
+// --- Light/dark theme -----------------------------------------------------------------------
+//
+// `withTheme` redefines the `--fg-*` design tokens on the MOUNT CONTAINER, which is all the
+// chart needs: both renderers already read every color from those tokens, and custom properties
+// inherit. Defaults to `'auto'`, i.e. it follows this machine's OS setting until the button
+// below overrides it.
+//
+// The page chrome around the chart is NOT the library's business, so the demo mirrors the
+// resolved theme onto `<html data-theme>` and themes itself from that in style.css.
+const themed = withTheme(gantt);
+const themeButton = document.getElementById('theme-toggle') as HTMLButtonElement | null;
+
+function syncPageChrome(): void {
+  const resolved = themed.getResolvedTheme();
+  document.documentElement.dataset['theme'] = resolved;
+  if (themeButton) {
+    themeButton.textContent = `Theme: ${themed.getTheme()}`;
+    themeButton.setAttribute('aria-label', `Theme: ${themed.getTheme()}, currently ${resolved}`);
+  }
+}
+
+themeButton?.addEventListener('click', () => {
+  // auto -> light -> dark -> auto
+  const next = { auto: 'light', light: 'dark', dark: 'auto' } as const;
+  themed.setTheme(next[themed.getTheme()]);
+  syncPageChrome();
+});
+
+// An OS-level change while on `'auto'` retheme the chart by itself, but the page chrome around
+// it is ours to keep in step.
+window.matchMedia?.('(prefers-color-scheme: dark)').addEventListener('change', syncPageChrome);
+syncPageChrome();
 
 // Dev-only: expose the instance so the Playwright e2e specs can drive/assert it
 // (`window.__gantt`). Guarded by `import.meta.env.DEV`, so it is stripped from a production

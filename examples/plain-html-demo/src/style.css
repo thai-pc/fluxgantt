@@ -1,13 +1,22 @@
 /* Optional page chrome only. The chart itself needs ZERO host CSS: @fluxgantt/core's SVG
    renderer bakes every visual property inline with a --fg-* custom-property fallback, so it
    renders correctly with none of the rules below. These style the surrounding page, not the
-   chart. The --fg-* values mirror the design tokens in apps/docs/fluxgantt-spec.md §8.2. */
+   chart. The --fg-* values mirror the design tokens in apps/docs/fluxgantt-spec.md §8.2.
+
+   Dark mode: `withTheme` handles the CHART by redefining --fg-* on the mount container. The page
+   around it is the host's job, so main.ts mirrors the resolved theme onto <html data-theme> and
+   the [data-theme='dark'] block below repaints this chrome to match. */
 :root {
   --fg-font-sans: 'Inter', 'Geist', system-ui, sans-serif;
   --fg-task-default: #6366f1;
   --fg-bg: #fafafa;
   --fg-fg: #18181b;
   --fg-fg-muted: #71717a;
+
+  /* Demo-only chrome, NOT spec tokens: the panel the chart sits in is the host page's frame,
+     so it is named outside the --fg-* namespace and flipped by the dark block below. */
+  --demo-panel-bg: #fff;
+  --demo-panel-border: #e5e7eb;
 }
 
 body {
@@ -36,10 +45,38 @@ p {
   font-size: 0.9rem;
 }
 
+/* The panel around the chart. `withTheme` paints the chart's own ground via --fg-bg on this
+   same element, but that is the SVG's business — the panel's background is what shows through
+   before/around it, so the demo flips it itself. */
 #gantt {
   height: 420px;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--demo-panel-border);
   border-radius: 8px;
-  background: #fff;
+  background: var(--demo-panel-bg);
   overflow: auto;
+}
+
+/* Mirrored from `withTheme`'s resolved theme by main.ts. Only the page chrome is re-themed
+   here; the chart re-themes itself. */
+:root[data-theme='dark'] {
+  --fg-bg: #0a0a0a;
+  --fg-fg: #fafafa;
+  --fg-fg-muted: #a1a1aa;
+  --demo-panel-bg: #0a0a0a;
+  --demo-panel-border: #27272a;
+  color-scheme: dark;
+}
+
+button {
+  font: inherit;
+  color: var(--fg-fg);
+  background: transparent;
+  border: 1px solid var(--demo-panel-border);
+  border-radius: 6px;
+  padding: 0.35rem 0.75rem;
+  cursor: pointer;
+}
+
+button:hover {
+  border-color: var(--fg-task-default);
 }

@@ -50,6 +50,10 @@ Override any of these on a container (or `:root`) to retheme. Values below are t
 --fg-border-dark: #27272a;
 ```
 
+These `*-dark` names are the **palette**, not a switch: the renderers read the base names
+(`--fg-bg`, `--fg-fg`, …) and nothing reads a `*-dark` token. Going dark means redefining the
+base names with these values — which is exactly what [`withTheme`](#dark-mode) does for you.
+
 ### Task colors
 
 ```css
@@ -107,8 +111,18 @@ different shape), and a task at `progress: 0` emits no overlay element at all.
 }
 ```
 
-The `.fg-gantt` class is the container the React/Vue wrappers put on their root element; the
-vanilla renderer applies tokens to the mounted container too.
+The `.fg-gantt` class is the container the React/Vue wrappers put on their root element. The
+vanilla renderer adds **no class to your container** — it only appends its `.fg-timeline` SVG —
+so with `createGantt()` directly, target the element you mounted into (or `:root`) instead:
+
+```css
+#my-chart {
+  --fg-task-default: #14b8a6;
+}
+```
+
+Either way the mechanism is the same: custom properties inherit, so any ancestor of the chart
+works as an override point.
 
 ## BEM class list
 
@@ -139,6 +153,77 @@ color-blind users and in grayscale, satisfying WCAG's "don't rely on color alone
 
 ## Dark mode
 
-Map your app's dark theme onto the `*-dark` tokens (e.g. under a `[data-theme="dark"]`
-selector), or set them on the container when dark mode is active. The tokens above give you
-matched light/dark surface and text colors out of the box.
+Theming is an **opt-in mixin** on its own subpath, so a chart that never switches themes never
+downloads the code:
+
+```ts
+import { createGantt } from '@fluxgantt/core';
+import { withRender } from '@fluxgantt/core/render';
+import { withTheme } from '@fluxgantt/core/theme';
+
+const gantt = withTheme(withRender(createGantt({ tasks, dependencies })));
+gantt.mount(document.getElementById('chart')!);
+
+gantt.setTheme('dark');   // 'light' | 'dark' | 'auto'
+gantt.getTheme();         // 'dark'  — what you configured
+gantt.getResolvedTheme(); // 'dark'  — what is actually painted
+```
+
+The initial value can also come from config: `createGantt({ tasks, theme: 'dark' })`. It
+defaults to `'auto'`.
+
+### What `'auto'` does
+
+`'auto'` resolves against `prefers-color-scheme` **and keeps following it** — an OS-level
+light/dark switch repaints the chart with no call from you. The subscription is removed on
+`destroy()`. In an environment without `matchMedia` (SSR, a bare test runner), `'auto'` resolves
+to `'light'` and nothing throws.
+
+`setTheme` throws on an unknown name, and after `destroy()`; the two getters stay safe to call
+after teardown. Calling it with the theme already in effect is a no-op — no repaint.
+
+### How it works
+
+`withTheme` sets the dark palette as **inline custom properties on your mount container** and
+removes them again for light (every token's built-in fallback is already the light value). Since
+custom properties inherit, that rethemes the whole chart:
+
+| Token | Dark value |
+|---|---|
+| `--fg-bg` | `#0a0a0a` |
+| `--fg-bg-subtle` | `#18181b` |
+| `--fg-fg` | `#fafafa` |
+| `--fg-fg-muted` | `#a1a1aa` |
+| `--fg-border` | `#27272a` |
+| `--fg-border-strong` | `#3f3f46` |
+| `--fg-grid-line` | `#27272a` |
+| `--fg-grid-line-strong` | `#3f3f46` |
+| `--fg-grid-weekend` | `#18181b` |
+| `--fg-grid-today` | `#422006` |
+| `--fg-grid-holiday` | `#450a0a` |
+| `--fg-dep-line` | `#94a3b8` |
+| `--fg-link-handle-fill` | `#18181b` |
+
+The table is exported as `DARK_TOKENS` from `@fluxgantt/core/theme` if you want to diff or extend
+it. **Task accent colors are deliberately untouched** — indigo/red/emerald/amber are saturated
+mid-tones that read on both grounds, and re-tinting them would change what "critical red" means.
+
+Your own overrides still win as long as they are more specific or set closer to the chart. To
+restyle only in dark mode, key off the resolved theme yourself:
+
+```ts
+gantt.on('renderer:selected', () => {
+  document.documentElement.dataset.theme = gantt.getResolvedTheme();
+});
+```
+
+### Exporting a dark chart
+
+`exportSvg()` needs no special handling — it bakes computed styles off the live chart, so a dark
+chart exports dark. Two caveats:
+
+- **`exportPng()` defaults to a white background.** That is wrong on a dark chart, so pass one:
+  `gantt.exportPng({ background: '#0a0a0a' })`.
+- **Author custom dark colors as hex or `rgb()`/`hsl()`.** The export sanitizer whitelists those
+  and rejects `oklch()`, `lab()` and `color()`, so a palette authored in `oklch()` renders
+  on screen but silently falls back to the light value in the exported file.

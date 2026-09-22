@@ -33,5 +33,12 @@
     "config": "size-limit/kitchen-sink.esbuild-config.mjs",
     "limit": "24 KiB",
     "gzip": true
+  },
+  {
+    "name": "Base + withRender + withTheme (light/dark switchable chart, gzip)",
+    "path": "size-limit/with-theme.js",
+    "config": "size-limit/with-theme.esbuild-config.mjs",
+    "limit": "16 KiB",
+    "gzip": true
   }
 ]
