@@ -46,6 +46,7 @@ export default defineConfig({
         readOnly: fileURLToPath(new URL('./read-only.html', import.meta.url)),
         selection: fileURLToPath(new URL('./selection.html', import.meta.url)),
         collapse: fileURLToPath(new URL('./collapse.html', import.meta.url)),
+        i18n: fileURLToPath(new URL('./i18n.html', import.meta.url)),
         canvasHarness: fileURLToPath(new URL('./canvas-harness.html', import.meta.url)),
         canvasA11yHarness: fileURLToPath(new URL('./canvas-a11y-harness.html', import.meta.url)),
         canvasWebkitDimensionGuardHarness: fileURLToPath(

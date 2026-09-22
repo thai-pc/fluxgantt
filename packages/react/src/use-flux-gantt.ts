@@ -1,7 +1,7 @@
 // `useFluxGantt` — the lower-layer hook `<FluxGantt>` wraps (spec-react-wrapper.md §3, §6).
 //
 // UNCONTROLLED-FIRST (resolution #1): `tasks`/`dependencies`/`calendar`/`viewMode`/`density`/
-// `locale`/`readOnly` are read ONCE, at construction. `GanttInstance` is the source of truth
+// `locale`/`ariaLabel`/`messages`/`readOnly` are read ONCE, at construction. `GanttInstance` is the source of truth
 // afterwards — no prop→store diffing. `onTaskChange` is the one config field that stays
 // reactive (routed through `configRef`).
 //
@@ -43,7 +43,8 @@ export function useFluxGantt(config: UseFluxGanttConfig): UseFluxGanttResult {
   const instanceRef = useRef<(GanttInstance & RenderCapability) | null>(null);
   if (instanceRef.current === null) {
     // Reads `config` HERE ONLY — this block runs exactly once, so `tasks`/`dependencies`/
-    // `calendar`/`viewMode`/`density`/`locale`/`readOnly` are frozen at whatever the FIRST
+    // `calendar`/`viewMode`/`density`/`locale`/`ariaLabel`/`messages`/`readOnly` are frozen
+// at whatever the FIRST
     // render passed (resolution #1: construction-time only). `onTaskChange` is the one field
     // that stays reactive, via the `configRef` indirection.
     //

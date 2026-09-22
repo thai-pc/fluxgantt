@@ -105,6 +105,7 @@ import {
   isKnownTaskKind,
   isKnownDependencyType,
   buildTaskAriaLabel,
+  type GanttMessages,
   type GridColumn,
   type RolledUpRow,
   type RowLayout,
@@ -166,6 +167,9 @@ export interface CanvasRendererOptions {
   /** `aria-label` for the hidden a11y layer's `role="grid"` root. Default `'Gantt chart'`. The
    *  visible `<canvas>` itself carries no `aria-label` (it is `aria-hidden`, Ticket 2). */
   readonly ariaLabel?: string;
+  /** Host-supplied accessible-name builders (spec §6.3 i18n scaffold). Omitted → the built-in
+   *  English sentences. Only `taskLabel` is consulted by this renderer today. */
+  readonly messages?: GanttMessages;
   /**
    * (fix #37, spec-canvas-row-virtualization.md §2/§4.2). Bounds the `<canvas>` backing
    * store's PHYSICAL height and `container`'s visible scroll-viewport height — the canvas no
@@ -939,7 +943,11 @@ export function createCanvasRenderer(
     const viewMode = state.options.viewMode ?? DEFAULT_VIEW_MODE;
     const density = state.options.density ?? DEFAULT_DENSITY;
     const locale = state.options.locale ?? DEFAULT_LOCALE;
-    const ariaLabel = (state.options.ariaLabel ?? DEFAULT_ARIA_LABEL).slice(0, MAX_ARIA_NAME_LENGTH);
+    // Coerced for the same reason as the SVG renderer: `??` does not guard a non-string.
+    const ariaLabel = String(state.options.ariaLabel ?? DEFAULT_ARIA_LABEL).slice(
+      0,
+      MAX_ARIA_NAME_LENGTH,
+    );
 
     const optionRange = state.options.timeRange;
     const range = optionRange
@@ -1225,6 +1233,7 @@ export function createCanvasRenderer(
           calendar,
           locale,
           state.input.rollup?.get(row.task.id),
+          state.options.messages,
         ),
       );
 

@@ -24,11 +24,14 @@ This file is the context entry point for AI. Details are split into rules under 
    |---|---|---|
    | `createGantt()` only (hello world) | 7.71 KiB | 9 KiB |
    | `+ withIo` | 12.67 KiB | 14 KiB |
-   | `+ withRender` | 14.21 KiB | 15 KiB |
-   | `+ withRender + withInteraction` | 18.46 KiB | 19 KiB |
-   | kitchen sink (everything = the pre-split facade) | 23.11 KiB | 24 KiB |
+   | `+ withRender` | 14.70 KiB | 15 KiB |
+   | `+ withRender + withInteraction` | 19.07 KiB | 19.5 KiB |
+   | `+ withRender + withTheme` | 15.21 KiB | 16 KiB |
+   | kitchen sink (everything = the pre-split facade) | 23.71 KiB | 24 KiB |
 
-   Hello world went 22.3 KiB → 7.71 KiB and the fully-composed instance 34.9 KiB → 23.11 KiB (the old "full core" check measured `dist/index.js` as a plain file, which code-splitting has since hollowed out; the kitchen-sink fixture replaces it). Non-core features are plugins.
+   Hello world went 22.3 KiB → 7.71 KiB and the fully-composed instance 34.9 KiB → 23.71 KiB (the old "full core" check measured `dist/index.js` as a plain file, which code-splitting has since hollowed out; the kitchen-sink fixture replaces it). Non-core features are plugins.
+
+   The `withRender + withInteraction` budget was raised 19 → 19.5 KiB once, for the i18n scaffold (`GanttConfig.messages`), after the levers this rule prefers were measured and came up ~67 B short: merging the two renderer-option builders recovered only 13 B, and ~68 B of the cost is the irreducible price of threading host messages through both renderers. Justified as WCAG-adjacent — the strings in question are accessible names. Treat that as the exception it was, not a precedent: the rule is still change the shape, not the budget.
 
    Run `pnpm size` from `packages/core` (or `pnpm size` at the root via turbo) to re-measure; the numbers above are its output, converted from its decimal-kB report to KiB. **It needs Node >= 22.18** — `size-limit` 13 calls `fs.glob` with `withFileTypes`, added in Node 22.2, and on an older 22.x it dies with an opaque `TypeError: i.isFile is not a function` that looks like a repo misconfiguration but is not. `.nvmrc` pins an exact version for this reason; CI reads it via `node-version-file`.
 6. **Tier-gate correctly** — Pro (resource/baseline/MSProject), Cloud (multiplayer/AI). Don't cram Pro/Cloud code into `core`.

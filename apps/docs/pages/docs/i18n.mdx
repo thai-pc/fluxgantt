@@ -1,0 +1,101 @@
+# Internationalization
+
+FluxGantt ships **English only**, and will keep doing so — the library bundles no translations
+and no catalog format. What it gives you instead is a place to put your own.
+
+There is very little to translate. The chart's visible text is almost entirely your data (task
+names, your own column headers) plus dates, and dates already go through `Intl`: set
+[`locale`](/docs/api#ganttconfig) and they format themselves in any language the browser knows.
+
+```ts
+createGantt({ tasks, locale: 'vi' }); // dates become "5 thg 1, 2026"
+```
+
+That leaves exactly two strings the library itself composes, and both are accessible names —
+text a screen reader announces rather than text you see on screen.
+
+## The chart's name
+
+```ts
+createGantt({ tasks, locale: 'vi', ariaLabel: 'Kế hoạch dự án' });
+```
+
+`ariaLabel` names the chart as a whole. It defaults to `'Gantt chart'`, and it is also what
+`exportSvg()` / `exportPng()` write into the exported file's `<title>` — so setting it localizes
+your exports too.
+
+## The per-task sentence
+
+Each task bar announces something like:
+
+```
+Design mockups, Jan 5, 2026–Jan 8, 2026 (50% complete), critical path, selected
+```
+
+To say that in another language, supply `messages.taskLabel`. It receives every piece of state
+and returns the finished sentence:
+
+```ts
+createGantt({
+  tasks,
+  locale: 'vi',
+  messages: {
+    taskLabel: ({ name, startLabel, endLabel, progressPct, isCritical, isSelected }) => {
+      let s = `${name}, ${startLabel}–${endLabel} (hoàn thành ${progressPct}%)`;
+      if (isCritical) s += ', đường găng';
+      if (isSelected) s += ', đang chọn';
+      return s;
+    },
+  },
+});
+```
+
+### Why a whole sentence, not a table of fragments
+
+The obvious design — a `{ criticalPath: 'đường găng', selected: 'đang chọn' }` lookup table —
+does not actually work, and FluxGantt deliberately does not offer one.
+
+The English sentence used to be built by *appending*: take the base clause, add `', critical
+path'`, then add `', selected'`. Swapping the fragments for translated ones keeps that order and
+that punctuation. Plenty of languages cannot accept it — a verb-final language needs the clauses
+rearranged, an inflecting one needs the task name's ending to change depending on the clause that
+follows it. No fragment table can express either.
+
+So the library hands you all of the state and none of the grammar. You control the order, the
+inflection and the punctuation, which is what makes the string genuinely translatable. It also
+means FluxGantt bundles no message-format parser at all.
+
+### What you get
+
+| Field | Type | Notes |
+|---|---|---|
+| `name` | `string` | The task name, truncated to 200 characters. |
+| `startLabel` / `endLabel` | `string` | Already formatted with `Intl` for your `locale`. For a summary row these are the **rolled-up** span, matching what the bar is drawn at. |
+| `progressPct` | `string` | Whole-number percent, already localized (an `ar-EG` host gets Arabic-Indic digits). The `%` sign is **not** included — its placement varies by locale, so it belongs to your sentence. |
+| `isCritical` / `isSelected` | `boolean` | |
+| `locale` | `string` | The configured locale, for any extra formatting you do. |
+
+If your function throws or returns a non-string, FluxGantt falls back to the English sentence
+rather than breaking the chart. It does so silently: this runs once per task per repaint, so a
+warning would print thousands of identical lines in a single paint of a large chart.
+
+## Construction-time only
+
+`locale`, `ariaLabel` and `messages` are all read **once**, when the chart mounts. There is no
+`setLocale()` or `setMessages()`. To switch language at runtime, recreate the instance — in React,
+change the `key` prop:
+
+```tsx
+<FluxGantt key={locale} tasks={tasks} locale={locale} messages={messages[locale]} />
+```
+
+## Not yet supported
+
+- **RTL layout.** Text gets the browser's bidi handling for free, but the chart *geometry* is not
+  mirrored — the timeline still runs left-to-right and the label column stays on the left. The
+  `rtl` flag appears in the spec but is not implemented and is not scheduled.
+- **A different date skeleton.** Dates arrive pre-formatted; you cannot currently ask for a
+  different `Intl.DateTimeFormatOptions` per message.
+- **Other message keys** — grid column headers, tooltips, empty state. These either localize
+  through `Intl` already or have no library-composed text today. `GanttMessages` is an interface of
+  optional keys, so adding them later is not a breaking change.

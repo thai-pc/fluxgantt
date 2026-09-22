@@ -506,6 +506,54 @@ describe('click-select — mount() wiring (spec-selection.md §12.4)', () => {
     expect(neither.getAttribute('aria-label')).not.toMatch(/selected/);
   });
 
+  it('config.messages.taskLabel reaches the mounted SVG (proves the render/mixin threading)', () => {
+    const gantt = createGantt({
+      tasks: [taskInput('a', '2026-01-05T09:00', '2026-01-06T09:00')],
+      locale: 'vi',
+      messages: { taskLabel: (p) => `${p.name}: hoàn thành ${p.progressPct}%` },
+    });
+    gantt.mount(container);
+    const bar = container.querySelector('.fg-task[data-task-id="a"]') as SVGGElement;
+    expect(bar.getAttribute('aria-label')).toBe('a: hoàn thành 0%');
+  });
+
+  it('config.ariaLabel names the root <svg>; omitted falls back to the English default', () => {
+    const named = createGantt({
+      tasks: [taskInput('a', '2026-01-05T09:00', '2026-01-06T09:00')],
+      ariaLabel: 'Kế hoạch dự án',
+    });
+    named.mount(container);
+    expect((container.querySelector('svg') as SVGSVGElement).getAttribute('aria-label')).toBe('Kế hoạch dự án');
+    named.destroy();
+
+    const plain = createGantt({ tasks: [taskInput('a', '2026-01-05T09:00', '2026-01-06T09:00')] });
+    plain.mount(container);
+    expect((container.querySelector('svg') as SVGSVGElement).getAttribute('aria-label')).toBe('Gantt chart');
+  });
+
+  it('a wildly long config.ariaLabel is truncated by the renderer (security.md string-length cap)', () => {
+    const gantt = createGantt({
+      tasks: [taskInput('a', '2026-01-05T09:00', '2026-01-06T09:00')],
+      ariaLabel: 'z'.repeat(500),
+    });
+    gantt.mount(container);
+    const label = (container.querySelector('svg') as SVGSVGElement).getAttribute('aria-label') ?? '';
+    expect(label.length).toBeLessThan(500);
+  });
+
+  it('a non-string config.ariaLabel from a loosely-typed JS host is coerced, not thrown on', () => {
+    // `??` only guards null/undefined, so a plain-JS caller (no TS checking) reaches the
+    // renderer with a number here and the old bare `.slice` threw mid-render, taking the whole
+    // mount down over a cosmetic value. security.md: treat host input as untrusted at runtime,
+    // not merely at compile time.
+    const gantt = createGantt({
+      tasks: [taskInput('a', '2026-01-05T09:00', '2026-01-06T09:00')],
+      ariaLabel: 42 as unknown as string,
+    });
+    expect(() => gantt.mount(container)).not.toThrow();
+    expect((container.querySelector('svg') as SVGSVGElement).getAttribute('aria-label')).toBe('42');
+  });
+
   it('aria-selected reflects selection state on every row (spec-keyboard-nav.md §3.2 supersedes the old §8 "no aria-selected" decision)', () => {
     const gantt = createGantt({
       tasks: [

@@ -46,6 +46,8 @@ export function App() {
 | `viewMode` | `'day' \| 'week' \| 'month' \| 'quarter' \| 'year'` | Construction-time only. |
 | `density` | `'compact' \| 'default' \| 'comfortable'` | Construction-time only. |
 | `locale` | `string` | Construction-time only. |
+| `ariaLabel` | `string` | Accessible name of the chart. Construction-time only. |
+| `messages` | `GanttMessages` | Accessible-name builders — see [i18n](/docs/i18n). Construction-time only. |
 | `readOnly` | `boolean` | Disables drag wiring. |
 | `schedulingMode` | `'manual' \| 'auto'` | `'auto'` cascades dependents. |
 | `className` / `style` | `string` / `CSSProperties` | Applied to the container `<div>`. |
@@ -59,7 +61,7 @@ reactive — you can pass fresh inline arrows every render.
 
 ## Uncontrolled data (important)
 
-`tasks`/`dependencies`/`calendar`/`viewMode`/`density`/`locale`/`readOnly` are **read once**,
+`tasks`/`dependencies`/`calendar`/`viewMode`/`density`/`locale`/`ariaLabel`/`messages`/`readOnly` are **read once**,
 when the underlying `GanttInstance` is created. The instance is the source of truth afterward —
 there is no prop→store diffing.
 

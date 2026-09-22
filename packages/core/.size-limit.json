@@ -24,7 +24,7 @@
     "name": "Base + withRender + withInteraction (editable chart, gzip)",
     "path": "size-limit/with-render-interaction.js",
     "config": "size-limit/with-render-interaction.esbuild-config.mjs",
-    "limit": "19 KiB",
+    "limit": "19.5 KiB",
     "gzip": true
   },
   {

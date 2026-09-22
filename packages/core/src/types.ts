@@ -166,3 +166,58 @@ export type RollupProvider = (
   tasks: readonly Task[],
   calendar: WorkingCalendar,
 ) => ReadonlyMap<TaskId, RolledUpRow>;
+
+// --- i18n scaffold (spec §6.3) -------------------------------------------------------
+//
+// English is the only language `@fluxgantt/core` SHIPS. What lives here is the structure by
+// which a host supplies another one: the library hands out every piece of state and the host
+// returns a finished sentence. No catalog format, no ICU parser, no bundled translations.
+
+/**
+ * Parameters handed to `GanttMessages.taskLabel`.
+ *
+ * Dates arrive PRE-FORMATTED only. Handing over the raw `Temporal.PlainDate` pair as well was
+ * designed and then cut: it cost bundle bytes the `withRender + withInteraction` budget did not
+ * have (golden rule 5 — change the shape, not the budget). A host needing a different date
+ * skeleton is therefore not served yet; that is a tracked follow-up, and the interface is
+ * additive, so `start`/`end` can be reinstated without a breaking change.
+ */
+export interface TaskLabelParams {
+  /** Already truncated to `MAX_ARIA_TASK_NAME_LENGTH` (200) by the caller. */
+  readonly name: string;
+  /** The task's span — the ROLLED-UP aggregate when the row is a summary, authored dates
+   *  otherwise — formatted with `Intl` for `locale`. What the English default prints. */
+  readonly startLabel: string;
+  readonly endLabel: string;
+  /** Whole-number percent 0..100, ALREADY localized for `locale` (so an `ar-EG` host gets
+   *  Arabic-Indic digits rather than Western Arabic ones beside its localized dates). The `%`
+   *  sign is deliberately NOT included: its placement is grammar and varies by locale
+   *  (Turkish writes `%50`), so it belongs to this function's caller. */
+  readonly progressPct: string;
+  readonly isCritical: boolean;
+  readonly isSelected: boolean;
+  readonly locale: string;
+}
+
+/**
+ * Host-supplied accessible-name builders (`GanttConfig.messages`).
+ *
+ * Every entry is a COMPLETE sentence produced by one function — deliberately not a table of
+ * fragments to be concatenated. The built-in English label used to compose by suffixing
+ * (`base` + `', critical path'` + `', selected'`), a shape that cannot produce a correct
+ * sentence in any verb-final or inflecting language no matter how the fragments are swapped.
+ * Handing the host all of the state and none of the grammar is what actually makes the string
+ * translatable, and it costs zero parser bytes.
+ *
+ * ONE key at launch, because the audited translatable surface of core is exactly one composed
+ * sentence. The scaffold value is the shape: adding `gridColumnLabel`, `emptyState`, `tooltip`
+ * or `dependencyLabel` later is a new optional key on an existing optional interface —
+ * non-breaking by construction, no architectural change.
+ */
+export interface GanttMessages {
+  /** Replaces the per-task `aria-label` sentence wholesale. Throwing, or returning a
+   *  non-string, falls back to the English default — silently, by design: this runs once per
+   *  task per paint, so a `console.warn` would emit thousands of identical lines in a single
+   *  paint of a large chart, and the fallback is correct English rather than a broken chart. */
+  readonly taskLabel?: (params: TaskLabelParams) => string;
+}

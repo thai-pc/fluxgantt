@@ -368,6 +368,18 @@ describe('exportSvg — facade (gantt.ts)', () => {
     expect(() => gantt.exportSvg()).toThrow(/not mounted/);
   });
 
+  it('config.ariaLabel flows all the way into the exported <title> (no export-svg.ts change needed)', () => {
+    // The root aria-label is promoted into a <title>, so an un-overridable 'Gantt chart' used
+    // to mean every exported .svg/.png announced itself in English regardless of `locale`.
+    const gantt = createGantt({
+      tasks: [taskInput('a', '2026-01-05T09:00', '2026-01-06T09:00')],
+      ariaLabel: 'Kế hoạch dự án',
+    });
+    gantt.mount(container);
+    const doc = new DOMParser().parseFromString(gantt.exportSvg(), 'image/svg+xml');
+    expect(doc.documentElement.firstElementChild?.textContent).toBe('Kế hoạch dự án');
+  });
+
   it('exportSvg() works once mounted, and throws again after destroy()', () => {
     const gantt = createGantt({ tasks: [taskInput('a', '2026-01-05T09:00', '2026-01-06T09:00')] });
     gantt.mount(container);

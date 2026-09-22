@@ -48,7 +48,9 @@ The React and Vue wrappers compose `withRender` + `withInteraction` for you.
 | `calendar` | `WorkingCalendar` | `DEFAULT_CALENDAR` | Working days/hours/holidays/timezone. Immutable. |
 | `viewMode` | `ViewMode` | `'week'` | Timeline zoom (`day`/`week`/`month`/`quarter`/`year`). |
 | `density` | `Density` | `'default'` | Row density (`compact`/`default`/`comfortable`). |
-| `locale` | `string` | `'en'` | Renderer locale. |
+| `locale` | `string` | `'en'` | Renderer locale (dates via `Intl`). **Construction-time only** — read once at `mount()`. |
+| `ariaLabel` | `string` | `'Gantt chart'` | Accessible name of the chart as a whole, and the `<title>` of every exported SVG/PNG. Construction-time only. |
+| `messages` | `GanttMessages` | — | Accessible-name builders for a non-English host. See [i18n](/docs/i18n). Construction-time only. |
 | `readOnly` | `boolean` | `false` | When `true`, `mount()` wires no drag gestures (with `withInteraction` applied; click-select and keyboard nav stay live). |
 | `schedulingMode` | `SchedulingMode` | `'manual'` | `'auto'` cascades dependents on move/resize. |
 | `initialCollapsed` | `readonly TaskId[]` | `[]` | Tasks to start collapsed. Unknown or leaf ids are dropped silently; fires no `collapse:changed`. |

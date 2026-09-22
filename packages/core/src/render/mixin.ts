@@ -169,7 +169,7 @@ async function mountCanvasAsync(
 
   let handle: CanvasRendererHandle;
   try {
-    handle = canvasModule.createCanvasRenderer(container, renderInput(internal), canvasRendererOptions(internal));
+    handle = canvasModule.createCanvasRenderer(container, renderInput(internal), rendererOptions(internal));
   } catch (constructErr) {
     if (superseded()) return; // superseded — abandon silently
     const reason: FallbackReason =
@@ -495,39 +495,37 @@ function renderInput(internal: GanttInternal): SvgRendererInput {
   };
 }
 
-function rendererOptions(internal: GanttInternal): SvgRendererOptions {
+/**
+ * Single builder for BOTH renderers' option objects (was two ~90%-identical functions,
+ * `rendererOptions()` + `canvasRendererOptions()`, merged in the i18n-scaffold change to pay
+ * back part of that ticket's byte cost — golden rule 5 says change the shape, not the budget).
+ *
+ * It returns the intersection, so the SVG-only `showLinkHandles` and the Canvas-only
+ * `viewportHeight` are both present on the one object. That is deliberate and safe: each
+ * renderer reads only the keys it declares and ignores the other's, so there is nothing to
+ * branch on — and a `kind` parameter would have cost more bytes than the two ignored keys.
+ */
+function rendererOptions(internal: GanttInternal): SvgRendererOptions & CanvasRendererOptions {
   const config = internal.config;
   // `exactOptionalPropertyTypes` — only include a key when the corresponding config value is
   // actually set; an explicit `undefined` value on an optional property that isn't typed
   // `X | undefined` is a compile error, not just redundant.
-  const opts: SvgRendererOptions = {
+  const opts: SvgRendererOptions & CanvasRendererOptions = {
     // `.peek()`, not `.value` — this call site runs before the reactive effect exists (outside
     // any effect()/computed() callback), so there is no active subscriber to register against
     // regardless; `.peek()` makes that intent explicit.
     viewMode: internal.viewMode.peek(),
     ...(config.density !== undefined ? { density: config.density } : {}),
     ...(config.locale !== undefined ? { locale: config.locale } : {}),
-    // A readOnly chart must not render the connector handles — they are an interactive
-    // affordance whose recognizer is NOT wired when readOnly, so rendering them would be a
-    // misleading dead control.
-    showLinkHandles: !config.readOnly,
-  };
-  return internal.taskStore.size === 0 ? { ...opts, timeRange: emptyStateTimeRange(internal) } : opts;
-}
-
-/** Canvas sibling of `rendererOptions()` (spec-canvas-auto-switch.md §6.1) — same shape minus
- *  `showLinkHandles` (Canvas mode has no connector-handle affordance at all, v1). The
- *  `size === 0` branch can't actually co-occur with the Canvas mount path today (Canvas is only
- *  ever chosen above the threshold) — kept for shape-symmetry and defensiveness. */
-function canvasRendererOptions(internal: GanttInternal): CanvasRendererOptions {
-  const config = internal.config;
-  const opts: CanvasRendererOptions = {
-    viewMode: internal.viewMode.peek(),
-    ...(config.density !== undefined ? { density: config.density } : {}),
-    ...(config.locale !== undefined ? { locale: config.locale } : {}),
+    ...(config.ariaLabel !== undefined ? { ariaLabel: config.ariaLabel } : {}),
+    ...(config.messages !== undefined ? { messages: config.messages } : {}),
     ...(config.canvasViewportHeight !== undefined
       ? { viewportHeight: config.canvasViewportHeight }
       : {}),
+    // A readOnly chart must not render the connector handles — they are an interactive
+    // affordance whose recognizer is NOT wired when readOnly, so rendering them would be a
+    // misleading dead control. (SVG-only; Canvas has no connector-handle affordance in v1.)
+    showLinkHandles: !config.readOnly,
   };
   return internal.taskStore.size === 0 ? { ...opts, timeRange: emptyStateTimeRange(internal) } : opts;
 }
