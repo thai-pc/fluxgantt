@@ -1,0 +1,67 @@
+name: Deploy docs
+
+on:
+  # Manual only, on purpose. A `push:` trigger is deliberately absent for now: it would make the
+  # first deploy a side effect of merging, and every run would fail red on master until the repo
+  # owner has enabled Pages (Settings -> Pages -> Source = GitHub Actions). Once a dispatched run
+  # has produced a site that looks right, adding `push: branches: [master]` here is a one-line
+  # follow-up.
+  workflow_dispatch:
+
+concurrency:
+  # One deploy at a time; a superseded run has nothing worth finishing.
+  group: pages
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write # required by actions/deploy-pages
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.2.1
+
+      - uses: actions/setup-node@v4
+        with:
+          # Same reasoning as ci.yml: read the pinned version from .nvmrc so CI and local dev
+          # cannot drift.
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install
+        # See ci.yml's Install step for why `--force` is needed.
+        run: pnpm install --frozen-lockfile --force
+
+      - name: Build packages
+        # The docs site imports @fluxgantt/* for its live examples, so the packages must be built
+        # before the site.
+        run: pnpm build --filter=@fluxgantt/core --filter=@fluxgantt/react --filter=@fluxgantt/vue
+
+      - name: Build docs site
+        # `vocs build` + tooling/scripts/finalize-pages-build.mjs, which writes .nojekyll and
+        # fails the build if zero HTML was emitted (renderStrategy regression guard).
+        run: pnpm --filter docs build
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          # Vocs' static output; `dist/` itself also contains the unused SSR server bundle.
+          path: apps/docs/dist/public
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
