@@ -6,7 +6,7 @@
   "description": "FluxGantt documentation + landing site (Vocs). Not published to npm.",
   "scripts": {
     "dev": "vocs dev",
-    "build": "vocs build",
+    "build": "vocs build && node ../../tooling/scripts/finalize-pages-build.mjs",
     "preview": "vocs preview",
     "typecheck": "tsc --noEmit"
   },
