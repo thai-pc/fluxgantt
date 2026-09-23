@@ -189,7 +189,7 @@ Resource view/leveling, MS Project XML I/O, and baselines remain in the Pro tier
 | **Primary domain** | fluxgantt.dev |
 | **Secondary** | fluxgantt.com (redirects to .dev) |
 | **NPM scope** | `@fluxgantt` |
-| **GitHub** | github.com/fluxtoolkit/fluxgantt |
+| **GitHub** | github.com/thai-pc/fluxgantt |
 | **Twitter/X** | @fluxgantt |
 | **Discord** | Flux Toolkit community server (shared with FluxFiles) |
 
@@ -250,7 +250,7 @@ Resource view/leveling, MS Project XML I/O, and baselines remain in the Pro tier
 | | |
 |---|---|
 | **Framework** | Vocs (Vite-based, used by Wagmi) |
-| **Hosting** | Vercel or Cloudflare Pages |
+| **Hosting** | GitHub Pages (`.github/workflows/docs-deploy.yml`) — `renderStrategy: 'full-static'` under `basePath: '/fluxgantt'` |
 | **Search** | Built-in (handled by Vocs) |
 | **Code examples** | StackBlitz embed, edit directly |
 
@@ -926,7 +926,7 @@ handle needs `r: 22`, large enough to swallow the bar it anchors to.
 - ~~Draft the Show HN post~~ ✅ `apps/docs/launch/show-hn.md`. Title/body/prepared replies. **Deliberately does not use §15.2's suggested "…with AI scheduling" phrasing** — Wave 3 vapourware on the one post where credibility decides the outcome, and §2.2 already concluded AI is no longer a differentiator.
 - ~~Assets for Product Hunt~~ ⚠️ **text complete, images not** — `apps/docs/launch/product-hunt.md` has the tagline, description, maker comment and prepared replies; the gallery, thumbnail, GIFs and video are specified (viewport sizes, which example page, what to record) but are binary media that must be captured.
 
-**Gating all of the above:** Show HN and Product Hunt both require `@fluxgantt/core` published to npm and the docs site deployed at a public URL. A launch pointing at an uninstallable `0.0.0` package converts nothing. Publishing is the true remaining Week 8 blocker.
+**Gating all of the above:** Show HN and Product Hunt both require `@fluxgantt/core` published to npm and the docs site deployed at a public URL. A launch pointing at an uninstallable package converts nothing. **The publishing machinery now exists** — `.github/workflows/release.yml` (changesets: merge to `master` opens a "Version Packages" PR; merging that PR publishes) and `.github/workflows/docs-deploy.yml` (GitHub Pages, `workflow_dispatch` for its first run). See `RELEASING.md`. What remains is not code but three owner actions, none of which a PR can perform: claim the unclaimed `@fluxgantt` npm scope, add the `NPM_TOKEN` secret, and enable Pages.
 
 ### 9.2 Wave 2 — Pro Tier (Weeks 11–18, after validation)
 
@@ -2036,6 +2036,6 @@ This spec is a living document. As the product evolves, sections will be updated
 
 | | |
 |---|---|
-| GitHub | github.com/fluxtoolkit/fluxgantt |
+| GitHub | github.com/thai-pc/fluxgantt |
 | Email | hello@fluxgantt.dev |
 | Twitter | @fluxgantt |
