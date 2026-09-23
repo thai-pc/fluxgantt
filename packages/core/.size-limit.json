@@ -40,5 +40,12 @@
     "config": "size-limit/with-theme.esbuild-config.mjs",
     "limit": "16 KiB",
     "gzip": true
+  },
+  {
+    "name": "Base + withRender + withInteraction + withResponsive (touch-adapted editable chart, gzip)",
+    "path": "size-limit/with-responsive.js",
+    "config": "size-limit/with-responsive.esbuild-config.mjs",
+    "limit": "21 KiB",
+    "gzip": true
   }
 ]

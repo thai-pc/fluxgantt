@@ -31,6 +31,17 @@ import type { TaskId } from '../types.js';
 export interface InteractiveRendererHandle {
   readonly interactionRoot: Element;
   readonly pointerEventTarget: Element;
+  /**
+   * The label-column width (px) the most recent successful render actually painted with — the
+   * live value, which `SvgRendererOptions`/`CanvasRendererOptions`'s `labelColumnWidth` may have
+   * moved off the `LABEL_COLUMN_WIDTH` default (spec-responsive-mobile.md). Declared HERE, on the
+   * shared contract, rather than on the two handles separately: consumers converting between the
+   * renderer's painted coordinate space (which includes this offset) and `TimeScale`'s
+   * content-only space (which does not) — `render/mixin.ts`'s scroll anchor today — must read it
+   * from one place, because importing the constant is no longer correct once a mixin narrows the
+   * column.
+   */
+  getLabelColumnWidth(): number;
   hitTestRow?(
     clientX: number,
     clientY: number,

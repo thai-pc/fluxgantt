@@ -24,14 +24,24 @@ This file is the context entry point for AI. Details are split into rules under 
    |---|---|---|
    | `createGantt()` only (hello world) | 7.71 KiB | 9 KiB |
    | `+ withIo` | 12.67 KiB | 14 KiB |
-   | `+ withRender` | 14.70 KiB | 15 KiB |
-   | `+ withRender + withInteraction` | 19.07 KiB | 19.5 KiB |
-   | `+ withRender + withTheme` | 15.21 KiB | 16 KiB |
-   | kitchen sink (everything = the pre-split facade) | 23.71 KiB | 24 KiB |
+   | `+ withRender` | 14.74 KiB | 15 KiB |
+   | `+ withRender + withInteraction` | 19.17 KiB | 19.5 KiB |
+   | `+ withRender + withTheme` | 15.26 KiB | 16 KiB |
+   | `+ withRender + withInteraction + withResponsive` | 19.91 KiB | 21 KiB |
+   | kitchen sink (everything = the pre-split facade) | 23.82 KiB | 24 KiB |
 
    Hello world went 22.3 KiB → 7.71 KiB and the fully-composed instance 34.9 KiB → 23.71 KiB (the old "full core" check measured `dist/index.js` as a plain file, which code-splitting has since hollowed out; the kitchen-sink fixture replaces it). Non-core features are plugins.
 
    The `withRender + withInteraction` budget was raised 19 → 19.5 KiB once, for the i18n scaffold (`GanttConfig.messages`), after the levers this rule prefers were measured and came up ~67 B short: merging the two renderer-option builders recovered only 13 B, and ~68 B of the cost is the irreducible price of threading host messages through both renderers. Justified as WCAG-adjacent — the strings in question are accessible names. Treat that as the exception it was, not a precedent: the rule is still change the shape, not the budget.
+
+   The 2026-09 responsive/touch pass is what that rule looks like when it is followed. Its first
+   measurement blew THREE budgets at once, because the coarse-pointer CSS — and the long comment
+   justifying it — sat inside a template literal in `svg-renderer.ts`, and **every character inside
+   those CSS template literals is shipped bytes, comments included**. The fix was not a budget
+   bump: the block moved into `withResponsive()`'s own injected stylesheet on the new
+   `@fluxgantt/core/responsive` subpath, which left all six pre-existing fixtures at **+0 B** and
+   put the 783 B where only charts that ask for it pay. Remember the template-literal trap the next
+   time a renderer needs a CSS rule.
 
    Run `pnpm size` from `packages/core` (or `pnpm size` at the root via turbo) to re-measure; the numbers above are its output, converted from its decimal-kB report to KiB. **It needs Node >= 22.18** — `size-limit` 13 calls `fs.glob` with `withFileTypes`, added in Node 22.2, and on an older 22.x it dies with an opaque `TypeError: i.isFile is not a function` that looks like a repo misconfiguration but is not. `.nvmrc` pins an exact version for this reason; CI reads it via `node-version-file`.
 6. **Tier-gate correctly** — Pro (resource/baseline/MSProject), Cloud (multiplayer/AI). Don't cram Pro/Cloud code into `core`.

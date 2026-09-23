@@ -85,6 +85,11 @@ export interface SvgRendererOptions {
   readonly timeRange?: { readonly start: DateInput; readonly end: DateInput };
   /** Locale for date labels (Temporal + Intl formatting). Default 'en'. */
   readonly locale?: string;
+  /** Width (px) of the left label column. Default `LABEL_COLUMN_WIDTH` (160). Set by
+   *  `withResponsive()` from `@fluxgantt/core/responsive` to narrow the column on a small
+   *  viewport; a non-finite or negative value falls back to the default rather than painting
+   *  `NaN` geometry into the DOM. */
+  readonly labelColumnWidth?: number;
   /** `aria-label` for the root `<svg>`. Default `'Gantt chart'`. */
   readonly ariaLabel?: string;
   /** Host-supplied accessible-name builders (spec §6.3 i18n scaffold). Omitted → the built-in
@@ -108,8 +113,14 @@ export interface SvgRendererHandle extends InteractiveRendererHandle {
   readonly container: HTMLElement;
   /** Full repaint (no diff — spec §5.5) with new input. */
   update(input: SvgRendererInput): void;
-  /** Change viewMode/density/timeRange/locale/ariaLabel and repaint with the last input. */
+  /** Change viewMode/density/timeRange/locale/ariaLabel/labelColumnWidth and repaint with the
+   *  last input. */
   setOptions(options: Partial<SvgRendererOptions>): void;
+  /** The label-column width (px) of the most recent render — the ACTUAL painted offset, which
+   *  `labelColumnWidth` may have moved off the `LABEL_COLUMN_WIDTH` default. Consumers doing
+   *  painted-space <-> content-space conversion (`render/mixin.ts`'s scroll anchor) must read
+   *  this rather than importing the constant. */
+  getLabelColumnWidth(): number;
   /** Removes all DOM the renderer created from `container`. `update()`/`setOptions()`
    *  after `destroy()` are a no-op. */
   destroy(): void;
@@ -125,11 +136,13 @@ export interface SvgRendererHandle extends InteractiveRendererHandle {
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
-// Exported (same pattern as ARROWHEAD_MARKER_ID below) so `gantt.ts`'s `zoomTo()` can
-// convert between the renderer's own painted coordinate space (which includes this
-// offset, see the `offsetX` assignment below) and `TimeScale.dateToX`/`xToDate`'s
-// "content-only" coordinate space (which does not) when computing the scroll-anchor date
-// to preserve across a view-mode change.
+// The DEFAULT label-column width — `SvgRendererOptions.labelColumnWidth` overrides it per
+// instance (spec-responsive-mobile.md: 160px is 41% of a 393px phone viewport). Still exported
+// (same pattern as ARROWHEAD_MARKER_ID below) because it remains the default every caller falls
+// back to, but it is NO LONGER the authoritative painted offset: read `handle.getLabelColumnWidth()`
+// for that. `render/mixin.ts`'s scroll-anchor math does exactly that when converting between the
+// renderer's own painted coordinate space (which includes this offset, see the `offsetX`
+// assignment below) and `TimeScale.dateToX`/`xToDate`'s "content-only" space (which does not).
 export const LABEL_COLUMN_WIDTH = 160;
 const HEADER_HEIGHT = 32;
 const LABEL_INDENT_PX = 16;
@@ -140,6 +153,13 @@ const LABEL_PADDING_PX = 8;
  *  string instead of a second hardcoded copy (single source of truth). */
 export const ARROWHEAD_MARKER_ID = 'fg-dep-arrowhead';
 
+// NOTE on what is deliberately NOT here: the coarse-pointer link-handle radius override
+// (`--fg-link-handle-radius: 12px` under `@media (pointer: coarse)`) lives in
+// `responsive/mixin.ts`'s injected stylesheet, not in the literal below. Reason is byte budget,
+// not taste: every character inside these template literals — comments included — is SHIPPED in
+// `withRender`'s bundle, and that block measured ~480 B gzip against 307 B of headroom
+// (spec-responsive-mobile.md's budget gate, lever (a)). Putting it in the opt-in mixin keeps it
+// at +0 B for charts that do not compose `withResponsive()`.
 // Static CSS text — NEVER derived from task/user data (security.md: nothing here is
 // interpolated; this is a compile-time constant string assigned via .textContent, not
 // innerHTML, not a template literal built from any external input). Provides the pure-CSS
@@ -261,6 +281,9 @@ export function createSvgRenderer(
   // Assigned inside render(), which always runs synchronously below before the handle is
   // returned — never read while unassigned (definite-assignment asserted).
   let currentTimeScale!: TimeScale;
+  // Same contract as `currentTimeScale`: the label-column width the last render actually
+  // painted with, so `getLabelColumnWidth()` never has to re-derive the resolution below.
+  let currentLabelColumnWidth = LABEL_COLUMN_WIDTH;
 
   const svg = document.createElementNS(SVG_NS, 'svg') as SVGSVGElement;
   svg.setAttribute('class', 'fg-timeline');
@@ -291,6 +314,10 @@ export function createSvgRenderer(
       if (destroyed) return;
       destroyed = true;
       svg.remove();
+    },
+    getLabelColumnWidth(): number {
+      // No `destroyed` guard, matching `getTimeScale()` below — pure data from the last render.
+      return currentLabelColumnWidth;
     },
     getTimeScale(): TimeScale {
       // No `destroyed` guard needed — returns the last render's TimeScale (harmless, pure
@@ -361,7 +388,15 @@ export function createSvgRenderer(
     const criticalIds = new Set(currentInput.criticalPath?.criticalTaskIds ?? []);
     const selectedIds = new Set(currentInput.selectedTaskIds ?? []);
 
-    const offsetX = LABEL_COLUMN_WIDTH;
+    // Host/mixin-supplied widths are untrusted numeric input (security.md: validate, don't
+    // propagate) — a `NaN`, Infinity or negative value would paint `NaN` into every `x`
+    // attribute and silently blank the chart, so it degrades to the default instead.
+    const requestedLabelWidth = currentOptions.labelColumnWidth;
+    const offsetX =
+      requestedLabelWidth !== undefined && Number.isFinite(requestedLabelWidth) && requestedLabelWidth >= 0
+        ? requestedLabelWidth
+        : LABEL_COLUMN_WIDTH;
+    currentLabelColumnWidth = offsetX;
     const offsetY = HEADER_HEIGHT;
     const bodyHeight = rows.length > 0 ? rows[rows.length - 1]!.y + rowHeight : rowHeight;
     const totalWidth = offsetX + timeScale.totalWidth;

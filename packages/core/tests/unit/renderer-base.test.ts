@@ -407,6 +407,55 @@ describe('enum whitelist guards (N3/N5)', () => {
 });
 
 // ---------------------------------------------------------------------------------------
+// ROW_HEIGHT — the 'touch' level (spec-responsive-mobile.md)
+// ---------------------------------------------------------------------------------------
+describe("ROW_HEIGHT.touch — the coarse-pointer level", () => {
+  const range = {
+    start: normalizeDate('2026-01-01T00:00', cal.timezone),
+    end: normalizeDate('2026-02-01T00:00', cal.timezone),
+  };
+  const scale: TimeScale = createTimeScale(range, 'day', cal);
+  const aRow = { task: task('_', '2026-01-01', '2026-01-01'), depth: 0, rowIndex: 0, y: 0, hasChildren: false, isCollapsed: false };
+
+  it('is the tallest level, and every level is strictly ordered', () => {
+    expect(ROW_HEIGHT.compact).toBeLessThan(ROW_HEIGHT.default);
+    expect(ROW_HEIGHT.default).toBeLessThan(ROW_HEIGHT.comfortable);
+    expect(ROW_HEIGHT.comfortable).toBeLessThan(ROW_HEIGHT.touch);
+    expect(ROW_HEIGHT.touch).toBe(48);
+  });
+
+  it('yields a leaf BAR that clears WCAG 2.2 SC 2.5.8 (24x24), where comfortable only ties it', () => {
+    // This inequality is the entire reason the level is 48 and not 44 — the drag target is the
+    // BAR, a `heightRatio` fraction of the row, not the row itself. If someone lowers this
+    // constant, THIS is the assertion that must stop them.
+    const leaf = task('leaf', '2026-01-05T00:00', '2026-01-10T00:00');
+    const touchBar = layoutTaskBar(leaf, scale, aRow, ROW_HEIGHT.touch);
+    const comfortableBar = layoutTaskBar(leaf, scale, aRow, ROW_HEIGHT.comfortable);
+
+    expect(touchBar.height).toBeGreaterThan(24);
+    expect(comfortableBar.height).toBe(24); // exactly on the line, i.e. not conformant with margin
+  });
+
+  it('scales every derived vertical dimension coherently from the one constant', () => {
+    // Milestones derive from rowHeight too (diamond = rowHeight * 0.6), so a taller row must
+    // produce a proportionally larger diamond rather than a bar that outgrows its own marker.
+    const milestone = task('m', '2026-01-10T00:00', '2026-01-10T00:00', { type: 'milestone' });
+    const atDefault = layoutTaskBar(milestone, scale, aRow, ROW_HEIGHT.default);
+    const atTouch = layoutTaskBar(milestone, scale, aRow, ROW_HEIGHT.touch);
+    expect(atTouch.height / atDefault.height).toBeCloseTo(ROW_HEIGHT.touch / ROW_HEIGHT.default, 6);
+    expect(atTouch.width).toBe(atTouch.height); // still square
+  });
+
+  it('layoutRows stacks rows by it, so the level is reachable through the normal layout path', () => {
+    const tasks = [
+      task('a', '2026-01-05T09:00', '2026-01-06T09:00'),
+      task('b', '2026-01-07T09:00', '2026-01-08T09:00'),
+    ];
+    expect(layoutRows(tasks, 'touch').map((r) => r.y)).toEqual([0, ROW_HEIGHT.touch]);
+  });
+});
+
+// ---------------------------------------------------------------------------------------
 // layoutTaskBar — milestone square, clamp end<start, proportional
 // ---------------------------------------------------------------------------------------
 describe('layoutTaskBar', () => {

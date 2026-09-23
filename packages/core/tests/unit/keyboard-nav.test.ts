@@ -705,7 +705,13 @@ describe('enableKeyboardNav — minimal InteractiveRendererHandle mock (SVG-deco
       <div class="fg-timeline__row" data-row-index="0" data-task-id="mock-1" tabindex="0"></div>
       <div class="fg-timeline__row" data-row-index="1" data-task-id="mock-2" tabindex="-1"></div>
     `;
-    const handle: InteractiveRendererHandle = { interactionRoot: root, pointerEventTarget: root };
+    const handle: InteractiveRendererHandle = {
+      interactionRoot: root,
+      pointerEventTarget: root,
+      // Required by the shared contract but irrelevant to this module (nothing here does
+      // painted-space <-> content-space conversion) — the default width is enough.
+      getLabelColumnWidth: () => 160,
+    };
     const tasks = [
       task('mock-1', '2026-01-05T09:00', '2026-01-07T09:00'),
       task('mock-2', '2026-01-10T09:00', '2026-01-12T09:00'),

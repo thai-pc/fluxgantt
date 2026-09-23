@@ -72,6 +72,7 @@ export default defineConfig({
       items: [
         { text: 'API Surface', link: '/docs/api' },
         { text: 'Theming', link: '/docs/theming' },
+        { text: 'Responsive & Touch', link: '/docs/responsive' },
         { text: 'i18n', link: '/docs/i18n' },
       ],
     },

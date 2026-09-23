@@ -18,7 +18,7 @@ import {
 } from '../gantt-internal.js';
 import { computeCriticalPath as computeCriticalPathFn } from '../compute/critical-path.js';
 import { getTemporal } from '../internal/temporal.js';
-import { createSvgRenderer, LABEL_COLUMN_WIDTH } from './svg-renderer.js';
+import { createSvgRenderer } from './svg-renderer.js';
 import type { SvgRendererHandle, SvgRendererInput, SvgRendererOptions } from './svg-renderer.js';
 // TYPE-ONLY imports — erased at compile time, so they create NO runtime dependency edge into
 // `canvas-renderer.ts`'s module graph (see the dynamic `import()` in `mountCanvasAsync`).
@@ -255,7 +255,7 @@ function finishMount(
  * Runs `mutate()` — a view-mode write, which synchronously repaints — between a capture and a
  * restore of the date currently centered in the viewport, so a zoom keeps the user's anchor date
  * on screen (spec-zoom-runtime.md). Called by base `zoomTo()` through `MountState`, which is why
- * this math lives here and not in `gantt.ts`: it needs `LABEL_COLUMN_WIDTH` and the renderer's
+ * this math lives here and not in `gantt.ts`: it needs the renderer's label-column offset and its
  * `TimeScale`, neither of which the base bundle may depend on.
  */
 function withScrollAnchor(
@@ -266,14 +266,18 @@ function withScrollAnchor(
 
   // 1. Capture the date currently at the viewport's CENTER, in the OLD time scale.
   //    `container.scrollLeft`/`clientWidth` are measured in the renderer's PAINTED coordinate
-  //    space (which includes the LABEL_COLUMN_WIDTH offset), while `TimeScale.dateToX`/`xToDate`
+  //    space (which includes the label-column offset), while `TimeScale.dateToX`/`xToDate`
   //    operate in "content-only" space (x=0 = range.start, no label-column offset) — the offset
   //    must be subtracted before `xToDate()` and re-added after `dateToX()`.
+  //    Read from the HANDLE, never from the `LABEL_COLUMN_WIDTH` constant: `withResponsive()`
+  //    narrows the painted column on a small viewport, and a stale 160 here would mis-anchor
+  //    every zoom by `160 - actual` px (spec-responsive-mobile.md).
+  const labelColumnWidth = handle.getLabelColumnWidth();
   const beforeScale = handle.getTimeScale();
   // No clamping — xToDate extrapolates linearly; fine even if this is negative (e.g. all-zero
   // DOM geometry in an unstubbed jsdom test).
   const anchorDate = beforeScale.xToDate(
-    container.scrollLeft + container.clientWidth / 2 - LABEL_COLUMN_WIDTH,
+    container.scrollLeft + container.clientWidth / 2 - labelColumnWidth,
   );
 
   // 2. Mutate — repaints synchronously, so the new time scale is readable immediately below.
@@ -282,7 +286,10 @@ function withScrollAnchor(
   // 3. Restore, in the NEW time scale, so the same date is centered again. The browser
   //    self-clamps scrollLeft to [0, scrollWidth - clientWidth] — no manual clamp needed.
   const newAnchorContentX = handle.getTimeScale().dateToX(anchorDate);
-  container.scrollLeft = newAnchorContentX + LABEL_COLUMN_WIDTH - container.clientWidth / 2;
+  //    The SAME width captured in step 1 is reused deliberately: `mutate()` is a view-mode
+  //    write only, so it cannot change the column, and re-reading would risk anchoring against
+  //    a different offset than the one the capture used.
+  container.scrollLeft = newAnchorContentX + labelColumnWidth - container.clientWidth / 2;
 }
 
 /** The reactive render effect's body — re-runs on ANY task/dependency/selection mutation or a

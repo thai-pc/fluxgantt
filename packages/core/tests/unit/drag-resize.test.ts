@@ -456,6 +456,55 @@ describe('enableDragResize — DOM interaction', () => {
     expect(Number(progressEl.getAttribute('width'))).toBeCloseTo(originalProgressWidth, 6);
   });
 
+  it('under a coarse pointer the default edge zone widens to 24 — a fingertip can reach it (spec-responsive-mobile.md)', () => {
+    // `matchMedia` is absent in jsdom, which is exactly how the fine-pointer default is reached
+    // everywhere else in this file; stub it coarse for this case only.
+    vi.stubGlobal(
+      'matchMedia',
+      vi.fn(() => ({ matches: true, media: '(pointer: coarse)', addEventListener: vi.fn(), removeEventListener: vi.fn() })),
+    );
+    try {
+      const onTaskResized = vi.fn();
+      const { handle, groupEl } = setup({ onTaskResized });
+      const { x, width } = barGeometry(handle, 't1');
+      const rightEdgeX = x + width;
+      // 20px inside the bar: inside the coarse 24px zone, well outside the fine 8px one — so
+      // this assertion fails if the feature-detect regresses in either direction.
+      const inCoarseZoneOnly = rightEdgeX - 20;
+
+      dispatchPointer(groupEl, 'pointerdown', { pointerId: 1, clientX: inCoarseZoneOnly, clientY: 50, bubbles: true });
+      dispatchPointer(window, 'pointermove', { pointerId: 1, clientX: inCoarseZoneOnly + 48, clientY: 50 });
+      dispatchPointer(window, 'pointerup', { pointerId: 1, clientX: inCoarseZoneOnly + 48, clientY: 50 });
+
+      expect(onTaskResized).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('an explicit edgeHitZonePx still wins under a coarse pointer — the host is never overridden', () => {
+    vi.stubGlobal(
+      'matchMedia',
+      vi.fn(() => ({ matches: true, media: '(pointer: coarse)', addEventListener: vi.fn(), removeEventListener: vi.fn() })),
+    );
+    try {
+      const onTaskResized = vi.fn();
+      const { handle, groupEl } = setup({ onTaskResized, edgeHitZonePx: 4 });
+      const { x, width } = barGeometry(handle, 't1');
+      const rightEdgeX = x + width;
+      // Inside the coarse default (24) but outside the host's explicit 4 — must NOT resize.
+      const insideCoarseOnly = rightEdgeX - 20;
+
+      dispatchPointer(groupEl, 'pointerdown', { pointerId: 1, clientX: insideCoarseOnly, clientY: 50, bubbles: true });
+      dispatchPointer(window, 'pointermove', { pointerId: 1, clientX: insideCoarseOnly + 48, clientY: 50 });
+      dispatchPointer(window, 'pointerup', { pointerId: 1, clientX: insideCoarseOnly + 48, clientY: 50 });
+
+      expect(onTaskResized).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it('custom edgeHitZonePx/dragThresholdPx are respected', () => {
     const onTaskResized = vi.fn();
     const { handle, groupEl } = setup({ onTaskResized, edgeHitZonePx: 20, dragThresholdPx: 10 });

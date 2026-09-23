@@ -31,6 +31,7 @@ const gantt = withIo(withInteraction(withRender(createGantt({ tasks: [/* … */]
 | `withRender(instance)` | `@fluxgantt/core/render` | `mount()`, `unmount()`, `refresh()` |
 | `withInteraction(instance)` | `@fluxgantt/core/interaction` | No new methods — wires drag/keyboard/click into every `mount()` |
 | `withIo(instance)` | `@fluxgantt/core/io` | `exportJson()`, `exportCsv()`, `exportSvg()`, `exportPng()`, `importJson()`, `importCsv()` |
+| `withResponsive(instance, options?)` | `@fluxgantt/core/responsive` | `isCoarsePointer()`, `getLabelColumnWidth()` — and adapts density, hit targets, the label column and touch panning under `(pointer: coarse)`. See [Responsive & touch](/docs/responsive) |
 
 Each mixin mutates and returns the SAME instance, so application order does not matter — but
 all of them must be applied **before the first `mount()`**: `mount()` reads the interaction
@@ -47,7 +48,7 @@ The React and Vue wrappers compose `withRender` + `withInteraction` for you.
 | `dependencies` | `readonly DependencyInput[]` | `[]` | Initial dependencies (`{ from, to, type?, lag? }`). |
 | `calendar` | `WorkingCalendar` | `DEFAULT_CALENDAR` | Working days/hours/holidays/timezone. Immutable. |
 | `viewMode` | `ViewMode` | `'week'` | Timeline zoom (`day`/`week`/`month`/`quarter`/`year`). |
-| `density` | `Density` | `'default'` | Row density (`compact`/`default`/`comfortable`). |
+| `density` | `Density` | `'default'` | Row density (`compact` 24px / `default` 32px / `comfortable` 40px / `touch` 48px). `'touch'` is what [`withResponsive`](/docs/responsive) selects under a coarse pointer; you can also set it directly. |
 | `locale` | `string` | `'en'` | Renderer locale (dates via `Intl`). **Construction-time only** — read once at `mount()`. |
 | `ariaLabel` | `string` | `'Gantt chart'` | Accessible name of the chart as a whole, and the `<title>` of every exported SVG/PNG. Construction-time only. |
 | `messages` | `GanttMessages` | — | Accessible-name builders for a non-English host. See [i18n](/docs/i18n). Construction-time only. |

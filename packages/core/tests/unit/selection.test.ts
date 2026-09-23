@@ -337,7 +337,13 @@ describe('enableClickSelect — minimal InteractiveRendererHandle mock (SVG-deco
         <div class="fg-task" data-task-id="mock-1"></div>
       </div>
     `;
-    const handle: InteractiveRendererHandle = { interactionRoot: root, pointerEventTarget: root };
+    const handle: InteractiveRendererHandle = {
+      interactionRoot: root,
+      pointerEventTarget: root,
+      // Required by the shared contract but irrelevant to this module (nothing here does
+      // painted-space <-> content-space conversion) — the default width is enough.
+      getLabelColumnWidth: () => 160,
+    };
     const onSelect = vi.fn();
     const onClear = vi.fn();
     const dispose = enableClickSelect(handle, () => [], {

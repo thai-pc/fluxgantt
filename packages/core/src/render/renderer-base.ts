@@ -257,11 +257,22 @@ export interface RowLayout {
   readonly isCollapsed: boolean;
 }
 
-/** Row height (px) per `Density` — MUST match `--fg-row-height-*` (spec §8.2). */
+/** Row height (px) per `Density` — MUST match `--fg-row-height-*` (spec §8.2).
+ *
+ *  `touch: 48` is the one entry not on the 8px step: every other vertical dimension in both
+ *  renderers is DERIVED from this number (the bar is `rowHeight * heightRatio`, the milestone
+ *  diamond `rowHeight * 0.6`, the dependency gutter `rowHeight * 0.4`), so one value here scales
+ *  the whole row coherently. 48 rather than 44 because the bar — the actual drag target — is a
+ *  fraction of the row: at `heightRatio` 0.6 a 48px row yields a 28.8px leaf bar, clearing WCAG
+ *  2.2 SC 2.5.8's 24x24 minimum, where a 40px `comfortable` row yields only 24.0 — exactly on the
+ *  line. Summary/project bars stay at ratio 0.4 (19.2px) and remain under it; that is accepted,
+ *  not overlooked: a summary bar is deliberately NOT a drag target (both `drag-move` and
+ *  `drag-resize` decline a `data-rolled-up` bar), so SC 2.5.8 does not apply to it. */
 export const ROW_HEIGHT: Readonly<Record<Density, number>> = {
   compact: 24,
   default: 32,
   comfortable: 40,
+  touch: 48,
 };
 
 /** Re-exported from `compute/hierarchy.ts`, which is the shared home because `computeRollup`
