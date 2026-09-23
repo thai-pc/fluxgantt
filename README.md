@@ -79,14 +79,50 @@ Using React or Vue? See [`examples/react-vite-demo`](./examples/react-vite-demo)
 
 ## Features (Core, MIT)
 
-- **Rendering** — SVG renderer, zero required host CSS (inline `--fg-*` fallbacks).
+- **Headless engine** — `createGantt()` needs no DOM. Schedule on the server, in a Worker, or in a
+  test with no jsdom.
+- **Rendering** — SVG renderer, zero required host CSS (inline `--fg-*` fallbacks); automatic
+  Canvas fallback above 2000 tasks.
 - **Dependencies** — FS / SS / FF / SF, with lag/lead; cycles rejected.
-- **Hierarchy** — parent/child tasks, cascade remove, summary bars.
+- **Hierarchy** — parent/child tasks, cascade remove, summary bars with rollup.
 - **Critical path** — CPM (`computeCriticalPath()`), distinguishable without color (dashed outline).
-- **Interactions** — drag to move / resize / create dependency; opt-in cascade.
+- **Interactions** — drag to move / resize / create dependency; keyboard navigation; opt-in cascade.
 - **Working calendar** — Temporal-based, DST-correct working-hours math.
+- **Theming** — `withTheme()` for light/dark switching over `--fg-*` design tokens.
+- **Responsive & touch** — `withResponsive()` adapts density, label column and hit targets to a
+  coarse pointer, and owns panning so touch drags never fight the browser.
+- **i18n** — host-injected message functions; dates localized through `Intl`.
+- **Accessibility** — ARIA `treegrid`, focus indicators, `prefers-reduced-motion`; WCAG 2.1 AA.
 - **Export / import** — JSON, CSV, SVG, PNG; strict, validated import.
 - **Wrappers** — `@fluxgantt/react` (`<FluxGantt>` + `useFluxGantt`), `@fluxgantt/vue`.
+
+## Bundle size
+
+Rendering, interaction, IO, theming and responsive behaviour are **opt-in mixins on separate
+subpath exports**, so you download what you compose and nothing else. Measured with `pnpm size`
+(gzip), enforced as a budget on every pull request:
+
+| What you compose | gzip |
+|---|---|
+| `createGantt()` — headless engine only | **7.71 KiB** |
+| `+ withIo` | 12.67 KiB |
+| `+ withRender` — a painted chart | 14.74 KiB |
+| `+ withRender + withInteraction` — a fully editable chart | **19.17 KiB** |
+| `+ withRender + withTheme` | 15.26 KiB |
+| `+ withRender + withInteraction + withResponsive` | 19.91 KiB |
+| Every capability composed | 23.82 KiB |
+
+Required host CSS: **none** — every visual property is written inline with a `--fg-*` token
+fallback, so a stylesheet is only needed to *override* defaults.
+
+For context, `dhtmlx-gantt@10.0.3` (the MIT Community edition) is **226 KiB gzip** including its
+required stylesheet, and `frappe-gantt@1.2.2` is **14.9 KiB** — smaller than an editable FluxGantt
+chart, because it has no critical path, no dependency types beyond finish-to-start, no working
+calendar and no types. Those figures come from
+[`tooling/scripts/measure-competitor-bundles.mjs`](./tooling/scripts/measure-competitor-bundles.mjs),
+which packs each library from npm at a pinned version and gzips its own entry point, so you can
+re-run them. The full breakdown, including where FluxGantt loses, is in
+[`apps/docs/pages/docs/comparison.mdx`](./apps/docs/pages/docs/comparison.mdx).
 
 ## Tiers
 
@@ -105,7 +141,7 @@ packages/    core, react, vue, svelte, angular, ai, msproject, cloud-sdk
 examples/    demos per framework + feature (plain-html, react-vite, vue-vite)
 apps/        docs (Vocs), landing, playground
 tooling/     eslint-config, tsconfig, scripts
-tests/       e2e, visual, a11y, performance (Playwright)
+tests/       e2e, visual, a11y, mobile, performance (Playwright)
 ```
 
 ## Getting started with development
@@ -124,9 +160,14 @@ Requirements: Node >= 20 (22 recommended), pnpm 10+.
 
 - **Docs site** — built from [`apps/docs`](./apps/docs) (Vocs). Run `pnpm --filter docs dev`.
   (The hosted URL will be linked here once deployed.)
-- **Examples** — [`examples/plain-html-demo`](./examples/plain-html-demo) ·
+- **Examples** — [`examples/plain-html-demo`](./examples/plain-html-demo) (six pages: editable,
+  read-only, selection, collapse, i18n, responsive) ·
   [`examples/react-vite-demo`](./examples/react-vite-demo) ·
-  [`examples/vue-vite-demo`](./examples/vue-vite-demo)
+  [`examples/vue-vite-demo`](./examples/vue-vite-demo). Each runs with
+  `pnpm --filter <name> dev`; the catalogue is in
+  [`apps/docs/pages/docs/examples.mdx`](./apps/docs/pages/docs/examples.mdx).
+- **Comparison** vs dhtmlx, Bryntum and Frappe —
+  [`apps/docs/pages/docs/comparison.mdx`](./apps/docs/pages/docs/comparison.mdx)
 
 ## Docs for AI / contributors
 

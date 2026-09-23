@@ -23,6 +23,8 @@ export default defineConfig({
   },
   topNav: [
     { text: 'Docs', link: '/docs/installation' },
+    { text: 'Examples', link: '/docs/examples' },
+    { text: 'Comparison', link: '/docs/comparison' },
     { text: 'API', link: '/docs/api' },
     // Replace <org> with the real GitHub org/user once the repo is public.
     { text: 'GitHub', link: 'https://github.com/thai-pc/fluxgantt' },
@@ -37,6 +39,8 @@ export default defineConfig({
         { text: 'Introduction', link: '/' },
         { text: 'Installation', link: '/docs/installation' },
         { text: 'Quick Start', link: '/docs/quick-start' },
+        { text: 'Examples', link: '/docs/examples' },
+        { text: 'Comparison', link: '/docs/comparison' },
       ],
     },
     {

@@ -41,7 +41,7 @@ jobs:
       - name: Build (packages + docs site + example apps)
         run: pnpm build
 
-      - name: "Bundle size (5 gzip fixtures, budgets in packages/core/.size-limit.json)"
+      - name: "Bundle size (7 gzip fixtures, budgets in packages/core/.size-limit.json)"
         run: pnpm size
 
       - name: Unit tests

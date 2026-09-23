@@ -4,7 +4,7 @@
 
 | | |
 |---|---|
-| **Version** | 0.1.2 (Pre-launch Draft — revised) |
+| **Version** | 0.1.3 (Pre-launch Draft — revised) |
 | **Status** | Planning / Pre-build |
 | **Author** | Flux Toolkit Team |
 | **License** | Core MIT · Pro Commercial · Cloud SaaS |
@@ -100,7 +100,7 @@ The product targets developers embedding Gantt features into their own web apps,
 
 The remaining opportunity — where DHTMLX Community and Frappe are both weak — is an MIT library that delivers:
 
-- **Genuinely small bundle** — "hello world" core <15kb gzip, full core <30kb gzip, tree-shakable. dhtmlx PRO/Community and Bryntum are all hundreds-of-KB monoliths. This is a measurable moat, hard to copy because it's tied to architecture.
+- **Genuinely small bundle** — measured, not asserted (`tooling/scripts/measure-competitor-bundles.mjs`, 2026-09): the headless engine is **7.71 KiB gzip**, an editable chart **19.17 KiB**, everything composed **23.82 KiB**, with zero required host CSS. `dhtmlx-gantt@10.0.3` (Community) is **226.18 KiB** gzip including its required stylesheet — so the "hundreds-of-KB monolith" framing holds for dhtmlx, and by reputation for Bryntum, whose real bundle is login-gated and therefore not independently measurable. **It does NOT hold for Frappe:** `frappe-gantt@1.2.2` is **14.89 KiB** gzip including CSS, *smaller* than FluxGantt's editable chart. Frappe is smaller because it has no critical path, no dependency types beyond FS, no working calendar and no types — so the honest claim is "you download only what you compose, and the engine alone is 7.71 KiB", not "we are the smallest". Overreaching here is uniquely expensive: a developer audience re-measures bundle claims in thirty seconds. The moat is architectural (subpath-split capabilities, `sideEffects: false`, CI-enforced budgets), which is the part that is hard to copy.
 - **TypeScript-first** with strict types + branded IDs (not just "ships .d.ts").
 - **Framework-agnostic core** + first-class React/Vue/Svelte wrappers (DHTMLX Community has none).
 - Full dependency types (FS, SS, FF, SF) with correct cascade + Critical Path (CPM).
@@ -155,11 +155,11 @@ Resource view/leveling, MS Project XML I/O, and baselines remain in the Pro tier
 
 ### 3.2 Tagline & Positioning
 
-> **Tagline:** "The headless Gantt engine. <15kb. MIT."
+> **Tagline:** "The headless Gantt engine. 7.7kb. MIT."
 
 > **Positioning:** "The TypeScript-first, headless Gantt chart library with the smallest bundle on the market — MIT-licensed, agent-ready via MCP."
 
-> **Elevator Pitch:** "Every project management app needs a Gantt chart. The old options: pay $1,000/yr for dhtmlx PRO, use the MIT Community/Frappe builds that are heavy and not TypeScript, or burn three months building from scratch. FluxGantt is a headless, TypeScript-first engine with a <15kb gzip core (an order of magnitude smaller than dhtmlx/Bryntum), framework-agnostic with first-class React/Vue wrappers. And because it's a headless engine, it runs on the server too — enough for an AI agent like Claude to plan the schedule via MCP, not just an 'AI' button in the UI."
+> **Elevator Pitch:** "Every project management app needs a Gantt chart. The old options: pay $1,000/yr for dhtmlx PRO, use the MIT Community build that is 226kb gzip and not TypeScript, use Frappe and go without a critical path or types, or burn three months building from scratch. FluxGantt is a headless, TypeScript-first engine with a 7.7kb gzip core (an order of magnitude smaller than dhtmlx/Bryntum), framework-agnostic with first-class React/Vue wrappers. And because it's a headless engine, it runs on the server too — enough for an AI agent like Claude to plan the schedule via MCP, not just an 'AI' button in the UI."
 
 > **Positioning note:** AI auto-scheduling is now an **industry standard**, not an exclusive selling point. FluxGantt no longer markets itself as "the first MIT library with AI" (DHTMLX Community Edition is already MIT). The measurable differentiator is **architecture** — headless + small bundle + framework-agnostic + agent-native via an MCP server.
 
@@ -331,9 +331,9 @@ Resource view/leveling, MS Project XML I/O, and baselines remain in the Pro tier
 
 2. **Reactive subscription, no full re-render** — consumers subscribe to a specific delta (task X moved, dependency Y added) instead of receiving a full state snapshot. This enables precise UI updates and good performance with 1000+ tasks.
 
-3. **Plugin system for non-core features** — MS Project import, AI scheduling, and custom calendars are all plugins. Keep the core bundle under 30kb gzip.
+3. **Plugin system for non-core features** — MS Project import, AI scheduling, and custom calendars are all plugins. Keep the fully-composed core bundle under 24kb gzip (measured 23.82 KiB, enforced via `pnpm size`).
 
-4. **Tree-shakable everything** — import only the modules you use. A "hello world" Gantt that only renders tasks should be under 15kb gzip. The core (<30kb) / hello-world (<15kb) budget **excludes the Temporal polyfill** (optional peerDependency, see §4.1).
+4. **Tree-shakable everything** — import only the modules you use. Both budgets are met and CI-enforced as of the 2026-09 facade split: `createGantt()` alone is **7.71 KiB** gzip (budget 9 KiB) and every capability composed is **23.82 KiB** (budget 24 KiB) — see golden rule 5 in `CLAUDE.md` for the full seven-fixture table. Every budget **excludes the Temporal polyfill** (optional peerDependency, see §4.1).
 
 5. **Framework-agnostic core, opinionated wrappers** — the core has no opinion about the UI framework. Wrappers provide an idiomatic API per framework (hooks for React, composables for Vue, runes for Svelte, ...).
 
@@ -876,7 +876,7 @@ handle needs `r: 22`, large enough to swallow the bar it anchors to.
 
 ### 9.1 Wave 1 — Free MVP (Tier: Core MIT, Weeks 1–8)
 
-**Goal:** Ship a solid MIT-licensed Gantt that beats Frappe Gantt **and DHTMLX Community Edition** on developer experience and **bundle size** (core <15kb gzip vs hundreds of KB for dhtmlx), enough to attract early users and GitHub stars. Since both MIT competitors are heavy / not TypeScript-first, "small-bundle headless engine + strict types" is the main selling angle of Wave 1 — not AI (which doesn't ship until later).
+**Goal:** Ship a solid MIT-licensed Gantt that beats Frappe Gantt **and DHTMLX Community Edition** on developer experience and **bundle size** (7.71 KiB gzip headless / 19.17 KiB editable, against 226 KiB for dhtmlx Community — though note Frappe measures *smaller* at 14.89 KiB, see §2.2), enough to attract early users and GitHub stars. Since both MIT competitors are heavy / not TypeScript-first, "small-bundle headless engine + strict types" is the main selling angle of Wave 1 — not AI (which doesn't ship until later).
 
 **Weeks 1–2: Foundation**
 - Set up the monorepo (pnpm + turbo + changesets)
@@ -917,13 +917,16 @@ handle needs `r: 22`, large enough to swallow the bar it anchors to.
 - ~~Responsive mobile~~ ✅ `withResponsive()` on `@fluxgantt/core/responsive`
 
 **Week 8: Documentation & Launch Prep**
-- Documentation site (Vocs)
-- 10+ live examples on StackBlitz
-- Landing page with 3 demo GIFs
-- README with a quick start
-- Comparison page (vs dhtmlx PRO, dhtmlx Community Edition, Bryntum, Frappe) — emphasizing the **bundle size** benchmark + TypeScript DX
-- Draft the Show HN post
-- Assets for Product Hunt
+- ~~Documentation site (Vocs)~~ ✅ `apps/docs`, 19 pages
+- ~~10+ live examples on StackBlitz~~ ⚠️ **partial** — 9 examples exist and are catalogued at `/docs/examples`, but **no StackBlitz embed is live and none can be**: every example depends on `@fluxgantt/core` via `workspace:*`, which StackBlitz's npm resolution cannot satisfy. Embeds are blocked on publishing to npm, not on authoring examples. The remaining examples to reach 10+ are the Pro/Cloud demos (`svelte-kit`, `vue-nuxt`, `ms-project-import`, `resource-leveling`, `ai-auto-schedule`), which are Wave 2/3 by definition.
+- ~~Landing page~~ ✅ — it is `apps/docs/pages/index.mdx`, served at the site root. **`apps/landing/` stays empty deliberately** (see its README): a second marketing app would duplicate the measured bundle-size and comparison numbers and drift out of sync. Revisit when Pro pricing/checkout ships (§9.2).
+- ⚠️ **3 demo GIFs — not produced.** Binary media captured from a running browser; cannot be authored in-repo. Specified shot-by-shot in `apps/docs/launch/product-hunt.md`. Note that §15.1's third GIF ("AI scheduling") is replaced by a critical-path recompute, since AI scheduling is Wave 3 and does not exist.
+- ~~README with a quick start~~ ✅ — plus a measured bundle-size table and a competitor comparison.
+- ~~Comparison page (vs dhtmlx PRO, dhtmlx Community Edition, Bryntum, Frappe) — emphasizing the **bundle size** benchmark + TypeScript DX~~ ✅ `/docs/comparison`, built on reproducible measurement via `tooling/scripts/measure-competitor-bundles.mjs`. **Two corrections to this spec's own claims came out of measuring rather than asserting:** (a) §2.2/§9.1's "all competitors are hundreds-of-KB monoliths" is **false for Frappe** — `frappe-gantt@1.2.2` is 14.89 KiB gzip including CSS, *smaller* than FluxGantt's 19.17 KiB editable chart. The comparison page states that outright, because a developer audience verifies bundle claims in thirty seconds and an overreach would cost more credibility than the row costs. (b) **Bryntum is unmeasurable**: `@bryntum/gantt` on npm is a 13 KB placeholder and the real bundle is login-gated, so the page leaves that cell empty instead of quoting a marketing figure. The defensible framing is not "we are smallest" but "the headless engine is 7.71 KiB and you download only what you compose".
+- ~~Draft the Show HN post~~ ✅ `apps/docs/launch/show-hn.md`. Title/body/prepared replies. **Deliberately does not use §15.2's suggested "…with AI scheduling" phrasing** — Wave 3 vapourware on the one post where credibility decides the outcome, and §2.2 already concluded AI is no longer a differentiator.
+- ~~Assets for Product Hunt~~ ⚠️ **text complete, images not** — `apps/docs/launch/product-hunt.md` has the tagline, description, maker comment and prepared replies; the gallery, thumbnail, GIFs and video are specified (viewport sizes, which example page, what to record) but are binary media that must be captured.
+
+**Gating all of the above:** Show HN and Product Hunt both require `@fluxgantt/core` published to npm and the docs site deployed at a public URL. A launch pointing at an uninstallable `0.0.0` package converts nothing. Publishing is the true remaining Week 8 blocker.
 
 ### 9.2 Wave 2 — Pro Tier (Weeks 11–18, after validation)
 
@@ -1613,7 +1616,7 @@ The Cloud tier fits a subscription because:
 
 - Landing page live at fluxgantt.dev
 - Prominent waitlist sign-up form
-- 3 demo GIFs: drag task / dependency cascade / AI scheduling
+- 3 demo GIFs: drag task / dependency cascade / **critical-path recompute** — *originally "AI scheduling", changed because that is Wave 3 and does not exist; a GIF of it would be a fabrication. Shot-by-shot capture spec in `apps/docs/launch/product-hunt.md`.*
 - Sneak-peek tweet thread to the dev community
 - Public GitHub repo with a polished README
 
@@ -1753,7 +1756,7 @@ Signals to delay Cloud:
 
 **Risk (⚠️ HAS OCCURRED — 2026):** dhtmlx released a **Community Edition (MIT)**, erasing the "MIT-licensed" advantage as a standalone selling point for FluxGantt.
 **Mitigation (updated):** No longer competing on the "who is MIT" axis — both are MIT. Also do **not** rely on AI auto-schedule for defense (now an industry standard, and dhtmlx can add it). Shift the moat to **measurable architecture that dhtmlx struggles to copy because of monolith technical debt**:
-- **Bundle size**: core <15kb gzip vs hundreds of KB for dhtmlx — publish the benchmark publicly and turn it into the main marketing story.
+- **Bundle size**: 7.71 KiB gzip headless / 19.17 KiB editable vs 226 KiB for dhtmlx Community — the benchmark is published at `/docs/comparison` and re-runnable via `tooling/scripts/measure-competitor-bundles.mjs`. Frame it as "download only what you compose", not "smallest in class": Frappe is smaller (§2.2).
 - **Genuine TypeScript-first + framework-agnostic core** + first-class React/Vue/Svelte wrappers (Community Edition has none).
 - **Headless engine** running server-side → unlocks an **MCP server** (`@fluxgantt/mcp`) for AI agents — a qualitatively different AI integration, not an "AI button in the UI".
 - Release velocity + a healthy community + DX (docs, types, StackBlitz examples) as developer-retention advantages.
@@ -1988,7 +1991,7 @@ function earliestStartFromPred(
 |---|---|---|---|---|---|---|
 | License | MIT | Comm. | **MIT** | Comm. | MIT | BSD |
 | Price / dev / year | $0 | $599+ | $0 | $850+ | $0 | $0 |
-| **Bundle size (core, gzip)** | **<15kb** ✓ | heavy (monolith) | heavy (monolith) | heavy | ~ medium | ~ |
+| **Bundle size (gzip, incl. required CSS)** | **7.71kb** headless / **19.17kb** editable ✓ | heavy (monolith) | **226.18kb** (measured) | not measurable (login-gated) | **14.89kb** (measured — *smaller than FluxGantt editable*) | ~ |
 | TypeScript native | ✓ | ~ | ~ | ✓ | ✗ | ✗ |
 | Core framework-agnostic | ✓ | ✗ | ✗ | ~ | ~ | ✗ |
 | Headless / server-side | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ |
@@ -2022,6 +2025,8 @@ function earliestStartFromPred(
 ## Conclusion
 
 This spec is a living document. As the product evolves, sections will be updated, and major changes will be reflected in the version number at the top of the document.
+
+**Revision 0.1.3 (Week 8 — documentation & launch prep; bundle claims replaced by measurements):** marked §9.1 Week 8 item-by-item with what shipped and what is genuinely blocked, rather than ticking the week wholesale. Added `/docs/comparison` and `/docs/examples`, plus `apps/docs/launch/{show-hn,product-hunt}.md`. **Every competitor bundle figure in this spec was replaced with a measurement** from the new `tooling/scripts/measure-competitor-bundles.mjs`, which packs each library from npm at a pinned version and gzips its own entry point plus required stylesheet — and two of this document's own claims did not survive that: the "all competitors are hundreds-of-KB monoliths" framing is **false for Frappe** (14.89 KiB gzip, *smaller* than FluxGantt's 19.17 KiB editable chart), and **Bryntum is not independently measurable at all** (npm ships a 13 KB placeholder; the real bundle is login-gated). §2.2, §3.2, §4.2, §9.1, §17 and §21 were rewritten accordingly, and the positioning moved from "smallest in class" to "you download only what you compose, and the engine alone is 7.71 KiB" — the claim that survives a reader re-running the script. Also: the §3.2 tagline and §4.2 budgets now carry real numbers (7.71 / 23.82 KiB) instead of the original <15kb/<30kb targets, both of which are met; `apps/landing/` is documented as deliberately empty (the landing page is `apps/docs/pages/index.mdx`); and §15.1's third demo GIF ("AI scheduling") is replaced by a critical-path recompute, since AI scheduling is Wave 3. **Not done, and flagged rather than ticked:** the 3 demo GIFs and the Product Hunt image gallery (binary media, specified shot-by-shot but not capturable in-repo), and StackBlitz embeds (blocked on npm publication — `workspace:*` cannot resolve there). Launch itself is gated on publishing `@fluxgantt/core`.
 
 **Revision 0.1.2 (competitive response — DHTMLX Community Edition):** added DHTMLX Gantt Community Edition (MIT) to the competitor landscape, split from dhtmlx PRO (§2.1); rewrote the Market Gap now that "MIT" + "AI" are no longer exclusive selling points (§2.2); repositioned the tagline/pitch around measurable architecture — headless, <15kb bundle, agent-native via MCP (§3.2); reduced the weight of AI auto-schedule (now an industry standard) and added the **MCP server** (`@fluxgantt/mcp`) as the Cloud differentiator, same direction as FluxDocs (§9.1, §9.3); marked the "dhtmlx ships an MIT build" risk as **HAS OCCURRED** with a new architecture-moat mitigation (§18.2); added a DHTMLX Community column plus bundle-size/headless/MCP rows to the competitor matrix (§21).
 

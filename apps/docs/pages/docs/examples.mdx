@@ -1,0 +1,84 @@
+# Examples
+
+Every example below is in the repo and runs locally today: **six vanilla-TypeScript pages, a React
+app, a Vue app, and a headless snippet that needs no app at all.**
+
+Spec §9.1 sets the Wave 1 target at "10+ live examples on StackBlitz". Nine exist and none are
+embedded yet — the note below explains why the embeds cannot work before the packages are
+published, and the remaining examples are the Pro/Cloud demos listed at the bottom.
+
+:::warning
+**StackBlitz embeds are not live yet, and cannot be until the packages are published.** Each
+example depends on `"@fluxgantt/core": "workspace:*"`, a pnpm-workspace protocol StackBlitz's npm
+resolution cannot satisfy — opening one from GitHub fails at install, not at runtime. The embeds
+land in the same release that publishes `@fluxgantt/core` to npm; until then, the two commands
+under each example are the way to run it.
+:::
+
+## Running any of them
+
+```bash
+git clone https://github.com/thai-pc/fluxgantt
+cd fluxgantt && pnpm install && pnpm build
+```
+
+Then start the app that hosts the example you want.
+
+## Vanilla TypeScript
+
+`pnpm --filter plain-html-demo dev` serves all six pages at `http://localhost:5173`.
+
+| Page | Shows | Source |
+|---|---|---|
+| `/` | The full editable chart — drag to move, drag an edge to resize, drag a link handle to create a dependency, critical path outlined in dashed red | [`src/main.ts`](https://github.com/thai-pc/fluxgantt/blob/master/examples/plain-html-demo/src/main.ts) |
+| `/read-only.html` | `readOnly: true` — every drag affordance inert, the chart still fully keyboard-navigable ([Read-only mode](/docs/interactions/read-only)) | [`src/read-only.ts`](https://github.com/thai-pc/fluxgantt/blob/master/examples/plain-html-demo/src/read-only.ts) |
+| `/selection.html` | Click-select and `selection:changed`, across a 2-level hierarchy plus flat siblings | [`src/selection.ts`](https://github.com/thai-pc/fluxgantt/blob/master/examples/plain-html-demo/src/selection.ts) |
+| `/collapse.html` | Collapse/expand on a 3-level hierarchy with summary rollup ([Hierarchy](/docs/concepts/hierarchy)). `?pad=2500` pushes the dataset past the 2000-task threshold so the **Canvas renderer** takes over | [`src/collapse.ts`](https://github.com/thai-pc/fluxgantt/blob/master/examples/plain-html-demo/src/collapse.ts) |
+| `/i18n.html` | Host-injected messages plus a non-English `locale` ([i18n](/docs/i18n)) | [`src/i18n.ts`](https://github.com/thai-pc/fluxgantt/blob/master/examples/plain-html-demo/src/i18n.ts) |
+| `/responsive.html` | `withResponsive()` — narrowed label column, `'touch'` density, JS-owned panning ([Responsive & Touch](/docs/responsive)). Open it in device emulation at Pixel 5 | [`src/responsive.ts`](https://github.com/thai-pc/fluxgantt/blob/master/examples/plain-html-demo/src/responsive.ts) |
+
+The `?pad=` and `?collapsed=` query parameters on `/collapse.html` exist because these pages double
+as the Playwright fixture host — which is the useful part for you too: every page here is covered by
+e2e, visual and a11y tests, so none of them can rot silently.
+
+## React
+
+`pnpm --filter react-vite-demo dev` — `<FluxGantt>` plus the `useFluxGantt` hook, with React 19.
+See [React](/docs/frameworks/react).
+
+[`examples/react-vite-demo`](https://github.com/thai-pc/fluxgantt/tree/master/examples/react-vite-demo)
+
+## Vue
+
+`pnpm --filter vue-vite-demo dev` — the Vue 3 composable API. See [Vue](/docs/frameworks/vue).
+
+[`examples/vue-vite-demo`](https://github.com/thai-pc/fluxgantt/tree/master/examples/vue-vite-demo)
+
+## Headless — no example app needed
+
+The engine has no DOM dependency, so this is the whole example:
+
+```ts
+import { createGantt, toTaskId } from '@fluxgantt/core';
+
+const gantt = createGantt({
+  tasks: [
+    { id: toTaskId('design'), name: 'Design', start: '2026-08-03', end: '2026-08-05', progress: 1, type: 'task' },
+    { id: toTaskId('build'), name: 'Build', start: '2026-08-05', end: '2026-08-10', progress: 0, type: 'task' },
+  ],
+  dependencies: [{ from: toTaskId('design'), to: toTaskId('build'), type: 'FS' }],
+});
+
+const { criticalTaskIds, projectEnd } = gantt.computeCriticalPath();
+```
+
+Run it with `node`, in a Worker, in a Lambda, or in a test with no jsdom. At **7.71 KiB gzip** this
+configuration ships no renderer at all — see [Comparison](/docs/comparison).
+
+## Planned
+
+These directories exist in the repo as placeholders and are **empty** — they are Wave 2/3 tier
+features, not missing work in Wave 1:
+
+`svelte-kit-demo` · `vue-nuxt-demo` (Pro wrappers) · `ms-project-import-demo` ·
+`resource-leveling-demo` (Pro) · `ai-auto-schedule-demo` (Cloud)

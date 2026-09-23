@@ -1,0 +1,173 @@
+# FluxGantt vs dhtmlx, Bryntum, Frappe
+
+Every number about FluxGantt on this page comes from `pnpm size` in CI. Every number about
+another library comes from `node tooling/scripts/measure-competitor-bundles.mjs`, which downloads
+the published npm tarball at a pinned version and gzips its own advertised entry point. Both are
+in the repo; both are re-runnable. If a figure here is stale, that script is how you prove it.
+
+## The short version
+
+If you need resource leveling, baselines and MS Project round-tripping **today**, buy dhtmlx PRO
+or Bryntum. They are mature products and FluxGantt's Pro tier does not exist yet.
+
+If you want a Gantt you can embed in a TypeScript app without shipping a quarter of a megabyte of
+JavaScript, and without a per-developer annual invoice, that is the gap FluxGantt is built for.
+
+And if you are choosing purely on bundle size, read the Frappe row honestly: **Frappe Gantt is
+smaller than a fully-interactive FluxGantt chart.** It is smaller because it does considerably
+less. That trade is laid out below rather than hidden.
+
+## Bundle size
+
+<table>
+<thead>
+<tr><th>Library</th><th>JS (gzip)</th><th>CSS (gzip)</th><th>Total (gzip)</th></tr>
+</thead>
+<tbody>
+<tr><td><code>dhtmlx-gantt@10.0.3</code> (Community, MIT)</td><td>176.53 KiB</td><td>49.65 KiB</td><td><strong>226.18 KiB</strong></td></tr>
+<tr><td><code>frappe-gantt@1.2.2</code></td><td>13.15 KiB</td><td>1.74 KiB</td><td><strong>14.89 KiB</strong></td></tr>
+<tr><td>Bryntum Gantt</td><td colSpan={3}>Not independently measurable — see below</td></tr>
+<tr><td>FluxGantt — <code>createGantt()</code> only</td><td>7.71 KiB</td><td>0</td><td><strong>7.71 KiB</strong></td></tr>
+<tr><td>FluxGantt — <code>+ withRender</code></td><td>14.74 KiB</td><td>0</td><td><strong>14.74 KiB</strong></td></tr>
+<tr><td>FluxGantt — <code>+ withRender + withInteraction</code></td><td>19.17 KiB</td><td>0</td><td><strong>19.17 KiB</strong></td></tr>
+<tr><td>FluxGantt — every capability composed</td><td>23.82 KiB</td><td>0</td><td><strong>23.82 KiB</strong></td></tr>
+</tbody>
+</table>
+
+Three things about that table need saying out loud, because a benchmark that only flatters the
+thing being benchmarked is not a benchmark.
+
+**The CSS column is not padding.** dhtmlx and Frappe both require you to import their stylesheet;
+a chart that does not paint is not a comparison. FluxGantt requires **zero host CSS** — every
+visual property is written inline with a `--fg-*` custom-property fallback, so the stylesheet you
+add is only the one that *overrides* defaults ([Theming](/docs/theming)). That is a real
+architectural difference, not a measurement trick, and it is why the column reads 0.
+
+**The measurement method is asymmetric, in the competitors' favour.** FluxGantt's numbers are
+bundler output — tree-shaken, because the package is `"sideEffects": false` and each capability is
+its own subpath export. The competitor numbers are their entry files measured whole, because
+`dhtmlx-gantt` declares no `sideEffects` and `frappe-gantt` declares `["*.css"]`: they are
+monoliths, so a bundler cannot drop anything and the entry file *is* what ships. Tree-shaking
+FluxGantt is not a favour to FluxGantt — it is what actually happens in your build, and it is the
+only reason a row can read 7.71 KiB.
+
+**Frappe is smaller, and that is fine.** 14.89 KiB buys you finish-to-start dependencies drawn as
+arrows and drag-to-move. It does not buy you a critical path, other dependency types, lag/lead, a
+working calendar, or types. FluxGantt at 19.17 KiB buys all of those. The comparison worth making
+is not "who is smaller" but "what does each byte buy" — and the interesting row is the first one:
+FluxGantt's headless engine is **7.71 KiB** with no renderer at all, which is the configuration a
+server-side scheduler or a test suite actually imports.
+
+### Why Bryntum has no number
+
+`@bryntum/gantt` on npm is a 13 KB placeholder package. The real bundle is behind a paid,
+login-gated download, so there is no artifact anyone can independently re-measure and no version
+string to pin. Rather than quote a figure from a marketing page, this page leaves the cell empty.
+Bryntum is a large, feature-complete, framework-integrated product; treat its size as "in the
+same class as dhtmlx" and verify it yourself against your own build if it matters to you.
+
+## TypeScript
+
+This is the other half of the pitch, and it is more than "ships a `.d.ts`".
+
+| | FluxGantt | dhtmlx Community | Frappe |
+|---|---|---|---|
+| Written in | TypeScript | JavaScript | JavaScript |
+| Type definitions | Source of truth | Hand-maintained `.d.ts` | **None shipped** |
+| `any` in the public surface | None | 167 occurrences in `dhtmlxgantt.d.ts` | n/a |
+| ID safety | Branded `TaskId` / `ResourceId` — never interchangeable | `string \| number` | untyped |
+| Strict null checks | Enforced repo-wide | — | — |
+
+The `any` count is `grep -c ": any" codebase/dhtmlxgantt.d.ts` on the tarball measured above. It
+is not a criticism of the people who wrote it — hand-maintaining 7,757 lines of declarations for a
+JavaScript codebase is how that number happens. It is the argument for generating types from
+TypeScript source instead.
+
+Branded IDs are the part you feel daily:
+
+```ts
+import { toTaskId, toResourceId } from '@fluxgantt/core';
+
+const task = toTaskId('design');
+const resource = toResourceId('alice');
+
+gantt.linkTasks(task, resource, 'FS');
+//                    ^^^^^^^^ Argument of type 'ResourceId' is not assignable to 'TaskId'
+```
+
+In a `string | number` API that line compiles and fails at runtime, in production, on someone
+else's data.
+
+## Features
+
+Verified against the tarballs measured above, not against vendor feature grids.
+
+| | FluxGantt (MIT) | dhtmlx Community (MIT) | dhtmlx PRO | Bryntum | Frappe (MIT) |
+|---|---|---|---|---|---|
+| Dependency types | FS / SS / FF / SF + lag/lead | all four | all four | all four | **FS only** |
+| Critical path | ✅ CPM | ✅ | ✅ | ✅ | ❌ |
+| Hierarchy + summary rollup | ✅ | ✅ | ✅ | ✅ | partial |
+| Working calendar | ✅ Temporal, DST-correct | ✅ | ✅ | ✅ | ❌ |
+| Headless / runs in Node | ✅ | ❌ DOM-coupled | ❌ | ❌ | ❌ |
+| Framework-agnostic core | ✅ | ❌ | ❌ | ❌ | ✅ |
+| React / Vue wrappers | ✅ first-party | ❌ | ✅ | ✅ | ❌ |
+| Canvas fallback at scale | ✅ automatic ≥2000 tasks | ❌ | ❌ | ✅ | ❌ |
+| Keyboard navigation + ARIA | ✅ `treegrid`, WCAG 2.1 AA | partial | partial | ✅ | ❌ |
+| Touch-adapted layout | ✅ [`withResponsive()`](/docs/responsive) | partial | ✅ | ✅ | partial |
+| Export | JSON / CSV / SVG / PNG | limited | + PDF, MS Project | + PDF, MS Project | ❌ |
+| Resource view + leveling | Pro (not yet shipped) | ❌ | ✅ | ✅ | ❌ |
+| Baselines | Pro (not yet shipped) | ❌ | ✅ | ✅ | ❌ |
+| MS Project XML I/O | Pro (not yet shipped) | ✅ | ✅ | ✅ | ❌ |
+| Price | **$0, MIT** | $0, MIT | $599–1,599/dev/yr | $850+/dev/yr | $0, MIT |
+
+### Where FluxGantt genuinely loses
+
+- **Maturity.** dhtmlx has shipped for over a decade against thousands of production apps.
+  FluxGantt is pre-1.0 and pre-npm.
+- **Pro-tier features do not exist yet.** Resource leveling, baselines, constraints and MS Project
+  XML are Wave 2. If you need them now, dhtmlx Community already ships MS Project I/O — for free.
+- **Frappe is smaller and simpler.** If all you need is bars and FS arrows, it is less library to
+  own.
+- **No Svelte or Angular wrapper yet.** React and Vue only.
+
+### Where the difference is architectural rather than a feature row
+
+The headless split is the one competitors cannot close by adding a feature, because it is a
+consequence of how the code is laid out. `createGantt()` has no DOM dependency at all, so the
+scheduling engine runs in Node, in a Worker, or in a test with no jsdom:
+
+```ts
+import { createGantt } from '@fluxgantt/core'; // 7.71 KiB, no renderer
+
+const gantt = createGantt({ tasks, dependencies });
+const { criticalTaskIds, projectEnd } = gantt.computeCriticalPath();
+// No document, no window, no mount. Runs on your server.
+```
+
+Rendering, interaction, IO, theming and responsive behaviour are opt-in mixins on separate subpath
+exports, and that is structural rather than aspirational: class prototype methods can never be
+tree-shaken, which is why the facade was split ([API surface](/docs/api)). A consumer that only
+schedules never downloads a renderer.
+
+## Migrating
+
+- **From Frappe** — the data shapes are close. Frappe's `dependencies: "a, b"` string becomes a
+  `dependencies` array of `{ from, to, type: 'FS' }`, and its `YYYY-MM-DD` strings are accepted
+  directly. See [Tasks](/docs/concepts/tasks) and [Dependencies](/docs/concepts/dependencies).
+- **From dhtmlx** — a dedicated migration guide is planned for Wave 2 alongside MS Project XML
+  import, which is the realistic bulk-migration path. Today, export from dhtmlx to JSON and map
+  its `{ id, text, start_date, duration, parent }` onto FluxGantt's
+  [`TaskInput`](/docs/concepts/tasks) shape.
+
+## Reproducing every number here
+
+```bash
+git clone https://github.com/thai-pc/fluxgantt
+cd fluxgantt && pnpm install && pnpm build
+
+pnpm size                                             # FluxGantt, all 7 fixtures
+node tooling/scripts/measure-competitor-bundles.mjs   # dhtmlx + Frappe, pinned versions
+```
+
+FluxGantt's budgets are enforced on every pull request, so the numbers in the first table cannot
+silently drift upward: exceeding a budget fails CI.
