@@ -42,4 +42,6 @@ Node >= 20 (22 recommended, see `.nvmrc`), pnpm 10+.
 
 ## Reporting security issues
 
-Do not open a public issue for a security vulnerability. Email: security@fluxgantt.dev.
+Do not open a public issue for a security vulnerability. Report it privately through GitHub's
+[Private Vulnerability Reporting](https://github.com/thai-pc/fluxgantt/security/advisories/new).
+See [`SECURITY.md`](./SECURITY.md) for what is in scope and what to expect.
