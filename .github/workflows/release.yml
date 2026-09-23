@@ -18,17 +18,17 @@ jobs:
   release:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           # changesets diffs against the base branch to decide what changed, so it needs real
           # history — the default shallow clone makes `changeset version` misbehave.
           fetch-depth: 0
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
         with:
           version: 10.2.1
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           # Same reasoning as ci.yml: read the pinned version from .nvmrc so CI and local dev
           # cannot drift.
@@ -45,7 +45,7 @@ jobs:
         run: node tooling/scripts/check-publish-readiness.mjs
 
       - name: Changesets — open the "Version Packages" PR, or publish an already-versioned commit
-        uses: changesets/action@v1
+        uses: changesets/action@v2
         with:
           # `release` = `turbo run build && changeset publish` (root package.json). Building here
           # rather than in a prior step keeps the artefacts and the publish in one invocation, so
