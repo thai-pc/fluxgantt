@@ -3,6 +3,29 @@
   "version": "0.1.0",
   "description": "FluxGantt headless engine — state, compute, render, interaction, IO.",
   "license": "MIT",
+  "keywords": [
+    "gantt",
+    "gantt-chart",
+    "project-management",
+    "scheduling",
+    "timeline",
+    "typescript",
+    "headless",
+    "svg",
+    "canvas",
+    "critical-path",
+    "tree-shakable"
+  ],
+  "homepage": "https://thai-pc.github.io/fluxgantt/docs/quick-start",
+  "bugs": {
+    "url": "https://github.com/thai-pc/fluxgantt/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/thai-pc/fluxgantt.git",
+    "directory": "packages/core"
+  },
+  "author": "Dong Thai (https://github.com/thai-pc)",
   "type": "module",
   "sideEffects": false,
   "main": "./dist/index.cjs",

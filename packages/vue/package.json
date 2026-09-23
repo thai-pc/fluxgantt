@@ -3,6 +3,27 @@
   "version": "0.1.0",
   "description": "FluxGantt Vue 3 wrapper — <FluxGantt> component + useFluxGantt composable.",
   "license": "MIT",
+  "keywords": [
+    "gantt",
+    "gantt-chart",
+    "project-management",
+    "scheduling",
+    "timeline",
+    "typescript",
+    "vue",
+    "vue3",
+    "composable"
+  ],
+  "homepage": "https://thai-pc.github.io/fluxgantt/docs/frameworks/vue",
+  "bugs": {
+    "url": "https://github.com/thai-pc/fluxgantt/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/thai-pc/fluxgantt.git",
+    "directory": "packages/vue"
+  },
+  "author": "Dong Thai (https://github.com/thai-pc)",
   "type": "module",
   "sideEffects": false,
   "main": "./dist/index.cjs",
