@@ -1,0 +1,62 @@
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: '/'
+    schedule:
+      interval: weekly
+      day: monday
+    # pnpm workspaces: Dependabot resolves the whole workspace from the root lockfile, so one
+    # entry covers every package. Grouped to avoid a wall of single-dependency PRs — each still
+    # runs full CI, which is what actually decides whether a bump is safe.
+    groups:
+      dev-tooling:
+        patterns:
+          - 'typescript'
+          - 'tsup'
+          - 'vitest'
+          - '@vitest/*'
+          - 'eslint*'
+          - '@typescript-eslint/*'
+          - 'prettier'
+          - 'turbo'
+          - 'rimraf'
+          - 'size-limit'
+          - '@size-limit/*'
+        update-types: [minor, patch]
+      test-libraries:
+        patterns:
+          - '@playwright/*'
+          - 'playwright'
+          - '@testing-library/*'
+          - '@vue/test-utils'
+          - 'fast-check'
+          - 'jsdom'
+          - '@axe-core/*'
+        update-types: [minor, patch]
+      docs-site:
+        patterns:
+          - 'vocs'
+          - 'waku'
+          - '@rolldown/*'
+        update-types: [minor, patch]
+    open-pull-requests-limit: 5
+    # Framework peer dependencies are deliberately excluded: bumping the react/vue devDependency
+    # narrows what is actually being tested against the declared peer range, and the range itself
+    # (react ^18.2 || ^19, vue ^3.4) is a deliberate compatibility decision, not something to
+    # follow upstream automatically.
+    ignore:
+      - dependency-name: react
+      - dependency-name: react-dom
+      - dependency-name: '@types/react'
+      - dependency-name: vue
+      # Temporal is an optional peerDependency; its range is a compatibility promise.
+      - dependency-name: '@js-temporal/polyfill'
+
+  - package-ecosystem: github-actions
+    directory: '/'
+    schedule:
+      interval: monthly
+    groups:
+      actions:
+        patterns: ['*']
+    open-pull-requests-limit: 3

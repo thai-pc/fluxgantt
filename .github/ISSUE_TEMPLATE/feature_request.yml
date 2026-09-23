@@ -1,0 +1,48 @@
+name: Feature request
+description: Propose a capability FluxGantt does not have.
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before filing, two things worth checking, because they decide the answer more often than
+        the idea itself does:
+
+        - **Tier.** Resource views, leveling, baselines, constraints and MS Project I/O are Pro;
+          multiplayer, comments and AI are Cloud. `.claude/rules/project-overview.md` has the
+          matrix. Core stays MIT and stays small.
+        - **Bundle budget.** Core is measured in CI against per-capability gzip budgets (hello
+          world is 7.71 KiB). Anything with real byte weight belongs behind an opt-in subpath
+          mixin rather than in the base.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What are you trying to build that FluxGantt makes hard or impossible today?
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed API
+      description: If you have a shape in mind, sketch it — even roughly.
+      render: ts
+
+  - type: dropdown
+    id: tier
+    attributes:
+      label: Which tier do you think this belongs to?
+      options:
+        - 'Core (MIT)'
+        - 'Pro'
+        - 'Cloud'
+        - 'a plugin outside core'
+        - 'not sure'
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives you have tried
+      description: A workaround, another library, or a fork.

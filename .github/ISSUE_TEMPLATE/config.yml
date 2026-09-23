@@ -1,0 +1,11 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/thai-pc/fluxgantt/security/advisories/new
+    about: Report privately — never in a public issue. See SECURITY.md.
+  - name: Question or usage help
+    url: https://github.com/thai-pc/fluxgantt/discussions
+    about: Ask in Discussions rather than opening an issue.
+  - name: Documentation
+    url: https://thai-pc.github.io/fluxgantt
+    about: API reference, guides and examples.
