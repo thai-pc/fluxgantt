@@ -56,5 +56,6 @@ against, and the fix pass needs the reviewer's findings. Handoff artifacts live 
 Each subagent starts fresh (no shared memory) and loads context by reading `CLAUDE.md`
 + the relevant rules in `.claude/rules/`. Keep those files up to date.
 
-> The agents **deliberately don't** commit/tag/push. Release is the user's step in the main
-> session (changeset → version → changelog automated).
+> The agents **deliberately don't** commit/tag/push. Releasing is the user's step: a changeset
+> per change, then merging the "Version Packages" PR that `.github/workflows/release.yml` opens —
+> that merge is what publishes to npm. See `RELEASING.md`.

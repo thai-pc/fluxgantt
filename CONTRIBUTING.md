@@ -31,7 +31,10 @@ Node >= 20 (22 recommended, see `.nvmrc`), pnpm 10+.
 3. `pnpm changeset` — describe the change (version bump + changelog are automated). Changes
    scoped entirely to `apps/*` or `examples/*` (docs site, example apps) need **no changeset** —
    those packages are `"private": true` and never published.
-4. Open a PR. CI must be green (lint, typecheck, test, e2e, size-limit).
+4. Open a PR. CI must be green (lint, typecheck, test, e2e, size-limit, publish-readiness).
+
+Merging a PR never publishes anything. See [`RELEASING.md`](./RELEASING.md) for how a changeset
+becomes an npm release.
 
 ## Code style
 

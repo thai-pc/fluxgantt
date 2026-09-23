@@ -20,8 +20,8 @@ jsGantt). Its headless core is fully decoupled from rendering, renders to SVG (C
 above 2000 tasks), and does all date/time math with the Temporal API.
 
 > [!NOTE]
-> **Pre-release — not on npm yet.** The packages are `0.0.0` and unpublished while the tiers and
-> API stabilize pre-1.0. Run FluxGantt **from source** for now:
+> **Pre-release — not on npm yet.** The packages are at `0.1.0` in-repo and not yet published,
+> while the tiers and API stabilize pre-1.0. Run FluxGantt **from source** for now:
 > ```bash
 > git clone https://github.com/thai-pc/fluxgantt
 > cd fluxgantt && pnpm install && pnpm build
@@ -174,6 +174,7 @@ Requirements: Node >= 20 (22 recommended), pnpm 10+.
 - [`CLAUDE.md`](./CLAUDE.md) — high-level context + golden rules
 - [`.claude/rules/`](./.claude/rules) — architecture, conventions, testing, **security**
 - [`CONTRIBUTING.md`](./CONTRIBUTING.md) — contribution workflow
+- [`RELEASING.md`](./RELEASING.md) — how a version reaches npm (changesets)
 
 ## License
 
