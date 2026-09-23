@@ -40,7 +40,9 @@ export interface DragResizeOptions {
   dragThresholdPx?: number;
 
   /** Width (px, client coords) of the right-edge hit-zone, measured inward from the bar's
-   *  rendered right edge. Default 8. */
+   *  rendered right edge. Default 8 under a fine pointer, 24 under a coarse one — see
+   *  `DEFAULT_EDGE_HIT_ZONE_PX`/`COARSE_EDGE_HIT_ZONE_PX`. An explicit value always wins over
+   *  both, including on a touch device. */
   edgeHitZonePx?: number;
 
   /** Called on each valid pointermove after the threshold, with the TENTATIVE (not
@@ -49,6 +51,14 @@ export interface DragResizeOptions {
 }
 
 const DEFAULT_EDGE_HIT_ZONE_PX = 8;
+/** Coarse-pointer edge zone (spec-responsive-mobile.md): WCAG 2.2 SC 2.5.8 Target Size (Minimum)
+ *  is 24x24 CSS px, and 8px of bar edge is not reachable with a fingertip. Kept in lockstep with
+ *  the `@media (pointer: coarse)` `--fg-link-handle-radius: 12px` in `svg-renderer.ts`: that
+ *  handle sits ON the bar's end anchor at a HIGHER gesture priority than this recognizer, so it
+ *  shadows the innermost 12px of this zone. 24 > 12 is exactly what leaves a reachable band of
+ *  edge-resize beside the handle — narrowing this, or widening that radius, makes touch resize
+ *  unreachable. Change one and re-check the other. */
+const COARSE_EDGE_HIT_ZONE_PX = 24;
 const RESIZE_PRIORITY = 0; // lower than MOVE_PRIORITY (10) — edge wins (resolution #8)
 const RESIZING_CLASS = 'fg-task--resizing';
 
@@ -113,7 +123,15 @@ export function enableDragResize(
   options: DragResizeOptions,
 ): () => void {
   const dragThresholdPx = options.dragThresholdPx ?? DEFAULT_DRAG_THRESHOLD_PX;
-  const edgeHitZonePx = options.edgeHitZonePx ?? DEFAULT_EDGE_HIT_ZONE_PX;
+  // Resolved ONCE, here, rather than per hit-test: `matchMedia` is a layout-adjacent read and
+  // `hitTest` runs on every `pointerdown`. A device that gains a mouse mid-session therefore
+  // keeps the zone it was enabled with — acceptable, since the coarse zone is a strict superset
+  // of the fine one (it only makes the target easier to hit, never harder).
+  const edgeHitZonePx =
+    options.edgeHitZonePx ??
+    (typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches
+      ? COARSE_EDGE_HIT_ZONE_PX
+      : DEFAULT_EDGE_HIT_ZONE_PX);
 
   const recognizer: PointerGestureRecognizer<ResizeState> = {
     name: 'drag-resize',

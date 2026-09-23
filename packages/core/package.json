@@ -33,6 +33,11 @@
       "types": "./dist/theme/index.d.ts",
       "import": "./dist/theme/index.js",
       "require": "./dist/theme/index.cjs"
+    },
+    "./responsive": {
+      "types": "./dist/responsive/index.d.ts",
+      "import": "./dist/responsive/index.js",
+      "require": "./dist/responsive/index.cjs"
     }
   },
   "files": [

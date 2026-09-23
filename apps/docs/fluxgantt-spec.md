@@ -715,6 +715,7 @@ Prefer:
   --fg-row-height-compact:      24px;
   --fg-row-height-default:      32px;
   --fg-row-height-comfortable:  40px;
+  --fg-row-height-touch:        48px;   /* Density 'touch' — set by withResponsive() under (pointer: coarse) */
 
   /* Spacing */
   --fg-spacing-1:        4px;
@@ -828,7 +829,35 @@ Prefer:
 | Action | Result |
 |---|---|
 | Mouse wheel + Ctrl | Zoom in/out |
-| Pinch gesture | Zoom on a touch device |
+| Pinch gesture | Zoom on a touch device — **deferred**, not implemented (see below) |
+
+**Touch gesture arbitration** (implemented by `withResponsive()` from `@fluxgantt/core/responsive`):
+
+Every gesture in the library is built on Pointer Events, so touch works without a separate touch
+layer. What does not work without help is arbitration against the browser's own scroll gesture: a
+finger on a task bar scrolls the container, the browser fires `pointercancel`, and the drag dies
+before it reaches its threshold.
+
+`touch-action` alone cannot fix this. It is not honoured on SVG child elements (they establish no
+CSS box), so scoping it to `.fg-task__bar` silently does nothing — it must go on the root `<svg>`;
+and the browser latches its value at hit-test time, so it cannot be toggled reactively inside
+`pointerdown`. A blanket `touch-action: none` on the root would kill scrolling, which on a phone
+is the primary interaction.
+
+The contract is therefore:
+
+| Where the `pointerdown` lands | Owner |
+|---|---|
+| Inside `.fg-task[data-task-id]` | `interaction/` — drag-move, drag-resize, drag-create-dep, unchanged |
+| Anywhere else in the chart (grid, header, label column, empty space) | `responsive/` — pans by writing `scrollLeft`/`scrollTop` |
+
+Consequences, both documented for hosts: native pinch-zoom is suppressed while a finger is on the
+chart, and momentum/inertial scrolling is replaced by a direct scroll write. Chart-level
+pinch-to-zoom is deferred to its own ticket and will land in this same recognizer.
+
+Coarse-pointer target sizes are **24x24 CSS px** — WCAG 2.2 SC 2.5.8 *Target Size (Minimum)*, at
+Level AA. SC 2.5.5's 44x44 is Level AAA and is deliberately not the bar here: a 44px circular link
+handle needs `r: 22`, large enough to swallow the bar it anchors to.
 
 ### 8.5 Accessibility
 
@@ -885,7 +914,7 @@ Prefer:
 - Milestone (diamond marker)
 - Read-only mode
 - ~~Scaffold i18n (English-only at launch, structure ready to extend)~~ ✅ `GanttConfig.messages`/`ariaLabel`
-- Responsive mobile
+- ~~Responsive mobile~~ ✅ `withResponsive()` on `@fluxgantt/core/responsive`
 
 **Week 8: Documentation & Launch Prep**
 - Documentation site (Vocs)
@@ -1139,8 +1168,9 @@ fluxgantt/
 │   │   │   │   ├── drag-resize.ts
 │   │   │   │   ├── drag-create-dep.ts
 │   │   │   │   ├── keyboard-nav.ts
-│   │   │   │   ├── selection.ts
-│   │   │   │   └── touch.ts
+│   │   │   │   └── selection.ts
+│   │   │   ├── responsive/         # Touch/viewport adaptation — NOT interaction/, see note
+│   │   │   │   └── mixin.ts
 │   │   │   ├── io/
 │   │   │   │   ├── json.ts
 │   │   │   │   ├── csv.ts
@@ -1210,6 +1240,15 @@ fluxgantt/
 ├── CHANGELOG.md
 └── CONTRIBUTING.md
 ```
+
+> **Why `responsive/` and not `interaction/touch.ts`** (the file this tree named until the
+> capability shipped): nothing in it is a gesture recognizer registered with the
+> `interaction/pointer-drag.ts` coordinator. It is a *viewport adaptation* layer that writes a
+> stylesheet, pushes renderer options, owns a `ResizeObserver`, and — only as a consequence of
+> having to claim `touch-action` — implements panning. Putting it in `interaction/` would also
+> have billed every `withInteraction()` consumer for it; as its own opt-in subpath it costs
+> non-touch charts zero bytes. Touch *gestures* proper need no dedicated module: every recognizer
+> in `interaction/` is built on Pointer Events and already works with a finger.
 
 ---
 

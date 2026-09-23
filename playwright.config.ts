@@ -57,6 +57,24 @@ export default defineConfig({
       use: { ...devices['Desktop Safari'] },
     },
     {
+      // spec-responsive-mobile.md §C — the ONLY project with `hasTouch`, driving
+      // `examples/plain-html-demo/responsive.html` (the only fixture composing
+      // `withResponsive()`). `devices['Pixel 5']` gives a 393x851 viewport and reports
+      // `(pointer: coarse)`, which is what the mixin feature-detects on; a desktop project with a
+      // small `viewport` override would report a FINE pointer and silently exercise nothing.
+      //
+      // Target-size assertions (WCAG 2.2 SC 2.5.8, 24x24 CSS px) live here rather than in
+      // `tests/a11y/` because target size is pointer- and viewport-dependent: the same chart is
+      // conformant on desktop at an 8px edge zone and is not on a phone. `tests/a11y/` stays
+      // desktop-only.
+      //
+      // Chromium only for v1, matching the `performance` project's stated posture — a Mobile
+      // Safari project needs its own baselining pass and is a follow-up.
+      name: 'mobile',
+      testDir: './tests/mobile',
+      use: { ...devices['Pixel 5'] },
+    },
+    {
       // spec-canvas-auto-switch.md §9.1/§9.3 — real-browser mount-time budgets for the Canvas
       // auto-switch (`CANVAS_AUTO_SWITCH_THRESHOLD`). Deliberately Playwright, not vitest bench:
       // `packages/core/vitest.config.ts` runs in a Node/jsdom-less `environment: 'node'` with a

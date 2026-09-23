@@ -14,6 +14,7 @@
 // jsdom setup (and its `container`/`PointerEventPolyfill` conventions) is the correct home.
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { createGantt } from '../helpers/create-gantt.js';
+import { getInternal } from '../../src/gantt-internal.js';
 import { CANVAS_AUTO_SWITCH_THRESHOLD } from '../../src/render/mixin.js';
 import { createSvgRenderer } from '../../src/render/svg-renderer.js';
 import { CanvasDimensionExceededError, createCanvasRenderer } from '../../src/render/canvas-renderer.js';
@@ -715,6 +716,64 @@ describe('zoomTo() — mounted repaint + scroll-anchor preservation (spec-zoom-r
     }, { viewMode: 'month' });
     const expectedNewAnchorX = after.getTimeScale().dateToX(anchorDate);
     const expectedScrollLeft = expectedNewAnchorX + LABEL_COLUMN_WIDTH - 800 / 2;
+
+    gantt.zoomTo('month');
+
+    expect(container.scrollLeft).toBeCloseTo(expectedScrollLeft, 0);
+  });
+
+  it('scroll-anchor preservation at a NON-default label-column width: the anchor follows the live painted width, not the 160px constant (spec-responsive-mobile.md)', () => {
+    // Regression guard for `render/mixin.ts`'s `withScrollAnchor`, which used to convert between
+    // painted and content coordinate space using the imported `LABEL_COLUMN_WIDTH` constant.
+    // `withResponsive()` narrows the painted column on a small viewport, so a stale 160 here
+    // mis-anchors every zoom by `160 - actual` px. The width is pushed straight through
+    // `setOptions()` rather than by composing the mixin, so this stays a `render/` test with no
+    // dependency on `responsive/` (module-isolation rule).
+    const NARROW_LABEL_WIDTH = 80;
+    const gantt = createGantt({
+      viewMode: 'week',
+      tasks: [taskInput('a', '2026-01-01T09:00', '2026-06-30T09:00')],
+    });
+    gantt.mount(container);
+
+    const handle = getInternal(gantt).getMountState()?.rendererHandle;
+    expect(handle).toBeDefined();
+    handle!.setOptions({ labelColumnWidth: NARROW_LABEL_WIDTH });
+    // Proves the premise of the assertion below: the renderer really did repaint at 80, so a
+    // failure downstream is `withScrollAnchor` reading the wrong width, not the option being
+    // ignored.
+    expect(handle!.getLabelColumnWidth()).toBe(NARROW_LABEL_WIDTH);
+
+    Object.defineProperty(container, 'clientWidth', { value: 800, configurable: true });
+    Object.defineProperty(container, 'scrollWidth', { value: 4000, configurable: true });
+    let scrollLeftValue = 500;
+    Object.defineProperty(container, 'scrollLeft', {
+      get: () => scrollLeftValue,
+      set: (v: number) => {
+        scrollLeftValue = v;
+      },
+      configurable: true,
+    });
+
+    // Same independent recomputation as the test above, with 80 substituted for 160 in BOTH
+    // conversions. The two constants have to move together: using 80 in one and 160 in the other
+    // would still pass by coincidence at some viewMode pairs.
+    const tasksSnapshot = gantt.getTasks();
+    const before = createSvgRenderer(
+      document.createElement('div'),
+      { tasks: tasksSnapshot, dependencies: [] },
+      { viewMode: 'week' },
+    );
+    const anchorDate = before
+      .getTimeScale()
+      .xToDate(500 + 800 / 2 - NARROW_LABEL_WIDTH);
+    const after = createSvgRenderer(
+      document.createElement('div'),
+      { tasks: tasksSnapshot, dependencies: [] },
+      { viewMode: 'month' },
+    );
+    const expectedScrollLeft =
+      after.getTimeScale().dateToX(anchorDate) + NARROW_LABEL_WIDTH - 800 / 2;
 
     gantt.zoomTo('month');
 

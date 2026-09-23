@@ -648,3 +648,60 @@ describe('createSvgRenderer — today marker', () => {
     expect(h.svg.outerHTML).toBe(before);
   });
 });
+
+// ---------------------------------------------------------------------------------------
+// labelColumnWidth (spec-responsive-mobile.md) — the painted offset is no longer the constant
+// ---------------------------------------------------------------------------------------
+describe('labelColumnWidth option', () => {
+  /** The label divider is painted AT the offset, so its `x1` is the offset, read back out of
+   *  the DOM rather than trusted from the option we passed in. */
+  function paintedOffset(h: ReturnType<typeof createSvgRenderer>): number {
+    return Number(h.svg.querySelector('.fg-timeline__label-divider')!.getAttribute('x1'));
+  }
+
+  it('defaults to 160 and reports it through getLabelColumnWidth()', () => {
+    const h = createSvgRenderer(container, { tasks: baseTasks, dependencies: baseDeps });
+    expect(paintedOffset(h)).toBe(160);
+    expect(h.getLabelColumnWidth()).toBe(160);
+  });
+
+  it('a narrower width moves the painted offset AND narrows the total svg width by the same amount', () => {
+    const wide = createSvgRenderer(container, { tasks: baseTasks, dependencies: baseDeps });
+    const wideWidth = Number(wide.svg.getAttribute('width'));
+    wide.destroy();
+
+    const h = createSvgRenderer(
+      container,
+      { tasks: baseTasks, dependencies: baseDeps },
+      { labelColumnWidth: 96 },
+    );
+    expect(paintedOffset(h)).toBe(96);
+    expect(h.getLabelColumnWidth()).toBe(96);
+    // The content is offset-shifted, not re-scaled: the chart gets exactly 64px narrower.
+    expect(Number(h.svg.getAttribute('width'))).toBe(wideWidth - 64);
+  });
+
+  it('setOptions() re-resolves it, and getLabelColumnWidth() follows the last painted render', () => {
+    const h = createSvgRenderer(container, { tasks: baseTasks, dependencies: baseDeps });
+    h.setOptions({ labelColumnWidth: 120 });
+    expect(paintedOffset(h)).toBe(120);
+    expect(h.getLabelColumnWidth()).toBe(120);
+  });
+
+  it.each([
+    ['NaN', Number.NaN],
+    ['Infinity', Number.POSITIVE_INFINITY],
+    ['negative', -50],
+  ])('rejects a %s width and degrades to the default rather than painting NaN geometry', (_label, value) => {
+    // security.md: host/mixin-supplied numbers are untrusted — a NaN here would reach every `x`
+    // attribute in the chart and silently blank it, which is far worse than ignoring the input.
+    const h = createSvgRenderer(
+      container,
+      { tasks: baseTasks, dependencies: baseDeps },
+      { labelColumnWidth: value },
+    );
+    expect(h.getLabelColumnWidth()).toBe(160);
+    expect(paintedOffset(h)).toBe(160);
+    expect(h.svg.outerHTML).not.toContain('NaN');
+  });
+});

@@ -1041,6 +1041,72 @@ describe('DPR scaling', () => {
   });
 });
 
+// --- labelColumnWidth (spec-responsive-mobile.md) ---------------------------------------
+//
+// Must stay in lockstep with `svg-renderer.test.ts`'s identically-named block: `render/mixin.ts`
+// pushes the SAME value into whichever renderer is live, so a divergence here is a divergence a
+// consumer would see as the chart shifting when it crosses the auto-switch threshold.
+
+describe('labelColumnWidth option', () => {
+  it('defaults to 160 and reports it through getLabelColumnWidth()', () => {
+    installMockContext(createMockContext2D());
+    const h = createCanvasRenderer(container, { tasks: baseTasks, dependencies: baseDeps });
+    expect(h.getLabelColumnWidth()).toBe(160);
+  });
+
+  it('a narrower width narrows the canvas by exactly that difference', () => {
+    setDpr(1);
+    installMockContext(createMockContext2D());
+    const wide = createCanvasRenderer(container, { tasks: baseTasks, dependencies: baseDeps });
+    const wideWidth = wide.canvas.width;
+    wide.destroy();
+
+    installMockContext(createMockContext2D());
+    const h = createCanvasRenderer(
+      container,
+      { tasks: baseTasks, dependencies: baseDeps },
+      { labelColumnWidth: 96 },
+    );
+    expect(h.getLabelColumnWidth()).toBe(96);
+    expect(h.canvas.width).toBe(wideWidth - 64);
+  });
+
+  it('setOptions() re-resolves it', () => {
+    installMockContext(createMockContext2D());
+    const h = createCanvasRenderer(container, { tasks: baseTasks, dependencies: baseDeps });
+    h.setOptions({ labelColumnWidth: 120 });
+    expect(h.getLabelColumnWidth()).toBe(120);
+  });
+
+  it.each([
+    ['NaN', Number.NaN],
+    ['Infinity', Number.POSITIVE_INFINITY],
+    ['negative', -50],
+  ])('rejects a %s width and degrades to the default (security.md: untrusted numeric input)', (_label, value) => {
+    installMockContext(createMockContext2D());
+    const h = createCanvasRenderer(
+      container,
+      { tasks: baseTasks, dependencies: baseDeps },
+      { labelColumnWidth: value },
+    );
+    expect(h.getLabelColumnWidth()).toBe(160);
+    expect(Number.isFinite(h.canvas.width)).toBe(true);
+  });
+
+  it('a FAILED render rolls the reported width back, like getTimeScale() (atomicity, spec §5.3)', () => {
+    installMockContext(createMockContext2D());
+    const h = createCanvasRenderer(container, { tasks: baseTasks, dependencies: baseDeps });
+    expect(h.getLabelColumnWidth()).toBe(160);
+
+    // A timeRange wide enough to blow the dimension guard — the throw must leave every piece of
+    // exposed state on the last SUCCESSFUL render, this width included.
+    expect(() =>
+      h.setOptions({ labelColumnWidth: 96, timeRange: { start: '2026-01-01', end: '2400-01-01' } }),
+    ).toThrow();
+    expect(h.getLabelColumnWidth()).toBe(160);
+  });
+});
+
 // --- Draw-call-log: bars, milestones -----------------------------------------------------
 
 describe('task bar paint', () => {

@@ -1,0 +1,130 @@
+# Responsive & touch
+
+A FluxGantt chart works on a phone without any of this — every gesture is built on Pointer
+Events, so a finger already drives drag-move, resize and dependency-creation. What it does *not*
+do by default is adapt: the label column stays 160px wide (41% of a 393px viewport), rows stay
+32px tall, resize edges stay 8px, and the browser's own scroll gesture competes with your finger
+on a task bar.
+
+`withResponsive()` fixes those four things, and nothing else.
+
+```ts
+import { createGantt } from '@fluxgantt/core';
+import { withRender } from '@fluxgantt/core/render';
+import { withInteraction } from '@fluxgantt/core/interaction';
+import { withResponsive } from '@fluxgantt/core/responsive';
+
+const gantt = withResponsive(withInteraction(withRender(createGantt({ tasks, dependencies }))));
+
+gantt.mount(el); // adapts itself — no further calls
+```
+
+It is a separate subpath for the usual reason: charts that never see a touch device pay **zero
+bytes** for it.
+
+## What it changes, and only when
+
+Everything below is gated on `matchMedia('(pointer: coarse)')` — a real touchscreen, not a narrow
+window. Resize your desktop browser to phone width and nothing here activates, because a mouse
+does not need any of it.
+
+| | Default | Coarse pointer |
+|---|---|---|
+| Density | `'default'` (32px rows) | `'touch'` (48px rows) |
+| Label column | 160px | `clamp(96, containerWidth × 0.4, 160)` |
+| Resize edge zone | 8px | 24px |
+| Link handle | `r: 4px` (⌀8) | `r: 12px` (⌀24) |
+| Panning | the browser's | the mixin's own recognizer |
+
+The target sizes are **24×24 CSS px**, which is WCAG 2.2 SC 2.5.8 *Target Size (Minimum)* at
+Level AA — the level this library targets. SC 2.5.5's 44×44 is Level AAA, and reaching it would
+require a link handle of `r: 22`, large enough to swallow the bar it is anchored to.
+
+The chart also reacts to its container from then on: rotating the device, entering split-screen
+or resizing the surrounding layout re-measures and re-clamps the label column.
+
+## Panning, and why the mixin takes it over
+
+This is the one design decision worth understanding, because it has a visible consequence.
+
+The naive fix for "my finger scrolls the page instead of dragging the bar" is
+`touch-action: none`. That does not work here, twice over:
+
+1. `touch-action` is **not honoured on SVG child elements** — they establish no CSS box — so
+   putting it on `.fg-task__bar` silently does nothing in Chrome and WebKit. It has to go on the
+   root `<svg>`.
+2. The browser **latches the value at hit-test time**, so flipping it inside your `pointerdown`
+   handler cannot affect the gesture already in flight. Reactive toggling is not an option.
+
+And `touch-action: none` on the root `<svg>` would kill scrolling — which on a phone is the
+*primary* interaction, since the chart is far wider than the screen.
+
+So the mixin sets `touch-action: none` on the renderer's pointer target and **implements panning
+itself**: a `pointerdown` that lands outside any `.fg-task[data-task-id]` (grid, header, label
+column, empty space) pans by writing `scrollLeft`/`scrollTop`; a `pointerdown` on a task bar is
+left entirely alone, so the existing gesture coordinator claims it and drag works with no browser
+interference and no `pointercancel` race.
+
+Two consequences:
+
+- **Native pinch-zoom is suppressed while a finger is on the chart.** Page zoom elsewhere is
+  unaffected. This is the right trade for a chart surface, and it is what will let chart-level
+  pinch-to-zoom land in this same recognizer later.
+- **Momentum/inertial scrolling is gone** on the chart, because the pan is a direct
+  `scrollLeft` write rather than a native fling.
+
+## Options
+
+```ts
+withResponsive(instance, {
+  touchDensity: 'comfortable', // default 'touch'
+  labelColumnRatio: 0.3,       // default 0.4
+  minLabelColumnWidth: 120,    // default 96
+});
+```
+
+`touchDensity` is the escape hatch if 48px rows are too tall for your data: pass `'comfortable'`
+(40px) or even `'default'` and you still get the touch arbitration, the wider hit targets and the
+label-column clamp.
+
+## Reading the adapted state
+
+```ts
+gantt.isCoarsePointer();     // boolean — false where there is no matchMedia at all
+gantt.getLabelColumnWidth(); // px, the width last pushed into the renderer
+```
+
+## Opting out of the bigger link handles
+
+The coarse-pointer handle radius is a token override, so CSS wins — but **where** you set it
+matters:
+
+```css
+/* ✓ works — same element the mixin's rule targets */
+.fg-timeline {
+  --fg-link-handle-radius: 4px;
+}
+
+/* ✗ does nothing — an ANCESTOR declaration loses to a nearer one */
+#my-gantt-container {
+  --fg-link-handle-radius: 4px;
+}
+```
+
+Custom-property resolution takes the **nearest** declaration, not the most specific selector, and
+the mixin declares the token on `.fg-timeline` itself. A rule on your mount container is one
+level further out and never applies.
+
+## Without the mixin
+
+Nothing about the default chart changes — same 160px column, same 32px rows, same 8px edges. If
+you only want part of this, both renderers accept `labelColumnWidth` directly and `density`
+accepts `'touch'`, so you can narrow the column or enlarge the rows without adopting the
+gesture layer.
+
+## Not included
+
+- **Pinch-to-zoom** — deferred to its own ticket; the pan recognizer is where it will live.
+- **A stacked mobile layout** (labels above bars, no label column) — a layout redesign, not a
+  responsive pass.
+- **RTL geometry** — declared but not implemented, unchanged by this.

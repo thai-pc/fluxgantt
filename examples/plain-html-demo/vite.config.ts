@@ -27,8 +27,11 @@ import { defineConfig } from 'vite';
 // (spec-canvas-auto-switch.md §9.2/§10, Ticket 3) — unlike the other three, it imports
 // exclusively from the published `@fluxgantt/core` package (Ticket 3 wires Canvas mode into the
 // real public `mount()` path, so no workspace-source workaround is needed here), parametrized
-// via `?taskCount=N`. All are listed as rollup inputs so `vite build` type/asset-checks every one
-// of them.
+// via `?taskCount=N`. The responsive page exists for the `mobile`
+// Playwright project (`tests/mobile/`) — the only fixture composing `withResponsive()`, kept
+// separate precisely because it renders at a narrowed label column and `'touch'` density, which
+// every other page's visual baseline must NOT do. All are listed as rollup inputs so
+// `vite build` type/asset-checks every one of them.
 export default defineConfig({
   server: {
     fs: {
@@ -47,6 +50,7 @@ export default defineConfig({
         selection: fileURLToPath(new URL('./selection.html', import.meta.url)),
         collapse: fileURLToPath(new URL('./collapse.html', import.meta.url)),
         i18n: fileURLToPath(new URL('./i18n.html', import.meta.url)),
+        responsive: fileURLToPath(new URL('./responsive.html', import.meta.url)),
         canvasHarness: fileURLToPath(new URL('./canvas-harness.html', import.meta.url)),
         canvasA11yHarness: fileURLToPath(new URL('./canvas-a11y-harness.html', import.meta.url)),
         canvasWebkitDimensionGuardHarness: fileURLToPath(

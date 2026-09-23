@@ -164,6 +164,12 @@ export interface CanvasRendererOptions {
   readonly timeRange?: { readonly start: DateInput; readonly end: DateInput };
   /** Locale for date labels (Temporal + Intl formatting). Default 'en'. */
   readonly locale?: string;
+  /** Width (px) of the left label column. Default `LABEL_COLUMN_WIDTH` (160). Set by
+   *  `withResponsive()` from `@fluxgantt/core/responsive` to narrow the column on a small
+   *  viewport; a non-finite or negative value falls back to the default rather than painting
+   *  `NaN` geometry. Mirrors `SvgRendererOptions.labelColumnWidth` exactly — the two renderers
+   *  must agree, since `render/mixin.ts` pushes the same value into whichever one is live. */
+  readonly labelColumnWidth?: number;
   /** `aria-label` for the hidden a11y layer's `role="grid"` root. Default `'Gantt chart'`. The
    *  visible `<canvas>` itself carries no `aria-label` (it is `aria-hidden`, Ticket 2). */
   readonly ariaLabel?: string;
@@ -217,6 +223,9 @@ export interface CanvasRendererHandle extends InteractiveRendererHandle {
   /** Same contract as `SvgRendererHandle.getTimeScale()` — `TimeScale` of the most recent
    *  **successful** render. */
   getTimeScale(): TimeScale;
+  /** Same contract as `SvgRendererHandle.getLabelColumnWidth()` — the label-column width (px)
+   *  the most recent **successful** render actually painted with. */
+  getLabelColumnWidth(): number;
   /**
    * (Ticket 2). Root of the offscreen (visually hidden, `role="grid"`) DOM subtree
    * `enableKeyboardNav` attaches its `keydown` listener to and both interaction modules query
@@ -652,6 +661,10 @@ export function createCanvasRenderer(
     options: { ...options },
     timeScale: undefined as unknown as TimeScale,
   };
+  // Same contract as `state.timeScale`: the label-column width the last SUCCESSFUL render
+  // actually painted with, assigned only past every throwing guard (see `render()` below), so
+  // `getLabelColumnWidth()` never reports a width that was never painted.
+  let currentLabelColumnWidth = LABEL_COLUMN_WIDTH;
   let destroyed = false;
 
   // Tracks the resolved `focusedTaskId` (`state.input.focusedTaskId ?? rows[0]?.task.id`) as of
@@ -847,6 +860,9 @@ export function createCanvasRenderer(
       // data) even after destroy(), same non-throwing spirit as the rest of this handle.
       return state.timeScale;
     },
+    getLabelColumnWidth(): number {
+      return currentLabelColumnWidth;
+    },
     hitTestRow,
   };
 
@@ -969,7 +985,17 @@ export function createCanvasRenderer(
     // `hitTestRow()`'s own independent call above: not optional, see that call site's comment.
     const rows = layoutRows(state.input.tasks, density, state.input.collapsedIds);
 
-    const offsetX = LABEL_COLUMN_WIDTH;
+    // Host/mixin-supplied widths are untrusted numeric input (security.md: validate, don't
+    // propagate) — a `NaN`, Infinity or negative value would poison every x coordinate and the
+    // dimension guard below, so it degrades to the default instead. Kept byte-for-byte
+    // equivalent to `svg-renderer.ts`'s identical resolution (module-isolation rule, §2.1).
+    const requestedLabelWidth = state.options.labelColumnWidth;
+    const offsetX =
+      requestedLabelWidth !== undefined &&
+      Number.isFinite(requestedLabelWidth) &&
+      requestedLabelWidth >= 0
+        ? requestedLabelWidth
+        : LABEL_COLUMN_WIDTH;
     const bodyHeight = rows.length > 0 ? rows[rows.length - 1]!.y + rowHeight : rowHeight;
     const totalWidth = offsetX + timeScale.totalWidth;
     // Full, UNBOUNDED content height (header + every row) — still needed to size the spacer
@@ -1065,6 +1091,7 @@ export function createCanvasRenderer(
     // First mutation of exposed state, now that EVERY guard that could still throw has
     // passed — this frame WILL complete successfully from here on.
     state.timeScale = timeScale;
+    currentLabelColumnWidth = offsetX;
 
     const barByTaskId = new Map<TaskId, TaskBarLayout>();
     let clampedCount = 0;

@@ -92,7 +92,14 @@ export interface WorkingCalendar {
 // type name on purpose: that name is reserved for a future reactive `ViewportStore`
 // (pan/zoom state), which does not exist yet — see render/renderer-base.ts `TimeRange`.
 export type ViewMode = 'day' | 'week' | 'month' | 'quarter' | 'year';
-export type Density = 'compact' | 'default' | 'comfortable';
+/**
+ * Row-height scale. `'touch'` is the coarse-pointer level (spec-responsive-mobile.md): it is
+ * NEVER selected automatically by either renderer — `withResponsive()` from
+ * `@fluxgantt/core/responsive` is what switches to it under `(pointer: coarse)`, so a chart
+ * without that mixin renders byte-identically to before this level existed. A host may also
+ * pass it explicitly via `GanttConfig.density` to force touch sizing on a desktop.
+ */
+export type Density = 'compact' | 'default' | 'comfortable' | 'touch';
 
 /** Facade-level scheduling behavior (spec-cascade.md §4.1). `'manual'` (default) = v1's
  *  original single-task-only behavior — `moveTask`/`resizeTask`/`updateTask`/a drag commit
