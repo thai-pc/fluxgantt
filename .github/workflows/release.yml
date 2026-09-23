@@ -1,0 +1,64 @@
+name: Release
+
+on:
+  push:
+    branches: [master]
+
+concurrency:
+  # Serialise releases: two overlapping runs would both try to open/update the same
+  # "Version Packages" PR and race on tags.
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write # commit version bumps + push tags
+  pull-requests: write # open/update the "Version Packages" PR
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # changesets diffs against the base branch to decide what changed, so it needs real
+          # history — the default shallow clone makes `changeset version` misbehave.
+          fetch-depth: 0
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.2.1
+
+      - uses: actions/setup-node@v4
+        with:
+          # Same reasoning as ci.yml: read the pinned version from .nvmrc so CI and local dev
+          # cannot drift.
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install
+        # See ci.yml's Install step: `--force` works around a pnpm 10.2.1 bug where
+        # `--frozen-lockfile` alone fails to link the platform-matching `@rolldown/binding-*`
+        # native addon.
+        run: pnpm install --frozen-lockfile --force
+
+      - name: Publish readiness (npm metadata on every publishable package)
+        run: node tooling/scripts/check-publish-readiness.mjs
+
+      - name: Changesets — open the "Version Packages" PR, or publish an already-versioned commit
+        uses: changesets/action@v1
+        with:
+          # `release` = `turbo run build && changeset publish` (root package.json). Building here
+          # rather than in a prior step keeps the artefacts and the publish in one invocation, so
+          # nothing can publish a stale dist.
+          publish: pnpm release
+          version: pnpm version-packages
+          commit: 'chore: version packages'
+          title: 'chore: version packages'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          # changesets spawns `pnpm publish` and builds only --access/--tag/--no-git-checks; it
+          # never passes --provenance (verified against @changesets/cli's source). The env var is
+          # the only way to get provenance on this path, and it requires `id-token: write` above
+          # plus a registry that accepts it — left off until it can be verified end to end.
+          NPM_CONFIG_PROVENANCE: 'false'

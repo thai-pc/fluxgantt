@@ -50,6 +50,9 @@ jobs:
       - name: Snippet-sync check (README / docs / example stay identical)
         run: node tooling/scripts/check-snippet-sync.mjs
 
+      - name: Publish readiness (npm metadata on every publishable package)
+        run: node tooling/scripts/check-publish-readiness.mjs
+
   e2e:
     runs-on: ubuntu-latest
     steps:
@@ -91,7 +94,6 @@ jobs:
         # project needs its own explicit script + CI step, not just an installed browser binary.
         run: pnpm test:webkit-canvas-dimension-guard
 
-# NOTE: This workflow build-checks the docs site and example apps (per the locked decision:
-# "CI build-check, deploy later"). A live deploy (e.g. Vercel/GitHub Pages) needs an external
-# account/token and is intentionally NOT wired here — that is a repo-owner follow-up. See
-# apps/docs/README.md for the ready-to-use deploy config.
+# NOTE: This workflow build-checks; it never publishes or deploys. Releasing to npm lives in
+# release.yml (changesets opens a "Version Packages" PR; merging it is what publishes), and
+# deploying the docs site to GitHub Pages lives in docs-deploy.yml.
