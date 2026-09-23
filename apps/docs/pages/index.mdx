@@ -12,6 +12,10 @@ pre-1.0. Run it from source today (see [Installation](/docs/installation)); the
 
 ## Why FluxGantt
 
+- **7.71 KiB gzip for the engine.** Rendering, interaction, IO, theming and responsive behaviour
+  are opt-in imports on separate subpaths, so you download what you compose — an editable chart is
+  19.17 KiB, everything composed is 23.82 KiB. Budgets are enforced on every pull request.
+  See [Comparison](/docs/comparison) for how that lands against dhtmlx and Frappe.
 - **Headless engine.** State + compute (critical path, working calendar, cascade) run without
   a DOM. The render layer is a separate concern you can swap or server-side-render around.
 - **Zero required host CSS.** The SVG renderer bakes every visual property inline with a
@@ -79,17 +83,20 @@ Using React or Vue instead? See the [React guide](/docs/frameworks/react) and
 
 ## How it compares
 
-| | FluxGantt (Core, MIT) | Frappe Gantt |
-|---|---|---|
-| License | MIT | MIT |
-| Language | TypeScript-first, branded IDs | JavaScript |
-| Dependency types | FS / SS / FF / SF (+ lag/lead) | FS only |
-| Critical path (CPM) | Built in, color-independent marker | No |
-| Working calendar | Temporal-based, DST-correct | No |
-| Drag move / resize / create-dependency | Yes | Move / resize |
-| Export | JSON, CSV, SVG, PNG | No |
-| React / Vue wrappers | First-class | Community |
-| Headless (runs without a DOM) | Yes | No |
+| | FluxGantt | dhtmlx Community | Frappe Gantt |
+|---|---|---|---|
+| License | MIT | MIT | MIT |
+| Bundle (gzip, incl. required CSS) | **19.17 KiB** editable · 7.71 KiB headless | 226.18 KiB | 14.89 KiB |
+| Language | TypeScript-first, branded IDs | JavaScript | JavaScript, no types shipped |
+| Dependency types | FS / SS / FF / SF (+ lag/lead) | all four | FS only |
+| Critical path (CPM) | Built in, color-independent marker | Yes | No |
+| Working calendar | Temporal-based, DST-correct | Yes | No |
+| Headless (runs without a DOM) | Yes | No | No |
+| React / Vue wrappers | First-class | No | No |
+
+Frappe is smaller than an editable FluxGantt chart, and the
+[full comparison](/docs/comparison) says so rather than hiding it — along with where dhtmlx and
+Bryntum still win, how every number was measured, and the script that re-measures them.
 
 ## Tiers
 
@@ -103,7 +110,8 @@ Only the **Core** tier is documented here — it is the only tier that exists to
 
 ## Run the examples
 
-The repository ships three runnable example apps, all rendering the same 5-task chart:
+Nine examples ship in the repository — six vanilla pages, a React app, a Vue app and a headless
+snippet. The full catalogue is on the [Examples](/docs/examples) page; the three apps are:
 
 - [`examples/plain-html-demo`](https://github.com/thai-pc/fluxgantt/tree/master/examples/plain-html-demo) — vanilla `@fluxgantt/core`
 - [`examples/react-vite-demo`](https://github.com/thai-pc/fluxgantt/tree/master/examples/react-vite-demo) — `@fluxgantt/react`
