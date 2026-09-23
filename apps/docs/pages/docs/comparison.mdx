@@ -100,20 +100,23 @@ else's data.
 
 ## Features
 
-Verified against the tarballs measured above, not against vendor feature grids.
+Verified against the tarballs measured above, not against vendor feature grids. Where a cell says
+❌ for Frappe it is because the capability is absent from its source, not merely undocumented — for
+instance `frappe-gantt@1.2.2` accepts no `parent` field on a task (so there is no hierarchy to roll
+up), and its only touch listener is a double-tap detector in `bar.js`, not a drag path.
 
 | | FluxGantt (MIT) | dhtmlx Community (MIT) | dhtmlx PRO | Bryntum | Frappe (MIT) |
 |---|---|---|---|---|---|
 | Dependency types | FS / SS / FF / SF + lag/lead | all four | all four | all four | **FS only** |
 | Critical path | ✅ CPM | ✅ | ✅ | ✅ | ❌ |
-| Hierarchy + summary rollup | ✅ | ✅ | ✅ | ✅ | partial |
+| Hierarchy + summary rollup | ✅ | ✅ | ✅ | ✅ | ❌ |
 | Working calendar | ✅ Temporal, DST-correct | ✅ | ✅ | ✅ | ❌ |
 | Headless / runs in Node | ✅ | ❌ DOM-coupled | ❌ | ❌ | ❌ |
 | Framework-agnostic core | ✅ | ❌ | ❌ | ❌ | ✅ |
 | React / Vue wrappers | ✅ first-party | ❌ | ✅ | ✅ | ❌ |
 | Canvas fallback at scale | ✅ automatic ≥2000 tasks | ❌ | ❌ | ✅ | ❌ |
 | Keyboard navigation + ARIA | ✅ `treegrid`, WCAG 2.1 AA | partial | partial | ✅ | ❌ |
-| Touch-adapted layout | ✅ [`withResponsive()`](/docs/responsive) | partial | ✅ | ✅ | partial |
+| Touch-adapted layout | ✅ [`withResponsive()`](/docs/responsive) | partial | ✅ | ✅ | ❌ (`touchstart` is wired for double-tap only) |
 | Export | JSON / CSV / SVG / PNG | limited | + PDF, MS Project | + PDF, MS Project | ❌ |
 | Resource view + leveling | Pro (not yet shipped) | ❌ | ✅ | ✅ | ❌ |
 | Baselines | Pro (not yet shipped) | ❌ | ✅ | ✅ | ❌ |

@@ -1999,7 +1999,7 @@ function earliestStartFromPred(
 | Vue wrapper | ✓ | ✓ | ~ | ✓ | ✗ | ✗ |
 | Svelte wrapper | ✓* | ✗ | ✗ | ✗ | ✗ | ✗ |
 | Angular wrapper | ✓* | ✓ | ~ | ✓ | ✗ | ✗ |
-| All 4 dependency types | ✓ | ✓ | ✓ | ✓ | ~ | ✗ |
+| All 4 dependency types | ✓ | ✓ | ✓ | ✓ | ✗ (FS only) | ✗ |
 | Critical path | ✓ | ✓ | ✓ | ✓ | ✗ | ✗ |
 | Resource view | ✓** | ✓ | ✗ | ✓ | ✗ | ✗ |
 | Resource leveling | ✓** | ✓ | ✗ | ✓ | ✗ | ✗ |
