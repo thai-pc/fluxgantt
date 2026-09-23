@@ -26,7 +26,7 @@ Node >= 20 (22 recommended, see `.nvmrc`), pnpm 10+.
 
 ## PR workflow
 
-1. Branch off `main`.
+1. Branch off `master`.
 2. Write code + tests. Run `pnpm lint && pnpm typecheck && pnpm test`.
 3. `pnpm changeset` — describe the change (version bump + changelog are automated). Changes
    scoped entirely to `apps/*` or `examples/*` (docs site, example apps) need **no changeset** —
