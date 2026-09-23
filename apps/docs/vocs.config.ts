@@ -9,6 +9,19 @@ import { defineConfig } from 'vocs/config';
 export default defineConfig({
   rootDir: '.',
   srcDir: '.',
+  // Deployment target is GitHub Pages at https://thai-pc.github.io/fluxgantt.
+  // `renderStrategy: 'full-static'` is what makes the build emit real HTML (the default,
+  // 'dynamic', emits none — it expects a Node server), and `basePath` prefixes every asset and
+  // internal link with the repository sub-path Pages serves from.
+  renderStrategy: 'full-static',
+  basePath: '/fluxgantt',
+  // Origin only: Vocs composes canonicals as `baseUrl + basePath + pathname`
+  // (vocs/react/Head.tsx), so including the sub-path here would double it.
+  baseUrl: 'https://thai-pc.github.io',
+  // Off on purpose. Vocs' sitemap uses `siteUrl + pagePath` (vocs/internal/vite-plugins.ts),
+  // which omits `basePath` — under a sub-path deployment it would emit URLs that 404, and a
+  // wrong sitemap is worse than none. Re-enable once the two agree.
+  sitemap: false,
   title: 'FluxGantt',
   description: 'The Modern MIT-Licensed Gantt Chart Library — TypeScript-first, headless, framework-agnostic.',
   titleTemplate: '%s · FluxGantt',
@@ -26,7 +39,6 @@ export default defineConfig({
     { text: 'Examples', link: '/docs/examples' },
     { text: 'Comparison', link: '/docs/comparison' },
     { text: 'API', link: '/docs/api' },
-    // Replace <org> with the real GitHub org/user once the repo is public.
     { text: 'GitHub', link: 'https://github.com/thai-pc/fluxgantt' },
   ],
   socials: [
