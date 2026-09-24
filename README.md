@@ -154,7 +154,7 @@ pnpm test:e2e     # e2e (playwright)
 pnpm lint && pnpm typecheck
 ```
 
-Requirements: Node >= 20 (22 recommended), pnpm 10+.
+Requirements: Node >= 22.19 (see `.nvmrc` for the exact pinned version), pnpm 10+.
 
 ## Links
 

@@ -20,6 +20,16 @@ without it, also install the optional peer dependency:
 pnpm add @js-temporal/polyfill
 ```
 
+It is optional **at runtime only** — the bundle contains no polyfill code, and `getTemporal()`
+reads `globalThis.Temporal`, so a runtime with native Temporal needs nothing installed. But the
+published `.d.ts` files re-export `Temporal.ZonedDateTime` from `@js-temporal/polyfill`, which is
+the only accurate type for what those APIs accept: `temporal-spec`'s structurally-different
+`Duration.round` overloads make polyfill instances non-assignable, and the TS 6 global
+(`lib.esnext.temporal`) does not exist before TypeScript 6. So **TypeScript consumers should
+install it even on a native-Temporal runtime**, at least as a devDependency — otherwise
+`skipLibCheck: false` reports `TS2307` against our declaration files. `skipLibCheck: true` (the
+`tsc --init` default) hides it either way.
+
 ## Quick start
 
 ```ts

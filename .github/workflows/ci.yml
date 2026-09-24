@@ -6,6 +6,20 @@ on:
   pull_request:
     branches: [master]
 
+concurrency:
+  # One CI run per branch. On a PR, pushing a fixup makes the in-flight run answer a question
+  # nobody is asking any more, so cancel it — unlike `release.yml`, where a cancelled run could
+  # leave a half-updated Version Packages PR, nothing here has side effects worth finishing.
+  # `github.ref` keys per-branch, so a push to master and a PR run never cancel each other.
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+# Least privilege, spelled out: the repo default is the `read` set, but a default is a setting
+# someone can widen, and this workflow runs untrusted PR code (`pnpm build` executes package
+# scripts). Only checkout needs anything.
+permissions:
+  contents: read
+
 jobs:
   build:
     runs-on: ubuntu-latest

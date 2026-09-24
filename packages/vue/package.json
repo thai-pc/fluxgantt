@@ -1,7 +1,7 @@
 {
   "name": "@fluxgantt/vue",
   "version": "0.1.0",
-  "description": "FluxGantt Vue 3 wrapper — <FluxGantt> component + useFluxGantt composable.",
+  "description": "FluxGantt Vue 3 wrapper \u2014 <FluxGantt> component + useFluxGantt composable.",
   "license": "MIT",
   "keywords": [
     "gantt",
@@ -37,6 +37,7 @@
     }
   },
   "files": [
+    "LICENSE",
     "dist",
     "CHANGELOG.md"
   ],

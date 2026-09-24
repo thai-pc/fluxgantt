@@ -43,6 +43,22 @@ unless your runtime already ships Temporal natively:
 pnpm add @js-temporal/polyfill
 ```
 
+"Optional" applies to the **runtime** only. Core bundles no polyfill code — it reads
+`globalThis.Temporal` — so a runtime that has Temporal natively needs no install to *run*. The
+published type declarations are a separate matter: they name `Temporal.ZonedDateTime` by
+importing the type from `@js-temporal/polyfill`, so if you compile with `skipLibCheck: false`
+and the package is absent, TypeScript reports `TS2307` against our `.d.ts`. Install it as a
+devDependency in that case.
+
+Why not avoid the import? Both alternatives were measured and are worse. `temporal-spec` (the
+types-only package) declares `Duration.round` with different overloads, so a real polyfill
+`PlainDate` is *not assignable* to a `temporal-spec` `PlainDate` — consumers would get `TS2345`
+at the call site, which is louder than a lib-check warning. And the TS 6 built-in global via
+`/// <reference lib="esnext.temporal" />` works on TypeScript 6 but `lib.esnext.temporal.d.ts`
+ships in no 5.x release (verified absent from 5.7.3 and 5.9.3), so it would break every
+TypeScript 5 consumer outright. We will drop the import once native `Temporal` is in the
+DOM/ES lib baseline that our supported TypeScript range covers.
+
 React and Vue peer versions: React `^18.2 || ^19`, Vue `^3.4`.
 
 ## Run from source
@@ -63,7 +79,7 @@ pnpm --filter react-vite-demo dev   # React
 pnpm --filter vue-vite-demo dev     # Vue
 ```
 
-Requirements: Node ≥ 20 (22 recommended), pnpm 10+.
+Requirements: Node ≥ 22.19 (see `.nvmrc` for the exact pinned version), pnpm 10+.
 
 ## Next
 

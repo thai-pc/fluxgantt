@@ -1,7 +1,7 @@
 {
   "name": "@fluxgantt/react",
   "version": "0.1.0",
-  "description": "FluxGantt React wrapper — <FluxGantt> component + useFluxGantt hook.",
+  "description": "FluxGantt React wrapper \u2014 <FluxGantt> component + useFluxGantt hook.",
   "license": "MIT",
   "keywords": [
     "gantt",
@@ -37,6 +37,7 @@
     }
   },
   "files": [
+    "LICENSE",
     "dist",
     "CHANGELOG.md"
   ],
