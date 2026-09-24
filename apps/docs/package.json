@@ -17,7 +17,7 @@
     "react-dom": "^19.0.0",
     "typescript": "^5.7.2",
     "vocs": "^2.10.0",
-    "waku": "1.0.0-rc.0"
+    "waku": "1.0.0-rc.1"
   },
   "optionalDependencies": {
     "@rolldown/binding-darwin-x64": "1.2.9",
