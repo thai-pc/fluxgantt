@@ -81,7 +81,7 @@
     "@fluxgantt/eslint-config": "workspace:*",
     "@fluxgantt/tsconfig": "workspace:*",
     "@js-temporal/polyfill": "^0.5.1",
-    "@size-limit/esbuild": "^13.0.3",
+    "@size-limit/esbuild": "^14.0.0",
     "@size-limit/file": "^13.0.3",
     "@vitest/coverage-v8": "2.1.9",
     "fast-check": "^4.10.2",
