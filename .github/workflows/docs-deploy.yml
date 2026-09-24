@@ -55,6 +55,11 @@ jobs:
         with:
           # Vocs' static output; `dist/` itself also contains the unused SSR server bundle.
           path: apps/docs/dist/public
+          # Required since v4, which stopped including dotfiles by default (it tars with
+          # `--exclude=.[^/]*`). Without this the `.nojekyll` that
+          # tooling/scripts/finalize-pages-build.mjs writes is silently dropped from the artifact,
+          # and Jekyll then eats waku's `_`-prefixed RSC paths — a green deploy of a broken site.
+          include-hidden-files: true
 
   deploy:
     needs: build
