@@ -107,15 +107,31 @@ for (const entry of await readdir(resolve(repoRoot, 'packages'), { withFileTypes
   };
   walkExports(pkg.exports);
 
-  for (const target of targets) {
-    if (target.startsWith('#')) continue; // internal imports map, not a file
-    try {
-      await access(resolve(repoRoot, dir, target));
-    } catch {
-      fail(
-        `"${target}" is referenced by exports/main/module/types but does not exist ` +
-          '(run the build first — a metadata-only check cannot see this)',
-      );
+  // An unbuilt package fails every one of these at once — eighteen identical lines that bury the
+  // one fact worth reading. Say it once instead, and skip the per-target noise.
+  let distMissing = false;
+  try {
+    await access(resolve(repoRoot, dir, 'dist'));
+  } catch {
+    distMissing = true;
+  }
+
+  if (distMissing) {
+    fail(
+      `no dist/ directory — run \`pnpm build\` before this check. Every exports target below ` +
+        'would fail, which says nothing about whether the exports map is correct',
+    );
+  } else {
+    for (const target of targets) {
+      if (target.startsWith('#')) continue; // internal imports map, not a file
+      try {
+        await access(resolve(repoRoot, dir, target));
+      } catch {
+        fail(
+          `"${target}" is referenced by exports/main/module/types but does not exist ` +
+            '(the build ran, so this is a real exports-map or build-config defect)',
+        );
+      }
     }
   }
 

@@ -49,7 +49,15 @@ jobs:
         # native addon.
         run: pnpm install --frozen-lockfile --force
 
-      - name: Publish readiness (npm metadata on every publishable package)
+      - name: Build packages (so the readiness check can resolve every exports target)
+        # The gate below asserts each `exports`/`main`/`types` target exists on disk, which is the
+        # only way to catch a broken exports map — a workspace resolves by symlink, never through
+        # `exports`. `dist/` is gitignored, so on a fresh checkout that assertion fails on all six
+        # subpaths unless something builds first. Cheap: turbo caches, and `pnpm release` rebuilds
+        # inside the changesets step anyway, so the publish still cannot ship a stale dist.
+        run: pnpm build
+
+      - name: Publish readiness (npm metadata + every exports target resolves)
         run: node tooling/scripts/check-publish-readiness.mjs
 
       - name: Changesets — open the "Version Packages" PR, or publish an already-versioned commit
