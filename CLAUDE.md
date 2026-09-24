@@ -30,7 +30,7 @@ This file is the context entry point for AI. Details are split into rules under 
    | `+ withRender + withInteraction + withResponsive` | 19.91 KiB | 21 KiB |
    | kitchen sink (everything = the pre-split facade) | 23.82 KiB | 24 KiB |
 
-   Hello world went 22.3 KiB → 7.71 KiB and the fully-composed instance 34.9 KiB → 23.71 KiB (the old "full core" check measured `dist/index.js` as a plain file, which code-splitting has since hollowed out; the kitchen-sink fixture replaces it). Non-core features are plugins.
+   Hello world went 22.3 KiB → 7.71 KiB and the fully-composed instance 34.9 KiB → 23.82 KiB (the old "full core" check measured `dist/index.js` as a plain file, which code-splitting has since hollowed out; the kitchen-sink fixture replaces it). Non-core features are plugins.
 
    The `withRender + withInteraction` budget was raised 19 → 19.5 KiB once, for the i18n scaffold (`GanttConfig.messages`), after the levers this rule prefers were measured and came up ~67 B short: merging the two renderer-option builders recovered only 13 B, and ~68 B of the cost is the irreducible price of threading host messages through both renderers. Justified as WCAG-adjacent — the strings in question are accessible names. Treat that as the exception it was, not a precedent: the rule is still change the shape, not the budget.
 
@@ -43,14 +43,14 @@ This file is the context entry point for AI. Details are split into rules under 
    put the 783 B where only charts that ask for it pay. Remember the template-literal trap the next
    time a renderer needs a CSS rule.
 
-   Run `pnpm size` from `packages/core` (or `pnpm size` at the root via turbo) to re-measure; the numbers above are its output, converted from its decimal-kB report to KiB. **It needs Node >= 22.18** — `size-limit` 13 calls `fs.glob` with `withFileTypes`, added in Node 22.2, and on an older 22.x it dies with an opaque `TypeError: i.isFile is not a function` that looks like a repo misconfiguration but is not. `.nvmrc` pins an exact version for this reason; CI reads it via `node-version-file`.
+   Run `pnpm size` from `packages/core` (or `pnpm size` at the root via turbo) to re-measure; the numbers above are its output, converted from its decimal-kB report to KiB. **It needs Node >= 22.19** — that is `size-limit` 14's own declared `engines.node` (`^22.19.0 || ^24.5.0 || >=26.0.0`), and the floor is enforced by the root `engines.node` so a permitted Node cannot be one the repo fails on. Before 14 the practical floor was 22.18, because `size-limit` calls `fs.glob` with `withFileTypes` (added in Node 22.2) and on an older 22.x it dies with an opaque `TypeError: i.isFile is not a function` that looks like a repo misconfiguration but is not. `.nvmrc` pins an exact version for this reason; CI reads it via `node-version-file`.
 6. **Tier-gate correctly** — Pro (resource/baseline/MSProject), Cloud (multiplayer/AI). Don't cram Pro/Cloud code into `core`.
 7. **Every new feature ships with tests.** See `.claude/rules/testing.md`.
 8. **Security**: validate every external input (file import, share link, API). See `.claude/rules/security.md`.
 9. **Language**: chat with the user in **Vietnamese**; but **all code, comments, identifiers, docs, commit messages, and PRs are written in English** (professional international OSS standard). Don't back-translate old files unless asked.
 
 ## Locked tech stack
-TypeScript 5.4+ strict · ESM-first (tsup dual) · ES2022 · pnpm workspaces + turbo · changesets ·
+TypeScript 6 strict · ESM-first (tsup dual) · ES2022 · pnpm workspaces + turbo · changesets ·
 vitest (unit) · playwright (e2e/visual) · @testing-library (wrappers) · Temporal polyfill ·
 Yjs (Pro/Cloud) · Hono + Postgres + Drizzle + Better-Auth (Cloud) · Stripe · Vocs (docs).
 
@@ -69,4 +69,17 @@ pnpm changeset         # create a changeset before releasing
 ```
 
 ## Current stage
-Pre-build / Wave 1 (Core MIT MVP). Priority: reactive TaskStore → SVG renderer → drag → dependencies → critical path → React/Vue wrapper → export → docs. No Pro/Cloud yet unless explicitly requested.
+**Wave 1 (Core MIT MVP) — feature-complete, awaiting first publish.** The whole priority list has
+shipped: reactive TaskStore, SVG + Canvas renderers, drag, dependencies, critical path, React/Vue
+wrappers, export, docs. Also landed beyond it: the facade/mixin split, theming, i18n scaffold,
+responsive/touch, and the seven size budgets.
+
+What remains is release mechanics, not features. `release.yml` and `docs-deploy.yml` exist; both
+final triggers are the owner's explicit go/no-go (merging the bot's "Version Packages" PR is the
+npm publish; a `workflow_dispatch` is the first Pages deploy) — see `RELEASING.md` for the owner
+checklist, including the still-unclaimed `@fluxgantt` npm scope. No Pro/Cloud yet unless
+explicitly requested.
+
+Consequence for anything you write here: the published surface is now a **compatibility
+commitment**. A change to an exported type, an event name or a subpath export needs a changeset
+and a reason, not just a passing test.

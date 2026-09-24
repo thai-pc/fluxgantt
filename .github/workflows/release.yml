@@ -34,6 +34,14 @@ jobs:
           # cannot drift.
           node-version-file: .nvmrc
           cache: pnpm
+          # REQUIRED for the publish to authenticate, and easy to omit because nothing fails
+          # loudly without it. `changesets/action` v2 removed its own `.npmrc` handling (its
+          # changelog points at Trusted Publishing, or at this option); `setup-node` writes the
+          # `//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}` line ONLY when `registry-url`
+          # is set (actions/setup-node src/authutil.ts gates `configAuthentication` on it). With
+          # neither, NODE_AUTH_TOKEN below sits in the environment with no reader and
+          # `pnpm publish` fails ENEEDAUTH.
+          registry-url: 'https://registry.npmjs.org'
 
       - name: Install
         # See ci.yml's Install step: `--force` works around a pnpm 10.2.1 bug where
@@ -45,7 +53,11 @@ jobs:
         run: node tooling/scripts/check-publish-readiness.mjs
 
       - name: Changesets — open the "Version Packages" PR, or publish an already-versioned commit
-        uses: changesets/action@v2
+        # Pinned to an exact tag, not `@v2`: upstream has no `refs/tags/v2`, only a mutable
+        # `refs/heads/v2` BRANCH (`git ls-remote` shows the branch and tags v2.0.0..v2.1.2, no
+        # bare v2 tag). The usual "float on the major" convention does not apply when the `vN`
+        # ref is a branch someone can force-push.
+        uses: changesets/action@v2.1.2
         with:
           # `release` = `turbo run build && changeset publish` (root package.json). Building here
           # rather than in a prior step keeps the artefacts and the publish in one invocation, so
@@ -63,7 +75,7 @@ jobs:
           # substitute.
           github-token: ${{ secrets.GITHUB_TOKEN }}
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN_FLUXGRANTT }}
           # changesets spawns `pnpm publish` and builds only --access/--tag/--no-git-checks; it
           # never passes --provenance (verified against @changesets/cli's source). The env var is
           # the only way to get provenance on this path, and it requires `id-token: write` above

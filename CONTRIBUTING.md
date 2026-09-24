@@ -11,7 +11,7 @@ pnpm build
 pnpm test
 ```
 
-Node >= 20 (22 recommended, see `.nvmrc`), pnpm 10+.
+Node >= 22.19 (see `.nvmrc` for the exact pinned version), pnpm 10+.
 
 ## Non-negotiable principles
 
@@ -19,7 +19,12 @@ Node >= 20 (22 recommended, see `.nvmrc`), pnpm 10+.
 - **Framework-agnostic core** — `@fluxgantt/core` must not import react/vue/svelte.
 - **Temporal API** for all date/time math, never native `Date`.
 - **TypeScript strict**, branded IDs, no `any`.
-- **Tree-shakable** — no top-level side effects; respect the bundle budget (core <36kb, hello-world <22kb gzip).
+- **Tree-shakable** — no top-level side effects; respect the per-capability bundle budgets.
+  There is no single "core" budget any more: the facade is a base plus opt-in mixins on their
+  own subpath exports, each measured against its own fixture (`createGantt()` alone 9 KiB gzip
+  up to the kitchen sink at 24 KiB). Run `pnpm size` for the current numbers; the full table is
+  in CLAUDE.md golden rule 5. The old `core <36kb` / `hello-world <22kb` pair was retired with
+  the split — it measured `dist/index.js` as a plain file, which code-splitting has hollowed out.
 - **Every new feature ships with tests** (see `.claude/rules/testing.md`).
 - **Security** — validate every external input (see `.claude/rules/security.md`).
 - **Language** — chat/discussion may be in Vietnamese, but all code, comments, docs, commit messages, and PRs are written in English.
