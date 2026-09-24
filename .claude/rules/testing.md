@@ -34,9 +34,22 @@
 
 ## Commands
 ```bash
-pnpm -r test            # unit + integration
-pnpm test:e2e           # playwright
-pnpm test:visual        # visual regression
-pnpm test -- --coverage # coverage
+pnpm -r test                 # unit + integration
+pnpm test:e2e                # playwright, desktop interaction (Desktop Chrome)
+pnpm test:visual             # visual regression snapshots
+pnpm test:a11y               # axe / WCAG
+pnpm test:mobile             # Pixel 5, the only project with a coarse pointer
+pnpm test:performance        # Canvas mount-time budgets
+pnpm test:webkit-canvas-dimension-guard
+pnpm test -- --coverage      # coverage
 ```
+Every script is `--project=`-scoped, so a bare `playwright test` is the only way to run all six at
+once — and locally that is a bad idea, because the concurrent browsers skew `performance`'s
+wall-clock budgets. **All six run in CI** (`ci.yml`'s `e2e` job); each has its own step for the
+same `--project=` reason.
+
+Visual baselines are committed PER PLATFORM (`<title>-visual-darwin.png` +
+`-linux.png`) and neither platform can regenerate the other's. Updating a snapshot on a Mac
+therefore leaves the linux half stale: get it from a CI run rather than hand-editing, and never
+delete a platform's file to make a failure go away.
 Target ~100% branch coverage for the compute layer; reasonable elsewhere — don't chase a number blindly.
