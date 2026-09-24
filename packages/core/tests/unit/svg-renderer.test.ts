@@ -324,11 +324,18 @@ describe('SECURITY — color injection', () => {
     expect(fill).toContain('var(--fg-task-default');
   });
 
-  it('valid task.color (#hex) is used as-is', () => {
+  it('valid task.color (#hex) is accepted, not swapped for the fallback token', () => {
     const t = task('x', '2026-01-05T09:00', '2026-01-07T17:00', { color: '#abcdef' });
     const h = createSvgRenderer(container, { tasks: [t], dependencies: [] });
     const bar = h.svg.querySelector('.fg-task__bar') as SVGElement;
-    expect(bar.style.getPropertyValue('fill')).toBe('#abcdef');
+    // Read back through the CSSOM, which normalizes a color to `rgb()` — real browsers always
+    // did, and jsdom 30 does too (jsdom 25 echoed the hex back verbatim, which is why this
+    // used to assert `'#abcdef'`). Accept either spelling so the test pins the BEHAVIOUR under
+    // test — the whitelist let the author's color through — rather than one engine's
+    // serialization. The negative half is the half that matters: no `var(--fg-task-default`.
+    const fill = bar.style.getPropertyValue('fill');
+    expect(['#abcdef', 'rgb(171, 205, 239)']).toContain(fill);
+    expect(fill).not.toContain('var(--fg-task-default');
   });
 });
 

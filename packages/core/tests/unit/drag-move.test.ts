@@ -31,17 +31,18 @@ function task(id: string, start: string, end: string, extra: Partial<Task> = {})
   };
 }
 
-// --- §8.1 smoke test: PointerEvent must be constructible + dispatchable under jsdom@25 ----
+// --- §8.1 smoke test: PointerEvent must be constructible + dispatchable under jsdom -------
 //
-// SPEC DEVIATION (flagged per the §8.1 requirement, not silently changing course): the spec
-// assumed `jsdom@25.0.1` ships a global `PointerEvent` constructor. Verified directly against
-// the actually-installed `jsdom` (`node_modules/.pnpm/jsdom@25.0.1`, both standalone and
-// inside vitest): `'PointerEvent' in window` is `false` — there is no `PointerEvent` at all,
-// not even a no-op. Since this was a single-agent run (no synchronous channel back to
-// spec-writer), we use a minimal polyfill ONLY in this test file (not touching `src/`, not
-// touching the shared `tests/setup/temporal.ts`) rather than leaving all DOM tests red
-// forever — see the full explanation on `PointerEventPolyfill` below. To be confirmed by
-// spec-writer/planner at the next review.
+// History worth keeping, because it is why the fallback below exists at all: the spec assumed
+// jsdom ships a global `PointerEvent`, and under jsdom 25.0.1 it did not — `'PointerEvent' in
+// window` was `false`, not even a no-op — so this file carried a minimal polyfill rather than
+// leaving every DOM test red. **jsdom 30 ships a real `PointerEvent`**, so the polyfill is now
+// dead weight on this environment and the real constructor is what runs.
+//
+// The fallback stays anyway: it costs nothing, and it is what lets this file run unchanged on
+// an environment without `PointerEvent` (an older jsdom, a constrained runtime). Only the
+// assertion changes — it now pins what the environment actually provides instead of pinning
+// the absence.
 class PointerEventPolyfill extends MouseEvent {
   readonly pointerId: number;
   constructor(type: string, init: MouseEventInit & { pointerId: number }) {
@@ -58,8 +59,12 @@ const PointerEventCtor: typeof PointerEvent =
   (PointerEventPolyfill as unknown as typeof PointerEvent);
 
 describe('smoke — PointerEvent under jsdom', () => {
-  it('confirmed for real: globalThis.PointerEvent does NOT exist in the jsdom@25.0.1 installed in this repo (deviates from spec §8.1 assumption)', () => {
-    expect('PointerEvent' in globalThis).toBe(false);
+  it('jsdom 30 provides a real global PointerEvent, so the in-file polyfill is not the one used', () => {
+    // Under jsdom 25 this asserted the opposite (`PointerEvent` was absent). jsdom 30 added it,
+    // which brings the test environment back in line with the spec's §8.1 assumption and with
+    // a real browser. `PointerEventCtor` therefore resolves to the genuine constructor.
+    expect('PointerEvent' in globalThis).toBe(true);
+    expect(PointerEventCtor).toBe(globalThis.PointerEvent);
   });
 
   it('PointerEventCtor (real or polyfill) is constructible and dispatchEvent does not throw', () => {
