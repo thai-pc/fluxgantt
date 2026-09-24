@@ -1,5 +1,203 @@
 # @fluxgantt/core
 
+## 0.2.0
+
+### Minor Changes
+
+- cb53a4e: feat(core): announce hierarchy depth with `aria-level` on treegrid rows
+  
+  Rows in a hierarchical chart now carry `aria-level`, the 1-based nesting depth, in both the SVG
+  renderer and the Canvas renderer's hidden accessibility layer. A screen reader can therefore
+  announce how deeply a task sits in the hierarchy — previously the only structural cue in the
+  accessibility tree was `aria-expanded`, which says whether a row can be expanded but nothing
+  about where it sits.
+  
+  Two details are worth knowing if you assert on the rendered ARIA:
+  
+  - Unlike `aria-expanded`, which is omitted on a leaf, `aria-level` appears on **every** row of a
+    tree, leaves included — a leaf still has a real depth.
+  - It is emitted only when the chart is a tree (`role="treegrid"`). A flat project stays
+    `role="grid"` and no row carries `aria-level`, because WAI-ARIA permits the attribute on a row
+    only under a `treegrid` owner; emitting it under a plain `grid` would be a real violation
+    rather than harmless extra metadata. With no hierarchy every row is trivially level 1 anyway.
+  
+  Canvas derives the level from the full-tree layout rather than the virtualized window, so a row's
+  announced level does not change as it scrolls into view.
+  
+  No API change — this is purely additional markup on rendered rows.
+- 58284cf: Scaffold i18n: `GanttConfig.messages` and `GanttConfig.ariaLabel`
+  
+  English stays the only language core ships. What is new is the structure by which a host supplies
+  another one — and a fix to the shape that made the old string untranslatable in principle.
+  
+  - **`messages.taskLabel`** replaces the per-task `aria-label` sentence wholesale. It receives all
+    of the state (`name`, Intl-formatted `startLabel`/`endLabel`, localized `progressPct`,
+    `isCritical`, `isSelected`, `locale`) and returns a finished string. A fragment table was
+    deliberately rejected: the built-in label used to compose by appending (`base` + `', critical
+    path'` + `', selected'`), which no verb-final or inflecting language can accept no matter which
+    fragments are swapped in. Whole sentences also mean zero message-format parser bytes.
+  - **`ariaLabel`** names the chart as a whole. It existed on both renderer option types but was
+    unreachable through the facade, so `'Gantt chart'` was un-overridable — including in the
+    `<title>` of every exported SVG/PNG, which now follows the host's value.
+  - **`progressPct` is now localized.** The dates went through `Intl` but `Math.round()` did not, so
+    an `ar-EG` or `hi-IN` host got Western Arabic digits beside Arabic-Indic ones in one sentence.
+  - A host formatter that throws or returns a non-string falls back to the English sentence, and its
+    return value is coerced and capped at 400 characters. The fallback is deliberately **silent**:
+    this runs once per task per repaint, so a `console.warn` would emit thousands of identical lines
+    in a single paint of a large chart.
+  
+  Additive and non-breaking — with no `messages`, the output is byte-identical to before (no visual
+  baseline moved). Both fields are read once at `mount()`, like `locale`; there is no `setMessages()`.
+  React and Vue inherit them structurally, with no wrapper changes.
+  
+  Also: the two renderer-option builders in `render/mixin.ts` were merged into one. The
+  `withRender + withInteraction` budget moved 19 → 19.5 KiB — see CLAUDE.md golden rule 5 for the
+  measurements behind that exception.
+- c103cfd: Draw summary bars at their rolled-up span via the new `GanttConfig.rollup` provider.
+  
+  Pass an aggregation to `createGantt` and every task that has children is painted from its
+  earliest descendant start to its latest descendant end, with duration-weighted aggregate
+  progress announced in its `aria-label`. The core implementation satisfies the contract as
+  written:
+  
+  ```ts
+  import { createGantt, computeRollup } from '@fluxgantt/core';
+  import { withRender } from '@fluxgantt/core/render';
+  
+  const gantt = withRender(createGantt({ tasks, rollup: computeRollup }));
+  ```
+  
+  It is a function rather than a boolean flag on purpose: importing `computeRollup` into the
+  render layer would cost ~400 B gzip in every `@fluxgantt/core/render` bundle, including those
+  that never enable rollup. Injecting keeps those bytes in the graph of the host that asked for
+  them, and makes a custom aggregation (different weighting, a baseline span) a supported case.
+  
+  Rollup is derived on read and never written back: `getTasks()`, `exportJson()`, undo/redo and
+  `computeCriticalPath()` all keep reporting the authored dates. The one behavioral consequence
+  beyond pixels is that a bar drawn at a rolled-up span is not drag-movable or drag-resizable —
+  the geometry under the cursor is not an authored value there is any well-defined way to
+  commit. Omitting `rollup` (the default) leaves rendering byte-identical to before.
+  
+  Also exported: `RollupProvider`, `RolledUpRow` and `RolledUpSpan` types.
+- 5e4c470: Add light/dark theme switching via a new opt-in `withTheme()` mixin on `@fluxgantt/core/theme`.
+  
+  ```ts
+  import { withTheme } from '@fluxgantt/core/theme';
+  
+  const gantt = withTheme(withRender(createGantt({ tasks, dependencies })));
+  gantt.mount(el);
+  gantt.setTheme('dark'); // 'light' | 'dark' | 'auto' (default, follows prefers-color-scheme live)
+  ```
+  
+  `withTheme` sets the dark palette as inline `--fg-*` custom properties on the mount container and
+  removes them again for light, so both renderers and `exportSvg()` follow with no renderer change.
+  Also adds `getTheme()` / `getResolvedTheme()`, and `GanttConfig.theme` to seed the initial value.
+  
+  Theming ships as a mixin rather than `gantt.setTheme()` on the facade so that consumers who never
+  switch themes pay nothing for it: every existing bundle fixture is unchanged.
+- 31c1296: Paint task progress: every non-milestone bar now carries a `.fg-task__progress` overlay.
+  
+  `Task.progress` has always been required, aggregated by `computeRollup()`, and announced by
+  screen readers — a bar's `aria-label` has read `"(N% complete)"` since the first renderer.
+  Nothing ever painted it, so sighted users saw a plain bar while assistive technology reported
+  a percentage. This closes that name/role/value gap in both the SVG and Canvas renderers.
+  
+  The overlay is drawn over the bar and under the focus ring, at a width of `progress` times
+  the bar width, in `--fg-task-completed` (default `#10b981`, previously declared but unused).
+  Its fraction resolves exactly as the `aria-label` does — the rolled-up aggregate when a
+  `rollup` provider supplies one, the authored `task.progress` otherwise — so the painted and
+  the spoken value cannot drift apart.
+  
+  No new API: there is no flag to turn it on. A progress bar is what a Gantt chart is for, and
+  plumbing an option through `GanttConfig` and both renderers would have cost bytes in the
+  budget fixture with the least headroom.
+  
+  Details worth knowing:
+  
+  - Milestones never get a fill. They render as a rotated square, where a partial fill reads as
+    a different shape rather than a different value — the same exemption `layoutTaskBar` and
+    `buildTaskAriaLabel` already apply to rollup.
+  - A task at `progress: 0`, or with a zero-width bar, emits no element at all.
+  - `progress` is clamped to 0..1 at paint time. It is validated by `setProgress` and on import,
+    but not by `addTask`, so an out-of-range or `NaN` value can reach the renderer; unclamped it
+    would paint past the bar's own edge.
+  - The fill is set inline rather than by a CSS rule, so `exportSvg()` bakes it like every other
+    painted value instead of exporting an unstyled (black) rect.
+  - Resizing a bar scales its fill live, keeping the fraction proportional for the whole gesture.
+  
+  This changes the appearance of every existing chart — an intended visual change, not a
+  breaking API change. Hosts that want the old look can set `--fg-task-completed` to match
+  `--fg-task-default`.
+- 334debe: Add responsive/touch adaptation via a `withResponsive()` mixin on the new
+  `@fluxgantt/core/responsive` subpath.
+  
+  A chart already worked with a finger — every gesture is built on Pointer Events — but it did not
+  *adapt*: the label column stayed 160px on a 393px phone, rows stayed 32px, resize edges stayed 8px,
+  and the browser's own scroll gesture killed any drag that started on a task bar.
+  
+  ```ts
+  import { withResponsive } from '@fluxgantt/core/responsive';
+  
+  const gantt = withResponsive(withInteraction(withRender(createGantt({ tasks }))));
+  gantt.mount(el); // adapts itself
+  ```
+  
+  Under `matchMedia('(pointer: coarse)')` — a real touchscreen, not a narrow window — it switches to
+  the new `'touch'` density (48px rows), clamps the label column to
+  `min(160, max(96, containerWidth * 0.4))` and re-clamps it on every container resize, widens the
+  resize edge zone to 24px and the link-handle radius to 12px (⌀24, meeting WCAG 2.2 SC 2.5.8's
+  24x24 minimum at Level AA), and takes over panning so a `pointerdown` on a task bar reaches the
+  drag recognizers untouched while one anywhere else scrolls the container. Native pinch-zoom is
+  suppressed while a finger is on the chart; chart-level pinch-to-zoom is a separate change.
+  
+  Also public, usable without the mixin:
+  
+  - `Density` gains `'touch'` (48px rows, `--fg-row-height-touch`).
+  - Both renderers accept a `labelColumnWidth` option and expose `getLabelColumnWidth()`.
+  
+  Composing nothing new costs nothing: all six pre-existing bundle fixtures are byte-identical.
+- 4ad3ec0: Add the today marker: a vertical rule at the current instant, drawn across the full chart
+  height (header band included) in both the SVG and Canvas renderers.
+  
+  Complements the existing `--fg-grid-today` column shading rather than replacing it — the wash
+  says "this day is today", the line says "we are here within it". At `viewMode: 'year'`
+  (1 px/day) the shaded column is a hairline and the marker is the only legible signal.
+  
+  Always on, no configuration and no timer: the position is recomputed from the clock on each
+  render. When "now" falls outside the chart's time range the marker is omitted entirely rather
+  than clamped onto an edge, where it would read as "today is the first day of this project".
+  The rule is painted with `--fg-task-critical`, written inline so it survives `exportSvg()`,
+  and is `aria-hidden` (decoration under a `role="grid"`/`"treegrid"` root).
+  
+  It ships without the "Today" text label the design originally called for: the label did not
+  fit the `withRender + withInteraction` gzip budget, and golden rule 5 says shrink the feature
+  rather than the budget.
+
+### Patch Changes
+
+- 6928a33: Add npm registry metadata (`repository`, `homepage`, `bugs`, `keywords`, `author`) to the
+  published packages, so the package page links back to the source directory and the docs site.
+- 5a66fb1: Include `CHANGELOG.md` in the published tarball, so the release notes changesets generates are
+  visible to consumers on npm rather than only on GitHub.
+- 0bde36a: Ship a real `LICENSE` in each package tarball, and document why the published `.d.ts` files import
+  the `Temporal` type from `@js-temporal/polyfill`.
+  
+  pnpm already injected the workspace-root LICENSE at pack time, so this changes nothing for anyone
+  installing from a pnpm-built tarball. It matters because the license text no longer depends on
+  which packer ran: `files` now lists `LICENSE` explicitly, and the file is a real copy in each
+  package (`npm pack` does not follow symlinks).
+  
+  The Temporal note is documentation only — no code moved. `@js-temporal/polyfill` stays an optional
+  peer, correctly: core bundles none of it and resolves `globalThis.Temporal` at runtime. But the
+  type import in the shipped declarations means a TypeScript consumer compiling with
+  `skipLibCheck: false` needs the package installed even on a native-Temporal runtime. Both ways out
+  were measured and are worse — `temporal-spec`'s `Duration.round` overloads make real polyfill
+  instances non-assignable (`TS2345` at the consumer's call site), and TypeScript's built-in
+  `lib.esnext.temporal` does not exist before TypeScript 6 — so the README and the installation page
+  now say plainly what to install and why.
+- 8ca882d: Ship a README with each package, so npmjs.com renders install instructions, a runnable example
+  and a link to the docs instead of an empty page.
+
 ## 0.1.0
 
 ### Minor Changes
