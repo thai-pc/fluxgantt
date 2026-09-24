@@ -75,9 +75,39 @@ is a function, not a prototype method:
 | `@fluxgantt/core` | `createGantt()`, the task/dependency stores, critical path, working calendar |
 | `@fluxgantt/core/io` | `withIo()` — JSON/CSV import & export, PNG/SVG export |
 | `@fluxgantt/core/render` | `withRender()` — SVG renderer, with an automatic Canvas fallback above 2000 tasks |
-| `@fluxgantt/core/interaction` | `withInteraction()` — drag-move, drag-resize, draw dependencies, keyboard navigation |
+| `@fluxgantt/core/interaction` | `withInteraction()` — drag-move, drag-resize, draw dependencies, keyboard navigation, undo/redo and zoom shortcuts |
 | `@fluxgantt/core/theme` | `withTheme()` — light/dark and `--fg-*` design tokens |
 | `@fluxgantt/core/responsive` | `withResponsive()` — touch gestures and a layout that adapts to the container |
+
+## Built in, no extra import
+
+The base instance — `createGantt()` alone, before any mixin — already carries these. Each is
+documented in full in the [API reference](https://thai-pc.github.io/fluxgantt/docs/api).
+
+```ts
+// Undo/redo. One entry per gesture, not per internal write: a cascading drag or a
+// multi-select delete undoes in a single step.
+gantt.undo();  gantt.redo();
+gantt.on('history:changed', ({ canUndo, canRedo }) => {
+  undoButton.disabled = !canUndo;
+  redoButton.disabled = !canRedo;
+});
+
+// Zoom. Works headlessly; when mounted, the centered date stays centered.
+gantt.zoomTo('month');   // 'day' | 'week' | 'month' | 'quarter' | 'year'
+gantt.zoomIn();  gantt.zoomOut();  gantt.getViewMode();
+
+// Selection — hierarchical: selecting a parent selects its descendants too.
+gantt.select(toTaskId('build'));  gantt.selectAll();  gantt.deselect();
+gantt.getSelection();
+
+// Duplicate one task, or the whole selection when the argument is omitted.
+gantt.duplicateTask();
+```
+
+With `withInteraction()` and a mounted chart, the same operations are bound to
+<kbd>Ctrl/Cmd+Z</kbd>, <kbd>Ctrl/Cmd+Shift+Z</kbd>, <kbd>Ctrl/Cmd+D</kbd>,
+<kbd>Ctrl/Cmd+±</kbd> and <kbd>Ctrl</kbd>+wheel.
 
 ## Bundle size
 

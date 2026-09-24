@@ -55,6 +55,10 @@ The React and Vue wrappers compose `withRender` + `withInteraction` for you.
 | `readOnly` | `boolean` | `false` | When `true`, `mount()` wires no drag gestures (with `withInteraction` applied; click-select and keyboard nav stay live). |
 | `schedulingMode` | `SchedulingMode` | `'manual'` | `'auto'` cascades dependents on move/resize. |
 | `initialCollapsed` | `readonly TaskId[]` | `[]` | Tasks to start collapsed. Unknown or leaf ids are dropped silently; fires no `collapse:changed`. |
+| `historyLimit` | `number` | `100` | Undo entries retained. Oldest is evicted past the limit (ring buffer). `0` opts out of undo/redo entirely without affecting anything else. Must be a non-negative integer — throws at construction otherwise. Construction-time only. |
+| `canvasViewportHeight` | `number` | `600` | Visible scroll-viewport height, in px, of the mounted container **in Canvas mode only** (no SVG equivalent). Bounds the `<canvas>` backing store. |
+| `theme` | `'light' \| 'dark' \| 'auto'` | — | Initial theme. Applied by [`withTheme`](/docs/theming); the base bundle only carries the field. |
+| `rollup` | `boolean` | `false` | Derive each parent's span/progress from its children. See [Hierarchy](/docs/concepts/hierarchy). |
 | `onTaskChange` | `(task, prev) => void` | — | Catch-all fired whenever a task field changes. |
 
 ## `GanttInstance` methods
@@ -72,6 +76,7 @@ The React and Vue wrappers compose `withRender` + `withInteraction` for you.
 | `getTask(id)` | `Task \| undefined` | Look up one task. |
 | `getTasks()` | `Task[]` | All tasks. |
 | `findTasks(predicate)` | `Task[]` | Filter tasks. |
+| `duplicateTask(taskId?)` | `Task[]` | Copy one task, or the whole current selection when `taskId` is omitted. Each copy starts where its own source ends, resets `progress` to `0`, gets a fresh id, keeps its `parent` (so it lands as a sibling), and carries **no** dependency edges. Children are not cloned. One undo step for the whole call. An unresolvable explicit `taskId` throws; an omitted `taskId` with nothing selected is a no-op returning `[]`. |
 
 ### Dependencies
 
@@ -81,6 +86,18 @@ The React and Vue wrappers compose `withRender` + `withInteraction` for you.
 | `unlinkTasks(from, to)` | `void` | Remove links between two tasks; emits `dependency:removed`. |
 | `getDependencies()` | `Dependency[]` | All dependencies. |
 | `getDependenciesOf(taskId)` | `Dependency[]` | Links touching a task. |
+
+### Selection
+
+Selection is **hierarchical**: selecting a parent selects every descendant with it, and the
+"selection" every method here reports is that flattened set.
+
+| Method | Returns | Purpose |
+|---|---|---|
+| `select(id)` | `void` | Replace the selection with `id` or `id[]`, expanded to include descendants. Ids that don't resolve are dropped silently. Emits `selection:changed` iff the flattened set changed. |
+| `selectAll()` | `void` | Select every task. Emits `selection:changed` iff the set changed. |
+| `deselect()` | `void` | Clear the selection. Emits `selection:changed` iff it was non-empty. |
+| `getSelection()` | `TaskId[]` | Snapshot (not a live reference) of the flattened selection — explicit ids **and** auto-selected descendants. In insertion order, **not** row order (selecting a parent yields its children first). Returns `[]` after `destroy()`. |
 
 ### Hierarchy (collapse / expand)
 
@@ -92,6 +109,61 @@ Base — always present, no mixin required; collapse state is headless.
 | `isCollapsed(id)` | `boolean` | Whether `id` is collapsed **and** still has children. Safe after `destroy()` (returns `false`). |
 | `collapseAll()` | `void` | Collapse every task that has children. Idempotent. |
 | `expandAll()` | `void` | Expand everything. Idempotent. |
+
+### History (undo / redo)
+
+Every mutation through the facade — `addTask`, `updateTask`, `moveTask`, `resizeTask`,
+`setProgress`, `removeTask`, `linkTasks`, `unlinkTasks`, `duplicateTask` — records one undo
+entry per **logical gesture**, not per internal write. A cascade-grouped drag, a multi-select
+Delete, and a `duplicateTask()` that produced eight copies each undo in a single step.
+
+None of these are gated by `readOnly`: that config governs rendered interactivity, not the
+method surface. All four throw after `destroy()` except `canUndo`/`canRedo`, which return
+`false`.
+
+| Method | Returns | Purpose |
+|---|---|---|
+| `undo()` | `boolean` | Undo the most recent gesture. `false` (a safe no-op, no event) when the undo stack is empty. |
+| `redo()` | `boolean` | Redo the next gesture forward. Same no-op posture. |
+| `canUndo()` | `boolean` | Whether `undo()` would currently do something. |
+| `canRedo()` | `boolean` | Symmetric. |
+
+Wire buttons off the `history:changed` event rather than polling:
+
+```ts
+gantt.on('history:changed', ({ canUndo, canRedo }) => {
+  undoButton.disabled = !canUndo;
+  redoButton.disabled = !canRedo;
+});
+```
+
+With [`withInteraction`](/docs/interactions/drag) applied, a mounted chart also binds
+**Ctrl/Cmd+Z** and **Ctrl/Cmd+Shift+Z** to these — see the
+[keyboard shortcut table](/docs/interactions/drag#keyboard-shortcuts).
+
+Events emitted during an `undo()` or `redo()` carry a third `meta` argument,
+`{ source: 'undo' | 'redo' }`, so a listener can tell a replayed change from a fresh one:
+
+```ts
+gantt.on('task:moved', (task, prevStart, meta) => {
+  if (meta?.source) return; // replayed by undo/redo — don't re-persist it
+  save(task);
+});
+```
+
+### Viewport (zoom)
+
+| Method | Returns | Purpose |
+|---|---|---|
+| `zoomTo(mode)` | `void` | Switch view mode (`'day'`/`'week'`/`'month'`/`'quarter'`/`'year'`). Works headlessly, before `mount()`. When mounted, the date centered in the viewport stays centered. No-op when already in `mode`. Throws on an unknown mode. |
+| `zoomIn()` | `void` | Step one level toward `'day'`. Safe no-op at that boundary. |
+| `zoomOut()` | `void` | Step one level toward `'year'`. Safe no-op at that boundary. |
+| `getViewMode()` | `ViewMode` | The current view mode. Safe after `destroy()`. |
+
+The order is fixed: `day` → `week` → `month` → `quarter` → `year`. None of these are gated by
+`readOnly` — zoom changes no data. A mounted chart with `withInteraction` also binds
+**Ctrl/Cmd+Plus** / **Ctrl/Cmd+Minus** and **Ctrl+wheel** (which is how a macOS trackpad pinch
+arrives).
 
 ### Computation
 
@@ -137,9 +209,34 @@ Requires the `withIo` mixin (`@fluxgantt/core/io`).
 | `dependency:added` | `(dependency: Dependency)` |
 | `dependency:removed` | `(dependencyId: DependencyId)` |
 | `critical-path:computed` | `(criticalTaskIds: readonly TaskId[])` |
+| `selection:changed` | `(taskIds: readonly TaskId[])` — the full flattened selection, not a delta, in insertion order |
 | `collapse:changed` | `(collapsedTaskIds: readonly TaskId[])` — the full collapsed set, not a delta |
+| `history:changed` | `(state: { canUndo: boolean; canRedo: boolean })` |
+| `viewport:changed` | `(state: { viewMode: ViewMode })` |
+| `data:imported` | `(summary: ImportSummary)` |
+| `renderer:selected` | `(state: { renderer: 'svg' \| 'canvas'; taskCount: number; canvasFallbackReason?: 'dimension-exceeded' \| 'load-failed' \| 'construction-failed' })` |
 
 `on()` returns an `UnsubscribeFn` (`() => void`).
+
+Three conventions hold across the whole map, and they are what make these events usable as a
+persistence hook:
+
+- **Snapshot, not delta.** `selection:changed`, `collapse:changed` and
+  `critical-path:computed` each carry the complete set. There is nothing to reconcile.
+- **No-ops are suppressed.** Re-selecting what is already selected, collapsing what is already
+  collapsed, `zoomTo()` with the current mode, `undo()` on an empty stack — none of these emit.
+  So a listener firing means something genuinely changed.
+- **One fire per gesture, never per internal write.** `history:changed` fires once for a whole
+  cascade-grouped drag; an import fires `data:imported` once instead of `task:added` × N.
+
+The five task/dependency events take an optional third argument,
+`meta?: { source: 'undo' | 'redo' }`, present only when the change came from a replay — see
+[History](#history-undo--redo).
+
+`renderer:selected` is the reliable way to know a large chart has become visible: above the
+2000-task auto-switch threshold, `mount()` returns synchronously but the Canvas module loads
+and paints afterwards, and this event fires once it has (or once the SVG fallback has, with
+`canvasFallbackReason` set).
 
 ## Standalone functions & values
 
@@ -166,4 +263,5 @@ Requires the `withIo` mixin (`@fluxgantt/core/io`).
 `DependencyInput`, `DependencyType` · `DateInput` · `WorkingCalendar`, `WeekdayCode`,
 `WorkingHours` · `CriticalPathResult`, `TaskSchedule`, `RollupResult` · `ViewMode`, `Density`,
 `SchedulingMode` · `GanttConfig`, `GanttInstance`, `GanttEventMap`, `GanttEventName`,
-`UnsubscribeFn`.
+`UnsubscribeFn` · `EventMeta`, `ViewportChangedPayload`, `RendererSelectedPayload`,
+`ImportSummary` (event payloads) · `GanttMessages` (see [i18n](/docs/i18n)).

@@ -29,6 +29,49 @@ already-mounted instance takes effect only on the next mount.
 Gesture priority is resolved automatically: an edge-handle claim wins over a whole-bar claim,
 and a link-handle claim wins over an edge zone — so the three never fight over the same pointer.
 
+## Keyboard shortcuts
+
+`withInteraction` also wires keyboard navigation and the shortcut set below. Nothing here needs
+configuring — mounting is enough — and every binding calls the same facade method you could call
+yourself, so the events and undo behaviour are identical either way.
+
+| Keys | Action | Method | Gated by `readOnly` |
+|---|---|---|---|
+| <kbd>Tab</kbd> | Move focus into the chart — one stop for the whole grid (WAI-ARIA APG grid pattern), not one per row | — | no |
+| <kbd>↑</kbd> / <kbd>↓</kbd> | Move focus one row **and** select it, replacing the previous selection. No wraparound at either end | `select` | no |
+| <kbd>Shift</kbd>+<kbd>↑</kbd>/<kbd>↓</kbd> | Extend the selection from the anchor row | `select` | no |
+| <kbd>Space</kbd> | Toggle the focused row's selection | `select` / `deselect` | no |
+| <kbd>Enter</kbd> | Collapse/expand the focused row. No-op on a leaf | `toggleCollapse` | no |
+| <kbd>Delete</kbd> / <kbd>Backspace</kbd> | Remove the selection, as one undo step | `removeTask` | **yes** |
+| <kbd>Ctrl/Cmd</kbd>+<kbd>Z</kbd> | Undo | `undo` | **yes** |
+| <kbd>Ctrl/Cmd</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd> | Redo | `redo` | **yes** |
+| <kbd>Ctrl/Cmd</kbd>+<kbd>D</kbd> | Duplicate the selection | `duplicateTask` | **yes** |
+| <kbd>Ctrl/Cmd</kbd>+<kbd>+</kbd> / <kbd>=</kbd> | Zoom in one level | `zoomIn` | no |
+| <kbd>Ctrl/Cmd</kbd>+<kbd>−</kbd> | Zoom out one level | `zoomOut` | no |
+| <kbd>Ctrl</kbd>+wheel | Zoom. Also how a macOS trackpad pinch arrives | `zoomIn` / `zoomOut` | no |
+| <kbd>Click</kbd> | Select a row (plus its descendants) | `select` | no |
+| <kbd>Ctrl/Cmd</kbd>+click | Add/remove one row from the selection | `select` | no |
+| <kbd>Shift</kbd>+click | Select the range from the anchor row | `select` | no |
+
+Two things worth knowing before you bind your own handlers on top:
+
+- **The zoom and undo/redo shortcuts call `preventDefault()`**, because
+  <kbd>Ctrl/Cmd</kbd>+<kbd>+</kbd>/<kbd>−</kbd> is the browser's own page zoom and
+  <kbd>Ctrl/Cmd</kbd>+<kbd>D</kbd> is "bookmark this page" — without it both the chart and the
+  browser would react to one keystroke. A plain wheel event is never intercepted, so the
+  container's own scrolling is untouched.
+- **<kbd>Ctrl/Cmd</kbd>+<kbd>D</kbd> is not always suppressible.** Some browsers (notably
+  Firefox in some configurations) don't let a page cancel that reserved shortcut, so the
+  bookmark dialog may still appear alongside the duplicate. That is a known, accepted v1 gap.
+
+There is deliberately no <kbd>Ctrl/Cmd</kbd>+<kbd>A</kbd> binding — "select all" in an embedded
+widget would fight the host page's own text selection. Call `selectAll()` from your own handler
+if you want it.
+
+In `readOnly` mode the gated rows above become inert **without** calling `preventDefault()` —
+the keystroke passes through to the host page rather than being swallowed. Focus, selection,
+collapse and zoom all keep working, because none of them mutate data.
+
 ## Listening to the results
 
 Every gesture commits through the same pipeline as the programmatic API, so the events carry
