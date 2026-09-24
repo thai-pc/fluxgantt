@@ -20,6 +20,15 @@
     "skipLibCheck": true,
     "declaration": true,
     "declarationMap": true,
+    // tsup 8.5.1 injects `baseUrl: compilerOptions.baseUrl || "."` into its dts build
+    // unconditionally (node_modules/tsup/dist/rollup.js), and TypeScript 6 turned the
+    // deprecation of `baseUrl` into a hard error:
+    //   error TS5101: Option 'baseUrl' is deprecated and will stop functioning in TypeScript 7.0.
+    // Nothing in this repo sets `baseUrl` or `paths` — the option arrives purely from inside
+    // tsup — so there is no path-mapping to migrate, only an error to silence until tsup stops
+    // injecting it. Revisit when tsup drops the injection; TypeScript 7 will remove the escape
+    // hatch along with the option.
+    "ignoreDeprecations": "6.0",
     "sourceMap": true
   },
   "exclude": ["node_modules", "dist", "build", ".turbo", "coverage"]
