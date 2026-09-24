@@ -2,7 +2,7 @@
   "name": "fluxgantt",
   "version": "0.1.0",
   "private": true,
-  "description": "The Modern MIT-Licensed Gantt Chart Library — TypeScript-first, headless, framework-agnostic.",
+  "description": "The Modern MIT-Licensed Gantt Chart Library \u2014 TypeScript-first, headless, framework-agnostic.",
   "license": "MIT",
   "type": "module",
   "packageManager": "pnpm@10.2.1",
@@ -24,7 +24,7 @@
     "format:check": "prettier --check .",
     "clean": "turbo run clean && rimraf node_modules",
     "changeset": "changeset",
-    "version-packages": "changeset version",
+    "version-packages": "changeset version && node tooling/scripts/sync-version-constant.mjs",
     "release": "turbo run build && changeset publish"
   },
   "pnpm": {
