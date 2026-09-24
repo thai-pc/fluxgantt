@@ -1,5 +1,5 @@
 {
-  "extends": "@fluxgantt/tsconfig/library.json",
+  "extends": "../../tooling/tsconfig/library.json",
   "compilerOptions": {
     "noEmit": true,
     "jsx": "preserve",
