@@ -69,9 +69,12 @@ pnpm changeset         # create a changeset before releasing
 ```
 
 ## Current stage
-**Wave 1 (Core MIT MVP) — shipped and published.** `@fluxgantt/core@0.2.0`,
-`@fluxgantt/react@0.1.1` and `@fluxgantt/vue@0.1.1` went to npm on 2026-09-24 under the
-`@fluxgantt` org. The whole priority list shipped: reactive TaskStore, SVG + Canvas renderers,
+**Wave 1 (Core MIT MVP) — shipped and published.** The `@fluxgantt` org's first release went to
+npm on 2026-09-24 (`core@0.2.0`, `react@0.1.1`, `vue@0.1.1`); `core@0.2.1` / `react@0.1.2` /
+`vue@0.1.2` followed the same day. Check the registry rather than this line for what is current —
+releases are routine now and it will go stale.
+
+The whole priority list shipped: reactive TaskStore, SVG + Canvas renderers,
 drag, dependencies, critical path, React/Vue wrappers, export, docs. Also landed beyond it: the
 facade/mixin split, theming, i18n scaffold, responsive/touch, and the seven size budgets.
 
