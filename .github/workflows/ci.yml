@@ -129,25 +129,13 @@ jobs:
         # spec file's own calibration comment before touching a constant because of a CI flake.
         run: pnpm test:performance
 
-      - name: "Bootstrap linux visual baselines (TEMPORARY — delete before merging)"
-        # A macOS dev machine can only ever write `-darwin.png`; the ubuntu runner needs its own
-        # `-linux.png` set, and only the runner can produce it. This one-off step writes them and
-        # the upload below hands them back so they can be committed. Both steps come out of this
-        # file in the same PR, leaving only the `pnpm test:visual` step below.
-        run: pnpm exec playwright test --project=visual --update-snapshots
-
-      - name: "Upload the generated linux baselines (TEMPORARY — delete before merging)"
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: linux-visual-baselines
-          path: tests/visual/**-snapshots/*-linux.png
-          if-no-files-found: error
-
       - name: "Visual regression (SVG + Canvas snapshots)"
         # Baselines are per-platform (`<title>-visual-<platform>.png`), so the ubuntu runner needs
         # its own `-linux.png` set alongside the `-darwin.png` files a macOS dev machine writes.
-        # Both are committed; neither platform can regenerate the other's.
+        # Both are committed; NEITHER PLATFORM CAN REGENERATE THE OTHER'S — a darwin dev machine
+        # updating a snapshot must get the linux half from a CI run (this project was bootstrapped
+        # exactly that way: a throwaway `--update-snapshots` + `upload-artifact` pair on the PR that
+        # wired it up, removed once the 12 files were committed).
         run: pnpm test:visual
 
       - name: "Playwright report + failure artifacts"
