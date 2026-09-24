@@ -1,6 +1,6 @@
 {
   "name": "@fluxgantt/vue",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "FluxGantt Vue 3 wrapper \u2014 <FluxGantt> component + useFluxGantt composable.",
   "license": "MIT",
   "keywords": [
