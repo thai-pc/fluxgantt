@@ -22,13 +22,13 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
         with:
           version: 10.2.1
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           # Same reasoning as ci.yml: read the pinned version from .nvmrc so CI and local dev
           # cannot drift.
@@ -49,12 +49,17 @@ jobs:
         # fails the build if zero HTML was emitted (renderStrategy regression guard).
         run: pnpm --filter docs build
 
-      - uses: actions/configure-pages@v5
+      - uses: actions/configure-pages@v6
 
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@v5
         with:
           # Vocs' static output; `dist/` itself also contains the unused SSR server bundle.
           path: apps/docs/dist/public
+          # Required since v4, which stopped including dotfiles by default (it tars with
+          # `--exclude=.[^/]*`). Without this the `.nojekyll` that
+          # tooling/scripts/finalize-pages-build.mjs writes is silently dropped from the artifact,
+          # and Jekyll then eats waku's `_`-prefixed RSC paths — a green deploy of a broken site.
+          include-hidden-files: true
 
   deploy:
     needs: build
@@ -64,4 +69,4 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
