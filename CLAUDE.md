@@ -69,16 +69,17 @@ pnpm changeset         # create a changeset before releasing
 ```
 
 ## Current stage
-**Wave 1 (Core MIT MVP) — feature-complete, awaiting first publish.** The whole priority list has
-shipped: reactive TaskStore, SVG + Canvas renderers, drag, dependencies, critical path, React/Vue
-wrappers, export, docs. Also landed beyond it: the facade/mixin split, theming, i18n scaffold,
-responsive/touch, and the seven size budgets.
+**Wave 1 (Core MIT MVP) — shipped and published.** `@fluxgantt/core@0.2.0`,
+`@fluxgantt/react@0.1.1` and `@fluxgantt/vue@0.1.1` went to npm on 2026-09-24 under the
+`@fluxgantt` org. The whole priority list shipped: reactive TaskStore, SVG + Canvas renderers,
+drag, dependencies, critical path, React/Vue wrappers, export, docs. Also landed beyond it: the
+facade/mixin split, theming, i18n scaffold, responsive/touch, and the seven size budgets.
 
-What remains is release mechanics, not features. `release.yml` and `docs-deploy.yml` exist; both
-final triggers are the owner's explicit go/no-go (merging the bot's "Version Packages" PR is the
-npm publish; a `workflow_dispatch` is the first Pages deploy) — see `RELEASING.md` for the owner
-checklist, including the still-unclaimed `@fluxgantt` npm scope. No Pro/Cloud yet unless
-explicitly requested.
+Releases are now routine: land a changeset, and merging the bot's "Version Packages" PR publishes.
+`docs-deploy.yml` exists but the docs site is **not deployed yet** — its first run is a
+`workflow_dispatch` and remains the owner's explicit go/no-go, so every `thai-pc.github.io/fluxgantt`
+link in the repo (including the `homepage` field of all three published packages) is currently
+dead. See `RELEASING.md`. No Pro/Cloud yet unless explicitly requested.
 
 Consequence for anything you write here: the published surface is now a **compatibility
 commitment**. A change to an exported type, an event name or a subpath export needs a changeset

@@ -1,10 +1,9 @@
 # Installation
 
-:::warning
-**Pre-release — not on npm yet.** FluxGantt's packages are at `0.1.0` in-repo and not yet
-published, while the tiers and API stabilize pre-1.0. The `pnpm add` commands below are the target
-end-state. Until the first npm release, run FluxGantt **from source**
-(see [Run from source](#run-from-source)).
+:::info
+**0.x — the API is still stabilizing pre-1.0.** The packages are on npm and installable, but a
+minor bump may change an exported type or an event name. Pin a minor range if that matters to you,
+and read each package's `CHANGELOG.md` before upgrading.
 :::
 
 ## Packages
@@ -18,7 +17,7 @@ end-state. Until the first npm release, run FluxGantt **from source**
 The wrappers depend on `@fluxgantt/core` — you do not install it separately when using a
 wrapper, but you may still import types/helpers (e.g. `toTaskId`) from it.
 
-## Once published
+## Install
 
 ```bash
 # Core only (vanilla)
@@ -63,9 +62,9 @@ React and Vue peer versions: React `^18.2 || ^19`, Vue `^3.4`.
 
 ## Run from source
 
-Because nothing is on npm yet, the supported way to try FluxGantt today is from a clone. The
-example apps depend on the workspace packages via `workspace:*`, so `pnpm install` links them
-with no registry involved:
+To hack on FluxGantt itself — or to try an unreleased change — run it from a clone. The example
+apps depend on the workspace packages via `workspace:*`, so `pnpm install` links them with no
+registry involved:
 
 ```bash
 git clone https://github.com/thai-pc/fluxgantt

@@ -5,10 +5,9 @@ repo so it can be reviewed and edited like anything else.
 
 **Send only when all three are true:**
 
-1. `@fluxgantt/core` is published to npm. HN will not forgive a "Show HN" you cannot install, and
-   the README's own pre-release note (`README.md:23`) still says the packages are unpublished.
-2. The docs site is deployed at a public URL. Right now every docs link in this draft points at a
-   file path in the repo.
+1. ~~`@fluxgantt/core` is published to npm.~~ **Done** — `0.2.0` on npm since 2026-09-24.
+2. The docs site is deployed at a public URL. Still open: Pages is not enabled, so every docs link
+   in this draft resolves to nothing.
 3. The three demo GIFs exist. A Gantt library submitted without a moving picture of a bar being
    dragged will be ignored.
 
