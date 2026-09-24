@@ -33,12 +33,29 @@ updates:
           - 'jsdom'
           - '@axe-core/*'
         update-types: [minor, patch]
+      # vocs, waku and the rolldown bindings are one unit: vocs imports waku subpaths directly,
+      # and waku is pinned to an exact prerelease (1.0.0-rc.0). Bumping vocs alone produced PR #64,
+      # which failed with `"./router/client-core" is not exported ... from package waku`. Grouping
+      # them at least offers the whole stack in one PR; a prerelease pin still means those PRs
+      # usually need a human to move `waku` by hand.
       docs-site:
         patterns:
           - 'vocs'
           - 'waku'
           - '@rolldown/*'
         update-types: [minor, patch]
+      # The vite plugins refuse to load against a mismatched vite major: @vitejs/plugin-react 6
+      # needs vite 6+, and against the demos' vite 5 it died with
+      # `subpath './internal' is not defined by "exports" in .../vite/package.json` (PR #65).
+      # Grouped so a vite major arrives with its plugins rather than ahead of them.
+      # Deliberately no `update-types` filter here: a group that excludes majors would let a
+      # plugin major escape into its own PR, which is exactly how #65 happened
+      # (@vitejs/plugin-react 4 -> 6 on its own).
+      vite-stack:
+        patterns:
+          - 'vite'
+          - '@vitejs/*'
+          - 'vue-tsc'
     open-pull-requests-limit: 5
     # Framework peer dependencies are deliberately excluded: bumping the react/vue devDependency
     # narrows what is actually being tested against the declared peer range, and the range itself
