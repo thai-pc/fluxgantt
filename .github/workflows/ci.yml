@@ -110,6 +110,59 @@ jobs:
         # project needs its own explicit script + CI step, not just an installed browser binary.
         run: pnpm test:webkit-canvas-dimension-guard
 
+      # The four steps below close a real gap: `playwright.config.ts` defines six projects, and
+      # until 2026-09 CI ran exactly two of them. `a11y` (30 tests), `mobile` (9) and
+      # `performance` (5) had no automatic gate at all — which made `.claude/rules/testing.md`'s
+      # "WCAG 2.1 AA" requirement unenforced, and the mount-time budgets in
+      # `tests/performance/canvas-mount.spec.ts` a local-only ritual. Each needs its own step
+      # because every `pnpm test:*` script is `--project=`-scoped (see the note above).
+      - name: "Accessibility (axe, WCAG 2.1 AA — .claude/rules/testing.md)"
+        run: pnpm test:a11y
+
+      - name: "Mobile / touch (Pixel 5, coarse pointer — spec-responsive-mobile.md §C)"
+        run: pnpm test:mobile
+
+      - name: "Canvas mount-time budgets (spec-canvas-auto-switch.md §9.1/§9.3)"
+        # These are wall-clock budgets on a shared runner. `playwright.config.ts` sets
+        # `workers: 1` under CI so no other project's browsers compete for CPU, and the committed
+        # budgets already carry a p75 × ~1.8-2x margin for exactly this environment — see the
+        # spec file's own calibration comment before touching a constant because of a CI flake.
+        run: pnpm test:performance
+
+      - name: "Bootstrap linux visual baselines (TEMPORARY — delete before merging)"
+        # A macOS dev machine can only ever write `-darwin.png`; the ubuntu runner needs its own
+        # `-linux.png` set, and only the runner can produce it. This one-off step writes them and
+        # the upload below hands them back so they can be committed. Both steps come out of this
+        # file in the same PR, leaving only the `pnpm test:visual` step below.
+        run: pnpm exec playwright test --project=visual --update-snapshots
+
+      - name: "Upload the generated linux baselines (TEMPORARY — delete before merging)"
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-visual-baselines
+          path: tests/visual/**-snapshots/*-linux.png
+          if-no-files-found: error
+
+      - name: "Visual regression (SVG + Canvas snapshots)"
+        # Baselines are per-platform (`<title>-visual-<platform>.png`), so the ubuntu runner needs
+        # its own `-linux.png` set alongside the `-darwin.png` files a macOS dev machine writes.
+        # Both are committed; neither platform can regenerate the other's.
+        run: pnpm test:visual
+
+      - name: "Playwright report + failure artifacts"
+        # Without this, a visual or a11y failure on the runner is a log line with no image to look
+        # at — the diff/actual PNGs Playwright writes are the only way to judge a snapshot change.
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-artifacts
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7
+          if-no-files-found: ignore
+
 # NOTE: This workflow build-checks; it never publishes or deploys. Releasing to npm lives in
 # release.yml (changesets opens a "Version Packages" PR; merging it is what publishes), and
 # deploying the docs site to GitHub Pages lives in docs-deploy.yml.
