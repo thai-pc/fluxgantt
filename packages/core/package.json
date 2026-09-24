@@ -1,6 +1,6 @@
 {
   "name": "@fluxgantt/core",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "FluxGantt headless engine \u2014 state, compute, render, interaction, IO.",
   "license": "MIT",
   "keywords": [
