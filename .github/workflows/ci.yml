@@ -19,10 +19,11 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           # Read from .nvmrc so CI and local dev cannot drift. A bare `22` silently resolves to
-          # the newest 22.x, which hid a real local breakage: `size-limit` 13 requires Node
-          # >= 22.18 (it calls `fs.glob` with `withFileTypes`, added in 22.2), so on an older
-          # 22.x `pnpm size` died with an opaque `TypeError: i.isFile is not a function` while
-          # CI stayed green.
+          # the newest 22.x, which hid a real local breakage: `size-limit` declares
+          # `engines.node: ^22.19.0 || ^24.5.0 || >=26` as of 14, and even before that it needed
+          # >= 22.18 in practice (it calls `fs.glob` with `withFileTypes`, added in 22.2), so on
+          # an older 22.x `pnpm size` died with an opaque `TypeError: i.isFile is not a function`
+          # while CI stayed green.
           node-version-file: .nvmrc
           cache: pnpm
 
@@ -65,10 +66,11 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           # Read from .nvmrc so CI and local dev cannot drift. A bare `22` silently resolves to
-          # the newest 22.x, which hid a real local breakage: `size-limit` 13 requires Node
-          # >= 22.18 (it calls `fs.glob` with `withFileTypes`, added in 22.2), so on an older
-          # 22.x `pnpm size` died with an opaque `TypeError: i.isFile is not a function` while
-          # CI stayed green.
+          # the newest 22.x, which hid a real local breakage: `size-limit` declares
+          # `engines.node: ^22.19.0 || ^24.5.0 || >=26` as of 14, and even before that it needed
+          # >= 22.18 in practice (it calls `fs.glob` with `withFileTypes`, added in 22.2), so on
+          # an older 22.x `pnpm size` died with an opaque `TypeError: i.isFile is not a function`
+          # while CI stayed green.
           node-version-file: .nvmrc
           cache: pnpm
 
