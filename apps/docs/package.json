@@ -15,7 +15,7 @@
     "@types/react": "^19.0.2",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "typescript": "^5.7.2",
+    "typescript": "^6.0.3",
     "vocs": "^2.10.0",
     "waku": "1.0.0-rc.1"
   },

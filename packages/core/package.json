@@ -88,7 +88,7 @@
     "jsdom": "^25.0.1",
     "size-limit": "^14.0.0",
     "tsup": "^8.3.5",
-    "typescript": "^5.7.2",
+    "typescript": "^6.0.3",
     "vitest": "^2.1.8"
   },
   "peerDependencies": {
