@@ -110,6 +110,47 @@ jobs:
         # project needs its own explicit script + CI step, not just an installed browser binary.
         run: pnpm test:webkit-canvas-dimension-guard
 
+      # The four steps below close a real gap: `playwright.config.ts` defines six projects, and
+      # until 2026-09 CI ran exactly two of them. `a11y` (30 tests), `mobile` (9) and
+      # `performance` (5) had no automatic gate at all — which made `.claude/rules/testing.md`'s
+      # "WCAG 2.1 AA" requirement unenforced, and the mount-time budgets in
+      # `tests/performance/canvas-mount.spec.ts` a local-only ritual. Each needs its own step
+      # because every `pnpm test:*` script is `--project=`-scoped (see the note above).
+      - name: "Accessibility (axe, WCAG 2.1 AA — .claude/rules/testing.md)"
+        run: pnpm test:a11y
+
+      - name: "Mobile / touch (Pixel 5, coarse pointer — spec-responsive-mobile.md §C)"
+        run: pnpm test:mobile
+
+      - name: "Canvas mount-time budgets (spec-canvas-auto-switch.md §9.1/§9.3)"
+        # These are wall-clock budgets on a shared runner. `playwright.config.ts` sets
+        # `workers: 1` under CI so no other project's browsers compete for CPU, and the committed
+        # budgets already carry a p75 × ~1.8-2x margin for exactly this environment — see the
+        # spec file's own calibration comment before touching a constant because of a CI flake.
+        run: pnpm test:performance
+
+      - name: "Visual regression (SVG + Canvas snapshots)"
+        # Baselines are per-platform (`<title>-visual-<platform>.png`), so the ubuntu runner needs
+        # its own `-linux.png` set alongside the `-darwin.png` files a macOS dev machine writes.
+        # Both are committed; NEITHER PLATFORM CAN REGENERATE THE OTHER'S — a darwin dev machine
+        # updating a snapshot must get the linux half from a CI run (this project was bootstrapped
+        # exactly that way: a throwaway `--update-snapshots` + `upload-artifact` pair on the PR that
+        # wired it up, removed once the 12 files were committed).
+        run: pnpm test:visual
+
+      - name: "Playwright report + failure artifacts"
+        # Without this, a visual or a11y failure on the runner is a log line with no image to look
+        # at — the diff/actual PNGs Playwright writes are the only way to judge a snapshot change.
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-artifacts
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7
+          if-no-files-found: ignore
+
 # NOTE: This workflow build-checks; it never publishes or deploys. Releasing to npm lives in
 # release.yml (changesets opens a "Version Packages" PR; merging it is what publishes), and
 # deploying the docs site to GitHub Pages lives in docs-deploy.yml.

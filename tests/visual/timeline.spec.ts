@@ -1,15 +1,12 @@
 import { test, expect, type Page } from '@playwright/test';
 import { pinToday } from '../helpers/pin-today.js';
 
-// Sample visual regression — currently SKIPPED because the baseline screenshot is
-// platform-dependent (macOS dev ≠ Linux CI) and the renderer has no stable output yet.
-// Enable when the SVG renderer is done: remove .skip, generate the baseline with
-//   pnpm test:visual --update-snapshots
-// (run on the same image as CI so the baseline matches).
-test.skip('gantt timeline — visual baseline', async ({ page }) => {
-  await page.setContent('<div style="width:200px;height:60px;background:#6366f1"></div>');
-  await expect(page).toHaveScreenshot('timeline.png');
-});
+// REMOVED, not un-skipped: the original `test.skip('gantt timeline — visual baseline')` scaffold
+// screenshotted a bare `<div style="background:#6366f1">` via `page.setContent` — it rendered no
+// chart and asserted nothing about the renderer. Every test below is a real snapshot of a real
+// mounted chart, which is what that placeholder was a stand-in for. Platform-dependence, the
+// reason it was skipped, is handled properly instead: baselines are committed per platform
+// (`-darwin.png` + `-linux.png`) and `ci.yml` runs this project on ubuntu.
 
 // --- Selection visual regression (spec-selection.md §12.6) ---------------------------------
 //
