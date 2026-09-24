@@ -20,14 +20,8 @@ jsGantt). Its headless core is fully decoupled from rendering, renders to SVG (C
 above 2000 tasks), and does all date/time math with the Temporal API.
 
 > [!NOTE]
-> **Pre-release — not on npm yet.** The packages are at `0.1.0` in-repo and not yet published,
-> while the tiers and API stabilize pre-1.0. Run FluxGantt **from source** for now:
-> ```bash
-> git clone https://github.com/thai-pc/fluxgantt
-> cd fluxgantt && pnpm install && pnpm build
-> pnpm --filter plain-html-demo dev   # or react-vite-demo / vue-vite-demo
-> ```
-> The `pnpm add @fluxgantt/core` command below is the target end-state once published.
+> **0.x — the API is still stabilizing pre-1.0.** Published and installable, but a minor bump
+> may change an exported type or an event name; see `CHANGELOG.md` in each package.
 
 ## Install
 

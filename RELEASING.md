@@ -26,19 +26,45 @@ your PR (with a changeset)  ->  master  ->  bot opens "chore: version packages" 
 Reviewing the version PR before merging it is the whole point of the design: it is the last place
 to see exactly which versions are about to exist, and to read the changelog as a consumer will.
 
-## Before the first release
+## Owner setup
 
-One-time owner setup, none of which can be done from a PR:
+Done, recorded here because each one is invisible in the repo and has to be re-done if the org or
+the repo is ever recreated:
 
-- [ ] **Claim the `@fluxgantt` npm scope.** It is currently unclaimed — `npm view @fluxgantt/core`
-      returns E404 — which means anyone could take it.
-- [ ] **Add the `NPM_TOKEN_FLUXGRANTT` repo secret** (an npm *automation* token, so 2FA does not
-      block CI). That is the name `release.yml` reads, spelling included — the existing secret has
-      a transposed `GRANTT`. Renaming it to `NPM_TOKEN_FLUXGANTT` is fine, but rename the secret
-      and the workflow together: a missing secret resolves to the empty string with no warning,
-      and the publish then fails much later with `ENEEDAUTH`.
-- [ ] **Settings → Actions → General → allow "Workflows can create and approve pull requests".**
-      Without it `changesets/action` cannot open the version PR.
+- [x] **The `@fluxgantt` npm org exists** and owns the scope (2026-09-24). Verify with
+      `curl -s -o /dev/null -w '%{http_code}' https://registry.npmjs.org/-/org/fluxgantt/user`
+      — 200 means claimed, 404 means gone.
+- [x] **`NPM_TOKEN_FLUXGRANTT` repo secret** (an npm *automation* token, so 2FA does not block
+      CI). That is the name `release.yml` reads, spelling included — the secret has a transposed
+      `GRANTT`. Renaming it to `NPM_TOKEN_FLUXGANTT` is fine, but rename the secret and the
+      workflow together: a missing secret resolves to the empty string with no warning, and the
+      publish then fails much later with `ENEEDAUTH`.
+- [x] **Settings → Actions → General → "Workflows can create and approve pull requests"**, or
+      `changesets/action` cannot open the version PR. Set via
+      `gh api -X PUT repos/thai-pc/fluxgantt/actions/permissions/workflow -f default_workflow_permissions=read -F can_approve_pull_request_reviews=true`
+      — deliberately leaving the token at `read`, because `release.yml` declares the write
+      permissions it needs itself.
+- [ ] **Settings → Pages → Source = GitHub Actions**, then dispatch **Deploy docs** once and
+      review the live site. Still outstanding: `gh api repos/thai-pc/fluxgantt/pages` → 404.
+
+### A note on the bot's version PR
+
+GitHub gates workflows on PRs opened by an app, so the "Version Packages" PR lands with **zero
+checks** and a status of `action_required` until someone approves the runs. Approve from the PR's
+Checks tab, or:
+
+```bash
+gh api -X POST repos/thai-pc/fluxgantt/actions/runs/<run-id>/approve
+```
+
+One approval per head commit — pushing a fixup to the bot branch needs another.
+
+### Registry propagation is not instant
+
+`npm view` and a direct `curl` to the registry returned **404 for several minutes** after a
+publish that had already succeeded (verified 2026-09-24: the run logged `Successfully published`
+at 15:07 UTC, the registry served 200 at ~15:14). Read the run log, not the registry, to decide
+whether a publish worked; check the registry afterwards to confirm what consumers get.
 
 ## Checking a release before it happens
 
