@@ -55,8 +55,13 @@ afterEach(() => {
  *  (unmocked) jsdom computed style. Safe canned defaults for all six baked properties, so a
  *  test that mocks only ONE property (e.g. a hostile `fill`) doesn't also trip the safety
  *  check — and warn — for the other five due to this jsdom limitation (spec §12.4). */
+// Colors here are written in `rgb()` form, not hex, because that is what a real browser's
+// `getComputedStyle().getPropertyValue('fill')` returns — and, since jsdom 30, what jsdom's
+// CSSOM serializes a hex back out as too (`setProperty('fill', '#abcdef')` then reads back
+// `rgb(171, 205, 239)`). Canned hex made these assertions pass under jsdom 25 only by
+// accident: the mock handed `exportSvg` a value no browser would have produced.
 const SAFE_STYLE_DEFAULTS: Record<string, string> = {
-  fill: '#111111',
+  fill: 'rgb(17, 17, 17)',
   stroke: 'none',
   'stroke-width': '2px',
   'stroke-dasharray': '4 2',
@@ -227,11 +232,14 @@ describe('exportSvg — computed-style baking', () => {
     // what this test pins is that the baked value reaches the output at all, and that the
     // `<style>` elements are gone from that same output.
     const h = createSvgRenderer(container, { tasks: baseTasks, dependencies: baseDeps });
-    mockComputedStyle({ fill: '#0a0a0a', stroke: '#27272a' });
+    // `rgb()` rather than `#0a0a0a`/`#27272a` for the reason given on SAFE_STYLE_DEFAULTS:
+    // this is the form a real `getComputedStyle` hands back, and the form jsdom's CSSOM
+    // serializes to. The point of the test is unchanged — a baked value reaches the output.
+    mockComputedStyle({ fill: 'rgb(10, 10, 10)', stroke: 'rgb(39, 39, 42)' });
     const out = exportSvg(h.svg);
 
-    expect(out).toContain('#0a0a0a');
-    expect(out).toContain('#27272a');
+    expect(out).toContain('rgb(10, 10, 10)');
+    expect(out).toContain('rgb(39, 39, 42)');
     expect(out).not.toContain('<style');
     // And nothing fell back to the light token defaults the renderer declared inline.
     expect(out).not.toContain('var(--fg-');
