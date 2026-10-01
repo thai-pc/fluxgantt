@@ -142,7 +142,7 @@ jobs:
         # Without this, a visual or a11y failure on the runner is a log line with no image to look
         # at — the diff/actual PNGs Playwright writes are the only way to judge a snapshot change.
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: playwright-artifacts
           path: |
