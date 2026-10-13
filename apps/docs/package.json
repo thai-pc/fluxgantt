@@ -16,13 +16,13 @@
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "typescript": "^6.0.3",
-    "vocs": "^2.10.0",
+    "vocs": "^2.10.2",
     "waku": "1.0.0-rc.1"
   },
   "optionalDependencies": {
-    "@rolldown/binding-darwin-x64": "1.2.9",
-    "@rolldown/binding-darwin-arm64": "1.2.9",
-    "@rolldown/binding-linux-x64-gnu": "1.2.9",
-    "@rolldown/binding-linux-arm64-gnu": "1.2.9"
+    "@rolldown/binding-darwin-x64": "1.2.13",
+    "@rolldown/binding-darwin-arm64": "1.2.13",
+    "@rolldown/binding-linux-x64-gnu": "1.2.13",
+    "@rolldown/binding-linux-arm64-gnu": "1.2.13"
   }
 }
