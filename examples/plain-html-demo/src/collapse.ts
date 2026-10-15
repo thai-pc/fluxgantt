@@ -14,15 +14,11 @@
 //              at the top in a fixed order either way, so both renderers run the same assertions.
 //   ?collapsed=a,b — ids passed verbatim as `GanttConfig.initialCollapsed`, exercising the
 //              construction-time headless path (§3.3) rather than a post-mount toggle.
-import { Temporal } from '@js-temporal/polyfill';
+import './temporal.js'; // must stay first: installs globalThis.Temporal where it is not native
 import { createGantt, toTaskId, type TaskInput } from '@fluxgantt/core';
 import { withRender } from '@fluxgantt/core/render';
 import { withInteraction } from '@fluxgantt/core/interaction';
-
-// `@fluxgantt/core` treats Temporal as an optional peerDependency and reads `globalThis.Temporal`
-// — installing it is the HOST APP's job. Guarded (`??=`) so this is a no-op on runtimes that
-// already ship native `Temporal` (this repo's Playwright Chromium), matching every other harness.
-(globalThis as { Temporal?: typeof Temporal }).Temporal ??= Temporal;
+import { withViewport } from '@fluxgantt/core/viewport';
 
 const params = new URLSearchParams(window.location.search);
 const pad = Number(params.get('pad') ?? '0');
@@ -102,12 +98,18 @@ const initialCollapsed = (collapsedParam ?? '')
   .filter((s) => s.length > 0)
   .map(toTaskId);
 
-const gantt = withInteraction(
-  withRender(
-    createGantt({
-      tasks: [...named, ...filler],
-      ...(initialCollapsed.length > 0 ? { initialCollapsed } : {}),
-    }),
+// `withViewport` drives `tests/e2e/viewport.spec.ts` + `tests/a11y/viewport.spec.ts`. `?density=`
+// seeds `GanttConfig.density`; the container (`#gantt`, style.css) is the scroll viewport.
+const densityParam = params.get('density');
+const gantt = withViewport(
+  withInteraction(
+    withRender(
+      createGantt({
+        tasks: [...named, ...filler],
+        ...(initialCollapsed.length > 0 ? { initialCollapsed } : {}),
+        ...(densityParam === 'compact' || densityParam === 'comfortable' ? { density: densityParam } : {}),
+      }),
+    ),
   ),
 );
 

@@ -36,7 +36,14 @@ Node >= 22.19 (see `.nvmrc` for the exact pinned version), pnpm 10+.
 3. `pnpm changeset` — describe the change (version bump + changelog are automated). Changes
    scoped entirely to `apps/*` or `examples/*` (docs site, example apps) need **no changeset** —
    those packages are `"private": true` and never published.
-4. Open a PR. CI must be green (lint, typecheck, test, e2e, size-limit, publish-readiness).
+   Examples are copied to the `stackblitz` branch at release time by
+   `tooling/scripts/build-stackblitz-examples.mjs`. An example may import only **published**
+   `@fluxgantt/*` entry points plus packages declared in its own `package.json` (react, vue,
+   `@js-temporal/polyfill`, ...), and no relative path outside its folder; otherwise the generated
+   copy fails CI. Each entry imports `./temporal.js` first, so the examples also run in browsers
+   without native Temporal.
+4. Open a PR. CI must be green (lint, typecheck, test, e2e, size-limit, publish-readiness, and
+   the StackBlitz clean-room build of the examples).
 
 Merging a PR never publishes anything. See [`RELEASING.md`](./RELEASING.md) for how a changeset
 becomes an npm release.

@@ -13,7 +13,7 @@
 //   const gantt = withIo(createGantt({ tasks, dependencies }));
 //   gantt.exportJson();
 //
-// `exportSvg`/`exportPng` additionally need a live SVG mount, which only `withRender` provides
+// `exportSvg`/`exportPng` additionally need a live mount (SVG or Canvas), which only `withRender` provides
 // — they read the SHARED mount slot on `GanttInternal`, so it does not matter whether this
 // mixin or another one was applied first (composition order is irrelevant, §2.2).
 import type { GanttInstance, ImportSummary } from '../gantt.js';
@@ -26,6 +26,8 @@ import {
   importCsv as importCsvFn,
   importJson as importJsonFn,
 } from './index.js';
+import { isValidBackground } from './export-png.js';
+import type * as CanvasPngModule from './export-canvas-png.js';
 import type {
   ExportBundle,
   ExportCsvOptions,
@@ -91,21 +93,37 @@ export interface IoCapability {
   importCsv(csv: string, options?: ImportCsvOptions): ImportSummary;
 
   /**
-   * Serializes the currently-mounted SVG to a self-contained string (XML declaration,
+   * Serializes the currently-mounted chart to a self-contained SVG string (XML declaration,
    * explicit xmlns, resolved computed styles baked in, no interactive-only chrome).
    * Throws if the instance was never mounted, or has been unmounted/destroyed — unlike
    * exportJson/exportCsv, there is no sensible empty-but-valid result to fall back to.
    * Requires `withRender()` to have been applied (nothing can be mounted otherwise).
+   *
+   * Works in Canvas mode too (above the auto-switch threshold): the full chart, every row, is
+   * rebuilt as a throwaway SVG from what the canvas last painted, then run through the same
+   * pipeline. Synchronous; above 5,000 VISIBLE rows (collapsed
+   * descendants do not count) it throws, collapsing rows gets a bigger plan under the cap. It
+   * blocks the main thread while it runs: about 2 s at 5,000 rows with native Temporal and about
+   * 6 s with `@js-temporal/polyfill` (roughly 1 s / 3 s at 2,100 rows).
+   * `inlineComputedStyle: false` skips the style-bake loop and is the fast path for huge charts.
    */
   exportSvg(options?: ExportSvgOptions): string;
 
   /**
-   * Rasterizes the currently-mounted chart to a PNG. Internally calls exportSvg() to get a
+   * Rasterizes the currently-mounted chart to a PNG. In SVG mode the output is limited to 8,192 px
+   * per side and 16.7 M px total (about 255 rows at default density and `scale` 1), so a chart of
+   * more than a few hundred rows rejects there; Canvas mode allows far more (see below). Internally calls exportSvg() to get a
    * baked/sanitized SVG string, then draws it onto a canvas. Async because it waits for the
    * browser to decode the SVG image before it can rasterize. Same throw-if-not-mounted
    * posture as exportSvg(), but delivered as a REJECTED promise, not a synchronous throw
    * (implemented as an `async function` specifically so this holds for every validation
    * error, not just the DOM-not-ready one).
+   *
+   * In Canvas mode the whole chart (not just the visible window) is painted straight into an
+   * offscreen canvas, so the output is a poster-sized raster: roughly 2,047 rows at default
+   * density is already 65,535 px tall, and Safari/WebKit's canvas-area ceiling is far lower.
+   * Past the browser's limits it rejects with an actionable error; for large charts prefer
+   * `exportSvg()` (vector, no pixel limit) or lower `scale`.
    */
   exportPng(options?: ExportPngOptions): Promise<Blob>;
 }
@@ -152,13 +170,36 @@ export function withIo<T extends GanttInstance>(instance: T): T & IoCapability {
     },
 
     exportSvg(options?: ExportSvgOptions): string {
-      const handle = internal.assertMountedSvg('exportSvg');
-      return exportSvgFn(handle.svg, options);
+      const handle = internal.assertMounted('exportSvg');
+      if ('svg' in handle) return exportSvgFn(handle.svg, options);
+      // Canvas mode: serialize a throwaway, un-windowed SVG built from the painted state.
+      const src = handle.createExportSvg();
+      try {
+        return exportSvgFn(src.svg, options);
+      } finally {
+        src.dispose();
+      }
     },
 
     async exportPng(options?: ExportPngOptions): Promise<Blob> {
-      const handle = internal.assertMountedSvg('exportPng');
-      return exportPngFn(handle.svg, options);
+      const handle = internal.assertMounted('exportPng');
+      if ('svg' in handle) return exportPngFn(handle.svg, options);
+      // Argument errors first (as in SVG mode), before the chunk load opens an await window.
+      const sc = options?.scale ?? 1;
+      if (!Number.isFinite(sc) || sc <= 0) {
+        throw new Error(`gantt.exportPng: invalid scale (${sc}) — must be a finite number > 0`);
+      }
+      const bg = options?.background ?? '#ffffff';
+      if (!isValidBackground(bg)) throw new Error(`gantt.exportPng: invalid background "${bg}"`);
+      let mod: typeof CanvasPngModule;
+      try {
+        mod = await import('./export-canvas-png.js');
+      } catch (e) {
+        throw new Error('gantt.exportPng: failed to load the Canvas export module', { cause: e });
+      }
+      // The await opened a window for unmount()/remount()/destroy(); the module re-checks
+      // liveness before painting so it never paints a dead handle.
+      return mod.exportCanvasPng(handle, options, () => internal.getMountState()?.rendererHandle === handle);
     },
   };
 

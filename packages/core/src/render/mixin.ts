@@ -67,8 +67,9 @@ export interface RenderCapability {
    * `mount()` call. Interaction hooks are consulted inside this method, so applying
    * `withInteraction` to an already-mounted instance has no effect until the next remount.
    *
-   * Drag-move/drag-resize/drag-create-dependency and `exportSvg()`/`exportPng()` are SVG-only —
-   * a Canvas-rendered chart supports click-select and keyboard navigation, but not those.
+   * Drag-move/drag-resize/drag-create-dependency are SVG-only — a Canvas-rendered chart
+   * supports click-select and keyboard navigation, but not those. `exportSvg()`/`exportPng()`
+   * (from `withIo`) work in both modes.
    */
   mount(container: HTMLElement): void;
   unmount(): void;
@@ -169,7 +170,12 @@ async function mountCanvasAsync(
 
   let handle: CanvasRendererHandle;
   try {
-    handle = canvasModule.createCanvasRenderer(container, renderInput(internal), rendererOptions(internal));
+    handle = canvasModule.createCanvasRenderer(
+      container,
+      renderInput(internal),
+      rendererOptions(internal),
+      createSvgRenderer,
+    );
   } catch (constructErr) {
     if (superseded()) return; // superseded — abandon silently
     const reason: FallbackReason =
@@ -514,6 +520,9 @@ function renderInput(internal: GanttInternal): SvgRendererInput {
  */
 function rendererOptions(internal: GanttInternal): SvgRendererOptions & CanvasRendererOptions {
   const config = internal.config;
+  // A density pushed at runtime (`withViewport`/`withResponsive`) wins over the construction
+  // default, so a remount or the async Canvas mount paints at it on the first paint.
+  const density = internal.density ?? config.density;
   // `exactOptionalPropertyTypes` — only include a key when the corresponding config value is
   // actually set; an explicit `undefined` value on an optional property that isn't typed
   // `X | undefined` is a compile error, not just redundant.
@@ -522,7 +531,7 @@ function rendererOptions(internal: GanttInternal): SvgRendererOptions & CanvasRe
     // any effect()/computed() callback), so there is no active subscriber to register against
     // regardless; `.peek()` makes that intent explicit.
     viewMode: internal.viewMode.peek(),
-    ...(config.density !== undefined ? { density: config.density } : {}),
+    ...(density !== undefined ? { density } : {}),
     ...(config.locale !== undefined ? { locale: config.locale } : {}),
     ...(config.ariaLabel !== undefined ? { ariaLabel: config.ariaLabel } : {}),
     ...(config.messages !== undefined ? { messages: config.messages } : {}),
@@ -532,7 +541,7 @@ function rendererOptions(internal: GanttInternal): SvgRendererOptions & CanvasRe
     // A readOnly chart must not render the connector handles — they are an interactive
     // affordance whose recognizer is NOT wired when readOnly, so rendering them would be a
     // misleading dead control. (SVG-only; Canvas has no connector-handle affordance in v1.)
-    showLinkHandles: !config.readOnly,
+    showLinkHandles: !config.readOnly && config.enableDependencyDrag !== false,
   };
   return internal.taskStore.size === 0 ? { ...opts, timeRange: emptyStateTimeRange(internal) } : opts;
 }

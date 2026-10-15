@@ -1,6 +1,7 @@
 // Public prop/emit/config/result types for @fluxgantt/vue (spec-vue-wrapper.md §2).
 import type { Ref } from 'vue';
 import type { RenderCapability } from '@fluxgantt/core/render';
+import type { ViewportCapability } from '@fluxgantt/core/viewport';
 import type {
   DateInput,
   Dependency,
@@ -10,6 +11,8 @@ import type {
   GanttConfig,
   GanttInstance,
   Task,
+  TaskActivatedPayload,
+  TaskContextRequestedPayload,
   TaskId,
   TaskInput,
   ViewMode,
@@ -20,7 +23,7 @@ import type {
  * Config accepted by `useFluxGantt` — identical shape to `GanttConfig`, no additions.
  *
  * Unlike react's `UseFluxGanttConfig`, this does NOT add discrete `onX` callback fields for
- * the 8 `GanttEventMap` events (resolution #1: Vue's idiom for that is `defineEmits`/template
+ * the 10 bridged `GanttEventMap` events (resolution #1: Vue's idiom for that is `defineEmits`/template
  * `@x` listeners, wired by `<FluxGantt>` itself — see `FluxGantt.ts` — NOT a composable-level
  * config field, since `emit` only exists inside a component's `setup()` context, not inside a
  * freestanding composable). `onTaskChange` is inherited unchanged from `GanttConfig` — the
@@ -41,7 +44,7 @@ export interface UseFluxGanttResult {
    *  because a Vue composable's body runs exactly once per owning component instance
    *  (`setup()` itself only runs once; Vue does not re-invoke it the way React re-invokes a
    *  hook on every render) — see `use-flux-gantt.ts`'s module doc-comment. */
-  readonly instance: GanttInstance & RenderCapability;
+  readonly instance: GanttInstance & RenderCapability & ViewportCapability;
 }
 
 /**
@@ -59,7 +62,7 @@ export interface UseFluxGanttResult {
 export type FluxGanttProps = GanttConfig;
 
 /**
- * The 8 discrete typed emits — one per existing `GanttEventMap` event (resolution #1).
+ * The 10 discrete typed emits — one per bridged `GanttEventMap` event (resolution #1).
  *
  * Declared as a plain call-signature interface, NOT via `defineEmits<T>()` — that's a
  * `<script setup>`-only compiler macro, unavailable to this package's plain-`.ts`
@@ -80,10 +83,15 @@ export interface FluxGanttEmits {
   (event: 'dependency-added', dependency: Dependency): void;
   (event: 'dependency-removed', dependencyId: DependencyId): void;
   (event: 'critical-path-computed', criticalTaskIds: readonly TaskId[]): void;
+  /** Double-click, Enter on a leaf row, or F2. Fires in `readOnly` charts too. */
+  (event: 'task-activated', payload: TaskActivatedPayload): void;
+  /** Right-click, ContextMenu / Shift+F10, or touch long-press. Call `payload.preventDefault()`
+   *  synchronously to suppress the native menu. Fires in `readOnly` charts too. */
+  (event: 'task-context-requested', payload: TaskContextRequestedPayload): void;
 }
 
 /** Type of the value `<FluxGantt ref="...">` exposes via `setup()`'s `expose()`. */
-export type FluxGanttRef = GanttInstance & RenderCapability;
+export type FluxGanttRef = GanttInstance & RenderCapability & ViewportCapability;
 
 // Re-exported for FluxGantt.ts's `PropType<T>` casts (kept here, not inlined, so the prop
 // declaration and this file's own type surface stay adjacent and easy to audit together).

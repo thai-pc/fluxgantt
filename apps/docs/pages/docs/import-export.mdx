@@ -37,9 +37,36 @@ const blob = await gantt.exportPng();       // Promise<Blob> — rasterized PNG
 
 - `exportSvg()` bakes computed styles inline and adds the XML declaration + `xmlns`, so the
   string is a standalone SVG file.
-- `exportPng()` is **async** (it waits for the browser to decode the SVG before rasterizing)
+- `exportPng()` is **async** (it waits for the browser to decode the SVG, or in Canvas mode for
+  the Canvas export module to load, before rasterizing)
   and returns a `Blob`. Both **throw / reject** if the instance was never mounted (there is no
   sensible empty result for a picture of nothing).
+
+### Exporting a large (Canvas-mode) chart
+
+Both methods also work above the 2000-task auto-switch threshold, when the chart is drawn on a
+canvas. Wait for `renderer:selected` first: until the Canvas module has loaded the instance is
+not yet mounted and the call throws the usual "not mounted" error. The export always contains
+the **whole** chart (every row, collapsed subtrees omitted), not just the scrolled-into-view
+window, and never the selection or focus ring.
+
+- **Prefer `exportSvg()` for big charts.** It is vector and has no pixel limit. It rebuilds the
+  chart off-screen in one synchronous call, so it blocks the main thread for roughly a second
+  per 2,000 rows, and it throws above 5,000 **visible** rows (collapsed descendants are not
+  counted, so collapsing rows gets a larger plan under the cap). Measured main-thread block at
+  5,000 rows: about 2 s with native Temporal and about 6 s with `@js-temporal/polyfill` (about
+  1 s and 3 s at 2,100 rows). It is synchronous, so the page is unresponsive meanwhile; trigger it
+  from an explicit user action. `exportSvg({ inlineComputedStyle: false })` is a little faster.
+- **`exportPng()` paints the full chart into one canvas**, so the PNG is poster-sized: about
+  2,047 rows at the default density is already 65,535 px tall. It rejects with an actionable
+  error past the browser's canvas limits (65,535 px per side; a total of ~134 million pixels,
+  which is 512 MiB of memory; far less on Safari, where about 2,000 rows needs `scale` near
+  0.4). Lower `scale`, use a more compact density, collapse rows, or use `exportSvg()`. The same
+  5,000-visible-row cap applies.
+- **SVG-mode `exportPng()` is stricter.** Below the Canvas threshold the PNG is rasterized through
+  an image and limited to 8,192 px per side and about 16.7 million pixels, which is about 255
+  rows at the default density and `scale: 1`. A 1,500-task chart in SVG mode therefore rejects,
+  while a 2,001-task chart (Canvas mode) can succeed. Use `exportSvg()` or lower `scale`.
 
 ```ts
 // Trigger a download of the PNG in the browser:

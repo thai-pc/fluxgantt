@@ -18,7 +18,13 @@ export default defineConfig({
     'interaction/index': 'src/interaction/index.ts',
     'theme/index': 'src/theme/index.ts',
     'responsive/index': 'src/responsive/index.ts',
+    'viewport/index': 'src/viewport/index.ts',
+    'conflicts/index': 'src/conflicts/index.ts',
+    'edit-hooks/index': 'src/edit-hooks/index.ts',
     'render/canvas-renderer': 'src/render/canvas-renderer.ts',
+    // Same reason as `render/canvas-renderer`: a deterministic chunk for `io/mixin.ts`'s dynamic
+    // `import('./export-canvas-png.js')`. Not in package.json `exports` (internal).
+    'io/export-canvas-png': 'src/io/export-canvas-png.ts',
   },
   format: ['esm', 'cjs'],
   // Required for esbuild to point the ESM output's dynamic import at this same compiled

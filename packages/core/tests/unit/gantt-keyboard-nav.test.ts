@@ -455,3 +455,66 @@ describe('keyboard-nav — facade wiring', () => {
     });
   });
 });
+
+describe('keyboard-nav — pointer selection moves the roving focus', () => {
+  function click(target: Element, init: { ctrlKey?: boolean } = {}): void {
+    for (const type of ['pointerdown', 'pointerup']) {
+      const e = new MouseEvent(type, { bubbles: true, cancelable: true, clientX: 5, clientY: 5, button: 0, ...init });
+      Object.defineProperty(e, 'pointerId', { value: 1 });
+      target.dispatchEvent(e);
+    }
+  }
+
+  it('clicking a bar makes it the roving row, so ArrowDown continues from it (not from the old row)', () => {
+    const gantt = threeTaskGantt();
+    gantt.mount(container);
+    expect(row('a').getAttribute('tabindex')).toBe('0');
+    click(row('b').querySelector('.fg-task__bar')!);
+    expect(gantt.getSelection()).toEqual([toTaskId('b')]);
+    expect(row('b').getAttribute('tabindex')).toBe('0');
+    dispatchKey(row('b'), 'ArrowDown');
+    expect(gantt.getSelection()).toEqual([toTaskId('c')]);
+    expect(row('c').getAttribute('tabindex')).toBe('0');
+  });
+
+  it('the reviewed repro: click a bar, then ArrowDown from the old roving row no longer goes nowhere', () => {
+    const gantt = threeTaskGantt();
+    gantt.mount(container);
+    click(row('c').querySelector('.fg-task__bar')!);
+    // Keyboard focus is on `c` now; ArrowUp reaches `b` and selects it.
+    dispatchKey(row('c'), 'ArrowUp');
+    expect(gantt.getSelection()).toEqual([toTaskId('b')]);
+  });
+
+  it('a Ctrl+click toggle also moves the roving row', () => {
+    const gantt = threeTaskGantt();
+    gantt.mount(container);
+    click(row('c').querySelector('.fg-task__bar')!, { ctrlKey: true });
+    expect(row('c').getAttribute('tabindex')).toBe('0');
+  });
+
+  it('programmatic focus() on a row makes it the roving row (Enter then acts on it)', () => {
+    const gantt = threeTaskGantt();
+    gantt.mount(container);
+    (row('c') as unknown as HTMLElement).focus();
+    dispatchKey(row('c'), 'ArrowUp');
+    expect(gantt.getSelection()).toEqual([toTaskId('b')]);
+  });
+
+  it('focusin from a right-click focus (no selection change) also moves the roving row', () => {
+    const gantt = threeTaskGantt();
+    gantt.mount(container);
+    row('b').dispatchEvent(new FocusEvent('focusin', { bubbles: true }));
+    dispatchKey(row('b'), 'ArrowDown');
+    expect(gantt.getSelection()).toEqual([toTaskId('c')]);
+  });
+
+  it('the renderer focus restore after a Shift+Arrow repaint does not reset the range anchor', () => {
+    const gantt = threeTaskGantt();
+    gantt.mount(container);
+    (row('a') as unknown as HTMLElement).focus();
+    dispatchKey(row('a'), 'ArrowDown', { shiftKey: true });
+    dispatchKey(row('b'), 'ArrowDown', { shiftKey: true });
+    expect(gantt.getSelection().map(String).sort()).toEqual(['a', 'b', 'c']);
+  });
+});

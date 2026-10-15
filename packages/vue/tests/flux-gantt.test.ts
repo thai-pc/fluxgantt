@@ -3,6 +3,7 @@ import { mount } from '@vue/test-utils';
 import { toTaskId } from '@fluxgantt/core';
 import type { GanttInstance, TaskInput } from '@fluxgantt/core';
 import type { RenderCapability } from '@fluxgantt/core/render';
+import type { ViewportCapability } from '@fluxgantt/core/viewport';
 import { FluxGantt } from '../src/FluxGantt.js';
 
 function taskInput(id: string, start: string, end: string, extra: Partial<TaskInput> = {}): TaskInput {
@@ -232,7 +233,7 @@ describe('<FluxGantt>', () => {
   // have no compiler-enforced link (§9's "genuinely new open question", resolved as a required
   // guard, not optional). This is a cheap runtime tripwire against the two lists silently
   // drifting apart as @fluxgantt/core's GanttConfig/GanttEventMap evolve.
-  it('runtime props/emits declarations match GanttConfig / the 8 GanttEventMap events (drift guard)', () => {
+  it('runtime props/emits declarations match GanttConfig / the 10 bridged GanttEventMap events (drift guard)', () => {
     const componentOptions = FluxGantt as unknown as {
       props: Record<string, unknown>;
       emits: Record<string, unknown>;
@@ -246,6 +247,7 @@ describe('<FluxGantt>', () => {
       'density',
       'locale',
       'readOnly',
+      'enableDependencyDrag',
       'onTaskChange',
     ].sort();
     const expectedEmitKeys = [
@@ -257,9 +259,79 @@ describe('<FluxGantt>', () => {
       'dependency-added',
       'dependency-removed',
       'critical-path-computed',
+      'task-activated',
+      'task-context-requested',
     ].sort();
 
     expect(Object.keys(componentOptions.props).sort()).toEqual(expectedPropKeys);
     expect(Object.keys(componentOptions.emits).sort()).toEqual(expectedEmitKeys);
   });
+
+  it('exposes the viewport capability through the component proxy', () => {
+    const wrapper = mount(FluxGantt, {
+      props: { tasks: [taskInput('a', '2026-01-05T09:00', '2026-01-06T09:00')] },
+      attachTo: document.body,
+    });
+    const instance = wrapper.vm as unknown as GanttInstance & RenderCapability & ViewportCapability;
+    const seen: unknown[] = [];
+    instance.on('viewport:changed', (p) => seen.push(p));
+    expect(instance.scrollToTask(toTaskId('a'))).toBe(true);
+    expect(instance.scrollToDate('2026-01-05')).toBe(true);
+    instance.setDensity('compact');
+    expect(seen).toEqual([{ viewMode: 'week', density: 'compact' }]);
+    wrapper.unmount();
+  });
+
+  describe('edit hooks (task-activated / task-context-requested)', () => {
+    const tasks = [taskInput('a', '2026-01-05T09:00', '2026-01-06T09:00')];
+
+    it('emits task-activated with the payload on double-click', async () => {
+      const wrapper = mount(FluxGantt, { props: { tasks }, attachTo: document.body });
+      const bar = wrapper.element.querySelector('.fg-task__bar')!;
+      bar.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, clientX: 5, clientY: 6 }));
+      const emitted = wrapper.emitted('task-activated');
+      expect(emitted).toHaveLength(1);
+      expect(emitted![0]![0]).toMatchObject({ taskId: 'a', part: 'bar', source: 'pointer', clientX: 5, clientY: 6 });
+      wrapper.unmount();
+    });
+
+    it('payload.preventDefault() in a Vue listener reaches the native contextmenu (sync emit)', () => {
+      let call = false;
+      const wrapper = mount(FluxGantt, {
+        props: {
+          tasks,
+          onTaskContextRequested: (p: { preventDefault(): void }) => {
+            if (call) p.preventDefault();
+          },
+        },
+        attachTo: document.body,
+      });
+      const bar = wrapper.element.querySelector('.fg-task__bar')!;
+      const fire = (): boolean =>
+        bar.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+      expect(fire()).toBe(true);
+      call = true;
+      expect(fire()).toBe(false);
+      expect(wrapper.emitted('task-context-requested')).toHaveLength(2);
+      wrapper.unmount();
+    });
+
+    it('unsubscribes on unmount', () => {
+      const wrapper = mount(FluxGantt, { props: { tasks }, attachTo: document.body });
+      const bar = wrapper.element.querySelector('.fg-task__bar')!;
+      wrapper.unmount();
+      bar.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, clientX: 1, clientY: 1 }));
+      expect(wrapper.emitted('task-activated')).toBeUndefined();
+    });
+  });
+
+  it('enableDependencyDrag=false renders no link handles', () => {
+    const wrapper = mount(FluxGantt, {
+      props: { tasks: [taskInput('a', '2026-01-05T09:00', '2026-01-06T09:00')], enableDependencyDrag: false },
+      attachTo: document.body,
+    });
+    expect(wrapper.element.querySelectorAll('.fg-task__link-handle')).toHaveLength(0);
+    wrapper.unmount();
+  });
+
 });

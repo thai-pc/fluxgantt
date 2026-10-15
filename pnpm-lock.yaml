@@ -84,13 +84,13 @@ importers:
       '@fluxgantt/core':
         specifier: workspace:*
         version: link:../../packages/core
+      '@js-temporal/polyfill':
+        specifier: ^0.5.1
+        version: 0.5.1
     devDependencies:
       '@fluxgantt/tsconfig':
         specifier: workspace:*
         version: link:../../tooling/tsconfig
-      '@js-temporal/polyfill':
-        specifier: ^0.5.1
-        version: 0.5.1
       typescript:
         specifier: ^6.0.3
         version: 6.0.3
@@ -106,6 +106,9 @@ importers:
       '@fluxgantt/react':
         specifier: workspace:*
         version: link:../../packages/react
+      '@js-temporal/polyfill':
+        specifier: ^0.5.1
+        version: 0.5.1
       react:
         specifier: ^19.0.0
         version: 19.2.8
@@ -116,9 +119,6 @@ importers:
       '@fluxgantt/tsconfig':
         specifier: workspace:*
         version: link:../../tooling/tsconfig
-      '@js-temporal/polyfill':
-        specifier: ^0.5.1
-        version: 0.5.1
       '@types/react':
         specifier: ^19.0.2
         version: 19.2.18
@@ -143,6 +143,9 @@ importers:
       '@fluxgantt/vue':
         specifier: workspace:*
         version: link:../../packages/vue
+      '@js-temporal/polyfill':
+        specifier: ^0.5.1
+        version: 0.5.1
       vue:
         specifier: ^3.5.13
         version: 3.5.43(typescript@6.0.3)
@@ -150,9 +153,6 @@ importers:
       '@fluxgantt/tsconfig':
         specifier: workspace:*
         version: link:../../tooling/tsconfig
-      '@js-temporal/polyfill':
-        specifier: ^0.5.1
-        version: 0.5.1
       '@vitejs/plugin-vue':
         specifier: ^6.0.9
         version: 6.0.9(vite@8.3.1(@types/node@26.6.2)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))(vue@3.5.43(typescript@6.0.3))

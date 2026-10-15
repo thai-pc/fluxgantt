@@ -15,6 +15,9 @@ export type {
   ImportSummary,
   ViewportChangedPayload,
   RendererSelectedPayload,
+  TaskActivatedPayload,
+  TaskContextRequestedPayload,
+  TaskHitPart,
 } from './gantt.js';
 
 // Reactive primitives (spec §4.1, §5.2)
@@ -44,6 +47,8 @@ export type {
 } from './compute/index.js';
 export { computeCascade } from './compute/index.js';
 export type { CascadeResult, CascadeShift } from './compute/index.js';
+export { detectConflicts } from './compute/index.js';
+export type { DetectConflictsOptions } from './compute/index.js';
 export { computeRollup } from './compute/index.js';
 export type { RollupResult } from './compute/index.js';
 
@@ -91,4 +96,9 @@ export type {
   ViewMode,
   Density,
   SchedulingMode,
+  Conflict,
+  ConflictKind,
+  DependencyViolationConflict,
+  OutsideParentConflict,
+  InvalidSpanConflict,
 } from './types.js';

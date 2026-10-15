@@ -1,6 +1,7 @@
 // Public prop/config/result types for @fluxgantt/react (spec-react-wrapper.md §2).
 import type { CSSProperties, RefObject } from 'react';
 import type { RenderCapability } from '@fluxgantt/core/render';
+import type { ViewportCapability } from '@fluxgantt/core/viewport';
 import type {
   DateInput,
   Dependency,
@@ -8,6 +9,8 @@ import type {
   GanttConfig,
   GanttInstance,
   Task,
+  TaskActivatedPayload,
+  TaskContextRequestedPayload,
   TaskId,
 } from '@fluxgantt/core';
 
@@ -30,6 +33,14 @@ export interface UseFluxGanttConfig extends GanttConfig {
   readonly onDependencyAdded?: (dependency: Dependency) => void;
   readonly onDependencyRemoved?: (dependencyId: DependencyId) => void;
   readonly onCriticalPathComputed?: (criticalTaskIds: readonly TaskId[]) => void;
+  /** Double-click, Enter on a leaf row, or F2 on a task. Fires in `readOnly` charts too: it means
+   *  "the user asked to open this task", not "the task is editable". Read it with
+   *  `instance.getTask(payload.taskId)`. */
+  readonly onTaskActivated?: (payload: TaskActivatedPayload) => void;
+  /** Right-click, ContextMenu / Shift+F10, or touch long-press on a task. Call
+   *  `payload.preventDefault()` synchronously to suppress the native menu. Fires in `readOnly`
+   *  charts too. */
+  readonly onTaskContextRequested?: (payload: TaskContextRequestedPayload) => void;
 }
 
 export interface UseFluxGanttResult {
@@ -38,11 +49,13 @@ export interface UseFluxGanttResult {
    *  ref, per React's ref contract. */
   readonly ref: RefObject<HTMLDivElement | null>;
   /** The full `GanttInstance` (resolution #6 — no curated subset), plus `RenderCapability`
-   *  (`mount`/`unmount`/`refresh`), which lives on the opt-in `@fluxgantt/core/render` mixin
-   *  since the facade split — the wrapper composes it for you (see `use-flux-gantt.ts`), so
-   *  this surface is unchanged from a consumer's point of view. Stable identity across
-   *  renders (created once). */
-  readonly instance: GanttInstance & RenderCapability;
+   *  (`mount`/`unmount`/`refresh`, from the opt-in `@fluxgantt/core/render` mixin) and
+   *  `ViewportCapability` (`scrollToTask`/`scrollToDate`/`setDensity`, from the opt-in
+   *  `@fluxgantt/core/viewport` mixin; the `density` prop stays construction-time). The wrapper
+   *  composes both for you (see `use-flux-gantt.ts`). In SVG mode the scroll methods need the
+   *  container to be the scroll viewport: give it a bounded height and `overflow: auto`.
+   *  Stable identity across renders (created once). */
+  readonly instance: GanttInstance & RenderCapability & ViewportCapability;
 }
 
 export interface FluxGanttProps extends UseFluxGanttConfig {
@@ -51,4 +64,4 @@ export interface FluxGanttProps extends UseFluxGanttConfig {
 }
 
 /** Type of the value `<FluxGantt ref={...}>` exposes via `useImperativeHandle`. */
-export type FluxGanttRef = GanttInstance & RenderCapability;
+export type FluxGanttRef = GanttInstance & RenderCapability & ViewportCapability;

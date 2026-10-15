@@ -4,6 +4,7 @@
 // (parent + 2 children) to exercise parent-implies-children selection expansion
 // (spec-selection.md §3), and (b) 3+ top-level sibling rows with no hierarchy relationship so
 // Shift-click range-select has an unambiguous contiguous row range to assert against.
+import './temporal.js'; // must stay first: installs globalThis.Temporal where it is not native
 import { createGantt, toTaskId } from '@fluxgantt/core';
 import { withRender } from '@fluxgantt/core/render';
 import { withInteraction } from '@fluxgantt/core/interaction';

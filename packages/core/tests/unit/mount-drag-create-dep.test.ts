@@ -239,3 +239,69 @@ describe('drag-create-dep — facade event wiring', () => {
     expect(() => gantt.unmount()).not.toThrow();
   });
 });
+
+describe('enableDependencyDrag config flag', () => {
+  function mountFlag(flag: boolean | undefined, extra: Parameters<typeof createGantt>[0] = {}) {
+    const gantt = createGantt({
+      tasks: [
+        taskInput('t1', '2026-01-05T09:00', '2026-01-07T09:00'),
+        taskInput('t2', '2026-01-10T09:00', '2026-01-12T09:00'),
+      ],
+      ...(flag !== undefined ? { enableDependencyDrag: flag } : {}),
+      ...extra,
+    });
+    gantt.mount(container);
+    return gantt;
+  }
+  const group = (id: string): SVGGElement =>
+    container.querySelector(`.fg-task[data-task-id="${id}"]`) as SVGGElement;
+
+  it('false: no link handles are rendered and a pointer drag from the bar end creates no dependency', () => {
+    const gantt = mountFlag(false);
+    expect(container.querySelectorAll('.fg-task__link-handle')).toHaveLength(0);
+    const bar = group('t1').querySelector('.fg-task__bar')!;
+    const x = Number(bar.getAttribute('x')) + Number(bar.getAttribute('width'));
+    dispatchPointer(group('t1'), 'pointerdown', { pointerId: 1, clientX: x, clientY: 40, bubbles: true });
+    dispatchPointer(window, 'pointermove', { pointerId: 1, clientX: x, clientY: 80 });
+    dispatchPointer(group('t2'), 'pointerup', { pointerId: 1, clientX: x, clientY: 80, bubbles: true });
+    expect(gantt.getDependencies()).toHaveLength(0);
+  });
+
+  it('false: programmatic linkTasks is not gated', () => {
+    const gantt = mountFlag(false);
+    gantt.linkTasks(toTaskId('t1'), toTaskId('t2'), 'FS');
+    expect(gantt.getDependencies()).toHaveLength(1);
+  });
+
+  it('false: move still works (drag-move stays wired)', () => {
+    const gantt = mountFlag(false);
+    const moved = vi.fn();
+    gantt.on('task:moved', moved);
+    const bar = group('t1').querySelector('.fg-task__bar')!;
+    const x = Number(bar.getAttribute('x')) + 20;
+    dispatchPointer(group('t1'), 'pointerdown', { pointerId: 1, clientX: x, clientY: 40, bubbles: true });
+    dispatchPointer(window, 'pointermove', { pointerId: 1, clientX: x + 60, clientY: 40 });
+    dispatchPointer(window, 'pointerup', { pointerId: 1, clientX: x + 60, clientY: 40 });
+    expect(moved).toHaveBeenCalledTimes(1);
+  });
+
+  it('true and omitted: handles render and the link drag works', () => {
+    for (const flag of [true, undefined]) {
+      container.replaceChildren();
+      const gantt = mountFlag(flag);
+      expect(container.querySelectorAll('.fg-task__link-handle').length).toBeGreaterThan(0);
+      const h = handleEl(group('t1'), 'end');
+      const { cx, cy } = handleCoords(h);
+      dispatchPointer(h, 'pointerdown', { pointerId: 1, clientX: cx, clientY: cy, bubbles: true });
+      dispatchPointer(window, 'pointermove', { pointerId: 1, clientX: cx + 20, clientY: cy });
+      dispatchPointer(group('t2'), 'pointerup', { pointerId: 1, clientX: cx + 20, clientY: cy, bubbles: true });
+      expect(gantt.getDependencies()).toHaveLength(1);
+      gantt.destroy();
+    }
+  });
+
+  it('readOnly: true still wins over enableDependencyDrag: true', () => {
+    mountFlag(true, { readOnly: true });
+    expect(container.querySelectorAll('.fg-task__link-handle')).toHaveLength(0);
+  });
+});

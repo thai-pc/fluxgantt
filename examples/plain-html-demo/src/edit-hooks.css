@@ -1,0 +1,81 @@
+/* Fixture-only styles for `edit-hooks.html` (kept out of `style.css`: a shared edit would move
+   the other pages' visual baselines). */
+
+/* iOS has no `contextmenu` event on long-press: the callout and the text-selection loupe can only
+   be stopped with CSS (the documented host recipe). */
+#gantt .fg-timeline__row,
+#gantt canvas {
+  -webkit-touch-callout: none;
+  user-select: none;
+}
+
+.demo-menu {
+  position: fixed;
+  z-index: 10;
+  min-width: 10rem;
+  margin: 0;
+  padding: 0.25rem;
+  list-style: none;
+  background: #fff;
+  color: #18181b;
+  border: 1px solid #52525b;
+  border-radius: 6px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+}
+
+.demo-menu [role='menuitem'] {
+  padding: 0.5rem 0.75rem;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.demo-menu [role='menuitem']:focus {
+  outline: 2px solid #4338ca;
+  background: #eef2ff;
+}
+
+.demo-dialog {
+  position: fixed;
+  z-index: 11;
+  top: 20%;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(22rem, 90vw);
+  padding: 1rem;
+  background: #fff;
+  color: #18181b;
+  border: 1px solid #52525b;
+  border-radius: 8px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+}
+
+.demo-dialog h2 {
+  margin: 0 0 0.75rem;
+  font-size: 1rem;
+}
+
+.demo-dialog label {
+  display: block;
+  margin-bottom: 0.25rem;
+  font-size: 0.85rem;
+}
+
+.demo-dialog input {
+  box-sizing: border-box;
+  width: 100%;
+  margin-bottom: 0.75rem;
+  padding: 0.4rem;
+  font: inherit;
+  color: #18181b;
+  background: #fff;
+  border: 1px solid #52525b;
+}
+
+.demo-dialog button {
+  padding: 0.4rem 0.8rem;
+  font: inherit;
+  color: #18181b;
+  background: #f4f4f5;
+  border: 1px solid #52525b;
+  border-radius: 4px;
+}

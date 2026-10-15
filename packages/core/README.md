@@ -20,6 +20,19 @@ without it, also install the optional peer dependency:
 pnpm add @js-temporal/polyfill
 ```
 
+and install it once at your entry point, before the first `createGantt()`. Core never imports it
+itself, and throws "Temporal API is not available" when there is no global `Temporal`:
+
+```ts
+import { Temporal } from '@js-temporal/polyfill';
+
+// Once, before the first createGantt(). A no-op where Temporal is native.
+(globalThis as unknown as { Temporal?: typeof Temporal }).Temporal ??= Temporal;
+```
+
+Not every browser ships Temporal natively yet (Safari does not at the time of writing), and
+neither do Node 22 and 24.
+
 It is optional **at runtime only** — the bundle contains no polyfill code, and `getTemporal()`
 reads `globalThis.Temporal`, so a runtime with native Temporal needs nothing installed. But the
 published `.d.ts` files re-export `Temporal.ZonedDateTime` from `@js-temporal/polyfill`, which is

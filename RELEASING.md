@@ -126,6 +126,81 @@ git fetch --tags && git tag | tail
 Then read the rendered README on npmjs.com — relative links in it resolve against the registry,
 not the repo, so a link that works on GitHub can still be broken there.
 
+## StackBlitz examples
+
+The docs' examples page and the README link four StackBlitz projects (vanilla, React, Vue,
+headless) at `https://stackblitz.com/github/thai-pc/fluxgantt/tree/stackblitz/<dir>`. StackBlitz
+imports only that folder and installs it with npm, so it cannot open `examples/*` directly
+(`workspace:*`, a tsconfig that `extends` outside the folder, Playwright harness pages). Instead:
+
+- **The `stackblitz` branch is generated. Never edit or protect it.** It is a single
+  force-pushed commit of standalone copies written by `tooling/scripts/build-stackblitz-examples.mjs`
+  (an explicit allow-list of files, `workspace:*` replaced by `^<published version>`, tsconfig
+  flattened). Its `.stackblitz-stamp.json` records the source commit and the three versions.
+  The in-repo examples stay on `workspace:*` and keep driving Playwright.
+- **It refreshes itself after each release.** `.github/workflows/stackblitz-examples.yml` runs
+  when `Release` completes. Whether to regenerate is decided by `tooling/scripts/stackblitz-decide.mjs`
+  from state, not from the commit diff: it regenerates when the branch's stamp differs from the
+  source commit's versions and either that commit is the version bump (it then waits for the
+  registry, up to 20 minutes, see the note above) or the versions already resolve on the registry.
+  So ordinary master pushes are green no-ops once the branch is current, and a release whose run
+  never happened is picked up by the next master push. It never overwrites a stamp that has
+  **newer** versions than the source (a no-op, unless `force`). Then it generates with
+  `--check-registry` (fails if an example imports a subpath the published version does not export),
+  runs `npm install`, `typecheck` and `build` (`npm start` for headless) in a clean directory, and
+  only then force-pushes. A failure leaves the branch at the previous release.
+- **Jobs and trust.** `generate` runs only first-party, dependency-free Node (decide, generator,
+  artifact validation) and uploads the artifact. `verify` downloads it and does the clean-room
+  `npm install` (third-party install scripts), with a read token; its output is discarded.
+  `push` needs both, downloads **only** `generate`'s artifact (pinned by artifact ID), validates it
+  again (`tooling/scripts/validate-stackblitz-artifact.mjs`: no `.git`, no symlinks, no hidden or
+  unexpected entries) and commits it with a git directory outside the tree and a fresh config.
+- **Retrying:** "Re-run all jobs" on the failed run, or **Actions → StackBlitz examples → Run
+  workflow** with `source_ref` = the release commit, its `@fluxgantt/<pkg>@x.y.z` tag, or `master`
+  (`force` regenerates even when the stamp already matches, or is newer). `source_ref` must be a
+  branch or tag of this repo, or a commit on `master`; `refs/pull/*` is refused. The source ref
+  must contain the generator and the decide script, so nothing before them can be dispatched.
+  Runs are serialised by a `concurrency` group, and GitHub keeps only one **pending** run per
+  group: a newer run replaces a pending one. That is harmless, because the decision is state-based
+  and the next run catches up.
+- **Not bootstrapped (decided 2026-10-15).** The branch does not exist yet, so **every
+  StackBlitz link in the docs and README returns a 404 until the next release.** The examples
+  now import `@fluxgantt/core/viewport`, which `core@0.2.1` does not export, so the generator
+  refuses to build them against the current npm versions; the next release publishes that subpath
+  and its run populates the branch. Until the branch exists, only a version-bump commit or a
+  dispatch creates it (an ordinary master push is a no-op), so the runs stay green meanwhile.
+- **PR-time check:** the `stackblitz-examples` job in `ci.yml` does the same clean-room install,
+  typecheck and build against `pnpm pack` tarballs of the PR's packages, and `check-stackblitz-links.mjs`
+  asserts every link targets the `stackblitz` branch, a generated folder and a generated `?file=`.
+
+Reproduce locally (outside the repo, since npm must not see the workspace):
+
+```bash
+pnpm exec turbo run build --filter=@fluxgantt/core --filter=@fluxgantt/react --filter=@fluxgantt/vue
+pnpm --filter @fluxgantt/core --filter @fluxgantt/react --filter @fluxgantt/vue exec pnpm pack --pack-destination /tmp/fg-tgz
+node tooling/scripts/build-stackblitz-examples.mjs --out /tmp/fg-sb/out --versions local-tarballs=/tmp/fg-tgz
+node tooling/scripts/verify-stackblitz-examples.mjs /tmp/fg-sb/out --work /tmp/fg-sb/work
+# what the release run checks instead (registry versions + published subpaths):
+node tooling/scripts/build-stackblitz-examples.mjs --out /tmp/fg-sb/registry --check-registry
+```
+
+**One-time manual gate after the first generated release.** The automated checks prove the
+copies install and build with Node, not that StackBlitz's WebContainers run them. Whether Vite 8
+(Rolldown and lightningcss, native addons with wasm fallbacks) boots there is **unverified**. Open
+each of the four links once in **Chrome, Firefox and Safari** and confirm the chart renders and a
+drag works; record the result here. Safari matters most: it has no native Temporal, so it is the
+browser that proves the examples' `src/temporal.ts` polyfill bootstrap works.
+
+- Chrome: [ ] vanilla · [ ] React · [ ] Vue · [ ] headless (prints the critical path)
+- Firefox: [ ] vanilla · [ ] React · [ ] Vue · [ ] headless
+- Safari: [ ] vanilla · [ ] React · [ ] Vue · [ ] headless
+
+If Vite fails to boot, pin the Vite 7 line for the generated copies only, in
+`DEPENDENCY_OVERRIDES` at the top of the generator (the comment there names the keys), then
+dispatch the workflow with `force`. Every vanilla, React and Vue entry imports `./temporal.js`
+first, which installs `@js-temporal/polyfill` as `globalThis.Temporal` only where the browser has
+no native Temporal, so the copies do not depend on the visitor's browser.
+
 ## Notes
 
 - **Each package carries a real `LICENSE`,** and `files` lists it explicitly. pnpm does inject the

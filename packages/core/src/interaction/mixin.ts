@@ -81,8 +81,17 @@ function wireInto(
   // Selection is NOT gated by readOnly (confirmed): readOnly disables drag-move/drag-resize/
   // drag-create-dep, not click-select (spec-selection.md §5.5).
   const clickSelectDispose = enableClickSelect(handle, () => internal.taskStore.all(), {
-    onSelect: (taskId) => commitSelect(internal, taskId),
-    onToggle: (taskId) => commitToggleSelect(internal, taskId),
+    // A click also moves the keyboard-nav roving focus (set BEFORE the commit so the repaint that
+    // the selection change triggers already carries the new roving row). `keyboardNav` is
+    // assigned below; these only run on a later pointer event.
+    onSelect: (taskId) => {
+      keyboardNav.focusTask(taskId);
+      commitSelect(internal, taskId);
+    },
+    onToggle: (taskId) => {
+      keyboardNav.focusTask(taskId);
+      commitToggleSelect(internal, taskId);
+    },
     onRangeSelect: (ids) => commitRangeSelect(internal, ids),
     onClear: () => commitClearSelection(internal),
     density,
@@ -170,9 +179,11 @@ function wireInto(
       dragMoveDispose = enableDragMove(svgHandle, () => internal.taskStore.all(), {
         onTaskMoved: (taskId, newStart, newEnd) => commitDrag(internal, taskId, newStart, newEnd),
       });
-      dragCreateDepDispose = enableDragCreateDep(svgHandle, () => internal.taskStore.all(), {
-        onDependencyCreated: (fromTaskId, toTaskId) => commitCreateDep(instance, internal, fromTaskId, toTaskId),
-      });
+      if (config.enableDependencyDrag !== false) {
+        dragCreateDepDispose = enableDragCreateDep(svgHandle, () => internal.taskStore.all(), {
+          onDependencyCreated: (fromTaskId, toTaskId) => commitCreateDep(instance, internal, fromTaskId, toTaskId),
+        });
+      }
     }
     // Registered UNCONDITIONALLY, same posture as enableKeyboardNav's zoom case arms — Ctrl+wheel
     // mutates no store state, so readOnly has nothing to protect against here (spec-wheel-zoom.md §4).
@@ -214,7 +225,12 @@ function commitDrag(
   newStart: Temporal.ZonedDateTime,
   newEnd: Temporal.ZonedDateTime,
 ): void {
-  if (!internal.taskStore.has(taskId)) return; // task removed mid-drag (race) — nothing to commit
+  const task = internal.taskStore.get(taskId);
+  if (!task) return; // task removed mid-drag (race) - nothing to commit
+  // A drag that snapped to a zero-day delta changed nothing: writing it back would re-store the
+  // start as a ZonedDateTime (same instant) with no task:moved and a phantom history entry.
+  // End shifts by the same calendar delta, so comparing the start is enough.
+  if (normalizeDate(task.start, internal.calendar.timezone).epochNanoseconds === newStart.epochNanoseconds) return;
   // Reuses the SAME commitScheduleChange pipeline as moveTask/updateTask — guarantees the exact
   // same task:moved(task, prevStart) contract, not a separate ad hoc emit, AND groups the direct
   // move + any cascade shifts into ONE history entry. start+end always shift by the identical

@@ -36,7 +36,7 @@ export default defineConfig({
       // fires on Chromium — a deliberate "must not regress" case, §7.1) and shares this same
       // `testDir` — without this `testIgnore`, this Chromium-targeted project would ALSO pick it
       // up (via `testDir` globbing) and its WebKit-only assertions would legitimately fail here.
-      testIgnore: 'canvas-renderer-webkit-dimension-guard.spec.ts',
+      testIgnore: ['canvas-renderer-webkit-dimension-guard.spec.ts', 'canvas-export-webkit.spec.ts'],
       use: { ...devices['Desktop Chrome'] },
     },
     {
@@ -53,7 +53,9 @@ export default defineConfig({
       // this project), which the new harness's own row-count boundary math accounts for.
       name: 'webkit-canvas-dimension-guard',
       testDir: './tests/visual',
-      testMatch: 'canvas-renderer-webkit-dimension-guard.spec.ts',
+      // `canvas-export-webkit.spec.ts` (spec-canvas-export.md) adds the Canvas-mode export limits
+      // under WebKit: engine-behavior assertions only, no snapshots.
+      testMatch: ['canvas-renderer-webkit-dimension-guard.spec.ts', 'canvas-export-webkit.spec.ts'],
       use: { ...devices['Desktop Safari'] },
     },
     {

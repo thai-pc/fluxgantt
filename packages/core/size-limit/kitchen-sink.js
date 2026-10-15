@@ -9,7 +9,8 @@
 // force a budget bump — which golden rule 5 forbids. The floor was measured, not assumed (every
 // reduction attempted, including dropping the destroy-cleanup entirely, still left ~97 B over).
 // `withTheme` therefore has its own fixture, `with-theme.js`. Revisit if this budget ever gains
-// room.
+// room. `withViewport` and `withConflicts` are excluded for the same headroom reason and have
+// their own fixtures (`with-viewport.js`, `with-conflicts.js`).
 import { createGantt } from '@fluxgantt/core';
 import { withIo } from '@fluxgantt/core/io';
 import { withRender } from '@fluxgantt/core/render';

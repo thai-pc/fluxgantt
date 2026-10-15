@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>FluxGantt · edit hooks fixture</title>
+    <link rel="stylesheet" href="/src/style.css" />
+    <link rel="stylesheet" href="/src/edit-hooks.css" />
+  </head>
+  <body>
+    <main>
+      <h1>FluxGantt — edit hooks fixture</h1>
+      <p>
+        Composes <code>withEditHooks()</code> and implements the documented host recipes: an
+        accessible context menu opened on <code>task:context-requested</code> and a rename dialog
+        opened on <code>task:activated</code>. Query params: <code>?pad=N</code> (Canvas),
+        <code>?readonly=1</code>, <code>?nolinks=1</code>, <code>?touch=1</code>,
+        <code>?prevent=0</code> (host does not call <code>preventDefault()</code>).
+        Drives <code>tests/e2e/edit-hooks.spec.ts</code>.
+      </p>
+      <div id="gantt"></div>
+    </main>
+    <script type="module" src="/src/edit-hooks.ts"></script>
+  </body>
+</html>

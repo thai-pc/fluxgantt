@@ -5,11 +5,17 @@
 // snippet HERE; the check fails the build if the copies drift.
 // (The `withIo` import below sits outside the region on purpose — it is dev-only plumbing for
 // the e2e specs, not part of the quick-start.)
+// Temporal bootstrap first, outside the region: core needs `globalThis.Temporal`, which only some
+// browsers ship natively. See ./temporal.ts and /docs/installation.
+import './temporal.js';
 import { withIo } from '@fluxgantt/core/io';
 // Theming is its own opt-in mixin too (`@fluxgantt/core/theme`). Kept outside the quick-start
 // region deliberately: the region is byte-compared against the README and docs copies, and the
 // quick-start is about getting a chart on screen, not about every capability.
 import { withTheme } from '@fluxgantt/core/theme';
+// Scroll/density control is opt-in too (`@fluxgantt/core/viewport`); outside the quick-start region
+// for the same reason. Applied in the dev-only handle below so e2e specs can call it.
+import { withViewport } from '@fluxgantt/core/viewport';
 
 // #region quickstart
 import { createGantt, toTaskId } from '@fluxgantt/core';
@@ -84,6 +90,6 @@ syncPageChrome();
 // it the IO layer) is dead code the bundler drops. The quick-start snippet above deliberately
 // stays IO-free: a chart that never imports or exports should not download that code.
 if (import.meta.env.DEV) {
-  const devHandle = withIo(gantt);
+  const devHandle = withViewport(withIo(gantt));
   (window as unknown as { __gantt?: typeof devHandle }).__gantt = devHandle;
 }

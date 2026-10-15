@@ -17,7 +17,7 @@
 // outside `@fluxgantt/core`'s own tree (no react/vue/svelte).
 import type { InteractiveRendererHandle } from '../render/index.js';
 import { layoutRows, type RowLayout } from '../render/renderer-base.js';
-import type { Density, Task, TaskId } from '../types.js';
+import { toTaskId, type Density, type Task, type TaskId } from '../types.js';
 
 export interface KeyboardNavOptions {
   /** Arrow Up/Down: replace selection with exactly the newly focused task. */
@@ -97,6 +97,13 @@ export interface KeyboardNavHandle {
    * re-resolution is needed there.
    */
   syncFocusToRows: () => void;
+  /**
+   * Moves the roving focus (and the Shift-range anchor) to `id`, so a POINTER selection and the
+   * keyboard position never disagree: after clicking a bar, ArrowDown/Enter continue from that
+   * row instead of from wherever the last key press left off. Does not touch the DOM or the
+   * selection; a no-op after `dispose()`.
+   */
+  focusTask: (id: TaskId) => void;
 }
 
 /**
@@ -134,8 +141,18 @@ export function enableKeyboardNav(
   }
 
   handle.interactionRoot.addEventListener('keydown', onKeyDown);
+  // Listened on the PARENT (an HTML element): Blink treats an SVG element that has a focus-event
+  // listener as focusable, which would turn the `<svg>` itself into a stray Tab stop.
+  const focusRoot = handle.interactionRoot.parentElement!;
+  focusRoot.addEventListener('focusin', onFocusIn);
 
-  return { dispose, getFocusedTaskId, syncFocusToRows };
+  return { dispose, getFocusedTaskId, syncFocusToRows, focusTask };
+
+  function focusTask(id: TaskId): void {
+    if (disposed) return;
+    focusedTaskId = id;
+    anchorTaskId = id;
+  }
 
   function syncFocusToRows(): void {
     if (disposed) return;
@@ -170,6 +187,16 @@ export function enableKeyboardNav(
       }
     }
     clampFocus(rows);
+  }
+
+  // The roving row follows DOM focus: a pointer press on any part of a row (right-click
+  // included, which focuses the row natively) and a programmatic `.focus()` both land here. The
+  // renderer's own post-repaint focus restore targets `focusedTaskId` itself, so it is a no-op.
+  function onFocusIn(event: Event): void {
+    // Only a row element is ever focusable (roving tabindex), and it carries `data-task-id`.
+    const t = event.target as Element;
+    const id = handle.interactionRoot.contains(t) ? t.getAttribute('data-task-id') : null;
+    if (id !== null && id !== focusedTaskId) focusTask(toTaskId(id));
   }
 
   function getFocusedTaskId(): TaskId | undefined {
@@ -391,5 +418,6 @@ export function enableKeyboardNav(
     if (disposed) return;
     disposed = true;
     handle.interactionRoot.removeEventListener('keydown', onKeyDown);
+    focusRoot.removeEventListener('focusin', onFocusIn);
   }
 }

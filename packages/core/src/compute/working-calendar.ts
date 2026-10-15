@@ -17,7 +17,7 @@ type T = TemporalApi;
 type ZDT = Temporal.ZonedDateTime;
 type PlainDate = Temporal.PlainDate;
 
-const NS_PER_HOUR = 3_600_000_000_000n;
+export const NS_PER_HOUR = 3_600_000_000_000n;
 
 // --- Public API ------------------------------------------------------------
 
@@ -145,9 +145,9 @@ export function differenceInWorkingHours(
   return cmp < 0 ? hours : -hours;
 }
 
-// --- Internal --------------------------------------------------------------
+// --- Internal (exported for sibling compute modules only; NOT re-exported by the barrel) ----
 
-function weekdayCode(dayOfWeek: number): WeekdayCode {
+export function weekdayCode(dayOfWeek: number): WeekdayCode {
   switch (dayOfWeek) {
     case 1:
       return 'mon';
@@ -166,17 +166,17 @@ function weekdayCode(dayOfWeek: number): WeekdayCode {
   }
 }
 
-function isWorkingPlainDate(day: PlainDate, cal: WorkingCalendar, holidays: Set<string>): boolean {
+export function isWorkingPlainDate(day: PlainDate, cal: WorkingCalendar, holidays: Set<string>): boolean {
   return cal.workingDays.includes(weekdayCode(day.dayOfWeek)) && !holidays.has(day.toString());
 }
 
-function holidaySet(cal: WorkingCalendar, api: T): Set<string> {
+export function holidaySet(cal: WorkingCalendar, api: T): Set<string> {
   const set = new Set<string>();
   for (const h of cal.holidays) set.add(normalize(h, cal.timezone, api).toPlainDate().toString());
   return set;
 }
 
-function windowsFor(day: PlainDate, cal: WorkingCalendar, api: T): Array<{ start: ZDT; end: ZDT }> {
+export function windowsFor(day: PlainDate, cal: WorkingCalendar, api: T): Array<{ start: ZDT; end: ZDT }> {
   return cal.workingHours
     .map((w) => ({
       start: day.toZonedDateTime({ timeZone: cal.timezone, plainTime: parseTime(w.start, api) }),
@@ -186,7 +186,7 @@ function windowsFor(day: PlainDate, cal: WorkingCalendar, api: T): Array<{ start
     .sort((a, b) => api.ZonedDateTime.compare(a.start, b.start));
 }
 
-function parseTime(hhmm: string, api: T): Temporal.PlainTime {
+export function parseTime(hhmm: string, api: T): Temporal.PlainTime {
   const m = /^(\d{2}):(\d{2})$/.exec(hhmm);
   if (!m || m[1] === undefined || m[2] === undefined) {
     throw new Error(`invalid workingHours (expected "HH:MM"): ${hhmm}`);
@@ -194,7 +194,7 @@ function parseTime(hhmm: string, api: T): Temporal.PlainTime {
   return api.PlainTime.from({ hour: Number(m[1]), minute: Number(m[2]) });
 }
 
-function startOfDay(day: PlainDate, tz: string, api: T): ZDT {
+export function startOfDay(day: PlainDate, tz: string, api: T): ZDT {
   return day.toZonedDateTime({ timeZone: tz, plainTime: api.PlainTime.from('00:00') });
 }
 
@@ -202,11 +202,11 @@ function endOfDay(day: PlainDate, tz: string, api: T): ZDT {
   return day.toZonedDateTime({ timeZone: tz, plainTime: api.PlainTime.from('23:59:59.999999999') });
 }
 
-function maxZdt(a: ZDT, b: ZDT, api: T): ZDT {
+export function maxZdt(a: ZDT, b: ZDT, api: T): ZDT {
   return api.ZonedDateTime.compare(a, b) >= 0 ? a : b;
 }
 
-function minZdt(a: ZDT, b: ZDT, api: T): ZDT {
+export function minZdt(a: ZDT, b: ZDT, api: T): ZDT {
   return api.ZonedDateTime.compare(a, b) <= 0 ? a : b;
 }
 
@@ -225,7 +225,7 @@ function assertProgress(guard: number): void {
   }
 }
 
-function normalize(input: DateInput, tz: string, api: T): ZDT {
+export function normalize(input: DateInput, tz: string, api: T): ZDT {
   if (typeof input === 'string') return parseString(input, tz, api);
   if (input instanceof Date) {
     return api.Instant.fromEpochMilliseconds(input.getTime()).toZonedDateTimeISO(tz);

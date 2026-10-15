@@ -195,11 +195,11 @@ test.describe('SVG renderer', () => {
     await svgToggle(page, 'group-a').click();
     await expect(svgRow(page, 'leaf-a1')).toHaveCount(0);
 
-    // Navigate with arrows only — a bare `.focus()` would not update keyboard-nav's own
-    // tracked row (see the note in the Enter test above). From row 0, two ArrowDowns land on
+    // Focus row 0 (keyboard-nav's roving row follows DOM focus, so a bare `.focus()` on a row
+    // is enough; the toggle click above had moved it to `group-a`). From row 0, two ArrowDowns land on
     // `leaf-b` ONLY IF the hidden rows are skipped; a layout ignoring `collapsedIds` would put
     // `leaf-a1` there instead.
-    await page.locator('svg.fg-timeline [tabindex="0"]').first().focus();
+    await svgRow(page, 'phase-1').focus();
     await expect(svgRow(page, 'phase-1')).toBeFocused();
     await page.keyboard.press('ArrowDown'); // -> group-a
     await page.keyboard.press('ArrowDown'); // -> leaf-b (leaf-a1/leaf-a2 are hidden)

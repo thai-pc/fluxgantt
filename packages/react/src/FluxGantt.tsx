@@ -5,7 +5,7 @@ import { useFluxGantt } from './use-flux-gantt.js';
 import type { FluxGanttProps, FluxGanttRef } from './types.js';
 
 /**
- * Note on construction-only props: `viewMode`/`density`/`locale`/`readOnly`/`calendar` are
+ * Note on construction-only props: `viewMode`/`density`/`locale`/`readOnly`/`calendar`/`enableDependencyDrag` are
  * read only once, when the underlying `GanttInstance` is created (`GanttInstance` has no
  * `setViewMode`/`setDensity`/`setLocale`/`setReadOnly`/`setCalendar`). Changing these props
  * after mount is a no-op. A consumer who needs a prop-driven `viewMode` change (etc.) can force

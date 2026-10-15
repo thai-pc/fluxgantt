@@ -68,6 +68,64 @@ jobs:
       - name: Publish readiness (npm metadata on every publishable package)
         run: node tooling/scripts/check-publish-readiness.mjs
 
+      - name: StackBlitz links (docs/README links match the generator manifest)
+        run: node tooling/scripts/check-stackblitz-links.mjs
+
+      - name: Tooling unit tests (StackBlitz generator, node:test)
+        run: node --test 'tooling/scripts/__tests__/*.test.mjs'
+
+  stackblitz-examples:
+    # The examples link StackBlitz projects generated at release time from `examples/*` (see
+    # tooling/scripts/build-stackblitz-examples.mjs and stackblitz-examples.yml). This job proves,
+    # on every PR, that the generated copies still install, typecheck and build ON THEIR OWN against
+    # the PR's unreleased packages: packed tarballs instead of `workspace:*`, npm instead of pnpm,
+    # and a directory outside the workspace, so a hoisted or workspace-only dependency cannot hide.
+    # Unlike stackblitz-examples.yml, nothing here is uploaded or pushed and the token is read-only,
+    # so the third-party install scripts can share the job with the generator.
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 10.2.1
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install
+        # See the `build` job's Install step for why `--force` is needed here too.
+        run: pnpm install --frozen-lockfile --force
+
+      - name: Build the published packages
+        run: pnpm exec turbo run build --filter=@fluxgantt/core --filter=@fluxgantt/react --filter=@fluxgantt/vue
+
+      - name: Pack them (what npm would install)
+        # pnpm rewrites `workspace:*` inside each tarball to the workspace version; the generator
+        # then pins the transitive core to the local tarball with npm `overrides`.
+        run: pnpm --filter @fluxgantt/core --filter @fluxgantt/react --filter @fluxgantt/vue exec pnpm pack --pack-destination "$RUNNER_TEMP/tgz"
+
+      - name: Generate the StackBlitz copies (local-tarball mode)
+        run: node tooling/scripts/build-stackblitz-examples.mjs --out "$RUNNER_TEMP/sb/out" --versions "local-tarballs=$RUNNER_TEMP/tgz"
+
+      - name: Cache the npm download cache (the four clean-room installs)
+        # Only ~/.npm (content-addressed, integrity-checked tarballs), never node_modules: every
+        # install still resolves from scratch, so the clean room stays clean. The generated copies
+        # have no lockfile, hence the key on the example manifests.
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: stackblitz-npm-${{ runner.os }}-${{ hashFiles('examples/plain-html-demo/package.json', 'examples/react-vite-demo/package.json', 'examples/vue-vite-demo/package.json', 'tooling/stackblitz-templates/headless/package.json') }}
+          restore-keys: stackblitz-npm-${{ runner.os }}-
+
+      - name: Clean-room npm install + typecheck + build (+ start for headless)
+        run: node tooling/scripts/verify-stackblitz-examples.mjs "$RUNNER_TEMP/sb/out" --work "$RUNNER_TEMP/sb/work"
+
   e2e:
     runs-on: ubuntu-latest
     steps:

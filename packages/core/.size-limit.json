@@ -47,5 +47,26 @@
     "config": "size-limit/with-responsive.esbuild-config.mjs",
     "limit": "21 KiB",
     "gzip": true
+  },
+  {
+    "name": "Base + withRender + withViewport (scrollTo/setDensity chart, gzip)",
+    "path": "size-limit/with-viewport.js",
+    "config": "size-limit/with-viewport.esbuild-config.mjs",
+    "limit": "16 KiB",
+    "gzip": true
+  },
+  {
+    "name": "Base + withConflicts (headless conflict detector + watcher, gzip)",
+    "path": "size-limit/with-conflicts.js",
+    "config": "size-limit/with-conflicts.esbuild-config.mjs",
+    "limit": "10 KiB",
+    "gzip": true
+  },
+  {
+    "name": "Base + withRender + withEditHooks (dblclick/contextmenu/keyboard host hooks, gzip)",
+    "path": "size-limit/with-edit-hooks.js",
+    "config": "size-limit/with-edit-hooks.esbuild-config.mjs",
+    "limit": "16 KiB",
+    "gzip": true
   }
 ]

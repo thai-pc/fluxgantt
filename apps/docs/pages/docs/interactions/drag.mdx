@@ -41,7 +41,9 @@ yourself, so the events and undo behaviour are identical either way.
 | <kbd>↑</kbd> / <kbd>↓</kbd> | Move focus one row **and** select it, replacing the previous selection. No wraparound at either end | `select` | no |
 | <kbd>Shift</kbd>+<kbd>↑</kbd>/<kbd>↓</kbd> | Extend the selection from the anchor row | `select` | no |
 | <kbd>Space</kbd> | Toggle the focused row's selection | `select` / `deselect` | no |
-| <kbd>Enter</kbd> | Collapse/expand the focused row. No-op on a leaf | `toggleCollapse` | no |
+| <kbd>Enter</kbd> | Collapse/expand the focused row. On a leaf: nothing, unless [`withEditHooks`](/docs/api#edit-hooks) is applied, which then emits `task:activated` | `toggleCollapse` | no |
+| <kbd>F2</kbd> | With `withEditHooks`: emit `task:activated` for the focused row (summary rows too, where <kbd>Enter</kbd> still collapses) | — | no |
+| <kbd>ContextMenu</kbd> / <kbd>Shift</kbd>+<kbd>F10</kbd> | With `withEditHooks`: emit `task:context-requested` for the focused row | — | no |
 | <kbd>Delete</kbd> / <kbd>Backspace</kbd> | Remove the selection, as one undo step | `removeTask` | **yes** |
 | <kbd>Ctrl/Cmd</kbd>+<kbd>Z</kbd> | Undo | `undo` | **yes** |
 | <kbd>Ctrl/Cmd</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd> | Redo | `redo` | **yes** |

@@ -22,15 +22,18 @@ This file is the context entry point for AI. Details are split into rules under 
 
    | Fixture | Measured | Budget |
    |---|---|---|
-   | `createGantt()` only (hello world) | 7.71 KiB | 9 KiB |
-   | `+ withIo` | 12.67 KiB | 14 KiB |
-   | `+ withRender` | 14.74 KiB | 15 KiB |
-   | `+ withRender + withInteraction` | 19.17 KiB | 19.5 KiB |
-   | `+ withRender + withTheme` | 15.26 KiB | 16 KiB |
-   | `+ withRender + withInteraction + withResponsive` | 19.91 KiB | 21 KiB |
-   | kitchen sink (everything = the pre-split facade) | 23.82 KiB | 24 KiB |
+   | `createGantt()` only (hello world) | 7.61 KiB | 9 KiB |
+   | `+ withIo` | 13.03 KiB (includes ~250-300 B of measurement-only esbuild IIFE import helpers, not a consumer cost) | 14 KiB |
+   | `+ withRender` | 14.68 KiB | 15 KiB |
+   | `+ withRender + withInteraction` | 19.21 KiB | 19.5 KiB |
+   | `+ withRender + withTheme` | 15.19 KiB | 16 KiB |
+   | `+ withRender + withInteraction + withResponsive` | 19.98 KiB | 21 KiB |
+   | `+ withRender + withViewport` | 15.57 KiB | 16 KiB |
+   | `+ withConflicts` (headless) | 9.48 KiB | 10 KiB |
+| `+ withRender + withEditHooks` (not in the kitchen sink) | 15.99 KiB | 16 KiB |
+   | kitchen sink (everything = the pre-split facade) | 23.99 KiB | 24 KiB |
 
-   Hello world went 22.3 KiB → 7.71 KiB and the fully-composed instance 34.9 KiB → 23.82 KiB (the old "full core" check measured `dist/index.js` as a plain file, which code-splitting has since hollowed out; the kitchen-sink fixture replaces it). Non-core features are plugins.
+   Hello world went 22.3 KiB → 7.61 KiB and the fully-composed instance 34.9 KiB → 23.99 KiB (the old "full core" check measured `dist/index.js` as a plain file, which code-splitting has since hollowed out; the kitchen-sink fixture replaces it). Non-core features are plugins.
 
    The `withRender + withInteraction` budget was raised 19 → 19.5 KiB once, for the i18n scaffold (`GanttConfig.messages`), after the levers this rule prefers were measured and came up ~67 B short: merging the two renderer-option builders recovered only 13 B, and ~68 B of the cost is the irreducible price of threading host messages through both renderers. Justified as WCAG-adjacent — the strings in question are accessible names. Treat that as the exception it was, not a precedent: the rule is still change the shape, not the budget.
 
@@ -76,7 +79,7 @@ releases are routine now and it will go stale.
 
 The whole priority list shipped: reactive TaskStore, SVG + Canvas renderers,
 drag, dependencies, critical path, React/Vue wrappers, export, docs. Also landed beyond it: the
-facade/mixin split, theming, i18n scaffold, responsive/touch, and the seven size budgets.
+facade/mixin split, theming, i18n scaffold, responsive/touch, and the size budgets.
 
 Releases are now routine: land a changeset, and merging the bot's "Version Packages" PR publishes.
 `docs-deploy.yml` exists but the docs site is **not deployed yet** — its first run is a

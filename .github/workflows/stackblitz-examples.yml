@@ -1,0 +1,319 @@
+# Regenerates the `stackblitz` branch: standalone copies of the examples that StackBlitz can open
+# from GitHub (`stackblitz.com/github/thai-pc/fluxgantt/tree/stackblitz/<dir>`), pinned to the
+# @fluxgantt versions on npm. See tooling/scripts/build-stackblitz-examples.mjs and RELEASING.md
+# ("StackBlitz examples").
+#
+# Why a separate workflow and not a step in release.yml: a post-publish failure (registry lag, a
+# broken generated copy) must not turn the publish red, and must be retryable without releasing
+# again. `Release` runs on EVERY push to master and most runs publish nothing, so this one decides
+# for itself whether there is anything to do (tooling/scripts/stackblitz-decide.mjs, unit-tested).
+# The decision is state-based: regenerate when the branch's stamp differs from the source
+# commit's versions AND (the commit is the version bump OR those versions are already on npm),
+# and never replace newer versions with older ones unless `force`. So a release whose run was
+# cancelled or replaced is picked up by the next master push, and an ordinary push is a no-op.
+#
+# Then: wait for the registry, generate with --check-registry, clean-room npm install + typecheck +
+# build, and only if all of that passed, force-push. A failure leaves the branch at the previous
+# release. Retry with "Re-run all jobs" on the failed run, or dispatch with source_ref = the
+# release commit or its tag.
+#
+# Three jobs, because the bytes that get pushed must never share a job with third-party code
+# (artifact poisoning):
+#   generate  first-party, dependency-free Node only (decide, generator, artifact validation);
+#             read token; uploads the artifact.
+#   verify    downloads it and runs the clean-room `npm install` (third-party install scripts)
+#             + typecheck + build; read token; its outputs are discarded.
+#   push      `contents: write`; downloads ONLY generate's artifact, pinned by artifact ID (a new
+#             upload from `verify` would have another ID), validates it again with a checker from
+#             the trusted workflow commit, and commits it with a git directory OUTSIDE the tree and
+#             a fresh config, so no in-tree file can configure git.
+# Pushes made with GITHUB_TOKEN do not trigger other workflows, so the push cannot loop back into CI.
+name: StackBlitz examples
+
+on:
+  workflow_run:
+    workflows: [Release]
+    types: [completed]
+    branches: [master]
+  workflow_dispatch:
+    inputs:
+      source_ref:
+        description: Branch, tag (e.g. @fluxgantt/core@1.2.3) or full commit SHA on master to generate from. Must contain the generator; refs/pull/* is refused.
+        type: string
+        required: true
+        default: master
+      force:
+        description: Regenerate even if the stackblitz branch already has these versions, or newer ones.
+        type: boolean
+        default: false
+
+concurrency:
+  # Serialise: two runs racing to force-push the same branch would leave whichever finished last.
+  # GitHub keeps one PENDING run per group (a newer one replaces it); the state-based decision
+  # makes that harmless, since the next run catches up.
+  group: stackblitz-examples
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  generate:
+    # workflow_run: only after a SUCCESSFUL Release run for a push to this repo's master, never a
+    # fork or a PR (the event runs the default-branch definition of this file, with a read token).
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push' &&
+       github.event.workflow_run.head_branch == 'master' &&
+       github.event.workflow_run.head_repository.full_name == github.repository)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    outputs:
+      publish: ${{ steps.decide.outputs.publish }}
+      sha: ${{ steps.versions.outputs.sha }}
+      core: ${{ steps.versions.outputs.core }}
+      react: ${{ steps.versions.outputs.react }}
+      vue: ${{ steps.versions.outputs.vue }}
+      artifact-id: ${{ steps.upload.outputs.artifact-id }}
+    env:
+      # Every `${{ }}` value reaches shell code through env, never by interpolation into `run:`.
+      EVENT_NAME: ${{ github.event_name }}
+      SOURCE_REF: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || inputs.source_ref }}
+      FORCE: ${{ inputs.force == true }}
+    steps:
+      - name: Resolve the source ref (a branch or tag of this repo, or a commit SHA)
+        id: ref
+        run: |
+          die() { echo "::error::$1"; exit 1; }
+          if [[ "$EVENT_NAME" == workflow_run ]]; then
+            [[ "$SOURCE_REF" =~ ^[0-9a-f]{40}$ ]] || die "workflow_run head_sha is not a commit SHA"
+            { echo "ref=$SOURCE_REF"; echo "on_master_check=false"; } >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [[ ! "$SOURCE_REF" =~ ^[A-Za-z0-9@][A-Za-z0-9@._/-]{0,199}$ || "$SOURCE_REF" == *..* || "$SOURCE_REF" == *//* ]]; then
+            die "source_ref must be a branch, a tag or a full commit SHA"
+          fi
+          if [[ "$SOURCE_REF" =~ ^[0-9a-f]{40}$ ]]; then
+            # A SHA can name ANY object GitHub serves for this repo, fork PR heads included, so it
+            # is accepted only if it is on master (checked right after checkout, before any code runs).
+            { echo "ref=$SOURCE_REF"; echo "on_master_check=true"; } >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          case "$SOURCE_REF" in
+            refs/pull/* | pull/*) die "pull request refs are not accepted: they can point at fork code" ;;
+            refs/heads/*) name="${SOURCE_REF#refs/heads/}"; kinds="heads" ;;
+            refs/tags/*) name="${SOURCE_REF#refs/tags/}"; kinds="tags" ;;
+            refs/*) die "only refs/heads/* and refs/tags/* are accepted" ;;
+            *) name="$SOURCE_REF"; kinds="heads tags" ;;
+          esac
+          remote="https://github.com/$GITHUB_REPOSITORY.git"
+          for kind in $kinds; do
+            full="refs/$kind/$name"
+            # ls-remote patterns match on the tail; keep only the exact ref.
+            if git ls-remote "$remote" "$full" | awk -v r="$full" '$2 == r { found = 1 } END { exit !found }'; then
+              { echo "ref=$full"; echo "on_master_check=false"; } >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          done
+          die "source_ref $SOURCE_REF is not a branch or tag of $GITHUB_REPOSITORY"
+
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ steps.ref.outputs.ref }}
+          path: src
+          # 2 = the commit and its parent, to tell a version-bump commit from any other push.
+          fetch-depth: 2
+          persist-credentials: false
+
+      - name: Check the commit is on master
+        if: steps.ref.outputs.on_master_check == 'true'
+        run: |
+          git -C src fetch --quiet --no-tags origin +refs/heads/master:refs/remotes/origin/master
+          if ! git -C src merge-base --is-ancestor HEAD refs/remotes/origin/master; then
+            echo "::error::source_ref is a commit that is not on master; dispatch a branch or tag of this repo instead"
+            exit 1
+          fi
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: src/.nvmrc
+
+      - name: Read versions
+        id: versions
+        working-directory: src
+        run: |
+          for pkg in core react vue; do
+            v="$(node -p "require('./packages/$pkg/package.json').version")"
+            if [[ ! "$v" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+              echo "::error::malformed @fluxgantt/$pkg version"
+              exit 1
+            fi
+            echo "$pkg=$v" >> "$GITHUB_OUTPUT"
+          done
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Decide whether there is anything to publish
+        id: decide
+        run: |
+          # The current stamp; `none` when the branch does not exist (ls-remote exit code 2).
+          if git -C src ls-remote --exit-code origin refs/heads/stackblitz > /dev/null; then
+            git -C src fetch --quiet --no-tags --depth=1 origin +refs/heads/stackblitz:refs/remotes/origin/stackblitz
+            stamp="$RUNNER_TEMP/stamp.json"
+            git -C src show origin/stackblitz:.stackblitz-stamp.json > "$stamp" || echo '{}' > "$stamp"
+          else
+            rc=$?
+            if [[ $rc -ne 2 ]]; then exit "$rc"; fi
+            stamp=none
+          fi
+          args=(--event "$EVENT_NAME" --source src --stamp "$stamp")
+          if [[ "$FORCE" == true ]]; then args+=(--force); fi
+          node src/tooling/scripts/stackblitz-decide.mjs "${args[@]}"
+
+      - name: Wait for the registry (publishes take minutes to appear)
+        if: steps.decide.outputs.publish == 'true'
+        env:
+          CORE: ${{ steps.versions.outputs.core }}
+          REACT: ${{ steps.versions.outputs.react }}
+          VUE: ${{ steps.versions.outputs.vue }}
+        run: |
+          deadline=$((SECONDS + 1200))
+          for spec in "core@$CORE" "react@$REACT" "vue@$VUE"; do
+            until [[ "$(npm view "@fluxgantt/$spec" version --prefer-online 2> /dev/null)" == "${spec#*@}" ]]; do
+              if (( SECONDS >= deadline )); then
+                echo "::error::@fluxgantt/$spec is not on the registry after 20 minutes. Re-run this workflow once it is."
+                exit 1
+              fi
+              echo "waiting for @fluxgantt/$spec ..."
+              sleep 30
+            done
+            echo "@fluxgantt/$spec is on the registry"
+          done
+
+      - name: Generate (registry versions, published-surface check)
+        if: steps.decide.outputs.publish == 'true'
+        env:
+          SHA: ${{ steps.versions.outputs.sha }}
+        run: node src/tooling/scripts/build-stackblitz-examples.mjs --source src --out "$RUNNER_TEMP/sb/out" --check-registry --source-sha "$SHA"
+
+      - name: Validate the output (what push will check again)
+        if: steps.decide.outputs.publish == 'true'
+        env:
+          SHA: ${{ steps.versions.outputs.sha }}
+          CORE: ${{ steps.versions.outputs.core }}
+          REACT: ${{ steps.versions.outputs.react }}
+          VUE: ${{ steps.versions.outputs.vue }}
+        run: >-
+          node src/tooling/scripts/validate-stackblitz-artifact.mjs "$RUNNER_TEMP/sb/out"
+          --expect-sha "$SHA" --expect-core "$CORE" --expect-react "$REACT" --expect-vue "$VUE"
+
+      - uses: actions/upload-artifact@v4
+        id: upload
+        if: steps.decide.outputs.publish == 'true'
+        with:
+          name: stackblitz-examples
+          path: ${{ runner.temp }}/sb/out
+          # Needed for exactly one file, `.stackblitz-stamp.json` (upload-artifact skips dotfiles by
+          # default). The validator above, and again in `push`, rejects every other hidden entry.
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 7
+
+  verify:
+    needs: generate
+    if: needs.generate.outputs.publish == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.generate.outputs.sha }}
+          path: src
+          persist-credentials: false
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: src/.nvmrc
+
+      - uses: actions/download-artifact@v4
+        with:
+          artifact-ids: ${{ needs.generate.outputs.artifact-id }}
+          path: ${{ runner.temp }}/dl
+
+      - name: Clean-room npm install + typecheck + build (+ start for headless)
+        # Third-party install scripts run here. Nothing this job writes is uploaded or pushed.
+        run: node src/tooling/scripts/verify-stackblitz-examples.mjs "$RUNNER_TEMP/dl/stackblitz-examples" --work "$RUNNER_TEMP/sb/work"
+
+  push:
+    needs: [generate, verify]
+    if: needs.generate.outputs.publish == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - name: Check out the artifact validator (from this workflow's own commit)
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          path: trusted
+          persist-credentials: false
+          sparse-checkout: |
+            .nvmrc
+            tooling/scripts/validate-stackblitz-artifact.mjs
+          sparse-checkout-cone-mode: false
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: trusted/.nvmrc
+
+      - uses: actions/download-artifact@v4
+        with:
+          # By ID, not by name: only the upload made by `generate`.
+          artifact-ids: ${{ needs.generate.outputs.artifact-id }}
+          path: ${{ runner.temp }}/dl
+
+      - name: Validate the artifact
+        env:
+          SHA: ${{ needs.generate.outputs.sha }}
+          CORE: ${{ needs.generate.outputs.core }}
+          REACT: ${{ needs.generate.outputs.react }}
+          VUE: ${{ needs.generate.outputs.vue }}
+        run: >-
+          node trusted/tooling/scripts/validate-stackblitz-artifact.mjs "$RUNNER_TEMP/dl/stackblitz-examples"
+          --expect-sha "$SHA" --expect-core "$CORE" --expect-react "$REACT" --expect-vue "$VUE"
+
+      - name: Force-push the stackblitz branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ needs.generate.outputs.sha }}
+          CORE: ${{ needs.generate.outputs.core }}
+          REACT: ${{ needs.generate.outputs.react }}
+          VUE: ${{ needs.generate.outputs.vue }}
+        run: |
+          tree="$RUNNER_TEMP/dl/stackblitz-examples"
+          gitdir="$RUNNER_TEMP/stackblitz.git"
+          # A fresh configuration: no system or global config, and the repository lives OUTSIDE
+          # the artifact, so nothing inside the tree can be read as git config, hooks or attributes.
+          export GIT_CONFIG_NOSYSTEM=1
+          export GIT_CONFIG_GLOBAL=/dev/null
+          git init --quiet --bare --initial-branch=stackblitz "$gitdir"
+          g() {
+            git --git-dir="$gitdir" --work-tree="$tree" \
+              -c core.bare=false -c core.fsmonitor=false -c core.hooksPath=/dev/null \
+              -c core.symlinks=false -c core.untrackedCache=false -c commit.gpgSign=false \
+              -c user.name='github-actions[bot]' \
+              -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
+              "$@"
+          }
+          g add --all
+          g commit --quiet -m "chore: stackblitz examples for core@$CORE react@$REACT vue@$VUE (from ${SHA:0:12})"
+          auth="$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)"
+          echo "::add-mask::$auth"
+          g -c "http.https://github.com/.extraheader=AUTHORIZATION: basic $auth" \
+            push --force "https://github.com/$GITHUB_REPOSITORY.git" refs/heads/stackblitz:refs/heads/stackblitz
+          echo "Pushed stackblitz for core@$CORE react@$REACT vue@$VUE (source $SHA)" >> "$GITHUB_STEP_SUMMARY"

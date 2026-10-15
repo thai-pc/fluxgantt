@@ -86,6 +86,9 @@
 // `renderer-base.ts`, the shared DOM-free seam BOTH renderer files already depend on, never
 // from `svg-renderer.ts` itself — the isolation rule is about the two renderer files never
 // importing from EACH OTHER, not about avoiding all shared code.
+// The one deliberate link is DEPENDENCY INJECTION: `createCanvasRenderer`'s optional 4th parameter
+// (`svgFactory`) receives `createSvgRenderer` from `render/mixin.ts` so Canvas-mode `exportSvg()`
+// can build a throwaway SVG. This file still never imports `svg-renderer.ts` at runtime.
 import { getTemporal } from '../internal/temporal.js';
 import { DEFAULT_CALENDAR, normalizeDate } from '../compute/working-calendar.js';
 import {
@@ -113,6 +116,9 @@ import {
   type TimeScale,
 } from './renderer-base.js';
 import type { InteractiveRendererHandle } from './interactive-renderer-handle.js';
+// Type-only (erased): the runtime isolation rule above still holds — the SVG renderer reaches
+// this file only through the injected `CanvasSvgFactory`, never an import.
+import type { SvgRendererHandle, SvgRendererInput, SvgRendererOptions } from './svg-renderer.js';
 import type {
   CriticalPathResult,
   DateInput,
@@ -259,13 +265,43 @@ export interface CanvasRendererHandle extends InteractiveRendererHandle {
     clientX: number,
     clientY: number,
   ): { taskId: TaskId; rowIndex: number; hitToggle: boolean } | undefined;
+  /** Client-space anchor of the painted row `rowIndex` (see `InteractiveRendererHandle`). */
+  getRowAnchor(rowIndex: number): { clientX: number; clientY: number };
+  /** The input/options of the most recent SUCCESSFUL render (failed renders roll back), i.e.
+   *  exactly what is on screen. Export reads density/viewMode/etc. from here, never from
+   *  `GanttConfig`, because `setDensity()` and `withResponsive` change them at runtime. */
+  getRenderState(): CanvasRenderState;
+  /** Builds a throwaway, UN-windowed SVG renderer from the painted state inside a hidden 0x0
+   *  host, for `exportSvg()`. The caller serializes `svg` then calls `dispose()` (idempotent) —
+   *  all in one synchronous task. Throws when no `svgFactory` was injected or the task count
+   *  exceeds `MAX_CANVAS_EXPORT_ROWS`. */
+  createExportSvg(): CanvasExportSvgSource;
+}
+
+/** Injected by `render/mixin.ts` so this chunk can build an SVG for `exportSvg()` without
+ *  importing `svg-renderer.ts` (module-isolation rule). */
+export type CanvasSvgFactory = (
+  container: HTMLElement,
+  input: SvgRendererInput,
+  options?: SvgRendererOptions,
+) => SvgRendererHandle;
+
+export interface CanvasRenderState {
+  readonly input: CanvasRendererInput;
+  readonly options: CanvasRendererOptions;
+}
+
+export interface CanvasExportSvgSource {
+  readonly svg: SVGSVGElement;
+  /** Destroys the throwaway renderer and removes the hidden host. Idempotent. */
+  dispose(): void;
 }
 
 // --- §5.1 Duplicated local constants (module-isolation rule, §2.1) --------------------
 // Kept in sync BY HAND with `svg-renderer.ts`'s identically-named constants — this file
 // must not import them.
-const LABEL_COLUMN_WIDTH = 160;
-const HEADER_HEIGHT = 32;
+export const LABEL_COLUMN_WIDTH = 160;
+export const HEADER_HEIGHT = 32;
 const LABEL_INDENT_PX = 16;
 const LABEL_PADDING_PX = 8;
 const MAX_ARIA_NAME_LENGTH = 200;
@@ -433,6 +469,26 @@ export const MAX_CANVAS_DIMENSION_PX = 65_535;
 export const MAX_CANVAS_AREA_PX_WEBKIT = 16_777_216;
 
 /**
+ * Task-count cap shared by Canvas-mode `exportSvg()` and `exportPng()` (security.md: limit
+ * size). The SVG renderer is not virtualized (~8 DOM nodes per row), so a Canvas-mode
+ * `exportSvg()` builds the whole chart and a multi-MB string in ONE synchronous task.
+ *
+ * Measured 2026-10-15 in headless Chromium 153 (Apple silicon, offscreen createSvgRenderer +
+ * exportSvg, 1 ms/row dominated by the build, not serialization), main-thread block per call:
+ *   rows    native Temporal    @js-temporal/polyfill     string
+ *   2,100   0.9 s              2.7 s                     1.6 MB
+ *   5,000   2.1 s              6.1 s                     3.9 MB
+ *   10,000  4.1 s              11.3 s                    7.8 MB   <- the originally proposed cap
+ * `inlineComputedStyle:false` saves only ~0.1-0.4 s. 10,000 was unreasonably slow with the
+ * polyfill most consumers still use, while ~2,700 (3 s) would leave almost no headroom above the
+ * 2,000-task Canvas threshold, so the cap is 5,000 VISIBLE rows (collapsed descendants are not
+ * counted): a bounded multi-second block (native ~2 s, polyfill ~6 s), not a hang. Accepted for an
+ * explicit, user-triggered export.
+ * Raising it is a deliberate "limit size" decision; there is no per-call override in v1.
+ */
+export const MAX_CANVAS_EXPORT_ROWS = 5_000;
+
+/**
  * Inferred, not queried — no capability-query API exists for a `<canvas>` backing-store
  * limit. Internal only, not exported (small public surface, coding-conventions.md).
  * Standard "Safari but not actually Chrome/Chromium/Android" UA pattern — Chrome/Edge/etc.
@@ -443,7 +499,7 @@ export const MAX_CANVAS_AREA_PX_WEBKIT = 16_777_216;
  * (not security) concern: the worst case of a misdetection is the same "blank chart, no
  * error" failure this guard exists to close, never a data-integrity/injection risk.
  */
-function isWebKitEngine(): boolean {
+export function isWebKitEngine(): boolean {
   if (typeof navigator === 'undefined') return false;
   const ua = navigator.userAgent;
   return /^((?!chrome|chromium|crios|edg|android).)*safari/i.test(ua);
@@ -518,7 +574,7 @@ export class CanvasDimensionExceededError extends Error {
 
 // --- §5.2 Design tokens ------------------------------------------------------------------
 
-interface DesignTokens {
+export interface DesignTokens {
   readonly gridToday: string;
   readonly gridHoliday: string;
   readonly gridWeekend: string;
@@ -551,7 +607,7 @@ interface DesignTokens {
  * CSS, not `task`-scoped untrusted data — a different trust boundary than `task.color`
  * (§6), which always flows through `validateTaskColor` on its own path, never through here.
  */
-function resolveDesignTokens(container: HTMLElement): DesignTokens {
+export function resolveDesignTokens(container: HTMLElement): DesignTokens {
   const style = getComputedStyle(container);
   const color = (name: string, fallback: string): string => style.getPropertyValue(name).trim() || fallback;
   const dash = (name: string, fallback: readonly number[]): readonly number[] => {
@@ -652,6 +708,7 @@ export function createCanvasRenderer(
   container: HTMLElement,
   input: CanvasRendererInput,
   options: CanvasRendererOptions = {},
+  svgFactory?: CanvasSvgFactory,
 ): CanvasRendererHandle {
   // `timeScale` is assigned inside render(), which always runs synchronously below before
   // the handle is returned — never read while still the placeholder (definite-assignment
@@ -864,6 +921,50 @@ export function createCanvasRenderer(
       return currentLabelColumnWidth;
     },
     hitTestRow,
+    getRowAnchor(rowIndex: number): { clientX: number; clientY: number } {
+      const rect = canvas.getBoundingClientRect();
+      const rowHeight = ROW_HEIGHT[state.options.density ?? DEFAULT_DENSITY];
+      const y = HEADER_HEIGHT + rowIndex * rowHeight - container.scrollTop + rowHeight / 2;
+      return {
+        clientX: rect.left + currentLabelColumnWidth / 2,
+        clientY: rect.top + Math.min(Math.max(y, HEADER_HEIGHT), rect.height),
+      };
+    },
+    getRenderState: () => state,
+    createExportSvg(): CanvasExportSvgSource {
+      if (!svgFactory || destroyed) {
+        throw new Error('canvas-renderer: createExportSvg is unavailable (no svgFactory or destroyed)');
+      }
+      // Count the rows that will actually be built (collapsed descendants are dropped by
+      // `layoutRows`), so collapsing a subtree genuinely gets a big plan under the cap.
+      const n = layoutRows(state.input.tasks, state.options.density ?? 'default', state.input.collapsedIds).length;
+      if (n > MAX_CANVAS_EXPORT_ROWS) {
+        throw new Error(
+          `gantt.exportSvg: ${n} visible rows exceeds the Canvas-mode export limit (${MAX_CANVAS_EXPORT_ROWS}) — collapse some rows first`,
+        );
+      }
+      // Hidden but style-resolving: lives inside `container` so inherited `--fg-*` custom
+      // properties resolve as for the live chart. A 0x0 `overflow:hidden` box contributes
+      // nothing to `container`'s scrollable overflow, so scroll position and the spacer are
+      // never perturbed; `visibility:hidden` keeps the rows out of focus order and AT.
+      const host = document.createElement('div');
+      host.style.cssText = 'position:absolute;width:0;height:0;overflow:hidden;visibility:hidden';
+      container.appendChild(host);
+      let r: SvgRendererHandle;
+      try {
+        r = svgFactory(host, state.input, { ...state.options, showLinkHandles: false });
+      } catch (e) {
+        host.remove();
+        throw e;
+      }
+      return {
+        svg: r.svg,
+        dispose() {
+          r.destroy();
+          host.remove();
+        },
+      };
+    },
   };
 
   function handleFocusChange(): void {
@@ -1196,7 +1297,23 @@ export function createCanvasRenderer(
     a11yLayer.setAttribute('aria-multiselectable', 'true');
     a11yLayer.setAttribute('aria-label', ariaLabel);
 
-    for (const row of windowedRows) {
+    // The roving-tabindex row is ALWAYS materialized, even after a far scroll leaves it outside
+    // the window (spec-canvas-row-virtualization.md §4.2): dropping it would lose DOM focus and
+    // leave zero tabindex="0" rows (no Tab stop). It is kept in rowIndex order (before or after
+    // the window) so DOM order and `aria-rowindex` stay monotonic; the layer is visually hidden,
+    // so a gap in the sequence has no visual effect.
+    const focusedRow = focusedIndex >= 0 ? rows[focusedIndex] : undefined;
+    const outsideWindow =
+      focusedRow !== undefined &&
+      (focusedIndex < windowRange.startIndex || focusedIndex > windowRange.endIndex);
+    const a11yRows =
+      focusedRow === undefined || !outsideWindow
+        ? windowedRows
+        : focusedIndex < windowRange.startIndex
+          ? [focusedRow, ...windowedRows]
+          : [...windowedRows, focusedRow];
+
+    for (const row of a11yRows) {
       const isSelected = selectedIds.has(row.task.id);
       const isCritical = criticalIds.has(row.task.id);
 
@@ -1327,7 +1444,7 @@ export function createCanvasRenderer(
 
 // --- Paint primitives (drawing only — no layout math) -----------------------------------
 
-function paintGrid(
+export function paintGrid(
   ctx: CanvasRenderingContext2D,
   columns: readonly GridColumn[],
   offsetX: number,
@@ -1358,7 +1475,7 @@ function paintGrid(
   }
 }
 
-function paintHeader(
+export function paintHeader(
   ctx: CanvasRenderingContext2D,
   columns: readonly GridColumn[],
   offsetX: number,
@@ -1408,7 +1525,7 @@ function paintHeader(
  * (`strokeStyle`, `lineWidth`, `lineDash`) is confined to a `save()`/`try`/`finally restore()`
  * pair — no paint after this one may inherit a 2px-wide solid red stroke from it.
  */
-function paintTodayLine(
+export function paintTodayLine(
   ctx: CanvasRenderingContext2D,
   x: number,
   offsetX: number,
@@ -1431,7 +1548,7 @@ function paintTodayLine(
   }
 }
 
-function paintLabelDivider(
+export function paintLabelDivider(
   ctx: CanvasRenderingContext2D,
   offsetX: number,
   // (fix #37) the canvas's own BOUNDED viewport height — see `paintGrid`'s identical param.
@@ -1452,7 +1569,7 @@ function paintLabelDivider(
   }
 }
 
-function paintRows(
+export function paintRows(
   ctx: CanvasRenderingContext2D,
   rows: readonly RowLayout[],
   barByTaskId: ReadonlyMap<TaskId, TaskBarLayout>,
@@ -1703,7 +1820,7 @@ function paintFocusRing(
  * from the last segment's axis-aligned direction (all segments are strictly horizontal or
  * vertical, so direction is a simple sign check, never a diagonal).
  */
-function paintDependencies(
+export function paintDependencies(
   ctx: CanvasRenderingContext2D,
   dependencies: readonly Dependency[],
   barByTaskId: ReadonlyMap<TaskId, TaskBarLayout>,

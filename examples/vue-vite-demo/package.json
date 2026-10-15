@@ -13,11 +13,11 @@
   "dependencies": {
     "@fluxgantt/core": "workspace:*",
     "@fluxgantt/vue": "workspace:*",
+    "@js-temporal/polyfill": "^0.5.1",
     "vue": "^3.5.13"
   },
   "devDependencies": {
     "@fluxgantt/tsconfig": "workspace:*",
-    "@js-temporal/polyfill": "^0.5.1",
     "@vitejs/plugin-vue": "^6.0.9",
     "typescript": "^6.0.3",
     "vite": "^8.3.0",

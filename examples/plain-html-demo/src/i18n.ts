@@ -3,6 +3,7 @@
 // clauses rather than merely translating them in place. The reordering is the point: it is what
 // the old suffix-append label shape could never express, so a fixture that only swapped words
 // would not actually exercise the capability under test.
+import './temporal.js'; // must stay first: installs globalThis.Temporal where it is not native
 import { createGantt, toTaskId } from '@fluxgantt/core';
 import { withRender } from '@fluxgantt/core/render';
 import { withInteraction } from '@fluxgantt/core/interaction';

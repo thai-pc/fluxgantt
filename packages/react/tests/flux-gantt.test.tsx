@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { createRef } from 'react';
-import { render } from '@testing-library/react';
+import { render, fireEvent } from '@testing-library/react';
 import { toTaskId } from '@fluxgantt/core';
 import type { TaskInput } from '@fluxgantt/core';
 import { FluxGantt } from '../src/FluxGantt.js';
@@ -221,4 +221,67 @@ describe('<FluxGantt>', () => {
     const after = container.querySelector('.fg-timeline')?.outerHTML;
     expect(after).toBe(before);
   });
+
+  it('exposes the viewport capability on the ref (scrollToTask / scrollToDate / setDensity)', () => {
+    const ref = createRef<FluxGanttRef>();
+    render(<FluxGantt ref={ref} tasks={[taskInput('a', '2026-01-05T09:00', '2026-01-06T09:00')]} />);
+    const seen: unknown[] = [];
+    ref.current!.on('viewport:changed', (p) => seen.push(p));
+    expect(ref.current!.scrollToTask(toTaskId('a'))).toBe(true);
+    expect(ref.current!.scrollToDate('2026-01-05')).toBe(true);
+    ref.current!.setDensity('compact');
+    expect(seen).toEqual([{ viewMode: 'week', density: 'compact' }]);
+  });
+
+  describe('edit hooks (onTaskActivated / onTaskContextRequested)', () => {
+    const tasks = [taskInput('a', '2026-01-05T09:00', '2026-01-06T09:00')];
+
+    it('onTaskActivated receives the payload on double-click', () => {
+      const onTaskActivated = vi.fn();
+      const { container } = render(<FluxGantt tasks={tasks} onTaskActivated={onTaskActivated} />);
+      fireEvent.doubleClick(container.querySelector('.fg-task__bar')!, { clientX: 5, clientY: 6 });
+      expect(onTaskActivated).toHaveBeenCalledTimes(1);
+      expect(onTaskActivated.mock.calls[0]![0]).toMatchObject({
+        taskId: 'a',
+        part: 'bar',
+        source: 'pointer',
+        clientX: 5,
+        clientY: 6,
+      });
+    });
+
+    it('payload.preventDefault() reaches the native contextmenu event, and only when called', () => {
+      let call = false;
+      const onTaskContextRequested = vi.fn((p: { preventDefault(): void }) => {
+        if (call) p.preventDefault();
+      });
+      const { container } = render(
+        <FluxGantt tasks={tasks} onTaskContextRequested={onTaskContextRequested} />,
+      );
+      const bar = container.querySelector('.fg-task__bar')!;
+      // fireEvent returns false when the event was cancelled.
+      expect(fireEvent.contextMenu(bar)).toBe(true);
+      call = true;
+      expect(fireEvent.contextMenu(bar)).toBe(false);
+      expect(onTaskContextRequested).toHaveBeenCalledTimes(2);
+    });
+
+    it('without a handler the native menu is left alone, and unmount unsubscribes', () => {
+      const onTaskActivated = vi.fn();
+      const { container, unmount } = render(<FluxGantt tasks={tasks} onTaskActivated={onTaskActivated} />);
+      const bar = container.querySelector('.fg-task__bar')!;
+      expect(fireEvent.contextMenu(bar)).toBe(true);
+      unmount();
+      fireEvent.doubleClick(bar);
+      expect(onTaskActivated).not.toHaveBeenCalled();
+    });
+  });
+
+  it('enableDependencyDrag={false} renders no link handles', () => {
+    const { container } = render(
+      <FluxGantt tasks={[taskInput('a', '2026-01-05T09:00', '2026-01-06T09:00')]} enableDependencyDrag={false} />,
+    );
+    expect(container.querySelectorAll('.fg-task__link-handle')).toHaveLength(0);
+  });
+
 });

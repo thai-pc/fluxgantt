@@ -224,13 +224,20 @@ export function withResponsive<T extends GanttInstance>(
         panTarget.addEventListener('pointerup', onPointerEnd);
         panTarget.addEventListener('pointercancel', onPointerEnd);
       }
-      mount.rendererHandle.setOptions({ density: touchDensity });
+      if (!internal.densityPinned) {
+        internal.density = touchDensity;
+        mount.rendererHandle.setOptions({ density: touchDensity });
+      }
     } else {
       teardownCoarse();
       // Hand density back to whatever the host configured, rather than leaving the chart on touch
       // sizing after a tablet is docked to a mouse. `undefined` is not usable here — `setOptions`
       // MERGES — so the config value (or the renderer default) is restored explicitly.
-      mount.rendererHandle.setOptions({ density: internal.config.density ?? 'default' });
+      if (!internal.densityPinned) {
+        const restored = internal.config.density ?? 'default';
+        internal.density = restored;
+        mount.rendererHandle.setOptions({ density: restored });
+      }
     }
   }
 

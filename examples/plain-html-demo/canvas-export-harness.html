@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>FluxGantt · canvas export harness</title>
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <main>
+      <h1>FluxGantt — canvas export harness</h1>
+      <p>
+        Fixture for <code>tests/e2e/canvas-export.spec.ts</code>, <code>tests/a11y/canvas-export.spec.ts</code>
+        and the WebKit/performance export specs. Query params: <code>?tasks=N</code> (default 2100, so
+        Canvas mode), <code>?density=</code>, <code>?group=1</code> (every task but the first is a child
+        of a collapsible summary), <code>?hostile=1</code> (hostile first task name and color).
+      </p>
+      <div class="toolbar">
+        <button type="button" id="export-svg">Export SVG</button>
+        <button type="button" id="export-png">Export PNG</button>
+        <span id="export-status" role="status"></span>
+      </div>
+      <div id="gantt"></div>
+    </main>
+    <script type="module" src="/src/canvas-export-harness.ts"></script>
+  </body>
+</html>

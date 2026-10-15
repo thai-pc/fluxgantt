@@ -5,7 +5,16 @@
 // SFC compiler; nothing about this changes how a consumer writes their own template.
 import { defineComponent, h, onBeforeUnmount, type PropType } from 'vue';
 import { useFluxGantt } from './use-flux-gantt.js';
-import type { DateInput, Dependency, DependencyId, GanttInstance, Task, TaskId } from '@fluxgantt/core';
+import type {
+  DateInput,
+  Dependency,
+  DependencyId,
+  GanttInstance,
+  Task,
+  TaskActivatedPayload,
+  TaskContextRequestedPayload,
+  TaskId,
+} from '@fluxgantt/core';
 import type {
   DependencyInput,
   Density,
@@ -66,7 +75,7 @@ function exposableInstance(instance: GanttInstance): GanttInstance {
 }
 
 /**
- * Note on construction-only props: `viewMode`/`density`/`locale`/`readOnly`/`calendar` are
+ * Note on construction-only props: `viewMode`/`density`/`locale`/`readOnly`/`calendar`/`enableDependencyDrag` are
  * read only once, when the underlying `GanttInstance` is created (`GanttInstance` has no
  * `setViewMode`/`setDensity`/`setLocale`/`setReadOnly`/`setCalendar` — same facade gap react
  * documented). Changing these props after mount is a no-op. A consumer who needs a
@@ -96,13 +105,14 @@ export const FluxGantt = defineComponent({
     // facade's real tri-state ("unset" lets `GanttConfig`'s own default apply, distinct from
     // an explicit `false`).
     readOnly: { type: Boolean, required: false, default: undefined },
+    enableDependencyDrag: { type: Boolean, required: false, default: undefined },
     onTaskChange: {
       type: Function as PropType<(task: Task, prev: Task) => void>,
       required: false,
     },
   },
   emits: {
-    // Vue's object-form `emits` both registers the 8 events at runtime (so `v-on`/`@x`
+    // Vue's object-form `emits` both registers the 10 events at runtime (so `v-on`/`@x`
     // listeners on unknown events still fall through as attrs correctly, and Vue's dev-mode
     // "unknown event" warning doesn't fire) AND drives TypeScript's inference of `emit`'s
     // signature inside `setup()` — the non-macro equivalent of `defineEmits<FluxGanttEmits>()`.
@@ -119,6 +129,8 @@ export const FluxGantt = defineComponent({
     'dependency-added': (_dependency: Dependency) => true,
     'dependency-removed': (_dependencyId: DependencyId) => true,
     'critical-path-computed': (_criticalTaskIds: readonly TaskId[]) => true,
+    'task-activated': (_payload: TaskActivatedPayload) => true,
+    'task-context-requested': (_payload: TaskContextRequestedPayload) => true,
   },
   setup(props, { emit, expose }) {
     // `props` (Vue's reactive props proxy) is passed straight through as `UseFluxGanttConfig`
@@ -127,7 +139,7 @@ export const FluxGantt = defineComponent({
     // doc-comment).
     const { containerRef, instance } = useFluxGantt(props as UseFluxGanttConfig);
 
-    // Bridge the 8 GanttEventMap events to this component's typed `emit`. Subscribe
+    // Bridge the 10 GanttEventMap events to this component's typed `emit`. Subscribe
     // SYNCHRONOUSLY in setup() — NOT in onMounted — so the listeners are active before
     // useFluxGantt's onMounted runs `instance.mount()`, which synchronously emits the INITIAL
     // `critical-path:computed` for any initial tasks. Subscribing in onMounted (which fires
@@ -145,6 +157,10 @@ export const FluxGantt = defineComponent({
       instance.on('dependency:added', (dep) => emit('dependency-added', dep)),
       instance.on('dependency:removed', (depId) => emit('dependency-removed', depId)),
       instance.on('critical-path:computed', (ids) => emit('critical-path-computed', ids)),
+      instance.on('task:activated', (payload) => emit('task-activated', payload)),
+      instance.on('task:context-requested', (payload) =>
+        emit('task-context-requested', payload),
+      ),
     ];
 
     onBeforeUnmount(() => {
