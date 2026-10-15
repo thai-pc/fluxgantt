@@ -209,7 +209,7 @@ jobs:
           node src/tooling/scripts/validate-stackblitz-artifact.mjs "$RUNNER_TEMP/sb/out"
           --expect-sha "$SHA" --expect-core "$CORE" --expect-react "$REACT" --expect-vue "$VUE"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         id: upload
         if: steps.decide.outputs.publish == 'true'
         with:
@@ -239,7 +239,7 @@ jobs:
         with:
           node-version-file: src/.nvmrc
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           artifact-ids: ${{ needs.generate.outputs.artifact-id }}
           path: ${{ runner.temp }}/dl
@@ -271,7 +271,7 @@ jobs:
         with:
           node-version-file: trusted/.nvmrc
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           # By ID, not by name: only the upload made by `generate`.
           artifact-ids: ${{ needs.generate.outputs.artifact-id }}

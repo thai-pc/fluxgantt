@@ -117,7 +117,7 @@ jobs:
         # Only ~/.npm (content-addressed, integrity-checked tarballs), never node_modules: every
         # install still resolves from scratch, so the clean room stays clean. The generated copies
         # have no lockfile, hence the key on the example manifests.
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.npm
           key: stackblitz-npm-${{ runner.os }}-${{ hashFiles('examples/plain-html-demo/package.json', 'examples/react-vite-demo/package.json', 'examples/vue-vite-demo/package.json', 'tooling/stackblitz-templates/headless/package.json') }}
@@ -200,7 +200,7 @@ jobs:
         # Without this, a visual or a11y failure on the runner is a log line with no image to look
         # at — the diff/actual PNGs Playwright writes are the only way to judge a snapshot change.
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: playwright-artifacts
           path: |
