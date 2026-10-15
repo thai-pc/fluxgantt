@@ -445,15 +445,21 @@ type WorkingCalendar = {
 ```typescript
 type GanttConfig = {
   // Initial data
-  tasks?:        Task[];
-  dependencies?: Dependency[];
-  resources?:    Resource[];      // Pro
-  baselines?:    Baseline[];      // Pro
+  tasks?:        readonly TaskInput[];        // duplicate explicit ids throw at construction
+  dependencies?: readonly DependencyInput[];  // Omit<Dependency, 'id'>; cycle/self/duplicate throws
+  resources?:    Resource[];      // Pro — NOT in core's GanttConfig
+  baselines?:    Baseline[];      // Pro — NOT in core's GanttConfig
 
   // Display (all optional + have defaults; usually you only set viewMode)
   viewMode?:     'day' | 'week' | 'month' | 'quarter' | 'year';  // default 'week'
-  density?:      'compact' | 'default' | 'comfortable';          // default 'default'
-  theme?:        'light' | 'dark' | 'auto';                      // default 'auto'
+  density?:      'compact' | 'default' | 'comfortable' | 'touch'; // default 'default'. 'touch'
+                                  // (48px) is what withResponsive() picks under a coarse pointer;
+                                  // never auto-selected without it. Runtime: setDensity() (§7.6)
+  theme?:        'light' | 'dark' | 'auto';                      // default 'auto' — read only by
+                                  // withTheme() (§7.6), inert without it
+  canvasViewportHeight?: number;  // default 600 (px). Canvas mode only: bounds the <canvas>
+                                  // backing store and the container's visible scroll height.
+                                  // No SVG equivalent
   rtl?:          boolean;   // default false — DECLARED ONLY, NOT IMPLEMENTED, no wave assigned,
                             // and deliberately absent from GanttConfig: an inert public field
                             // is a promise. Text surfaces already get browser bidi for free;
@@ -468,25 +474,56 @@ type GanttConfig = {
                                   // shape (base + ', critical path' + ', selected') cannot be
                                   // reordered or inflected. Construction-time only.
 
-  // Calendar
-  calendar?:     WorkingCalendar;
+  // Calendar & scheduling (all immutable for the life of the instance — no runtime setters)
+  calendar?:     WorkingCalendar;  // default DEFAULT_CALENDAR (Mon–Fri 9–17 UTC)
+  schedulingMode?: 'manual' | 'auto'; // default 'manual' (only the named task changes);
+                                  // 'auto' cascades dependents later (§7.2)
+  historyLimit?: number;          // default 100 undo entries, ring buffer; 0 = undo/redo inert.
+                                  // Non-integer / negative throws at construction
 
-  // Features (optional; default false unless noted)
-  enableCriticalPath?:    boolean; // default false
-  enableResourceView?:    boolean; // Pro, default false
-  enableBaselines?:       boolean; // Pro, default false
-  enableDependencyDrag?:  boolean; // default true
-  enableKeyboardNav?:     boolean; // default true
+  // Hierarchy
+  initialCollapsed?: readonly TaskId[]; // collapsed at construction; unknown/leaf ids dropped
+                                  // silently, no collapse:changed fired
+  rollup?:       RollupProvider;  // pass computeRollup to DRAW parents at their rolled-up span.
+                                  // A function, not a boolean: importing computeRollup into
+                                  // /render cost ~400 B gzip in every render bundle and broke the
+                                  // withRender + withInteraction budget. Derived on read, never
+                                  // written back — getTasks/exportJson/undo/CPM see authored dates.
+                                  // A rolled-up bar is not drag-movable or resizable
+
+  // Features
+  enableDependencyDrag?:  boolean; // default true. false: no connector handles, no
+                                  // drag-create-dependency; move/resize stay, linkTasks()
+                                  // unaffected. SVG only; readOnly wins. Construction-time only
+  enableCriticalPath?:    boolean; // DROPPED, not in GanttConfig: the critical path is always
+                                  // computed and painted (dashed outline + critical-path:computed).
+                                  // The specified default (false) contradicted shipped,
+                                  // a11y-relevant behaviour and flipping it would be breaking.
+                                  // Headless: call computeCriticalPath(). If a 10k-task performance
+                                  // case appears, add an additive opt-out then
+  enableKeyboardNav?:     boolean; // DROPPED, not in GanttConfig: not applying withInteraction
+                                  // already means "no interaction layer", and a switch for the
+                                  // a11y baseline invites non-conformant deployments
+  enableResourceView?:    boolean; // Pro — NOT in core's GanttConfig
+  enableBaselines?:       boolean; // Pro — NOT in core's GanttConfig
 
   // Read-only
-  readOnly?:     boolean;          // default false
+  readOnly?:     boolean;          // default false. Governs the rendered UI (no drag, no
+                                  // keyboard Delete/undo/duplicate), not the method surface:
+                                  // programmatic mutations still work
 
   // Callback
-  onTaskChange?:       (task: Task, prev: Task) => void;
-  onDependencyChange?: (dep: Dependency) => void;
-  onSelectionChange?:  (taskIds: TaskId[]) => void;
+  onTaskChange?:       (task: Task, prev: Task) => void; // once per task-changing call
+  onDependencyChange?: (dep: Dependency) => void;        // NOT SHIPPED — superseded by
+                                  // on('dependency:added' | 'dependency:removed') (§7.9)
+  onSelectionChange?:  (taskIds: TaskId[]) => void;      // NOT SHIPPED — superseded by
+                                  // on('selection:changed') (§7.9)
 };
 ```
+
+The exported `GanttConfig` type is authoritative; the fields annotated DROPPED / NOT SHIPPED /
+Pro above are absent from it on purpose. Every display field is construction-time except where the API adds a
+setter (`zoomTo` on the base facade; `setDensity`, `setTheme` on their mixins).
 
 ---
 
@@ -514,36 +551,86 @@ gantt.mount(document.getElementById('gantt-container'));
 ### 7.2 Task Operations
 
 ```typescript
-gantt.addTask(task: Omit<Task, 'id' | 'createdAt' | 'updatedAt'>): Task
-gantt.updateTask(id: TaskId, patch: Partial<Task>): Task
-gantt.removeTask(id: TaskId): void
+gantt.addTask(task: TaskInput): Task   // Omit<Task, 'id' | 'createdAt' | 'updatedAt'> & { id?: TaskId }
+gantt.updateTask(id: TaskId, patch: TaskPatch): Task   // Partial<Omit<Task, 'id' | 'createdAt' | 'updatedAt'>>
+gantt.removeTask(id: TaskId): void     // removes descendants and their dependencies too
 gantt.moveTask(id: TaskId, newStart: DateInput): Task
-gantt.resizeTask(id: TaskId, newDuration: number): Task
-gantt.setProgress(id: TaskId, progress: number): Task
+gantt.resizeTask(id: TaskId, newDuration: number): Task   // working hours
+gantt.setProgress(id: TaskId, progress: number): Task     // 0..1
+gantt.duplicateTask(taskId?: TaskId): Task[]
 gantt.getTask(id: TaskId): Task | undefined
 gantt.getTasks(): Task[]
 gantt.findTasks(predicate: (t: Task) => boolean): Task[]
 ```
 
-> **Cascade:** `moveTask` / `resizeTask` / `updateTask` by default shift dependent tasks along their dependencies (FS/SS/FF/SF + lag) and respect `constraint`, emitting `task:moved` for every affected task. Disable via the `manual` scheduling mode.
+> **Cascade:** opt-in via `GanttConfig.schedulingMode: 'auto'`. The default is `'manual'`, which affects only the named task. In `'auto'`, `moveTask` / `resizeTask` / `updateTask` (when start/end/duration change) and a drag commit push dependent tasks **later** along FS/SS/FF/SF + lag (never earlier, duration-preserving), emitting `task:moved` for each and undoing as one step. `task.constraint` is **inert** in the cascade, as it is in CPM — the earlier "respects `constraint`" wording here never shipped.
+
+**`duplicateTask(taskId?)`** copies one task, or the whole current selection when `taskId` is
+omitted, through `addTask()` (so ids, timestamps, `task:added` and undo are the normal path).
+Each copy gets a fresh id, keeps its `parent` (it lands as a sibling), starts where **its own**
+source ends with the same working-hours span, resets `progress` to `0`, and copies every other
+field verbatim. `name` gets no "(copy)" suffix, because a suffix is English-only text in an i18n'd library.
+Children are not cloned, and copies carry **no** dependency edges (v1 does not rewire). One
+call is one undo step. An unresolvable explicit `taskId` throws; an omitted `taskId` with an empty
+selection is a no-op returning `[]`. The copies are not auto-selected. Bound to Cmd/Ctrl+D
+(§8.4).
+
+Every mutator throws after `destroy()` and none is gated by `readOnly`, which governs rendered
+interactivity, not the method surface.
 
 ### 7.3 Dependency Operations
 
 ```typescript
-gantt.linkTasks(from: TaskId, to: TaskId, type?: DependencyType, lag?: number): Dependency
+gantt.linkTasks(from: TaskId, to: TaskId, type?: DependencyType, lag?: number): Dependency  // type default 'FS'; lag in working hours
 gantt.unlinkTasks(from: TaskId, to: TaskId): void
 gantt.getDependencies(): Dependency[]
 gantt.getDependenciesOf(taskId: TaskId): Dependency[]
 ```
 
+`linkTasks()` throws on a self-link, a duplicate pair or a cycle — rejected at write time rather
+than discovered later by CPM. `GanttConfig.dependencies` goes through the same validation (a bad
+initial set throws at construction) and takes no `id`. Both are undoable.
+
 ### 7.4 Computation
 
 ```typescript
-gantt.computeCriticalPath(): TaskId[]
+gantt.computeCriticalPath(): CriticalPathResult   // { schedule, criticalTaskIds, projectEnd }
 gantt.computeResourceLeveling(): void              // Pro
 gantt.autoSchedule(options?: AutoScheduleOptions): Promise<void>  // Cloud/AI
-gantt.detectConflicts(): Conflict[]
 ```
+
+`computeCriticalPath()` returns the full `CriticalPathResult` (per-task `TaskSchedule` with
+ES/EF/LS/LF/slack, the ordered `criticalTaskIds`, `projectEnd`), not a bare `TaskId[]`; the
+`critical-path:computed` event carries only the ids. It throws on an empty project and on a
+cycle (`CyclicDependencyError`). A mounted chart recomputes it on every change and paints it
+(dashed outline, not color-only) without being asked.
+
+**Conflicts are an opt-in mixin**, for the same reason as theming below (class prototype methods
+never tree-shake). Headless:
+
+```typescript
+import { withConflicts } from '@fluxgantt/core/conflicts';
+
+const gantt = withConflicts(createGantt({ tasks, dependencies }), { kinds?: ConflictKind[] });
+gantt.detectConflicts(): Conflict[]   // pure query, never emits; [] after destroy()
+
+type Conflict =
+  | { kind: 'dependency-violation'; dependencyId; from; to; dependencyType; lagHours;
+      requiredStart: Temporal.ZonedDateTime; shortfallHours }
+  | { kind: 'outside-parent'; taskId; parentId; edge: 'start' | 'end' | 'both' }
+  | { kind: 'invalid-span'; taskId };            // end < start
+```
+
+The union is **open**: Pro adds resource and constraint kinds in minor releases, so consumers keep
+a default branch. `conflict:detected` is a change notification, not a poll: its watcher runs only
+while a listener is subscribed, does not fire on subscribe (seed with `detectConflicts()`), fires
+only when the set changes (`[]` when it clears), and is emitted from a **microtask after** the
+mutation's synchronous `task:*` / `dependency:*` / `history:changed` events — so a cascade or an
+undo is announced once and never as a transient violation. **Rollup caveat:** `outside-parent` is
+dropped automatically when `GanttConfig.rollup` is set (the parent is drawn at its derived span),
+but `dependency-violation` keeps using a summary's **authored** dates, as the cascade does, so an
+arrow that visibly runs backwards from or to a rolled-up summary may go unreported. The pure
+`detectConflicts(tasks, dependencies, calendar, options?)` is exported from the main entry.
 
 ### 7.5 Baselines (Pro)
 
@@ -557,11 +644,57 @@ gantt.getBaselines(): Baseline[]
 ### 7.6 Viewport
 
 ```typescript
+// base — headless-safe, works before mount()
 gantt.zoomTo(level: 'day' | 'week' | 'month' | 'quarter' | 'year'): void
-gantt.scrollToTask(id: TaskId): void
-gantt.scrollToDate(date: Date): void
-gantt.setDensity(density: 'compact' | 'default' | 'comfortable'): void
+gantt.zoomIn(): void           // one step toward 'day'; safe no-op at the boundary
+gantt.zoomOut(): void          // one step toward 'year'
+gantt.getViewMode(): ViewMode
 ```
+
+When mounted, a zoom keeps the date at the viewport centre centred. No zoom is gated by `readOnly`
+(zoom changes no data); `withInteraction` binds Cmd/Ctrl +/- and Ctrl+wheel.
+
+**Scrolling and runtime density are an opt-in mixin** — scrolling needs a mounted DOM, and a
+base-facade method would bill every headless consumer (the same reasoning as `withTheme` below):
+
+```typescript
+import { withViewport } from '@fluxgantt/core/viewport';
+
+const gantt = withViewport(withRender(createGantt({ tasks })));
+gantt.scrollToTask(id: TaskId, options?: {
+  align?: 'nearest' | 'start' | 'center' | 'end';   // default 'nearest'
+  behavior?: 'auto' | 'smooth';                      // default 'auto'
+  expand?: boolean;                                  // default true: expand collapsed ancestors
+}): boolean
+gantt.scrollToDate(date: DateInput, options?: {
+  align?: 'start' | 'center' | 'end';                // default 'center'
+  behavior?: 'auto' | 'smooth';
+}): boolean
+gantt.setDensity(density: 'compact' | 'default' | 'comfortable' | 'touch'): void
+```
+
+Deviations from the original signatures, each deliberate:
+
+- **`scrollToDate` takes `DateInput`**, not `Date` — the same input union as every other date in
+  the API (golden rule 3: native `Date` only at the boundary).
+- **An `options` argument** on both scroll methods (alignment, smooth scrolling — instant under
+  `prefers-reduced-motion` — and whether `scrollToTask` may expand collapsed ancestors).
+- **`boolean` returns.** `true` = the target exists and an offset was written (including "already
+  visible"). `false` = not mounted (headless, or Canvas still loading: wait for
+  `renderer:selected`), a hidden row with `expand: false`, or a date outside the chart's range.
+  An unknown id or an invalid date throws. In SVG mode the container must itself be the scroll
+  viewport (bounded height + `overflow: auto`); the return value cannot detect a container that
+  does not scroll.
+- **`'touch'`** is a fourth density (48 px rows) — the one `withResponsive()` selects under
+  `(pointer: coarse)`. Calling `setDensity()` takes density ownership: `withResponsive` keeps
+  adapting the label column and gestures but stops switching density.
+- **`ViewportChangedPayload.density`**: `setDensity()` keeps the top visible row in place and
+  emits `viewport:changed` `{ viewMode, density }`; `density` is present only on that path.
+  Scrolling never emits `viewport:changed`.
+
+Scrolling never moves focus or selection: the typical caller is a host search box, and stealing
+its focus would be hostile. `select(id)` + `scrollToTask(id)` is the "go to and announce" recipe.
+None of these is gated by `readOnly` or recorded as an undo step.
 
 **Theming is an opt-in mixin, not a facade method.** `setTheme` was originally specified here as
 `gantt.setTheme()`, but a base-facade method is billed to every consumer (class prototype methods
@@ -585,98 +718,241 @@ gantt.getResolvedTheme(): 'light' | 'dark'    // painted ('auto' collapsed)
 ### 7.7 Selection
 
 ```typescript
-gantt.select(id: TaskId | TaskId[]): void
+gantt.select(id: TaskId | TaskId[]): void   // REPLACES the selection
 gantt.selectAll(): void
 gantt.deselect(): void
-gantt.getSelection(): TaskId[]
+gantt.getSelection(): TaskId[]              // snapshot, not a live reference
 ```
+
+Base facade, headless. Selection is **hierarchical**: selecting a parent selects every descendant,
+and every method reports that flattened set, in insertion order (not row order). Unknown ids are
+dropped silently. `selection:changed` fires once per call or completed click, only when the
+flattened set actually changed. `getSelection()` returns `[]` after `destroy()`. Selection is
+view state: not an undo step, not gated by `readOnly`, and cleared by an import. With
+`withInteraction`, click / Shift+click / Cmd/Ctrl+click, Space and Shift+Arrow drive the same
+store (§8.4); right-click does not select.
 
 ### 7.8 IO
 
-```typescript
-gantt.importJson(data: object): void
-gantt.importCsv(csv: string, mapping?: ColumnMapping): void
-gantt.importMsproject(xml: string): void                       // Pro
+IO is the opt-in `withIo()` mixin (`@fluxgantt/core/io`); the pure, instance-free functions are
+exported from the same subpath.
 
-gantt.exportJson(): object
-gantt.exportCsv(columns?: string[]): string
-gantt.exportPng(options?: ExportOptions): Promise<Blob>
-gantt.exportSvg(options?: ExportOptions): string
-gantt.exportPdf(options?: ExportOptions): Promise<Blob>
+```typescript
+import { withIo } from '@fluxgantt/core/io';
+const gantt = withIo(createGantt({ tasks }));
+
+gantt.importJson(data: string | object, options?: { limits?: Partial<ImportLimits> }): ImportSummary
+gantt.importCsv(csv: string, options?: { limits?: Partial<ImportLimits> }): ImportSummary
+
+gantt.exportJson(options?: { timezone?: string }): ExportBundle                  // headless
+gantt.exportCsv(options?: { timezone?: string; columns?: readonly CsvColumn[] }): string  // headless
+gantt.exportSvg(options?: { inlineComputedStyle?: boolean }): string             // needs withRender + mount
+gantt.exportPng(options?: { scale?: number; background?: string | 'transparent' }): Promise<Blob>
+
+gantt.importMsproject(xml: string): void                       // Pro
 gantt.exportMsproject(): string                                 // Pro
+gantt.exportPdf(options?: ExportOptions): Promise<Blob>         // Pro (branding, §14.2) — not in core
 ```
+
+- **Imports validate, then replace atomically.** The whole dataset is validated (and linked, so a
+  cycle is caught) before any live store is touched; a rejected import leaves tasks, dependencies,
+  history and selection unchanged. On success it replaces the dataset (no merge), clears undo/redo
+  and the selection, and fires one `data:imported`. CSV has no dependencies, so `importCsv()`
+  clears them. `ImportLimits` defaults: 50,000 tasks, 100,000 dependencies, hierarchy depth 100,
+  20 M input chars (security.md: limit size).
+- **`exportCsv()`** escapes formula-leading cells (`= + - @`, tab, CR) — security.md.
+- **`exportSvg()`** returns a self-contained, sanitized SVG with resolved styles baked in
+  (`inlineComputedStyle: false` keeps the `var(--fg-*)` declarations instead). Throws if not
+  mounted.
+- **`exportPng()`** rasterizes; it rejects (async) rather than throws. **SVG mode** caps the output
+  at 8,192 px per side and 16.7 M px total — about 255 rows at default density and `scale` 1.
+
+**Canvas-mode export (≥2,000 tasks).** Both exports cover the whole chart, not the visible window.
+
+- `exportSvg()` rebuilds the chart as a **throwaway SVG** from what the canvas last painted and runs
+  it through the same sanitizing pipeline. It stays synchronous, and blocks the main thread.
+- `exportPng()` paints straight into a detached **offscreen canvas** with the Canvas renderer's own
+  paint primitives, from a lazily loaded chunk (`io/export-canvas-png.ts`) that SVG-only consumers
+  never download — no `<img>`, no blob URL, so none of the "exported SVG opened as HTML" surface.
+  Output is bounded by the browser: 65,535 px per side, 2^27 px total area (half Chromium's
+  ceiling), and a far lower measured area cap on WebKit. Because Chromium/WebKit fail an
+  over-limit canvas by silently no-op'ing every draw, a **1x1 allocation probe** (paint one pixel,
+  read its alpha back) runs first, so an oversize export rejects with an actionable error instead
+  of returning a transparent PNG. Selection and focus are not exported; the critical path is.
+- **`MAX_CANVAS_EXPORT_ROWS = 5,000` visible rows** (collapsed descendants do not count) for both.
+  The originally proposed cap was 10,000; it was **lowered after measuring**: the SVG renderer is
+  not virtualized, so the build dominates (~1 ms/row), and 10,000 rows blocked 4.1 s with native
+  Temporal and 11.3 s with `@js-temporal/polyfill`, which most consumers still use. At 5,000 the
+  block is ~2 s native / ~6 s polyfill, bounded rather than a hang — accepted for an explicit,
+  user-triggered export — while ~2,700 rows (3 s) would leave almost no headroom over the
+  2,000-task threshold. There is no per-call override in v1; collapsing rows exports a bigger plan
+  under the cap.
 
 ### 7.9 Events
 
 ```typescript
-gantt.on('task:added',          (task: Task) => void): UnsubscribeFn
-gantt.on('task:moved',          (task: Task, prevStart: Date) => void)
-gantt.on('task:resized',        (task: Task, prevDuration: number) => void)
-gantt.on('task:removed',        (taskId: TaskId) => void)
-gantt.on('task:progressed',     (task: Task, prevProgress: number) => void)
-gantt.on('dependency:added',    (dep: Dependency) => void)
-gantt.on('dependency:removed',  (depId: DependencyId) => void)
-gantt.on('selection:changed',   (taskIds: TaskId[]) => void)
-gantt.on('viewport:changed',    (state: ViewportState) => void)
-gantt.on('critical-path:computed', (path: TaskId[]) => void)
-gantt.on('baseline:saved',      (baseline: Baseline) => void)
-gantt.on('conflict:detected',   (conflicts: Conflict[]) => void)
+gantt.on('task:added',          (task: Task, meta?: EventMeta) => void): UnsubscribeFn
+gantt.on('task:moved',          (task: Task, prevStart: DateInput, meta?: EventMeta) => void)
+gantt.on('task:resized',        (task: Task, prevDuration: number, meta?: EventMeta) => void)  // working hours
+gantt.on('task:progressed',     (task: Task, prevProgress: number, meta?: EventMeta) => void)
+gantt.on('task:removed',        (taskId: TaskId, meta?: EventMeta) => void)
+gantt.on('dependency:added',    (dep: Dependency, meta?: EventMeta) => void)
+gantt.on('dependency:removed',  (depId: DependencyId, meta?: EventMeta) => void)
+gantt.on('critical-path:computed', (criticalTaskIds: readonly TaskId[]) => void)
+gantt.on('selection:changed',   (taskIds: readonly TaskId[]) => void)
+gantt.on('collapse:changed',    (collapsedTaskIds: readonly TaskId[]) => void)
+gantt.on('history:changed',     (state: { canUndo: boolean; canRedo: boolean }) => void)
+gantt.on('data:imported',       (summary: ImportSummary) => void)     // { format, taskCount, dependencyCount }
+gantt.on('viewport:changed',    (state: ViewportChangedPayload) => void)  // { viewMode, density? }
+gantt.on('renderer:selected',   (state: RendererSelectedPayload) => void) // { renderer, taskCount, canvasFallbackReason? }
+gantt.on('conflict:detected',   (conflicts: readonly Conflict[]) => void)            // withConflicts
+gantt.on('task:activated',      (payload: TaskActivatedPayload) => void)             // withEditHooks
+gantt.on('task:context-requested', (payload: TaskContextRequestedPayload) => void)  // withEditHooks
+// Pro: gantt.on('baseline:saved', (baseline: Baseline) => void) — not in core's GanttEventMap
 ```
 
-### 7.10 Lifecycle
+The authoritative list is the exported `GanttEventMap` type. Conventions across the whole map:
+
+- **Snapshot, not delta.** `selection:changed`, `collapse:changed` and `critical-path:computed`
+  carry the complete set (selection in insertion order, not row order).
+- **No-ops are suppressed** — reselecting the same set, `zoomTo()` the current mode, `undo()` on
+  an empty stack emit nothing.
+- **One fire per gesture.** `history:changed` fires once for a whole cascade-grouped drag; an
+  import fires one `data:imported`, never `task:added` × N.
+- `prevStart` is a `DateInput` (whatever shape the task was last written with), not a `Date`.
+  `meta` (`{ source: 'undo' | 'redo' }`) is present only on events replayed by undo/redo, an
+  additive third argument older two-parameter listeners ignore.
+- `viewport:changed` fires on a view-mode change (and, with `density`, on `setDensity()`).
+  Scrolling does not emit it.
+- `renderer:selected` fires once per `mount()`, after paint. Above the Canvas threshold it is the
+  only reliable "chart is now visible" signal; `canvasFallbackReason` is set only on a true
+  Canvas→SVG fallback.
+- `conflict:detected`, `task:activated` and `task:context-requested` fire only with their mixin
+  applied (§7.4, §8.4).
+
+### 7.10 Lifecycle, History & Hierarchy
 
 ```typescript
-gantt.mount(container: HTMLElement): void
-gantt.unmount(): void
-gantt.destroy(): void
+// withRender (@fluxgantt/core/render)
+gantt.mount(container: HTMLElement): void   // remounts if already mounted
+gantt.unmount(): void                       // keeps the instance
 gantt.refresh(): void
+// base
+gantt.destroy(): void                       // unmount + clear listeners; idempotent
 ```
+
+`mount()` picks the renderer once, by task count at that instant: SVG at ≤2,000 tasks
+(synchronous), Canvas above (lazy chunk — the container is empty until `renderer:selected`
+fires; any Canvas failure falls back to SVG). Every mixin must be applied **before the first
+`mount()`**. After `destroy()` every mutating call throws; read-only getters (`getSelection`,
+`canUndo`, `isCollapsed`, `getViewMode`, ...) return safe values instead.
+
+**History (base):**
+
+```typescript
+gantt.undo(): boolean      // false = empty stack, a safe no-op (no event)
+gantt.redo(): boolean
+gantt.canUndo(): boolean
+gantt.canRedo(): boolean
+```
+
+One entry per **logical gesture**, not per internal write: a cascade-grouped drag, a multi-select
+Delete and a `duplicateTask()` that made eight copies each undo in one step. `history:changed`
+`{ canUndo, canRedo }` fires once per committed gesture and per successful undo/redo, so buttons
+wire off it instead of polling. Events replayed by undo/redo carry a third `meta` argument
+`{ source: 'undo' | 'redo' }` so a persistence listener can skip them. `GanttConfig.historyLimit`
+(default 100) bounds the stack as a ring buffer. An import clears both stacks and is not itself
+undoable. Not gated by `readOnly`.
+
+**Hierarchy (base, headless):**
+
+```typescript
+gantt.toggleCollapse(id: TaskId): void   // no-op on a leaf / unknown id
+gantt.isCollapsed(id: TaskId): boolean   // collapsed AND still has children
+gantt.collapseAll(): void
+gantt.expandAll(): void
+```
+
+`collapse:changed` carries the full collapsed-id snapshot and fires only when the set changes;
+`GanttConfig.initialCollapsed` seeds it silently. Collapse is view state: not an undo step, not
+in `exportJson()`.
 
 ### 7.11 React Wrapper Example
 
+`<FluxGantt>` wraps the lower-level `useFluxGantt(config)` hook, which returns `{ ref, instance }`
+— the full instance, not a curated subset. Both compose `withRender` + `withInteraction` +
+`withEditHooks` + `withViewport` for you (not `withIo`: the wrapper has no import/export
+surface, so a consumer who never exports never downloads it), so the ref type is
+`GanttInstance & RenderCapability & ViewportCapability`.
+
 ```tsx
-import { FluxGantt, useFluxGantt } from '@fluxgantt/react';
+import { useRef } from 'react';
+import { FluxGantt, type FluxGanttRef } from '@fluxgantt/react';
 
 function MyApp() {
-  const { ref, addTask, computeCriticalPath } = useFluxGantt({
-    tasks: initialTasks,
-    onTaskChange: (task) => saveToBackend(task),
-  });
+  const gantt = useRef<FluxGanttRef>(null);
 
   return (
     <div>
-      <button onClick={() => addTask({ name: 'New task', start, end })}>
+      <button onClick={() => gantt.current?.addTask({ name: 'New task', start, end, progress: 0, type: 'task' })}>
         Add Task
       </button>
-      <FluxGantt ref={ref} viewMode="week" style={{ height: 600 }} />
+      <FluxGantt
+        ref={gantt}
+        tasks={initialTasks}
+        viewMode="week"
+        onTaskChange={(task) => saveToBackend(task)}
+        onTaskActivated={({ taskId }) => openEditor(gantt.current!.getTask(taskId))}
+        onTaskContextRequested={(p) => { p.preventDefault(); openMenu(p); }}
+        style={{ height: 600, overflow: 'auto' }}
+      />
     </div>
   );
 }
 ```
 
+Event props: `onTaskAdded`, `onTaskMoved`, `onTaskResized`, `onTaskProgressed`, `onTaskRemoved`,
+`onDependencyAdded`, `onDependencyRemoved`, `onCriticalPathComputed`, `onTaskActivated`,
+`onTaskContextRequested`, plus `GanttConfig.onTaskChange`. Callbacks stay reactive; config props
+are **uncontrolled, construction-time only** — the instance is the source of truth after mount,
+and a prop-driven `viewMode` change is a `key` remount (or `ref.zoomTo()`; density via
+`ref.setDensity()`). The wrapper forwards `tasks`, `dependencies`, `calendar`, `viewMode`,
+`density`, `locale`, `readOnly` and `enableDependencyDrag`; the other `GanttConfig` fields
+(`ariaLabel`, `messages`, `theme`, `schedulingMode`, `historyLimit`, `initialCollapsed`, `rollup`,
+`canvasViewportHeight`) type-check on the props but are **not forwarded yet** — a known gap. The
+mount effect's cleanup calls `unmount()`, never `destroy()` (StrictMode safety).
+
 ### 7.12 Vue Wrapper Example
 
+Same composition and the same exposed instance as React (`useFluxGantt` returns
+`{ containerRef, instance }`). Props mirror the forwarded `GanttConfig` subset above; events are
+kebab-case emits.
+
 ```vue
-<script setup>
+<script setup lang="ts">
 import { ref } from 'vue';
-import { FluxGantt } from '@fluxgantt/vue';
+import { FluxGantt, type FluxGanttRef } from '@fluxgantt/vue';
 
-const ganttRef = ref();
-const tasks = ref(initialTasks);
-
-const handleTaskChange = (task) => saveToBackend(task);
+const gantt = ref<FluxGanttRef>();
 </script>
 
 <template>
   <FluxGantt
-    ref="ganttRef"
-    :tasks="tasks"
+    ref="gantt"
+    :tasks="initialTasks"
     view-mode="week"
-    @task-change="handleTaskChange"
-    style="height: 600px"
+    :on-task-change="saveToBackend"
+    @task-activated="({ taskId }) => openEditor(gantt?.getTask(taskId))"
+    @task-context-requested="(p) => { p.preventDefault(); openMenu(p); }"
+    style="height: 600px; overflow: auto"
   />
 </template>
 ```
+
+Emits: `task-added`, `task-moved`, `task-resized`, `task-progressed`, `task-removed`,
+`dependency-added`, `dependency-removed`, `critical-path-computed`, `task-activated`,
+`task-context-requested`. `onTaskChange` is a prop (it is a `GanttConfig` field, not a bus event).
+Both wrappers forward events synchronously, so `payload.preventDefault()` works from a handler.
 
 ---
 
@@ -807,22 +1083,54 @@ Prefer:
 |---|---|
 | Click + drag on the bar | Move the task |
 | Click + drag the bar edge | Resize the task |
-| Click + drag the handle | Create a dependency to another task |
-| Double click the bar | Open detail edit |
-| Right click | Open the context menu |
+| Click + drag the handle | Create a dependency to another task (off with `enableDependencyDrag: false`) |
+| Click / Shift+click / Cmd/Ctrl+click | Select / extend the range from the anchor / toggle one task. Clicking empty space clears the selection |
+| Click the row's collapse glyph | Collapse / expand the subtree (live in `readOnly` charts too: it changes no data) |
+| Double click the bar | Emits `task:activated` — **host-driven**, see below |
+| Right click | Emits `task:context-requested` — **host-driven**, see below |
 
-**Keyboard:**
+Drag gestures are SVG-only and off under `readOnly`; a Canvas chart (≥2,000 tasks) supports
+click-select, collapse and the keyboard.
+
+**Keyboard** (verified against `interaction/keyboard-nav.ts`; needs `withInteraction`):
 
 | Key | Action |
 |---|---|
-| Arrow keys | Move the selection between tasks |
-| Tab | Move between cells in the task list |
-| Space | Select / deselect |
-| Cmd/Ctrl + D | Duplicate task |
-| Cmd/Ctrl + Z / Shift+Z | Undo / redo |
-| Cmd/Ctrl + +/- | Zoom in / out |
-| Delete | Delete the selected task |
-| Enter | Inline-edit the selected task's name |
+| ArrowUp / ArrowDown | Move focus and the selection one row; with Shift, extend the range from the anchor. No wraparound |
+| ArrowLeft / ArrowRight | Reserved for future cell navigation; not bound |
+| Tab | Enters / leaves the chart. Rows use a roving tabindex (exactly one row is a tab stop); there are no cells to Tab between |
+| Space | Toggle the focused task's selection |
+| Cmd/Ctrl + D | Duplicate the selection (`duplicateTask()`); off under `readOnly` |
+| Cmd/Ctrl + Z / Shift+Z | Undo / redo; off under `readOnly` |
+| Cmd/Ctrl + +/- | Zoom in / out (also Ctrl+wheel); live under `readOnly` |
+| Delete / Backspace | Delete the selection; off under `readOnly` |
+| Enter | Summary row: collapse / expand. Leaf row: emits `task:activated` (with `withEditHooks`) |
+| F2 | Emits `task:activated` on any row (with `withEditHooks`) |
+| ContextMenu / Shift+F10 | Emits `task:context-requested` (with `withEditHooks`) |
+
+**Host-driven editing** (opt-in `withEditHooks()` from `@fluxgantt/core/edit-hooks`): the spec
+originally had double-click open a detail editor, right-click open a context menu and Enter
+inline-edit the name. Core ships none of that UI. It **emits**, and the host builds the editor
+and menu with its own components, i18n and permissions — a library-owned editor would be wrong
+for most hosts, and every byte of it would be billed to the ones that replace it.
+
+| Gesture | Event |
+|---|---|
+| Double-click; Enter on a leaf row; F2 on any row | `task:activated` `{ taskId, part, source: 'pointer' \| 'keyboard', clientX, clientY }` |
+| Right-click; ContextMenu key; Shift+F10; touch long-press (500 ms, `longPressMs`) | `task:context-requested` `{ taskId, part, source: 'pointer' \| 'keyboard' \| 'long-press', clientX, clientY, preventDefault() }` |
+
+- **`readOnly` charts still emit both.** They mean "the user asked to open this task", not "the
+  task is editable"; a read-only detail card is a normal use.
+- **`preventDefault()`** suppresses the native context menu only when called synchronously in the
+  listener. No listener, or a listener that does not call it, leaves the browser menu alone —
+  the wrappers subscribe to every event, so "a listener exists" cannot mean "suppress".
+- **iOS** fires no `contextmenu`, so `preventDefault()` cannot stop its callout or loupe; the host
+  adds `-webkit-touch-callout: none; user-select: none` (core ships no CSS for it).
+- A long-press that fires ends the pointer gesture: no drag, resize, link or select follows.
+- **`part`** is `'bar' | 'label' | 'row'`; keyboard gestures always report `'row'`, and **Canvas
+  never reports `'bar'`** (its hit-test is row-wide). Right-click does not select.
+- Keyboard access to every row needs `withInteraction` (arrow keys, roving focus); without it
+  rows 2..n are pointer-only.
 
 **Zoom:**
 
@@ -927,6 +1235,8 @@ handle needs `r: 22`, large enough to swallow the bar it anchors to.
 - ~~Assets for Product Hunt~~ ⚠️ **text complete, images not** — `apps/docs/launch/product-hunt.md` has the tagline, description, maker comment and prepared replies; the gallery, thumbnail, GIFs and video are specified (viewport sizes, which example page, what to record) but are binary media that must be captured.
 
 **Gating all of the above:** Show HN and Product Hunt both require `@fluxgantt/core` published to npm and the docs site deployed at a public URL. A launch pointing at an uninstallable package converts nothing. **The npm half is done**: the `@fluxgantt` org was claimed and `core@0.2.0` / `react@0.1.1` / `vue@0.1.1` published on 2026-09-24 via `.github/workflows/release.yml` (changesets: merge to `master` opens a "Version Packages" PR; merging that PR publishes). **The docs half is not**: `.github/workflows/docs-deploy.yml` exists but Pages is still disabled on the repo, so the site has never been deployed and the packages' own `homepage` links are dead. One owner action remains — Settings → Pages → Source = GitHub Actions, then dispatch **Deploy docs** once. See `RELEASING.md`.
+
+**Wave 1 API gap closure (`core@0.3.0`, `react@0.2.0`, `vue@0.2.0`):** a gap review of §7 against the shipped facade found Core APIs that were specified but missing. They landed as three new opt-in subpaths rather than base-facade methods (class prototype methods never tree-shake): `@fluxgantt/core/viewport` (`withViewport`: `scrollToTask`, `scrollToDate`, runtime `setDensity`, §7.6), `@fluxgantt/core/conflicts` (`withConflicts`: `detectConflicts` + `conflict:detected`, §7.4) and `@fluxgantt/core/edit-hooks` (`withEditHooks`: `task:activated` / `task:context-requested`, §8.4). The same release made `exportSvg()`/`exportPng()` work in Canvas mode (§7.8), added `GanttConfig.enableDependencyDrag` (§6.3), and gave the wrappers the edit-hook props/emits and `withViewport` (§7.11/§7.12). Each new subpath got its own size fixture (`with-viewport` and `with-edit-hooks` at 16 KiB, `with-conflicts` at 10 KiB) and **no existing budget was raised**: hello world stays 7.71 KiB / 9 KiB and the kitchen sink 23.82 KiB / 24 KiB, which deliberately excludes `withViewport` and `withConflicts` for lack of headroom, exactly as it excludes `withTheme`.
 
 ### 9.2 Wave 2 — Pro Tier (Weeks 11–18, after validation)
 
