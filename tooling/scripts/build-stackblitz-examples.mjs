@@ -129,8 +129,8 @@ export const MANIFEST = [
  * unverified (spec Q1). If the one-time manual boot check in RELEASING.md fails, pin the Vite 7
  * line here, e.g.
  *   vite: '^7.1.0', '@vitejs/plugin-react': '^5.0.0',
- * after checking the plugins' `peerDependencies` against that Vite major (dependabot's vite-stack
- * group exists because a mismatched plugin major refuses to load).
+ * after checking the plugins' `peerDependencies` against that Vite major (a mismatched plugin
+ * major refuses to load — see PR #65).
  */
 export const DEPENDENCY_OVERRIDES = {};
 
