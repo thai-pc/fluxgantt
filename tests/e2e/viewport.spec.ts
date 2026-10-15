@@ -356,6 +356,9 @@ test.describe('Canvas renderer (2100 tasks, virtualized rows)', () => {
     const bodyH = s.h - HEADER_HEIGHT;
     // nearest from the top: the row's bottom edge ends flush with the viewport bottom.
     expect(s.top).toBe(rowTop + ROW_HEIGHT.default - bodyH);
+    // The Canvas-mode container is 600px tall; with Linux font metrics its bottom edge sits below
+    // the 720px window, where `page.mouse.click` hits nothing. Bring the whole container into view.
+    await page.evaluate(() => document.getElementById('gantt')!.scrollIntoView({ block: 'end' }));
     const c = await containerRect(page);
     // Click the middle of where the row must be painted.
     const y = c.y + HEADER_HEIGHT + (rowTop - s.top) + ROW_HEIGHT.default / 2;
