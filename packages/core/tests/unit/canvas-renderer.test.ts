@@ -777,6 +777,31 @@ describe('hidden ARIA layer — row-virtualization windowing (fix #37)', () => {
     expect(h.interactionRoot.querySelector('[data-task-id="t150"]')).toBeNull();
   });
 
+  it('keeps the focused row (single tab stop, DOM focus) rendered after a far scroll leaves its window', async () => {
+    const mock = createMockContext2D();
+    installMockContext(mock);
+    const tasks = buildFlatTasks(300);
+    const h = createCanvasRenderer(container, { tasks, dependencies: [], focusedTaskId: toTaskId('t150') });
+    h.interactionRoot.querySelector<HTMLElement>('[data-task-id="t150"]')!.focus();
+
+    for (const top of [0, 9032]) {
+      h.container.scrollTop = top;
+      h.container.dispatchEvent(new Event('scroll'));
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+      const rowEls = [...h.interactionRoot.querySelectorAll<HTMLElement>('.fg-timeline-canvas__row')];
+      const focused = h.interactionRoot.querySelector<HTMLElement>('[data-task-id="t150"]');
+      expect(focused).not.toBeNull();
+      expect(h.interactionRoot.querySelectorAll('[tabindex="0"]')).toHaveLength(1);
+      expect(focused!.getAttribute('aria-rowindex')).toBe('151');
+      expect(document.activeElement).toBe(focused);
+      // DOM order stays monotonic in aria-rowindex.
+      const idx = rowEls.map((r) => Number(r.getAttribute('aria-rowindex')));
+      expect(idx).toEqual([...idx].sort((a, b) => a - b));
+      // And the window itself stayed windowed (focused row + a bounded slice, not all 300).
+      expect(rowEls.length).toBeLessThan(100);
+    }
+  });
+
   it('degrades safely to an empty window when there are zero rows', () => {
     const mock = createMockContext2D();
     installMockContext(mock);
@@ -2540,5 +2565,28 @@ describe('canvas renderer — design tokens re-resolve per render (theming)', ()
       .map((c) => c.args[0]);
     expect(repainted).toContain('#27272a');
     expect(repainted).not.toContain('#e5e7eb');
+  });
+});
+
+// --- getRowAnchor (T4 edit hooks: keyboard anchor from the painted geometry) ---------------
+describe('createCanvasRenderer — getRowAnchor()', () => {
+  it('anchors on the painted row: canvas rect + label column / 2, header + row centre - scrollTop', () => {
+    installMockContext(createMockContext2D());
+    const h = createCanvasRenderer(container, { tasks: buildFlatTasks(60), dependencies: [] }, { labelColumnWidth: 120 });
+    h.canvas.getBoundingClientRect = () => new DOMRect(50, 200, 800, 600);
+    const a = h.getRowAnchor(3);
+    expect(a.clientX).toBe(50 + 60);
+    expect(a.clientY).toBe(200 + 32 + 3 * 32 + 16);
+    container.scrollTop = 64;
+    expect(h.getRowAnchor(3).clientY).toBe(200 + 32 + 3 * 32 + 16 - 64);
+  });
+
+  it('clamps a row scrolled out of view into the visible canvas', () => {
+    installMockContext(createMockContext2D());
+    const h = createCanvasRenderer(container, { tasks: buildFlatTasks(60), dependencies: [] });
+    h.canvas.getBoundingClientRect = () => new DOMRect(0, 100, 800, 300);
+    expect(h.getRowAnchor(50).clientY).toBe(100 + 300); // far below
+    container.scrollTop = 5000;
+    expect(h.getRowAnchor(0).clientY).toBe(100 + 32); // far above: just under the header
   });
 });

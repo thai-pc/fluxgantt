@@ -36,7 +36,7 @@ function onTaskMoved(task: Task, prevStart: unknown) {
     <FluxGantt
       :tasks="tasks"
       :dependencies="dependencies"
-      style="height: 420px; border: 1px solid #e5e7eb; border-radius: 8px; background: #fff"
+      style="height: 420px; overflow: auto; border: 1px solid #e5e7eb; border-radius: 8px; background: #fff"
       @task-moved="onTaskMoved"
     />
   </main>

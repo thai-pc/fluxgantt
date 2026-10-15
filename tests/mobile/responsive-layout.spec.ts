@@ -89,3 +89,109 @@ test('rotating to landscape re-lays-out: the label column widens with the viewpo
   await expect.poll(() => paintedLabelColumnWidth(page)).toBeGreaterThan(portraitWidth);
   expect(await paintedLabelColumnWidth(page)).toBe(DEFAULT_LABEL_COLUMN_WIDTH);
 });
+
+// --- withViewport x withResponsive (spec-viewport-api.md §4.4, §9.4 item 8) ---------------------
+// `responsive.ts` composes `withViewport`. `?density=compact` calls the public `setDensity()` BEFORE
+// `mount()`; that pins density, so `withResponsive` must not replace it with `'touch'`.
+// The default page (no param) is covered by the 'touch' density test above.
+
+type ViewportGantt = {
+  scrollToTask(id: string, o?: Record<string, unknown>): boolean;
+  scrollToDate(d: string, o?: Record<string, unknown>): boolean;
+  setDensity(d: string): void;
+};
+
+const rowPitch = async (page: import('@playwright/test').Page): Promise<number> => {
+  const a = (await page.locator('.fg-timeline__row[data-row-index="0"]').boundingBox())!;
+  const b = (await page.locator('.fg-timeline__row[data-row-index="1"]').boundingBox())!;
+  return Math.round(b.y - a.y);
+};
+
+test.describe('explicit density pinned over the coarse-pointer default', () => {
+  test('a pre-mount setDensity("compact") is not overridden by withResponsive, even across a rotation', async ({
+    page,
+  }) => {
+    await page.goto('/responsive.html?density=compact');
+    await expect(page.locator('#gantt svg')).toBeVisible();
+    expect(await page.evaluate(() => window.matchMedia('(pointer: coarse)').matches)).toBe(true);
+    expect(await rowPitch(page)).toBe(24);
+
+    // A resize/orientation change re-runs withResponsive's arbitration (ResizeObserver); the label
+    // column still adapts but density stays pinned.
+    const before = await paintedLabelColumnWidth(page);
+    await page.setViewportSize({ width: 851, height: 393 });
+    await expect.poll(() => paintedLabelColumnWidth(page)).toBeGreaterThan(before);
+    expect(await rowPitch(page)).toBe(24);
+    await page.setViewportSize({ width: 393, height: 851 });
+    await expect.poll(() => paintedLabelColumnWidth(page)).toBe(before);
+    expect(await rowPitch(page)).toBe(24);
+  });
+
+  test('a post-mount setDensity pins too: the touch default no longer applies afterwards', async ({
+    page,
+  }) => {
+    await page.goto('/responsive.html');
+    await expect(page.locator('#gantt svg')).toBeVisible();
+    expect(await rowPitch(page)).toBe(48); // 'touch' default under a coarse pointer
+    await page.evaluate(() => (window as unknown as { __gantt: ViewportGantt }).__gantt.setDensity('comfortable'));
+    expect(await rowPitch(page)).toBe(40);
+    const before = await paintedLabelColumnWidth(page);
+    await page.setViewportSize({ width: 851, height: 393 });
+    await expect.poll(() => paintedLabelColumnWidth(page)).toBeGreaterThan(before);
+    expect(await rowPitch(page)).toBe(40);
+  });
+});
+
+test.describe('scroll methods honour the narrowed label column', () => {
+  test('scrollToDate(center) lands the date mid-viewport using the narrowed label width, not 160', async ({
+    page,
+  }) => {
+    await page.goto('/responsive.html');
+    await expect(page.locator('#gantt svg')).toBeVisible();
+    const labelW = await paintedLabelColumnWidth(page);
+    expect(labelW).toBeLessThan(DEFAULT_LABEL_COLUMN_WIDTH);
+
+    // 'test' starts 2026-05-04 — its bar's left edge is exactly the date's x.
+    await page.evaluate(() =>
+      (window as unknown as { __gantt: ViewportGantt }).__gantt.scrollToDate('2026-05-04'),
+    );
+    const c = (await page.locator('#gantt').boundingBox())!;
+    const bar = (await page.locator('.fg-task[data-task-id="test"] .fg-task__bar').boundingBox())!;
+    // With the stale 160px constant the bar would sit (160 - labelW) px off centre.
+    const drift = Math.abs(bar.x - (c.x + c.width / 2));
+    expect(drift).toBeLessThanOrEqual(2);
+    expect(160 - labelW).toBeGreaterThan(2); // the assertion above is able to detect the stale constant
+  });
+
+  test("scrollToTask('launch') brings the far-right milestone's row into the viewport and centres its point inside", async ({
+    page,
+  }) => {
+    await page.goto('/responsive.html');
+    await expect(page.locator('#gantt svg')).toBeVisible();
+    expect(
+      await page.evaluate(() =>
+        (window as unknown as { __gantt: ViewportGantt }).__gantt.scrollToTask('launch'),
+      ),
+    ).toBe(true);
+    const c = (await page.locator('#gantt').boundingBox())!;
+    const shape = (await page.locator('.fg-task[data-task-id="launch"] .fg-task__bar').boundingBox())!;
+    const cx = shape.x + shape.width / 2;
+    // 'nearest' puts a zero-width span's point on the edge: allow sub-pixel rounding.
+    expect(cx).toBeGreaterThanOrEqual(c.x - 1);
+    expect(cx).toBeLessThanOrEqual(c.x + c.width + 1);
+  });
+
+  test("scrollToTask('launch') shows the whole milestone diamond, not half of it", async ({
+    page,
+  }) => {
+    await page.goto('/responsive.html');
+    await expect(page.locator('#gantt svg')).toBeVisible();
+    await page.evaluate(() =>
+      (window as unknown as { __gantt: ViewportGantt }).__gantt.scrollToTask('launch'),
+    );
+    const c = (await page.locator('#gantt').boundingBox())!;
+    const shape = (await page.locator('.fg-task[data-task-id="launch"] .fg-task__bar').boundingBox())!;
+    expect(shape.x).toBeGreaterThanOrEqual(c.x - 1);
+    expect(shape.x + shape.width).toBeLessThanOrEqual(c.x + c.width + 1);
+  });
+});

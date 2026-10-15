@@ -42,6 +42,23 @@ unless your runtime already ships Temporal natively:
 pnpm add @js-temporal/polyfill
 ```
 
+Then install it as `globalThis.Temporal` at your app's entry point, before any other code that
+uses FluxGantt runs. Core never imports the polyfill itself; without a global `Temporal` it throws
+"Temporal API is not available" on the first date calculation:
+
+```ts
+import { Temporal } from '@js-temporal/polyfill';
+
+// Once, before the first createGantt(). A no-op where Temporal is native.
+(globalThis as unknown as { Temporal?: typeof Temporal }).Temporal ??= Temporal;
+```
+
+Put it in its own module (the example apps use `src/temporal.ts`) and import that module first,
+so it runs before your chart code. The cast goes through `unknown` because TypeScript 6 with
+`lib: ["ESNext"]` declares its own global `Temporal`, whose types do not overlap the polyfill's. Not every browser ships Temporal natively yet (Safari does not
+at the time of writing), and neither do Node 22 and 24, so a public site or a Node script needs
+this line. The example apps and the StackBlitz projects all do it.
+
 "Optional" applies to the **runtime** only. Core bundles no polyfill code — it reads
 `globalThis.Temporal` — so a runtime that has Temporal natively needs no install to *run*. The
 published type declarations are a separate matter: they name `Temporal.ZonedDateTime` by

@@ -31,6 +31,7 @@ import type { SvgRendererHandle } from './render/svg-renderer.js';
 // renderer's module graph (which is reachable only through `render/mixin.ts`'s dynamic import).
 import type { CanvasRendererHandle } from './render/canvas-renderer.js';
 import type {
+  Conflict,
   CriticalPathResult,
   DateInput,
   Density,
@@ -73,7 +74,9 @@ export interface GanttConfig {
    *  duplicate the default value, just omits the option when unset). */
   readonly viewMode?: ViewMode;
 
-  /** Passed straight through to `SvgRendererOptions.density`. Default `'default'`. */
+  /** Passed straight through to `SvgRendererOptions.density`. Default `'default'`. This is the
+   *  construction-time default; change it at runtime with `withViewport(...).setDensity()`
+   *  (`@fluxgantt/core/viewport`). */
   readonly density?: Density;
 
   /** Passed straight through to `SvgRendererOptions.locale`. Default `'en'`.
@@ -131,6 +134,11 @@ export interface GanttConfig {
    *  interactivity, not the facade's method surface (a host may still want to push
    *  programmatic updates, e.g. from a server subscription, into a read-only view). */
   readonly readOnly?: boolean;
+
+  /** Default `true`. `false`: no connector handles are rendered and drag-create-dependency is not
+   *  wired; move/resize stay available and programmatic `linkTasks()` is unaffected. SVG only
+   *  (Canvas has no drag). Construction-time only. `readOnly: true` still wins. */
+  readonly enableDependencyDrag?: boolean;
 
   /** Fired once per `addTask`/`updateTask`/`moveTask`/`resizeTask`/`setProgress` call that
    *  actually changed the task (same call site as the split `task:*` events). This is the
@@ -220,13 +228,44 @@ export interface EventMeta {
 /** Returned by `importJson()`/`importCsv()` AND the payload of the `data:imported` event they
  *  emit — same value in both places (see computeCriticalPath()/critical-path:computed for the
  *  precedent of "method returns it, event echoes it"). */
-/** Payload of `viewport:changed` (spec-zoom-runtime.md §2). v1 is intentionally minimal —
- *  just the new view mode, not a full scroll/visible-range snapshot (no `ViewportStore`,
- *  no `scrollToDate`/`scrollToTask` exist yet to make a `{start, end}` range meaningful as
- *  a side effect of this one method — see the spec's §4 for the full reasoning). Additive:
- *  can grow new readonly fields later without a breaking change to this event's shape. */
+/** Payload of `viewport:changed`. Intentionally minimal — the current view mode, plus `density`
+ *  when (and only when) the event was caused by `setDensity()` from `withViewport`. There is no
+ *  scroll/visible-range snapshot: scrolling does not emit this event. Additive: can grow new
+ *  readonly fields later without a breaking change to this event's shape. */
 export interface ViewportChangedPayload {
   readonly viewMode: ViewMode;
+  /** Present iff the event was caused by `setDensity()`. */
+  readonly density?: Density;
+}
+
+/** What a pointer/keyboard gesture hit (`task:activated` / `task:context-requested`). Keyboard
+ *  gestures always report `'row'`; the Canvas renderer never reports `'bar'` (its hit-test is
+ *  row-wide). */
+export type TaskHitPart = 'bar' | 'label' | 'row';
+
+/** Payload of `task:activated` (opt-in `withEditHooks()`, `@fluxgantt/core/edit-hooks`). Fires in a
+ *  `readOnly` chart too: it means "the user asked to open this task", NOT "the task is editable". */
+export interface TaskActivatedPayload {
+  readonly taskId: TaskId;
+  readonly part: TaskHitPart;
+  readonly source: 'pointer' | 'keyboard';
+  /** Viewport coordinates, finite. Keyboard: centre of the focused row (Canvas: the painted row's label column). */
+  readonly clientX: number;
+  readonly clientY: number;
+}
+
+/** Payload of `task:context-requested` (opt-in `withEditHooks()`). */
+export interface TaskContextRequestedPayload {
+  readonly taskId: TaskId;
+  readonly part: TaskHitPart;
+  readonly source: 'pointer' | 'keyboard' | 'long-press';
+  readonly clientX: number;
+  readonly clientY: number;
+  /** Call synchronously from the listener to suppress the browser's native context menu (pointer,
+   *  keyboard, and Android's touch menu). It cannot stop iOS's callout / text-selection loupe,
+   *  which fires no `contextmenu`: use CSS (`-webkit-touch-callout: none; user-select: none`).
+   *  Idempotent; ignored once the event has returned. */
+  preventDefault(): void;
 }
 
 /** Payload of `renderer:selected` (spec-canvas-auto-switch.md §4). */
@@ -308,6 +347,21 @@ export interface GanttEventMap {
    *  instead) — this is the intended way for a host to know a large-project chart has become
    *  visible. Never fires on `unmount()`/`destroy()`. */
   'renderer:selected': [state: RendererSelectedPayload];
+  /** Fires from the opt-in `withConflicts()` mixin (`@fluxgantt/core/conflicts`) when the SET of
+   *  schedule conflicts changes while at least one listener is subscribed; `[]` when they clear.
+   *  Never fires on subscribe (read the initial state with `detectConflicts()`), never fires
+   *  without the mixin, and fires from a microtask AFTER the synchronous `task:*` /
+   *  `dependency:*` / `history:changed` events of the mutation (so a cascade never announces a
+   *  transient violation). */
+  'conflict:detected': [conflicts: readonly Conflict[]];
+  /** Fires from the opt-in `withEditHooks()` mixin when the user asks to open a task: double-click,
+   *  Enter on a leaf row, or F2. Enter on a summary row still toggles collapse. Fires in `readOnly`
+   *  charts. The host builds the editor; read the task with `getTask(payload.taskId)`. */
+  'task:activated': [payload: TaskActivatedPayload];
+  /** Fires from the opt-in `withEditHooks()` mixin when the user asks for a task's context menu:
+   *  right-click, ContextMenu / Shift+F10, or touch long-press. Call `payload.preventDefault()` to
+   *  suppress the native menu. Fires in `readOnly` charts. */
+  'task:context-requested': [payload: TaskContextRequestedPayload];
 }
 
 export type GanttEventName = keyof GanttEventMap;
@@ -659,7 +713,7 @@ class Gantt implements GanttInstance {
       },
       expandWithDescendants: (ids) => this.#expandWithDescendants(ids),
       commitImport: (tasks, dependencies, format) => this.#commitImport(tasks, dependencies, format),
-      assertMountedSvg: (method) => this.#assertMountedSvg(method),
+      assertMounted: (method) => this.#assertMounted(method),
       noteCriticalIds: (ids) => {
         if (this.#sameCriticalIds(ids)) return false;
         this.#lastCriticalIds = ids;
@@ -1522,26 +1576,6 @@ class Gantt implements GanttInstance {
       );
     }
     return this.#mount.rendererHandle;
-  }
-
-  /**
-   * SVG-only guard for `exportSvg()`/`exportPng()` (spec-canvas-auto-switch.md §7) — both
-   * methods read `handle.svg`, which does not exist on `CanvasRendererHandle`. Reuses
-   * `#assertMounted()`'s existing "not mounted" check, then additionally rejects a live
-   * Canvas-mode mount with a clear, actionable error instead of a confusing
-   * `undefined`/type error at the call site. Canvas-mode export is out of scope for v1 (see
-   * `CanvasRendererHandle`'s own scope notes).
-   */
-  #assertMountedSvg(method: string): SvgRendererHandle {
-    const handle = this.#assertMounted(method);
-    if (this.#mount!.renderer !== 'svg') {
-      throw new Error(
-        `@fluxgantt/core: ${method} is not available while mounted in Canvas-rendering mode ` +
-          `(task count ${this.#taskStore.size} exceeded the Canvas auto-switch threshold at ` +
-          `mount() time). Canvas-mode export is not implemented yet.`,
-      );
-    }
-    return handle as SvgRendererHandle;
   }
 }
 

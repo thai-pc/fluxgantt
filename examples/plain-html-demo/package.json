@@ -11,11 +11,11 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@fluxgantt/core": "workspace:*"
+    "@fluxgantt/core": "workspace:*",
+    "@js-temporal/polyfill": "^0.5.1"
   },
   "devDependencies": {
     "@fluxgantt/tsconfig": "workspace:*",
-    "@js-temporal/polyfill": "^0.5.1",
     "typescript": "^6.0.3",
     "vite": "^8.3.0"
   }

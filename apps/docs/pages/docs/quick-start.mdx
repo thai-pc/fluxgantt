@@ -42,7 +42,18 @@ gantt.mount(document.getElementById('gantt')!);
 You need a container element in the page for `mount()` to render into:
 
 ```html
-<div id="gantt" style="height: 420px"></div>
+<div id="gantt" style="height: 420px; overflow: auto"></div>
+```
+
+In a browser without native Temporal (Safari, at the time of writing), also install
+`@js-temporal/polyfill` and run this once, before the code above. The example app does it in
+`src/temporal.ts`; see [Installation](/docs/installation#peer-dependency-temporal):
+
+```ts
+import { Temporal } from '@js-temporal/polyfill';
+
+// Once, before the first createGantt(). A no-op where Temporal is native.
+(globalThis as unknown as { Temporal?: typeof Temporal }).Temporal ??= Temporal;
 ```
 
 That's it — you get a rendered chart with draggable bars, a computed critical path (outlined in

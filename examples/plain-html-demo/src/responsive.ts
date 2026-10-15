@@ -7,12 +7,14 @@
 // chart overflows a 393px viewport by a large factor. That is what makes the pan specs meaningful:
 // on a dataset that fits, `container.scrollLeft` cannot move and "a drag on the grid pans" would
 // pass vacuously.
+import './temporal.js'; // must stay first: installs globalThis.Temporal where it is not native
 import { createGantt, toTaskId } from '@fluxgantt/core';
 import { withRender } from '@fluxgantt/core/render';
 import { withInteraction } from '@fluxgantt/core/interaction';
 import { withResponsive } from '@fluxgantt/core/responsive';
+import { withViewport } from '@fluxgantt/core/viewport';
 
-const gantt = withResponsive(
+const gantt = withViewport(withResponsive(
   withInteraction(
     withRender(
       createGantt({
@@ -59,7 +61,12 @@ const gantt = withResponsive(
       }),
     ),
   ),
-);
+));
+
+// `?density=compact` pins density BEFORE mount via the public API (mobile viewport spec):
+// `withResponsive` must not override it with `'touch'`.
+const densityParam = new URLSearchParams(window.location.search).get('density');
+if (densityParam === 'compact' || densityParam === 'comfortable') gantt.setDensity(densityParam);
 
 gantt.mount(document.querySelector<HTMLElement>('#gantt')!);
 

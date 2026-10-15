@@ -246,6 +246,23 @@ describe('drag commit -> facade event wiring', () => {
     return { gantt, groupEl };
   }
 
+  it('a drag that snaps to zero days commits nothing: no task:moved, the stored start is untouched', () => {
+    const { gantt, groupEl } = mountWithTask();
+    const moved = vi.fn();
+    gantt.on('task:moved', moved);
+    const before = gantt.getTask(toTaskId('t1'))!;
+
+    dispatchPointer(groupEl, 'pointerdown', { pointerId: 1, clientX: 100, clientY: 50, bubbles: true });
+    // pixelsPerDay(week) = 24 -> dx=5 is past the 4 px threshold but snaps to 0 days
+    dispatchPointer(window, 'pointermove', { pointerId: 1, clientX: 105, clientY: 50 });
+    dispatchPointer(window, 'pointerup', { pointerId: 1, clientX: 105, clientY: 50 });
+
+    expect(moved).not.toHaveBeenCalled();
+    const after = gantt.getTask(toTaskId('t1'))!;
+    expect(after.start).toBe(before.start); // same string, not re-stored as a ZonedDateTime
+    expect(after.end).toBe(before.end);
+  });
+
   it('a drag gesture fires task:moved with the correct prevStart, and the store reflects the new start/end', () => {
     const { gantt, groupEl } = mountWithTask();
     const moved = vi.fn();
@@ -1139,7 +1156,7 @@ describe('renderer auto-switch (spec-canvas-auto-switch.md)', () => {
   );
 
   it(
-    'exportSvg()/exportPng() throw a clear "Canvas-rendering mode" error while Canvas-mounted; still work while SVG-mounted (regression)',
+    'exportSvg() works while Canvas-mounted (full, un-windowed chart) and leaves no stray DOM; still works while SVG-mounted',
     async () => {
       installMockCanvasContext();
       const gantt = createGantt({ tasks: buildManyTasks(CANVAS_AUTO_SWITCH_THRESHOLD + 1) });
@@ -1151,8 +1168,11 @@ describe('renderer auto-switch (spec-canvas-auto-switch.md)', () => {
         HEAVY_WAIT_FOR_TIMEOUT_MS,
       );
 
-      expect(() => gantt.exportSvg()).toThrow(/Canvas-rendering mode/);
-      await expect(gantt.exportPng()).rejects.toThrow(/Canvas-rendering mode/);
+      const childrenBefore = container.children.length;
+      const out = gantt.exportSvg({ inlineComputedStyle: false });
+      expect(out).toContain('<svg');
+      expect(out.match(/role="row"/g)).toHaveLength(CANVAS_AUTO_SWITCH_THRESHOLD + 1);
+      expect(container.children.length).toBe(childrenBefore);
 
       const svgGantt = createGantt({ tasks: [taskInput('a', '2026-01-05T09:00', '2026-01-06T09:00')] });
       const svgContainer = document.createElement('div');

@@ -31,6 +31,9 @@ const gantt = withIo(withInteraction(withRender(createGantt({ tasks: [/* … */]
 | `withRender(instance)` | `@fluxgantt/core/render` | `mount()`, `unmount()`, `refresh()` |
 | `withInteraction(instance)` | `@fluxgantt/core/interaction` | No new methods — wires drag/keyboard/click into every `mount()` |
 | `withIo(instance)` | `@fluxgantt/core/io` | `exportJson()`, `exportCsv()`, `exportSvg()`, `exportPng()`, `importJson()`, `importCsv()` |
+| `withViewport(instance)` | `@fluxgantt/core/viewport` | `scrollToTask()`, `scrollToDate()`, `setDensity()`. See [Scrolling and density](#scrolling-and-density) |
+| `withConflicts(instance, options?)` | `@fluxgantt/core/conflicts` | `detectConflicts()` and the `conflict:detected` event. Headless. See [Schedule conflicts](#schedule-conflicts) |
+| `withEditHooks(instance, options?)` | `@fluxgantt/core/edit-hooks` | No new methods — emits `task:activated` and `task:context-requested` so your app can build its own editor and menu. See [Edit hooks](#edit-hooks) |
 | `withResponsive(instance, options?)` | `@fluxgantt/core/responsive` | `isCoarsePointer()`, `getLabelColumnWidth()` — and adapts density, hit targets, the label column and touch panning under `(pointer: coarse)`. See [Responsive & touch](/docs/responsive) |
 
 Each mixin mutates and returns the SAME instance, so application order does not matter — but
@@ -38,7 +41,7 @@ all of them must be applied **before the first `mount()`**: `mount()` reads the 
 hooks at mount time, so composing `withInteraction` onto an already-mounted instance takes
 effect only on the next mount.
 
-The React and Vue wrappers compose `withRender` + `withInteraction` for you.
+The React and Vue wrappers compose `withRender` + `withInteraction` + `withEditHooks` + `withViewport` for you.
 
 ## `GanttConfig`
 
@@ -48,11 +51,12 @@ The React and Vue wrappers compose `withRender` + `withInteraction` for you.
 | `dependencies` | `readonly DependencyInput[]` | `[]` | Initial dependencies (`{ from, to, type?, lag? }`). |
 | `calendar` | `WorkingCalendar` | `DEFAULT_CALENDAR` | Working days/hours/holidays/timezone. Immutable. |
 | `viewMode` | `ViewMode` | `'week'` | Timeline zoom (`day`/`week`/`month`/`quarter`/`year`). |
-| `density` | `Density` | `'default'` | Row density (`compact` 24px / `default` 32px / `comfortable` 40px / `touch` 48px). `'touch'` is what [`withResponsive`](/docs/responsive) selects under a coarse pointer; you can also set it directly. |
+| `density` | `Density` | `'default'` | Row density (`compact` 24px / `default` 32px / `comfortable` 40px / `touch` 48px). `'touch'` is what [`withResponsive`](/docs/responsive) selects under a coarse pointer; you can also set it directly. This is the construction-time default; change it at runtime with [`setDensity()`](#scrolling-and-density). |
 | `locale` | `string` | `'en'` | Renderer locale (dates via `Intl`). **Construction-time only** — read once at `mount()`. |
 | `ariaLabel` | `string` | `'Gantt chart'` | Accessible name of the chart as a whole, and the `<title>` of every exported SVG/PNG. Construction-time only. |
 | `messages` | `GanttMessages` | — | Accessible-name builders for a non-English host. See [i18n](/docs/i18n). Construction-time only. |
 | `readOnly` | `boolean` | `false` | When `true`, `mount()` wires no drag gestures (with `withInteraction` applied; click-select and keyboard nav stay live). |
+| `enableDependencyDrag` | `boolean` | `true` | `false` renders no connector handles and wires no drag-create-dependency; move and resize stay available, and `linkTasks()` / `dependencies` are unaffected. SVG only (Canvas has no drag). `readOnly: true` still wins. Construction-time only. |
 | `schedulingMode` | `SchedulingMode` | `'manual'` | `'auto'` cascades dependents on move/resize. |
 | `initialCollapsed` | `readonly TaskId[]` | `[]` | Tasks to start collapsed. Unknown or leaf ids are dropped silently; fires no `collapse:changed`. |
 | `historyLimit` | `number` | `100` | Undo entries retained. Oldest is evicted past the limit (ring buffer). `0` opts out of undo/redo entirely without affecting anything else. Must be a non-negative integer — throws at construction otherwise. Construction-time only. |
@@ -165,11 +169,200 @@ The order is fixed: `day` → `week` → `month` → `quarter` → `year`. None 
 **Ctrl/Cmd+Plus** / **Ctrl/Cmd+Minus** and **Ctrl+wheel** (which is how a macOS trackpad pinch
 arrives).
 
+### Scrolling and density
+
+Added by `withViewport` (`@fluxgantt/core/viewport`). Call these **after** `mount()` — on a
+chart above 2000 tasks the Canvas renderer loads asynchronously, so wait for `renderer:selected`.
+
+In SVG mode **the mount container is the scroll viewport**: give it a bounded height and
+`overflow: auto` (for example `style="height: 420px; overflow: auto"`). The SVG renderer does not
+make its container scrollable, so on a container without `overflow` the browser ignores the scroll
+offsets. The methods cannot detect that and still return `true`, because the return value reports
+that the target exists and a scroll was requested, not that the container moved. Canvas mode sets
+`overflow-y: auto` itself.
+
+| Method | Returns | Purpose |
+|---|---|---|
+| `scrollToTask(id, options?)` | `boolean` | Scrolls the task's row and bar into view. `options.align` (`'nearest'` default / `'start'` / `'center'` / `'end'`), `options.behavior` (`'auto'` default / `'smooth'`), `options.expand` (default `true`: expands collapsed ancestors, firing `collapse:changed`; `false` makes it a no-op). Returns `false` when unmounted or when the row is hidden and `expand: false`. Throws on an unknown id. Never moves focus or selection — use `select(id)` + `scrollToTask(id)` to go to and announce a task. |
+| `scrollToDate(date, options?)` | `boolean` | Scrolls horizontally to a date (`string`, `Date`, `ZonedDateTime` or `PlainDate`). `options.align` is `'center'` (default) / `'start'` / `'end'`. Returns `false` when unmounted or when the date lies outside the chart's time range (it still scrolls as far as it can). Throws on an invalid date. |
+| `setDensity(density)` | `void` | Changes row density at runtime (`'compact'`/`'default'`/`'comfortable'`/`'touch'`), keeping the top visible row in place, and emits `viewport:changed` with `{ viewMode, density }`. Works before `mount()`. Throws on an unknown value. |
+
+`behavior: 'smooth'` falls back to an instant scroll under `prefers-reduced-motion: reduce`.
+None of these are gated by `readOnly`, and none is an undo step.
+
+Calling `setDensity()` takes density ownership: `withResponsive` still adapts the label column
+and touch gestures but stops switching density. A host that pins `'compact'` on a phone takes
+responsibility for touch-target size. The React/Vue `density` prop stays construction-time; call
+`ref.setDensity()` to change it later.
+
 ### Computation
 
 | Method | Returns | Purpose |
 |---|---|---|
 | `computeCriticalPath()` | `CriticalPathResult` | Run CPM; emits `critical-path:computed`. Throws if no tasks / on cycle. |
+
+### Schedule conflicts
+
+Added by `withConflicts` (`@fluxgantt/core/conflicts`). Headless: it needs no `withRender` and no DOM.
+
+```ts
+import { createGantt } from '@fluxgantt/core';
+import { withConflicts } from '@fluxgantt/core/conflicts';
+
+const gantt = withConflicts(createGantt({ tasks, dependencies }));
+gantt.detectConflicts(); // Conflict[] — the current state, a pure query
+gantt.on('conflict:detected', (conflicts) => showWarnings(conflicts));
+```
+
+`detectConflicts()` reports where the schedule you authored contradicts a rule Core enforces
+elsewhere. That happens in `schedulingMode: 'manual'` (the default), after an import, after
+`undo()`/`redo()`, and for a task you drag earlier than its predecessor in `'auto'` mode.
+
+| `kind` | Meaning | Fields |
+|---|---|---|
+| `dependency-violation` | A successor starts earlier than one dependency allows. One entry per violated dependency, using the same rule as the auto-scheduling cascade (FS/SS/FF/SF, lag in working hours). | `dependencyId`, `from`, `to`, `dependencyType`, `lagHours`, `requiredStart` (a `Temporal.ZonedDateTime`, call `.toString()` to serialize), `shortfallHours` |
+| `outside-parent` | A child's span is not contained in its parent's span. Turned off automatically when `GanttConfig.rollup` is set, because the parent is then drawn at its derived span. | `taskId`, `parentId`, `edge` (`'start'`, `'end'` or `'both'`) |
+| `invalid-span` | `end` is before `start`. The task is skipped by the other two checks. | `taskId` |
+
+`shortfallHours` is exact up to a gap of about 100 years between the successor's start and
+`requiredStart`; beyond that it is a lower bound (it saturates), so one mistyped date cannot
+stall detection.
+
+Under `GanttConfig.rollup` the renderers draw a summary task at its derived span, but
+`dependency-violation` uses the summary's **authored** `start`/`end`, exactly as the auto-scheduling
+cascade does. A dependency arrow that visibly runs backwards from or to a summary may therefore not
+be reported, and the reverse can also happen. Leaf-to-leaf dependencies are unaffected.
+
+Conflicts come back in a stable order (kind, then id). The payload carries only ids, enums and
+numbers, never task names. Cycles, task constraints and resource over-allocation are not Core
+conflicts. Pass `withConflicts(instance, { kinds: ['dependency-violation'] })` to opt out of a
+kind. The set of kinds may grow in minor releases, so keep a default branch in any
+`switch (conflict.kind)`.
+
+`conflict:detected` is a change notification, not a poll:
+
+- It runs only while at least one listener is subscribed. With no listener there is no cost.
+  Subscribing runs one full detection synchronously inside `on()`, and afterwards every store
+  mutation (`setProgress` included) runs one detection per microtask turn. Measured with the
+  polyfill on Node 24: about 10 ms per detection at 1,000 tasks / 2,000 dependencies when the
+  dependencies are plain zero-lag FS/SS, about 0.3 to 0.8 s when every edge is violated or
+  lagged, and 1.4 to 4.4 s in that worst case at 5,000 tasks. Native Temporal is faster. For
+  very large charts, read `detectConflicts()` on demand instead of subscribing.
+- It does **not** fire when you subscribe. Read the initial state with `detectConflicts()`.
+- It fires only when the set of conflicts changes (a conflict whose `shortfallHours` changes
+  counts), with `[]` when the last conflict clears.
+- It fires from a microtask, after the synchronous `task:*`, `dependency:*` and
+  `history:changed` events of the mutation. A multi-step change (a cascading drag, an undo, an
+  import) therefore produces one event and never announces a violation the same call fixes.
+  Call `detectConflicts()` if you need the answer synchronously.
+
+`withConflicts` is idempotent, so the wrappers do not need a prop for it. Options apply on the
+first call only: calling it again with different `kinds` logs a `console.warn` and keeps the first
+configuration. With React, seed the state with `detectConflicts()` because the event does not fire
+on subscribe:
+
+```tsx
+const { instance } = useFluxGantt(config);
+const [conflicts, setConflicts] = useState<readonly Conflict[]>([]);
+useEffect(() => {
+  const g = withConflicts(instance);
+  setConflicts(g.detectConflicts());
+  return g.on('conflict:detected', setConflicts);
+}, [instance]);
+```
+
+In Vue, hold a `shallowRef<readonly Conflict[]>([])`, call `withConflicts(instance)` in
+`onMounted`, assign `detectConflicts()` to it, subscribe, and return the unsubscribe function
+from `onUnmounted`. Nothing is painted for a conflict yet: build your own
+indicator from the event and the `data-task-id` attributes the renderers expose.
+
+### Edit hooks
+
+Added by `withEditHooks` (`@fluxgantt/core/edit-hooks`). FluxGantt ships no editor and no menu:
+it tells you what the user asked for, and your app (your form components, your i18n, your
+permissions) answers. It needs a mounted chart, and adds no methods. Pointer hooks work without `withInteraction`; keyboard
+access to every row needs it (see the keyboard note below).
+
+```ts
+import { withEditHooks } from '@fluxgantt/core/edit-hooks';
+
+const gantt = withEditHooks(withInteraction(withRender(createGantt({ tasks }))));
+
+gantt.on('task:activated', ({ taskId, clientX, clientY }) => {
+  openEditor(gantt.getTask(taskId), { x: clientX, y: clientY });
+});
+gantt.on('task:context-requested', (p) => {
+  p.preventDefault(); // suppress the browser's own menu
+  gantt.select(p.taskId); // optional: right-click does not select by itself
+  openMenu(p.taskId, p.clientX, p.clientY);
+});
+```
+
+| Event | Fired by | Payload |
+|---|---|---|
+| `task:activated` | double-click; <kbd>Enter</kbd> on a leaf row; <kbd>F2</kbd> on any row | `{ taskId, part, source: 'pointer' \| 'keyboard', clientX, clientY }` |
+| `task:context-requested` | right-click; <kbd>ContextMenu</kbd> key; <kbd>Shift</kbd>+<kbd>F10</kbd>; touch long-press | `{ taskId, part, source: 'pointer' \| 'keyboard' \| 'long-press', clientX, clientY, preventDefault() }` |
+
+- **`part`** is `'bar'`, `'label'` or `'row'` (the grid or a dependency arrow). Keyboard gestures
+  always report `'row'`. The collapse toggle glyph, the header and empty space emit nothing.
+  **Canvas mode never reports `'bar'`** (its hit-test is row-wide): treat `'row'` and `'bar'` as
+  "the task" and do not rely on `'bar'`.
+- **Coordinates** are viewport (client) coordinates. For keyboard gestures they are the centre of
+  the focused row (Canvas: the painted row's label column), an anchor for a popover.
+- **`preventDefault()`** suppresses the native context menu (mouse, keyboard, and Android's touch
+  menu) only if you call it synchronously inside the listener. With no listener, or a listener that does not
+  call it, the browser menu opens as usual. This is deliberate: the React and Vue wrappers
+  subscribe to every event, so "a listener exists" says nothing about whether you want the menu.
+- **Right-click does not select** the task. Call `gantt.select(payload.taskId)` yourself if you want that.
+- **Read-only charts still emit both events.** The event means "the user asked to open this
+  task", not "the task is editable" (a read-only detail card on double-click is a normal use).
+  Check your own `readOnly` before offering editing.
+- **Keyboard row navigation comes from `withInteraction`.** The hooks' keys (<kbd>Enter</kbd>,
+  <kbd>F2</kbd>, <kbd>ContextMenu</kbd>, <kbd>Shift</kbd>+<kbd>F10</kbd>) act on whichever row has
+  focus. Without `withInteraction` only the first row is in the tab order and there are no arrow
+  keys, so rows 2..n are reachable by pointer only. Apply `withInteraction` to keep every hook
+  reachable from the keyboard.
+- **<kbd>Enter</kbd> on a summary row still collapses/expands it** (with `withInteraction`).
+  Use <kbd>F2</kbd> or a double-click to open a summary. Without `withInteraction` there is no
+  collapse behaviour, so <kbd>Enter</kbd> activates the focused row, summary or not.
+- **Touch.** A long-press (500 ms) emits `task:context-requested` with `source: 'long-press'`. It
+  is cancelled by pointer up, a second finger, or movement: 4 px on a bar (the drag threshold, so a
+  drag always wins) and 8 px elsewhere. Once it fires, the gesture belongs to your menu: the
+  chart ends the press for drag and selection, so moving the finger afterwards moves, resizes and
+  links nothing, and releasing does not select. Change the delay with
+  `withEditHooks(gantt, { longPressMs })`; `0` disables it. There is no double-tap activation, so
+  include an "Edit" entry in the long-press menu for touch users. Compose [`withResponsive`](/docs/responsive)
+  as well so the browser does not claim the gesture for scrolling.
+- **Platform caveats for touch.** On Android 12+ Chrome fires its native `contextmenu` at about
+  400 ms, before the 500 ms default; the chart reports the long-press at that moment instead, so
+  `preventDefault()` still works whatever `longPressMs` is. iOS Safari fires no `contextmenu`, so
+  `preventDefault()` cannot stop its callout or the text-selection loupe. Add this to your CSS
+  (core ships none):
+
+  ```css
+  .fg-timeline__row { -webkit-touch-callout: none; user-select: none; }
+  ```
+- **macOS <kbd>Ctrl</kbd>+click** is reported by browsers as a right-click, so it fires
+  `task:context-requested` and also toggles the selection.
+- `withEditHooks` is not part of the all-capabilities bundle measured in CI; it adds about 1 KiB
+  gzip over `withRender`. The React and Vue wrappers include it.
+
+Returning focus is your job: when your editor or menu closes, put focus back where it was so
+keyboard users do not lose their place. Capture `document.activeElement` before you open the
+editor and restore it, falling back to the row for the task:
+
+```ts
+const opener = document.activeElement as HTMLElement | null;
+// ... open the editor; on close:
+(opener?.isConnected ? opener : document.querySelector<HTMLElement>(`[data-task-id="${CSS.escape(taskId)}"]`))
+  ?.focus();
+```
+
+Clicking a bar moves the chart's keyboard position to that row, so arrow keys continue from it.
+
+In React pass `onTaskActivated` / `onTaskContextRequested` to `<FluxGantt>`; in Vue listen to
+`@task-activated` / `@task-context-requested`. The payload's `preventDefault()` works in both,
+because the wrappers forward the event synchronously.
 
 ### Import / Export
 
@@ -179,8 +372,8 @@ Requires the `withIo` mixin (`@fluxgantt/core/io`).
 |---|---|---|
 | `exportJson(options?)` | `ExportBundle` | Serialize to the JSON bundle. Headless. |
 | `exportCsv(options?)` | `string` | Serialize tasks to CSV. Headless. |
-| `exportSvg(options?)` | `string` | Serialize the mounted chart to an SVG string. Requires `withRender` + mount. |
-| `exportPng(options?)` | `Promise<Blob>` | Rasterize the mounted chart to PNG. Requires `withRender` + mount; async. |
+| `exportSvg(options?)` | `string` | Serialize the mounted chart to an SVG string. Requires `withRender` + mount. Works in Canvas mode too (full chart, max 5,000 tasks); see [Import & Export](/docs/import-export#exporting-a-large-canvas-mode-chart). |
+| `exportPng(options?)` | `Promise<Blob>` | Rasterize the mounted chart to PNG. Requires `withRender` + mount; async. In Canvas mode the whole chart is one poster-sized raster, bounded by browser canvas limits; prefer `exportSvg()` for big charts. |
 | `importJson(input, options?)` | `ImportSummary` | Validate + replace the dataset atomically. |
 | `importCsv(csv, options?)` | `ImportSummary` | Same, from CSV. |
 
@@ -212,8 +405,11 @@ Requires the `withIo` mixin (`@fluxgantt/core/io`).
 | `selection:changed` | `(taskIds: readonly TaskId[])` — the full flattened selection, not a delta, in insertion order |
 | `collapse:changed` | `(collapsedTaskIds: readonly TaskId[])` — the full collapsed set, not a delta |
 | `history:changed` | `(state: { canUndo: boolean; canRedo: boolean })` |
-| `viewport:changed` | `(state: { viewMode: ViewMode })` |
+| `viewport:changed` | `(state: { viewMode: ViewMode; density?: Density })` — `density` is present only when the event came from `setDensity()`. Scrolling does not emit it |
 | `data:imported` | `(summary: ImportSummary)` |
+| `conflict:detected` | `(conflicts: readonly Conflict[])` — only with `withConflicts`. See [Schedule conflicts](#schedule-conflicts) |
+| `task:activated` | `(payload: TaskActivatedPayload)` — only with `withEditHooks`. See [Edit hooks](#edit-hooks) |
+| `task:context-requested` | `(payload: TaskContextRequestedPayload)` — only with `withEditHooks`. See [Edit hooks](#edit-hooks) |
 | `renderer:selected` | `(state: { renderer: 'svg' \| 'canvas'; taskCount: number; canvasFallbackReason?: 'dimension-exceeded' \| 'load-failed' \| 'construction-failed' })` |
 
 `on()` returns an `UnsubscribeFn` (`() => void`).
@@ -253,6 +449,7 @@ and paints afterwards, and this event fires once it has (or once the SVG fallbac
 | `isWorkingDay`, `isHoliday`, `addWorkingHours`, `subtractWorkingHours`, `differenceInWorkingHours`, `normalizeDate` | Calendar-aware date helpers. |
 | `computeCriticalPath` | The pure CPM function (the instance method delegates to it). |
 | `computeRollup(tasks, calendar?)` | Derive each parent's span/progress/duration from its children → `ReadonlyMap<TaskId, RollupResult>`. Pure; never mutates. Throws on a cyclic parent chain. See [Hierarchy](/docs/concepts/hierarchy). |
+| `detectConflicts(tasks, dependencies, calendar, options?)` | The pure conflict detector the `withConflicts` method delegates to → `Conflict[]`. |
 | `CyclicDependencyError` | Thrown by CPM on a cyclic graph. |
 | `signal`, `computed`, `effect`, `batch`, `untracked` | The reactive primitives the store is built on. |
 
@@ -262,6 +459,6 @@ and paints afterwards, and this event fires once it has (or once the SVG fallbac
 `Task`, `TaskInput`, `TaskPatch`, `TaskKind`, `TaskConstraint` · `Dependency`,
 `DependencyInput`, `DependencyType` · `DateInput` · `WorkingCalendar`, `WeekdayCode`,
 `WorkingHours` · `CriticalPathResult`, `TaskSchedule`, `RollupResult` · `ViewMode`, `Density`,
-`SchedulingMode` · `GanttConfig`, `GanttInstance`, `GanttEventMap`, `GanttEventName`,
+`SchedulingMode` · `Conflict`, `ConflictKind` · `GanttConfig`, `GanttInstance`, `GanttEventMap`, `GanttEventName`,
 `UnsubscribeFn` · `EventMeta`, `ViewportChangedPayload`, `RendererSelectedPayload`,
 `ImportSummary` (event payloads) · `GanttMessages` (see [i18n](/docs/i18n)).

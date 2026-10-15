@@ -42,6 +42,12 @@ export interface InteractiveRendererHandle {
    * column.
    */
   getLabelColumnWidth(): number;
+  /**
+   * Canvas only. Client-space anchor (label column, vertical centre of the painted row, clamped
+   * into the visible canvas) for the row at `rowIndex`. The hidden ARIA layer's own rects are
+   * meaningless, so keyboard-driven host UI (edit hooks) anchors here instead.
+   */
+  getRowAnchor?(rowIndex: number): { readonly clientX: number; readonly clientY: number };
   hitTestRow?(
     clientX: number,
     clientY: number,

@@ -30,7 +30,7 @@ export const MAX_PNG_AREA_PX = 4096 * 4096;
  *  it accepts the natural named colors a caller would reach for (review B5). */
 const BARE_COLOR_KEYWORD = /^[a-zA-Z]+$/;
 
-function isValidBackground(background: string): boolean {
+export function isValidBackground(background: string): boolean {
   return (
     background === 'transparent' ||
     BARE_COLOR_KEYWORD.test(background) ||

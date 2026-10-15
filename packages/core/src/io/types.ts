@@ -102,7 +102,11 @@ export interface ExportPngOptions {
    * Raster scale multiplier — output pixel size = SVG width/height × `scale`. Pass
    * `window.devicePixelRatio` from the host for crisp HiDPI output; this module never reads
    * `window.devicePixelRatio` itself (deterministic default). Must be a finite number > 0.
-   * Default `1`.
+   * Default `1`. In Canvas mode the whole chart is rasterized at this scale, so the output is
+   * bounded by the browser's canvas limits (65,535 px per side, a total-area cap that is far
+   * lower on Safari/WebKit); over-limit exports reject, so lower `scale` or use `exportSvg()`.
+   * SVG mode (below the Canvas threshold) is stricter: 8,192 px per side and 16.7 M px total,
+   * about 255 rows at the default density and `scale` 1.
    */
   readonly scale?: number;
   /**

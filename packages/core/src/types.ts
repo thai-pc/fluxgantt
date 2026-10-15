@@ -228,3 +228,51 @@ export interface GanttMessages {
    *  paint of a large chart, and the fallback is correct English rather than a broken chart. */
   readonly taskLabel?: (params: TaskLabelParams) => string;
 }
+
+// --- Conflicts (spec-detect-conflicts.md) ---------------------------------------------------
+
+/**
+ * A successor scheduled earlier than one of its dependencies allows (same inequality as the
+ * auto-scheduling cascade). One conflict per violated dependency.
+ */
+export interface DependencyViolationConflict {
+  readonly kind: 'dependency-violation';
+  readonly dependencyId: DependencyId;
+  /** Predecessor. */
+  readonly from: TaskId;
+  /** Successor that starts too early. */
+  readonly to: TaskId;
+  readonly dependencyType: DependencyType;
+  /** `dependency.lag ?? 0`, in working hours. */
+  readonly lagHours: number;
+  /** Earliest instant the successor may start (for FF/SF this is the start implied by the finish
+   *  rule, same convention as the cascade). Temporal values are not `JSON.stringify`-friendly:
+   *  call `.toString()` yourself. */
+  readonly requiredStart: Temporal.ZonedDateTime;
+  /** Working hours between the successor's actual start and `requiredStart`. May be 0 when the
+   *  whole gap is non-working time; the conflict still exists. */
+  readonly shortfallHours: number;
+}
+
+/** A child whose authored span is not contained in its parent's authored span. */
+export interface OutsideParentConflict {
+  readonly kind: 'outside-parent';
+  readonly taskId: TaskId;
+  readonly parentId: TaskId;
+  /** Which side(s) of the child escape the parent. */
+  readonly edge: 'start' | 'end' | 'both';
+}
+
+/** A task whose `end` is strictly before its `start`. */
+export interface InvalidSpanConflict {
+  readonly kind: 'invalid-span';
+  readonly taskId: TaskId;
+}
+
+/**
+ * A place where the authored schedule contradicts a rule Core enforces elsewhere. The union is
+ * OPEN to additive growth in minor releases (Pro adds resource and constraint kinds): keep a
+ * default branch in any `switch (conflict.kind)`.
+ */
+export type Conflict = DependencyViolationConflict | OutsideParentConflict | InvalidSpanConflict;
+export type ConflictKind = Conflict['kind'];

@@ -14,7 +14,7 @@ export function App() {
       <FluxGantt
         tasks={tasks}
         dependencies={dependencies}
-        style={{ height: 420, border: '1px solid #e5e7eb', borderRadius: 8, background: '#fff' }}
+        style={{ height: 420, overflow: 'auto', border: '1px solid #e5e7eb', borderRadius: 8, background: '#fff' }}
         onTaskMoved={(task, prevStart) => console.log(`${task.name} moved from ${prevStart}`)}
       />
     </main>

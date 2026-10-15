@@ -1,5 +1,6 @@
 // Read-only variant of the demo — the Playwright `read-only.spec.ts` fixture. Keep the dataset
 // in sync with src/main.ts (the canonical quick-start). Only difference: `readOnly: true`.
+import './temporal.js'; // must stay first: installs globalThis.Temporal where it is not native
 import { createGantt, toTaskId } from '@fluxgantt/core';
 import { withRender } from '@fluxgantt/core/render';
 import { withInteraction } from '@fluxgantt/core/interaction';

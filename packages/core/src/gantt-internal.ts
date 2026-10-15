@@ -29,7 +29,15 @@ import type {
 } from './store/index.js';
 import type { CanvasRendererHandle } from './render/canvas-renderer.js';
 import type { SvgRendererHandle } from './render/svg-renderer.js';
-import type { DateInput, Dependency, Task, TaskId, ViewMode, WorkingCalendar } from './types.js';
+import type {
+  DateInput,
+  Dependency,
+  Density,
+  Task,
+  TaskId,
+  ViewMode,
+  WorkingCalendar,
+} from './types.js';
 // TYPE-ONLY import back into `gantt.ts` — erased at compile time, so this creates NO runtime
 // module cycle (`gantt.ts` imports this file for real; this file imports nothing back).
 // Keeps `emitEvent` exactly as type-safe for a mixin as `#emit` is inside the class.
@@ -113,6 +121,14 @@ export interface GanttInternal {
   assertAlive(method: string): void;
   requireTask(id: TaskId, method: string): Task;
 
+  // --- Density slots (writers: viewport/mixin.ts, responsive/mixin.ts; reader: render/mixin.ts) ---
+  // Optional and non-readonly so `gantt.ts`'s constructor literal needs no initialiser (0 base
+  // bytes). Both are plain storage; only the opt-in mixins give them meaning.
+  /** Effective density last pushed by a mixin. `undefined` means `config.density ?? 'default'`. */
+  density?: Density;
+  /** True once the host called `setDensity()`; `withResponsive` then stops pushing density. */
+  densityPinned?: boolean;
+
   // --- Mount slot (writer: render/mixin.ts) ---
   getMountState(): MountState | undefined;
   setMountState(state: MountState | undefined): void;
@@ -149,9 +165,10 @@ export interface GanttInternal {
     dependencies: readonly DependencyInput[],
     format: 'json' | 'csv',
   ): ImportSummary;
-  /** Guard for `exportSvg()`/`exportPng()` — throws when not mounted, and again when mounted
-   *  in Canvas mode (no `handle.svg` to serialize). */
-  assertMountedSvg(method: string): SvgRendererHandle;
+  /** Guard for `exportSvg()`/`exportPng()` — throws when not mounted (never mounted,
+   *  unmounted, or destroyed); otherwise returns the live handle, SVG or Canvas. The caller
+   *  discriminates with `'svg' in handle` (only `SvgRendererHandle` has `.svg`). */
+  assertMounted(method: string): SvgRendererHandle | CanvasRendererHandle;
 
   // --- Critical-path emit-on-change guard (shared with render/mixin.ts's render effect) ---
   /** Records `ids` as the last emitted critical set and reports whether it actually CHANGED —

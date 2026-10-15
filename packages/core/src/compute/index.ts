@@ -18,6 +18,9 @@ export type {
 export { computeCascade } from './cascade.js';
 export type { CascadeResult, CascadeShift } from './cascade.js';
 
+export { detectConflicts } from './conflicts.js';
+export type { DetectConflictsOptions } from './conflicts.js';
+
 export { computeRollup } from './rollup.js';
 export type { RollupResult } from './rollup.js';
 

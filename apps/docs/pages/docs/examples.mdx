@@ -1,19 +1,29 @@
 # Examples
 
-Every example below is in the repo and runs locally today: **six vanilla-TypeScript pages, a React
-app, a Vue app, and a headless snippet that needs no app at all.**
+Every example below is in the repo: **six vanilla-TypeScript pages, a React app, a Vue app, and a
+headless script that needs no app at all.** Four of them open on StackBlitz with no install:
 
-Spec §9.1 sets the Wave 1 target at "10+ live examples on StackBlitz". Nine exist and none are
-embedded yet — the note below explains why the embeds cannot work before the packages are
-published, and the remaining examples are the Pro/Cloud demos listed at the bottom.
+| Example | Open on StackBlitz |
+|---|---|
+| Vanilla TypeScript (all six pages) | [Open the vanilla example on StackBlitz](https://stackblitz.com/github/thai-pc/fluxgantt/tree/stackblitz/vanilla?file=src%2Fmain.ts&title=FluxGantt%20vanilla) |
+| React | [Open the React example on StackBlitz](https://stackblitz.com/github/thai-pc/fluxgantt/tree/stackblitz/react?file=src%2FApp.tsx&title=FluxGantt%20React) |
+| Vue | [Open the Vue example on StackBlitz](https://stackblitz.com/github/thai-pc/fluxgantt/tree/stackblitz/vue?file=src%2FApp.vue&title=FluxGantt%20Vue) |
+| Headless (Node, no DOM) | [Open the headless example on StackBlitz](https://stackblitz.com/github/thai-pc/fluxgantt/tree/stackblitz/headless?file=index.mjs&title=FluxGantt%20headless) |
 
-:::warning
-**StackBlitz embeds are not live yet, and cannot be until the packages are published.** Each
-example depends on `"@fluxgantt/core": "workspace:*"`, a pnpm-workspace protocol StackBlitz's npm
-resolution cannot satisfy — opening one from GitHub fails at install, not at runtime. The embeds
-land in the same release that publishes `@fluxgantt/core` to npm; until then, the two commands
-under each example are the way to run it.
+The StackBlitz projects are generated from the **latest npm release**: at release time,
+`tooling/scripts/build-stackblitz-examples.mjs` copies the examples to the repo's `stackblitz`
+branch with `workspace:*` replaced by the published versions. The copies under `examples/` track
+`master` and may use API that is not released yet; run those from a clone (below).
+
+:::note
+**Not live yet.** The `stackblitz` branch is written by the release workflow, and the first
+release that runs it has not happened yet, so until then these links return a 404. Run the examples
+from a clone in the meantime.
 :::
+
+Spec §9.1 sets the Wave 1 target at "10+ live examples on StackBlitz". These are **4 StackBlitz
+projects** (the six vanilla pages share one project); the remaining examples are the Pro/Cloud demos
+listed at the bottom.
 
 ## Running any of them
 
@@ -26,7 +36,9 @@ Then start the app that hosts the example you want.
 
 ## Vanilla TypeScript
 
-`pnpm --filter plain-html-demo dev` serves all six pages at `http://localhost:5173`.
+`pnpm --filter plain-html-demo dev` serves all six pages at `http://localhost:5173`. On
+[StackBlitz](https://stackblitz.com/github/thai-pc/fluxgantt/tree/stackblitz/vanilla?file=src%2Fmain.ts&title=FluxGantt%20vanilla)
+they are one project: append `/read-only.html`, `/selection.html` and so on to the preview URL.
 
 | Page | Shows | Source |
 |---|---|---|
@@ -46,20 +58,26 @@ e2e, visual and a11y tests, so none of them can rot silently.
 `pnpm --filter react-vite-demo dev` — `<FluxGantt>` plus the `useFluxGantt` hook, with React 19.
 See [React](/docs/frameworks/react).
 
-[`examples/react-vite-demo`](https://github.com/thai-pc/fluxgantt/tree/master/examples/react-vite-demo)
+[`examples/react-vite-demo`](https://github.com/thai-pc/fluxgantt/tree/master/examples/react-vite-demo) ·
+[Open the React example on StackBlitz](https://stackblitz.com/github/thai-pc/fluxgantt/tree/stackblitz/react?file=src%2FApp.tsx&title=FluxGantt%20React)
 
 ## Vue
 
 `pnpm --filter vue-vite-demo dev` — the Vue 3 composable API. See [Vue](/docs/frameworks/vue).
 
-[`examples/vue-vite-demo`](https://github.com/thai-pc/fluxgantt/tree/master/examples/vue-vite-demo)
+[`examples/vue-vite-demo`](https://github.com/thai-pc/fluxgantt/tree/master/examples/vue-vite-demo) ·
+[Open the Vue example on StackBlitz](https://stackblitz.com/github/thai-pc/fluxgantt/tree/stackblitz/vue?file=src%2FApp.vue&title=FluxGantt%20Vue)
 
 ## Headless — no example app needed
 
 The engine has no DOM dependency, so this is the whole example:
 
 ```ts
+import { Temporal } from '@js-temporal/polyfill';
 import { createGantt, toTaskId } from '@fluxgantt/core';
+
+// Node 22/24 have no native Temporal; core reads globalThis.Temporal (no-op where it is native).
+(globalThis as unknown as { Temporal?: typeof Temporal }).Temporal ??= Temporal;
 
 const gantt = createGantt({
   tasks: [
@@ -72,7 +90,10 @@ const gantt = createGantt({
 const { criticalTaskIds, projectEnd } = gantt.computeCriticalPath();
 ```
 
-Run it with `node`, in a Worker, in a Lambda, or in a test with no jsdom. At **7.71 KiB gzip** this
+Run it with `node`, in a Worker, in a Lambda, or in a test with no jsdom. The two Temporal lines are
+needed wherever the runtime has no native Temporal, which includes current Node (see
+[Installation](/docs/installation)). [Open the headless example on StackBlitz](https://stackblitz.com/github/thai-pc/fluxgantt/tree/stackblitz/headless?file=index.mjs&title=FluxGantt%20headless)
+to run it in the browser; its source is `tooling/stackblitz-templates/headless/` in the repo. At **7.71 KiB gzip** this
 configuration ships no renderer at all — see [Comparison](/docs/comparison).
 
 ## Planned

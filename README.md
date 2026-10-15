@@ -34,7 +34,9 @@ pnpm add @fluxgantt/vue         # optional: Vue 3 wrapper
 ## Quick start
 
 Render a chart in ~15 lines (same code as
-[`examples/plain-html-demo`](./examples/plain-html-demo)):
+[`examples/plain-html-demo`](./examples/plain-html-demo);
+[open it on StackBlitz](https://stackblitz.com/github/thai-pc/fluxgantt/tree/stackblitz/vanilla?file=src%2Fmain.ts&title=FluxGantt%20vanilla),
+live after the next release, 404 until then):
 
 ```ts
 import { createGantt, toTaskId } from '@fluxgantt/core';
@@ -68,8 +70,22 @@ gantt.on('task:moved', (task, prevStart) => {
 gantt.mount(document.getElementById('gantt')!);
 ```
 
-Using React or Vue? See [`examples/react-vite-demo`](./examples/react-vite-demo) and
-[`examples/vue-vite-demo`](./examples/vue-vite-demo).
+Core needs `globalThis.Temporal`. In a browser without native Temporal (Safari, at the time of
+writing) or in Node 22/24, `pnpm add @js-temporal/polyfill` and run this once, before the code
+above (the examples do it in `src/temporal.ts`):
+
+```ts
+import { Temporal } from '@js-temporal/polyfill';
+
+// Once, before the first createGantt(). A no-op where Temporal is native.
+(globalThis as unknown as { Temporal?: typeof Temporal }).Temporal ??= Temporal;
+```
+
+Using React or Vue? See [`examples/react-vite-demo`](./examples/react-vite-demo)
+([open on StackBlitz](https://stackblitz.com/github/thai-pc/fluxgantt/tree/stackblitz/react?file=src%2FApp.tsx&title=FluxGantt%20React)) and
+[`examples/vue-vite-demo`](./examples/vue-vite-demo)
+([open on StackBlitz](https://stackblitz.com/github/thai-pc/fluxgantt/tree/stackblitz/vue?file=src%2FApp.vue&title=FluxGantt%20Vue)).
+The StackBlitz links go live with the next release and return a 404 until then.
 
 ## Features (Core, MIT)
 
@@ -160,6 +176,9 @@ Requirements: Node >= 22.19 (see `.nvmrc` for the exact pinned version), pnpm 10
   [`examples/vue-vite-demo`](./examples/vue-vite-demo). Each runs with
   `pnpm --filter <name> dev`; the catalogue is in
   [`apps/docs/pages/docs/examples.mdx`](./apps/docs/pages/docs/examples.mdx).
+  Open on StackBlitz, built from the latest npm release:
+  [vanilla](https://stackblitz.com/github/thai-pc/fluxgantt/tree/stackblitz/vanilla?file=src%2Fmain.ts&title=FluxGantt%20vanilla) · [React](https://stackblitz.com/github/thai-pc/fluxgantt/tree/stackblitz/react?file=src%2FApp.tsx&title=FluxGantt%20React) · [Vue](https://stackblitz.com/github/thai-pc/fluxgantt/tree/stackblitz/vue?file=src%2FApp.vue&title=FluxGantt%20Vue) · [headless](https://stackblitz.com/github/thai-pc/fluxgantt/tree/stackblitz/headless?file=index.mjs&title=FluxGantt%20headless).
+  (The `stackblitz` branch these open is created by the next release; until then they 404.)
 - **Comparison** vs dhtmlx, Bryntum and Frappe —
   [`apps/docs/pages/docs/comparison.mdx`](./apps/docs/pages/docs/comparison.mdx)
 

@@ -61,6 +61,21 @@
       "types": "./dist/responsive/index.d.ts",
       "import": "./dist/responsive/index.js",
       "require": "./dist/responsive/index.cjs"
+    },
+    "./viewport": {
+      "types": "./dist/viewport/index.d.ts",
+      "import": "./dist/viewport/index.js",
+      "require": "./dist/viewport/index.cjs"
+    },
+    "./edit-hooks": {
+      "types": "./dist/edit-hooks/index.d.ts",
+      "import": "./dist/edit-hooks/index.js",
+      "require": "./dist/edit-hooks/index.cjs"
+    },
+    "./conflicts": {
+      "types": "./dist/conflicts/index.d.ts",
+      "import": "./dist/conflicts/index.js",
+      "require": "./dist/conflicts/index.cjs"
     }
   },
   "files": [

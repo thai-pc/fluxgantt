@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>FluxGantt · conflicts fixture</title>
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <main>
+      <h1>FluxGantt — conflict detection fixture</h1>
+      <p>
+        <code>withConflicts()</code> on a small hierarchy (<code>a → b → c</code> chained FS inside
+        the summary <code>phase</code>). Accepts <code>?mode=manual|auto</code> (scheduling mode,
+        default manual), <code>?seed=conflict</code> (start with <code>b</code> already before
+        <code>a</code>'s end), <code>?listen=0</code> (the page does not subscribe, the list is
+        rendered once from <code>detectConflicts()</code>) and <code>?pad=N</code> (filler rows;
+        2100 forces Canvas). This is the Playwright <code>conflicts.spec.ts</code> fixture.
+      </p>
+      <p id="conflict-status" role="status" aria-live="polite" aria-atomic="true">Checking conflicts…</p>
+      <ul id="conflict-list" aria-label="Schedule conflicts"></ul>
+      <div id="gantt"></div>
+    </main>
+    <script type="module" src="/src/conflicts.ts"></script>
+  </body>
+</html>

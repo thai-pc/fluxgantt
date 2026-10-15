@@ -29,6 +29,10 @@ gantt.mount(document.getElementById('gantt')!);
 
 ## What it does *not* change
 
+The [edit hooks](/docs/api#edit-hooks) (`task:activated`, `task:context-requested`) still fire in a
+read-only chart, since opening a detail card is not editing. Decide in your handler what to offer.
+
+
 `readOnly` governs the **rendered UI's interactivity only**. The full programmatic API still
 works — a host app can keep pushing updates into a read-only view (e.g. from a live server
 subscription):

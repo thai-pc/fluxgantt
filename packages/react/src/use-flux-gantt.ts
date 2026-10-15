@@ -15,6 +15,8 @@ import { useEffect, useLayoutEffect, useRef } from 'react';
 import { createGantt } from '@fluxgantt/core';
 import { withRender, type RenderCapability } from '@fluxgantt/core/render';
 import { withInteraction } from '@fluxgantt/core/interaction';
+import { withEditHooks } from '@fluxgantt/core/edit-hooks';
+import { withViewport, type ViewportCapability } from '@fluxgantt/core/viewport';
 import type { GanttInstance } from '@fluxgantt/core';
 import type { UseFluxGanttConfig, UseFluxGanttResult } from './types.js';
 
@@ -40,11 +42,11 @@ export function useFluxGantt(config: UseFluxGanttConfig): UseFluxGanttResult {
   // stateful object exactly once). Survives StrictMode's dev-only double *render* because the
   // ref persists across both synchronous render calls of the same commit; the `=== null` guard
   // makes the second call a no-op.
-  const instanceRef = useRef<(GanttInstance & RenderCapability) | null>(null);
+  const instanceRef = useRef<(GanttInstance & RenderCapability & ViewportCapability) | null>(null);
   if (instanceRef.current === null) {
     // Reads `config` HERE ONLY — this block runs exactly once, so `tasks`/`dependencies`/
     // `calendar`/`viewMode`/`density`/`locale`/`ariaLabel`/`messages`/`readOnly` are frozen
-// at whatever the FIRST
+    // at whatever the FIRST
     // render passed (resolution #1: construction-time only). `onTaskChange` is the one field
     // that stays reactive, via the `configRef` indirection.
     //
@@ -56,20 +58,28 @@ export function useFluxGantt(config: UseFluxGanttConfig): UseFluxGanttResult {
       // `mount()`/`unmount()` and the drag/keyboard/click gestures are opt-in mixins on the
       // core's `/render` and `/interaction` subpaths since the facade split — a wrapper
       // component is by definition a rendering, interactive consumer, so it composes both
-      // unconditionally. IO (`/io`) is deliberately NOT composed: the wrapper exposes no
+      // unconditionally, plus `/viewport` (scrollToTask/scrollToDate/setDensity — a chart UI always
+      // wants them). IO (`/io`) is deliberately NOT composed: the wrapper exposes no
       // import/export surface, so a consumer who never calls it never downloads it.
-      instanceRef.current = withInteraction(
-        withRender(
-          createGantt({
-            ...(config.tasks !== undefined ? { tasks: config.tasks } : {}),
-            ...(config.dependencies !== undefined ? { dependencies: config.dependencies } : {}),
-            ...(config.calendar !== undefined ? { calendar: config.calendar } : {}),
-            ...(config.viewMode !== undefined ? { viewMode: config.viewMode } : {}),
-            ...(config.density !== undefined ? { density: config.density } : {}),
-            ...(config.locale !== undefined ? { locale: config.locale } : {}),
-            ...(config.readOnly !== undefined ? { readOnly: config.readOnly } : {}),
-            onTaskChange: (task, prev) => configRef.current.onTaskChange?.(task, prev),
-          }),
+      instanceRef.current = withViewport(
+        withEditHooks(
+        withInteraction(
+          withRender(
+            createGantt({
+              ...(config.tasks !== undefined ? { tasks: config.tasks } : {}),
+              ...(config.dependencies !== undefined ? { dependencies: config.dependencies } : {}),
+              ...(config.calendar !== undefined ? { calendar: config.calendar } : {}),
+              ...(config.viewMode !== undefined ? { viewMode: config.viewMode } : {}),
+              ...(config.density !== undefined ? { density: config.density } : {}),
+              ...(config.locale !== undefined ? { locale: config.locale } : {}),
+              ...(config.readOnly !== undefined ? { readOnly: config.readOnly } : {}),
+              ...(config.enableDependencyDrag !== undefined
+                ? { enableDependencyDrag: config.enableDependencyDrag }
+                : {}),
+              onTaskChange: (task, prev) => configRef.current.onTaskChange?.(task, prev),
+            }),
+          ),
+        ),
         ),
       );
     } catch (err) {
@@ -127,7 +137,9 @@ export function useFluxGantt(config: UseFluxGanttConfig): UseFluxGanttResult {
     // headless, pre-mount).
     const unsubs = [
       instance.on('task:added', (task) => configRef.current.onTaskAdded?.(task)),
-      instance.on('task:moved', (task, prevStart) => configRef.current.onTaskMoved?.(task, prevStart)),
+      instance.on('task:moved', (task, prevStart) =>
+        configRef.current.onTaskMoved?.(task, prevStart),
+      ),
       instance.on('task:resized', (task, prevDuration) =>
         configRef.current.onTaskResized?.(task, prevDuration),
       ),
@@ -137,7 +149,13 @@ export function useFluxGantt(config: UseFluxGanttConfig): UseFluxGanttResult {
       instance.on('task:removed', (taskId) => configRef.current.onTaskRemoved?.(taskId)),
       instance.on('dependency:added', (dep) => configRef.current.onDependencyAdded?.(dep)),
       instance.on('dependency:removed', (depId) => configRef.current.onDependencyRemoved?.(depId)),
-      instance.on('critical-path:computed', (ids) => configRef.current.onCriticalPathComputed?.(ids)),
+      instance.on('critical-path:computed', (ids) =>
+        configRef.current.onCriticalPathComputed?.(ids),
+      ),
+      instance.on('task:activated', (payload) => configRef.current.onTaskActivated?.(payload)),
+      instance.on('task:context-requested', (payload) =>
+        configRef.current.onTaskContextRequested?.(payload),
+      ),
     ];
 
     instance.mount(node);
