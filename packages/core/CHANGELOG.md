@@ -1,5 +1,52 @@
 # @fluxgantt/core
 
+## 0.3.0
+
+### Minor Changes
+
+- bbfeebf: `exportSvg()` and `exportPng()` now work when the chart is mounted in Canvas mode (above the
+  2000-task auto-switch threshold) instead of throwing "not available while mounted in
+  Canvas-rendering mode". Both export the whole chart, not just the visible window. `exportSvg()`
+  stays synchronous: it rebuilds an off-screen SVG from what the canvas last painted and runs it
+  through the same sanitizing pipeline as SVG mode (it throws above 5,000 tasks). `exportPng()` paints
+  the full chart straight into an offscreen canvas in a lazily loaded chunk, so SVG-only consumers pay
+  nothing; it rejects with an actionable error past the browser's canvas size limits, so prefer
+  `exportSvg()` for very large charts.
+- bbfeebf: Add schedule conflict detection. The pure `detectConflicts(tasks, dependencies, calendar, options?)`
+  function is exported from the main entry, and the opt-in `withConflicts()` mixin on the new
+  `@fluxgantt/core/conflicts` subpath adds `detectConflicts()` and the `conflict:detected` event to an
+  instance. Three conflict kinds are reported: `dependency-violation` (per violated dependency, same
+  rule as the auto-scheduling cascade), `outside-parent` and `invalid-span`. `conflict:detected` runs a
+  watcher only while a listener is subscribed, is microtask-coalesced, fires only when the set changes
+  (`[]` when it clears) and does not fire on subscribe. New `Conflict` and `ConflictKind` types.
+  Purely additive: existing bundle sizes are unchanged.
+- bbfeebf: Add host edit hooks. The opt-in `withEditHooks({ longPressMs? })` mixin on the new
+  `@fluxgantt/core/edit-hooks` subpath emits `task:activated` (double-click, Enter on a leaf row, F2)
+  and `task:context-requested` (right-click, ContextMenu key, Shift+F10, touch long-press), so the host
+  builds its own editor and menu. Payloads are `{ taskId, part, source, clientX, clientY }`; the
+  context event also carries `preventDefault()`, which suppresses the native menu only when called.
+  Both fire in `readOnly` charts, Enter on a summary row still collapses, and Canvas never reports
+  `part: 'bar'`. Also adds `GanttConfig.enableDependencyDrag` (default `true`): `false` renders no
+  link handles and wires no drag-create-dependency. New `TaskActivatedPayload`,
+  `TaskContextRequestedPayload` and `TaskHitPart` types. Purely additive: existing bundle sizes grow
+  by under 60 B (the flag) and the mixin is not part of any existing fixture.
+- bbfeebf: Add `scrollToTask()`, `scrollToDate()` and runtime `setDensity()` as an opt-in `withViewport()`
+  mixin on the new `@fluxgantt/core/viewport` subpath. `scrollToTask` scrolls a task's row and bar
+  into view (expanding collapsed ancestors by default, never moving focus or selection),
+  `scrollToDate` scrolls horizontally to a date, and `setDensity` changes row density on a live chart
+  while keeping the top visible row in place. `viewport:changed` gains an optional `density` field
+  (present only when emitted by `setDensity`). After `setDensity()` is called, `withResponsive` stops
+  switching density. `@fluxgantt/react` and `@fluxgantt/vue` compose `withViewport`, so the methods
+  are available on `FluxGanttRef` and the `useFluxGantt` instance.
+
+### Patch Changes
+
+- bbfeebf: Canvas renderer: keep the roving-tabindex (focused) row in the hidden ARIA layer even when a far scroll moves it outside the virtualized row window. Previously it was dropped, which lost DOM focus, left zero `tabindex="0"` rows (no Tab stop) and tripped axe `scrollable-region-focusable`.
+- bbfeebf: A drag-move shorter than half a day (it snaps to a zero-day delta) no longer rewrites the task. Before, it re-stored the start as a `ZonedDateTime` of the same instant without emitting `task:moved`; now it commits nothing (no store write, no history entry).
+- bbfeebf: Fix keyboard navigation desyncing from pointer selection. Clicking (or Ctrl+clicking) a bar now moves the roving-tabindex row to that task, so ArrowUp/ArrowDown/Enter/Space continue from the row you clicked instead of from wherever the last key press left off. Before, after a click the next arrow key could appear to do nothing (the internal focus moved but the selection, and so the repaint, did not change).
+  
+  The roving row now also follows DOM focus itself: a programmatic `row.focus()` (for example a host returning focus to a row after closing its context menu) and a right-click on a row both update it, so Enter on that row no longer acts on a stale row (a summary collapsing instead of the focused leaf activating).
+
 ## 0.2.1
 
 ### Patch Changes

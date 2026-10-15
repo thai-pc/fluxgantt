@@ -1,5 +1,33 @@
 # @fluxgantt/react
 
+## 0.2.0
+
+### Minor Changes
+
+- bbfeebf: Add `onTaskActivated` and `onTaskContextRequested` props (the `task:activated` and
+  `task:context-requested` core events) and pass through `enableDependencyDrag`. The wrapper now
+  composes `withEditHooks`, about 0.9 KiB gzip. Call `payload.preventDefault()` in the handler to
+  suppress the native context menu.
+- bbfeebf: Add `scrollToTask()`, `scrollToDate()` and runtime `setDensity()` as an opt-in `withViewport()`
+  mixin on the new `@fluxgantt/core/viewport` subpath. `scrollToTask` scrolls a task's row and bar
+  into view (expanding collapsed ancestors by default, never moving focus or selection),
+  `scrollToDate` scrolls horizontally to a date, and `setDensity` changes row density on a live chart
+  while keeping the top visible row in place. `viewport:changed` gains an optional `density` field
+  (present only when emitted by `setDensity`). After `setDensity()` is called, `withResponsive` stops
+  switching density. `@fluxgantt/react` and `@fluxgantt/vue` compose `withViewport`, so the methods
+  are available on `FluxGanttRef` and the `useFluxGantt` instance.
+
+### Patch Changes
+
+- Updated dependencies [bbfeebf]
+- Updated dependencies [bbfeebf]
+- Updated dependencies [bbfeebf]
+- Updated dependencies [bbfeebf]
+- Updated dependencies [bbfeebf]
+- Updated dependencies [bbfeebf]
+- Updated dependencies [bbfeebf]
+  - @fluxgantt/core@0.3.0
+
 ## 0.1.2
 
 ### Patch Changes
