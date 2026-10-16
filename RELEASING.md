@@ -195,10 +195,19 @@ Result for the 0.3.0 release (2026-10-16, automated via Playwright 1.63; Vite 8.
 Vite 7 pin is needed; the drag was not exercised):
 
 - Chrome: [x] vanilla · [x] React · [x] Vue · [x] headless (prints the critical path)
-- Firefox (WebContainers beta): [ ] vanilla (dev server ready, preview stayed blank, needs a
-  manual look) · [ ] React · [ ] Vue (not verified) · [x] headless
-- Safari: [x] vanilla · [x] React · [x] Vue · [x] headless, via Playwright WebKit only, which also
-  lacks native Temporal; real Safari is still unchecked
+- Firefox (WebContainers beta): [x] vanilla · [x] React · [x] Vue · [x] headless, on real Firefox
+  158 driven by geckodriver 0.37.1 (2026-10-16, branch stamp core 0.3.1 / react 0.3.0 / vue 0.3.0;
+  the chart's SVG and task rows rendered in the in-editor preview and in a second tab). Playwright's
+  Firefox build only passes headless: its WebContainer preview stays on `.localservice@no-server`
+  (blank) for all three UI examples, so do not use it for this check. StackBlitz's first load
+  sometimes stalls at "Cloning repo" and needs a retry. Chart header day labels overlap at the
+  default narrow width in real Firefox (not compared against Chrome)
+- Safari: [x] vanilla · [x] React · [x] Vue · [x] headless, on real Safari 26.6.2 driven by
+  `safaridriver` (2026-10-16, core 0.3.1 / react 0.3.0 / vue 0.3.0): the chart rendered and a bar drag
+  moved a task by two days in all three UI examples. Safari 26.6.2 has no native Temporal, so this also
+  proves the `src/temporal.ts` bootstrap. Playwright cannot drive real Safari; enable Safari →
+  Settings → Developer → "Allow remote automation" to use `safaridriver`. WebContainers for Safari are
+  beta and the first clone can stall for 6+ minutes; retry before filing a bug.
 
 If Vite fails to boot, pin the Vite 7 line for the generated copies only, in
 `DEPENDENCY_OVERRIDES` at the top of the generator (the comment there names the keys), then
