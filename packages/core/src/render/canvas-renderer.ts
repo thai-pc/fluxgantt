@@ -1426,6 +1426,12 @@ export function createCanvasRenderer(
     // `ctx.clip()` call needed), so this stays cheap regardless of how many dependencies exist.
     ctx.save();
     try {
+      // Clip to the row band BEFORE translating (clip is in the untransformed space): the
+      // header is painted earlier and pinned, so scrolled rows/bars/arrows/focus ring must not
+      // paint into y < HEADER_HEIGHT and cover its labels.
+      ctx.beginPath();
+      ctx.rect(0, HEADER_HEIGHT, totalWidth, resolvedViewportHeightPx - HEADER_HEIGHT);
+      ctx.clip();
       ctx.translate(0, HEADER_HEIGHT - scrollTop);
       paintDependencies(ctx, state.input.dependencies, barByTaskId, rowHeight, offsetX, 0, tokens);
       paintRows(

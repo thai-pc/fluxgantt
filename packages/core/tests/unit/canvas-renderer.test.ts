@@ -146,6 +146,7 @@ interface DrawCall {
     | 'rotate'
     | 'setTransform'
     | 'roundRect'
+    | 'clip'
     | 'set';
   readonly args: readonly unknown[];
   readonly prop?: string;
@@ -165,6 +166,7 @@ const TRACKED_METHODS = [
   'closePath',
   'beginPath',
   'rect',
+  'clip',
   'fill',
   'stroke',
   'fillText',
@@ -935,6 +937,35 @@ describe('hitTestRow', () => {
     // to content-space row 5, not row 0 (`hitTestRow` must add back `container.scrollTop`).
     h.container.scrollTop = 160;
     expect(h.hitTestRow(100, 32 + 16)).toEqual({ taskId: toTaskId('t5'), rowIndex: 5, hitToggle: false });
+  });
+});
+
+describe('header band protection when scrolled', () => {
+  it('clips the row/dependency/focus-ring paints to y >= HEADER_HEIGHT, after the header is painted', () => {
+    const mock = createMockContext2D();
+    installMockContext(mock);
+    const tasks = buildFlatTasks(300);
+    createCanvasRenderer(container, { tasks, dependencies: [], focusedTaskId: toTaskId('t150') });
+    const calls = mock.calls;
+    const lastRender = calls.map((c) => c.op).lastIndexOf('setTransform');
+    const pass = calls.slice(lastRender);
+
+    // The clip rect starts exactly at the header's bottom edge.
+    const clipIdx = pass.findIndex((c) => c.op === 'clip');
+    expect(clipIdx).toBeGreaterThan(0);
+    const rectCall = pass[clipIdx - 1]!;
+    expect(rectCall.op).toBe('rect');
+    expect(rectCall.args[1]).toBe(32);
+
+    // Every header label (fillText at y 8 / 24) was painted before the clip; the clip is
+    // opened by a save() and the translate that maps rows follows it.
+    const headerTextIdx = pass.map((c, i) => (c.op === 'fillText' && (c.args[2] === 8 || c.args[2] === 24) ? i : -1)).filter((i) => i >= 0);
+    expect(headerTextIdx.length).toBeGreaterThan(0);
+    expect(Math.max(...headerTextIdx)).toBeLessThan(clipIdx);
+    expect(pass.slice(clipIdx).find((c) => c.op === 'translate')).toBeDefined();
+    // No row bar/label text is painted before the clip.
+    const firstRowText = pass.findIndex((c) => c.op === 'fillText' && typeof c.args[0] === 'string' && c.args[0].startsWith('Task'));
+    if (firstRowText >= 0) expect(firstRowText).toBeGreaterThan(clipIdx);
   });
 });
 
