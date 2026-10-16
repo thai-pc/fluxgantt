@@ -191,9 +191,14 @@ each of the four links once in **Chrome, Firefox and Safari** and confirm the ch
 drag works; record the result here. Safari matters most: it has no native Temporal, so it is the
 browser that proves the examples' `src/temporal.ts` polyfill bootstrap works.
 
-- Chrome: [ ] vanilla · [ ] React · [ ] Vue · [ ] headless (prints the critical path)
-- Firefox: [ ] vanilla · [ ] React · [ ] Vue · [ ] headless
-- Safari: [ ] vanilla · [ ] React · [ ] Vue · [ ] headless
+Result for the 0.3.0 release (2026-10-16, automated via Playwright 1.63; Vite 8.3.4 booted, so no
+Vite 7 pin is needed; the drag was not exercised):
+
+- Chrome: [x] vanilla · [x] React · [x] Vue · [x] headless (prints the critical path)
+- Firefox (WebContainers beta): [ ] vanilla (dev server ready, preview stayed blank, needs a
+  manual look) · [ ] React · [ ] Vue (not verified) · [x] headless
+- Safari: [x] vanilla · [x] React · [x] Vue · [x] headless, via Playwright WebKit only, which also
+  lacks native Temporal; real Safari is still unchecked
 
 If Vite fails to boot, pin the Vite 7 line for the generated copies only, in
 `DEPENDENCY_OVERRIDES` at the top of the generator (the comment there names the keys), then

@@ -223,7 +223,9 @@ A note on precedence: `withTheme` writes the dark tokens as **inline** custom pr
 mount container, and an inline declaration beats any class rule on that same element. So while a
 chart is dark, a rule such as `.fg-gantt { --fg-bg: ... }` (or `#my-chart { ... }`) on the container
 loses for those 13 tokens, and so does an inline value the host set on the container: `withTheme`
-overwrites it, and restores it when the chart returns to light or is destroyed. To override a dark
+overwrites it, and restores it when the chart returns to light or is destroyed. (In the Vue wrapper a
+reactive `style` binding on `<FluxGantt>` is re-applied on every re-render, so there a host inline
+value can win again after a runtime switch to dark. Do not rely on either behaviour.) To override a dark
 token, declare it on a descendant, which beats the inherited inline value:
 `.fg-gantt .fg-timeline { --fg-bg: #000; }`. Tokens outside the table (task accents, geometry)
 are never written inline, so a plain container rule works for them. To restyle only in dark mode, key off the resolved theme yourself:
