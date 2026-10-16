@@ -35,6 +35,11 @@ test('the pinned band stays at the top after a vertical scroll and leaves native
 });
 
 test('a touch pan that starts on the pinned band scrolls the container natively', async ({ page }) => {
+  // `Input.synthesizeScrollGesture` drives native touch scrolling in headless Chromium on macOS but
+  // is a silent no-op on the Linux CI runner (scrollLeft stays 0; CI run 38950940832). The
+  // band's `touch-action` is asserted on every platform by the test above, which is what makes a
+  // real touch pan native; this end-to-end gesture check runs where the gesture is synthesizable.
+  test.skip(process.platform === 'linux', 'synthesized touch scroll gestures are a no-op on headless Linux Chromium');
   await page.goto('/responsive.html');
   await expect(page.locator('#gantt svg.fg-timeline__sticky-header')).toHaveCount(1);
   await page.evaluate(() => {
