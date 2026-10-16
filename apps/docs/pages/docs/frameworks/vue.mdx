@@ -42,12 +42,17 @@ function onTaskMoved(task: Task, prevStart: unknown) {
 ## Props
 
 `FluxGanttProps` mirrors the engine's `GanttConfig` one-to-one: `tasks`, `dependencies`,
-`calendar`, `viewMode`, `density`, `locale`, `ariaLabel`, `messages`, `readOnly`, `schedulingMode`, and the
-`onTaskChange` catch-all. In a template you bind them kebab- or camelCase (`:tasks`,
+`calendar`, `viewMode`, `density`, `locale`, `ariaLabel`, `messages`, `theme`, `canvasViewportHeight`, `readOnly`,
+`enableDependencyDrag`, `schedulingMode`, `historyLimit`, `initialCollapsed`, `rollup`, and the `onTaskChange` catch-all. In a template you bind them kebab- or camelCase (`:tasks`,
 `:view-mode`).
 
-Like React, these are **construction-time only** (read once). To change `viewMode` after mount,
-force a remount with `:key`:
+Like React, these are **construction-time only** (read once), except `theme`, which is reactive (applied via
+`setTheme`) and defaults to `'light'` rather than core's `'auto'` — pass `theme="auto"` to follow the OS. To change `viewMode` after mount,
+force a remount with `:key`. (`onTaskChange` is also read at call time, so it stays current.) The `theme` prop is validated (`'light'`, `'dark'` or `'auto'`).
+
+**Behavior change for `aria-label`:** `aria-label="Plan"` (or `:aria-label`) now binds to the `ariaLabel` prop and names the chart's `<svg>`; before, it fell through to the root `<div>`. Update any CSS or test selector that matched `[aria-label]` on the container.
+
+To remount:
 
 ```vue
 <FluxGantt :key="viewMode" :view-mode="viewMode" :tasks="tasks" />

@@ -48,12 +48,17 @@ export function App() {
 
 ## Uncontrolled data
 
-`tasks`, `dependencies`, `calendar`, `viewMode`, `density`, `locale`, `ariaLabel`, `messages` and
-`readOnly` are **read once**, when the underlying `GanttInstance` is created. The instance is the
+Every config prop (`tasks`, `dependencies`, `calendar`, `viewMode`, `density`, `locale`, `ariaLabel`, `messages`,
+`canvasViewportHeight`, `readOnly`, `enableDependencyDrag`, `schedulingMode`, `historyLimit`, `initialCollapsed`,
+`rollup`, e.g. `rollup={computeRollup}` with `computeRollup` from `@fluxgantt/core`) is **read once**, when the underlying `GanttInstance` is created. The instance is the
 source of truth afterward — there is no prop→store diffing. So declare `tasks`/`dependencies`
 outside the component (module scope, `useMemo` or `useState`), and mutate through the instance —
 `useFluxGantt()` returns a ref to it. Event callbacks stay reactive and may be fresh inline arrows
 on every render.
+
+`theme` is the other reactive prop: changing it calls `setTheme()` on the instance. It defaults to
+`'light'` (not core's `'auto'`, so existing charts do not flip on a dark-mode OS); pass
+`theme="auto"` to follow the OS.
 
 Full prop table, the `useFluxGantt` hook, and the uncontrolled-data rationale:
 [the React docs page](https://thai-pc.github.io/fluxgantt/docs/frameworks/react).

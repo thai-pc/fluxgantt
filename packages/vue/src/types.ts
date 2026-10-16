@@ -2,6 +2,7 @@
 import type { Ref } from 'vue';
 import type { RenderCapability } from '@fluxgantt/core/render';
 import type { ViewportCapability } from '@fluxgantt/core/viewport';
+import type { ThemeCapability } from '@fluxgantt/core/theme';
 import type {
   DateInput,
   Dependency,
@@ -20,7 +21,9 @@ import type {
 } from '@fluxgantt/core';
 
 /**
- * Config accepted by `useFluxGantt` — identical shape to `GanttConfig`, no additions.
+ * Config accepted by `useFluxGantt` — identical shape to `GanttConfig`, no additions. Every field
+ * is forwarded (see `gantt-config.ts`); all are construction-time-only except `theme` (reactive
+ * via `setTheme`, defaults to `'light'` here, not core's `'auto'`) and `onTaskChange`.
  *
  * Unlike react's `UseFluxGanttConfig`, this does NOT add discrete `onX` callback fields for
  * the 10 bridged `GanttEventMap` events (resolution #1: Vue's idiom for that is `defineEmits`/template
@@ -44,11 +47,12 @@ export interface UseFluxGanttResult {
    *  because a Vue composable's body runs exactly once per owning component instance
    *  (`setup()` itself only runs once; Vue does not re-invoke it the way React re-invokes a
    *  hook on every render) — see `use-flux-gantt.ts`'s module doc-comment. */
-  readonly instance: GanttInstance & RenderCapability & ViewportCapability;
+  readonly instance: GanttInstance & RenderCapability & ViewportCapability & ThemeCapability;
 }
 
 /**
- * Runtime `props` shape for `<FluxGantt>` — mirrors `GanttConfig` one-to-one.
+ * Runtime `props` shape for `<FluxGantt>` — mirrors `GanttConfig` one-to-one (every key is declared in `FluxGantt.ts`'s `props`, so none
+ * falls through to the root element as a DOM attribute; guarded by `tests/config-passthrough.test.ts`).
  *
  * Deliberately has NO `class`/`style` field. `<FluxGantt>` renders a single root `<div>`, so
  * Vue's default attribute fallthrough (`inheritAttrs: true`, the default — not overridden)
@@ -91,7 +95,10 @@ export interface FluxGanttEmits {
 }
 
 /** Type of the value `<FluxGantt ref="...">` exposes via `setup()`'s `expose()`. */
-export type FluxGanttRef = GanttInstance & RenderCapability & ViewportCapability;
+export type FluxGanttRef = GanttInstance &
+  RenderCapability &
+  ViewportCapability &
+  ThemeCapability;
 
 // Re-exported for FluxGantt.ts's `PropType<T>` casts (kept here, not inlined, so the prop
 // declaration and this file's own type surface stay adjacent and easy to audit together).

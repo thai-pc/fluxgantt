@@ -288,6 +288,54 @@ describe('withTheme — validation and lifecycle', () => {
   });
 });
 
+describe('withTheme — construction-time validation', () => {
+  it('throws on an unknown config.theme instead of silently painting light', () => {
+    expect(() => themed({ theme: 'blue' as never })).toThrow(/invalid theme "blue"/);
+  });
+});
+
+describe('withTheme — host inline --fg-* overrides', () => {
+  it('survives mounting in light (never darkened = no-op)', () => {
+    container.style.setProperty('--fg-bg', '#123456');
+    const gantt = themed({ theme: 'light' });
+    gantt.mount(container);
+    expect(container.style.getPropertyValue('--fg-bg')).toBe('#123456');
+  });
+
+  it('survives a dark to light switch when the host value was overwritten', () => {
+    container.style.setProperty('--fg-bg', '#123456');
+    const gantt = themed();
+    gantt.mount(container);
+    gantt.setTheme('dark');
+    expect(container.style.getPropertyValue('--fg-bg')).toBe(DARK_TOKENS['--fg-bg']);
+    gantt.setTheme('light');
+    expect(container.style.getPropertyValue('--fg-bg')).toBe('#123456');
+    // Every token we wrote that had no prior value is gone.
+    expect(darkTokenCount(container)).toBe(1);
+  });
+
+  it('restores the host value (and priority) on destroy', () => {
+    container.style.setProperty('--fg-bg', '#123456', 'important');
+    const gantt = themed({ theme: 'dark' });
+    gantt.mount(container);
+    expect(container.style.getPropertyValue('--fg-bg')).toBe(DARK_TOKENS['--fg-bg']);
+    gantt.destroy();
+    expect(container.style.getPropertyValue('--fg-bg')).toBe('#123456');
+    expect(container.style.getPropertyPriority('--fg-bg')).toBe('important');
+    expect(darkTokenCount(container)).toBe(1);
+  });
+
+  it('re-applying dark on a remount does not capture our own values as the host value', () => {
+    container.style.setProperty('--fg-bg', '#123456');
+    const gantt = themed({ theme: 'dark' });
+    gantt.mount(container);
+    gantt.unmount();
+    gantt.mount(container);
+    gantt.setTheme('light');
+    expect(container.style.getPropertyValue('--fg-bg')).toBe('#123456');
+  });
+});
+
 describe('withTheme — composition', () => {
   it('works when applied BEFORE withRender', () => {
     // Order-independence is the facade split's contract (spec-facade-split.md §2.2) — this

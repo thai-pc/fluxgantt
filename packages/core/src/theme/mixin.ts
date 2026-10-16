@@ -65,7 +65,13 @@ export interface ThemeCapability {
 export function withTheme<T extends GanttInstance>(instance: T): T & ThemeCapability {
   const internal = getInternal(instance);
 
+  const validate = (name: string, who: string): void => {
+    if (name !== 'light' && name !== 'dark' && name !== 'auto') {
+      throw new Error(`${who}: invalid theme "${name}" — light, dark or auto`);
+    }
+  };
   let theme: ThemeName = internal.config.theme ?? 'auto';
+  validate(theme, 'withTheme');
   let resolved: ResolvedTheme = 'light';
   let disposed = false;
   // Queried ONCE, here: `undefined` where the host has no `matchMedia` (jsdom without a stub, a
@@ -74,6 +80,23 @@ export function withTheme<T extends GanttInstance>(instance: T): T & ThemeCapabi
   const mql = typeof matchMedia === 'function' ? matchMedia(DARK_QUERY) : undefined;
 
   const prefersDark = (): boolean => mql?.matches === true;
+
+  // The container's inline values for the dark token keys BEFORE we wrote them (`''` = absent),
+  // and the element they belong to. The container belongs to the HOST, who may carry its own
+  // inline `--fg-*` overrides, so light/destroy must restore these rather than blanket-remove.
+  // `undefined` = we have written nothing, so there is nothing to undo.
+  let saved: { el: HTMLElement; prior: Record<string, [string, string]> } | undefined;
+
+  const restore = (): void => {
+    if (!saved) return;
+    const { el, prior } = saved;
+    saved = undefined;
+    for (const key in prior) {
+      const [value, priority] = prior[key]!;
+      if (value) el.style.setProperty(key, value, priority);
+      else el.style.removeProperty(key);
+    }
+  };
 
   const onPreferenceChange = (): void => {
     if (disposed || theme !== 'auto') return;
@@ -99,12 +122,23 @@ export function withTheme<T extends GanttInstance>(instance: T): T & ThemeCapabi
     if (!mount) return; // headless or unmounted — the choice is remembered, applied at next mount
     const { container } = mount.rendererHandle;
 
-    // Light is the ABSENCE of overrides: every renderer fallback is already the light value, so
-    // removing is both correct and cheaper than writing a second full table.
-    for (const key in DARK_TOKENS) {
-      if (resolved === 'dark') container.style.setProperty(key, DARK_TOKENS[key]!);
-      else container.style.removeProperty(key);
-    }
+    // Light is the ABSENCE of OUR overrides: every renderer fallback is already the light value,
+    // so undoing exactly what we wrote is correct and cheaper than a second full table. Applying
+    // light to a container we never darkened is a no-op, so host `--fg-*` values survive.
+    if (resolved === 'dark') {
+      if (saved && saved.el !== container) restore(); // remounted into a different element
+      if (!saved) {
+        const prior: Record<string, [string, string]> = {};
+        for (const key in DARK_TOKENS) {
+          prior[key] = [
+            container.style.getPropertyValue(key),
+            container.style.getPropertyPriority(key),
+          ];
+        }
+        saved = { el: container, prior };
+      }
+      for (const key in DARK_TOKENS) container.style.setProperty(key, DARK_TOKENS[key]!);
+    } else restore();
 
     // SVG re-resolves its inline `var()` declarations by itself on the custom-property change —
     // repainting it would be pure waste. Canvas resolved the OLD values into `fillStyle`
@@ -124,9 +158,7 @@ export function withTheme<T extends GanttInstance>(instance: T): T & ThemeCapabi
   const capability: ThemeCapability = {
     setTheme(next: ThemeName): void {
       internal.assertAlive('setTheme');
-      if (next !== 'light' && next !== 'dark' && next !== 'auto') {
-        throw new Error(`gantt.setTheme: invalid theme "${next}" — light, dark or auto`);
-      }
+      validate(next, 'gantt.setTheme');
       if (next === theme) return; // no-op: no repaint, no listener churn
       theme = next;
       syncWatch();
@@ -150,12 +182,10 @@ export function withTheme<T extends GanttInstance>(instance: T): T & ThemeCapabi
       if (!disposed) {
         disposed = true;
         mql?.removeEventListener('change', onPreferenceChange);
-        // Hand the host its element back as we found it. The container belongs to the HOST, not
-        // to us — the renderers only ever remove the nodes they themselves appended — so
-        // leaving 13 inline custom properties behind on a `destroy()`d chart's element would
-        // silently retheme whatever the host puts there next.
-        const container = internal.getMountState()?.rendererHandle.container;
-        if (container) for (const key in DARK_TOKENS) container.style.removeProperty(key);
+        // Hand the host its element back as we found it (including any inline `--fg-*` value of
+        // its own that we overwrote) — leaving 13 dark properties behind on a `destroy()`d
+        // chart's element would silently retheme whatever the host puts there next.
+        restore();
       }
       destroy();
     },

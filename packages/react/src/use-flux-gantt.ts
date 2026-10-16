@@ -1,9 +1,9 @@
 // `useFluxGantt` — the lower-layer hook `<FluxGantt>` wraps (spec-react-wrapper.md §3, §6).
 //
-// UNCONTROLLED-FIRST (resolution #1): `tasks`/`dependencies`/`calendar`/`viewMode`/`density`/
-// `locale`/`ariaLabel`/`messages`/`readOnly` are read ONCE, at construction. `GanttInstance` is the source of truth
-// afterwards — no prop→store diffing. `onTaskChange` is the one config field that stays
-// reactive (routed through `configRef`).
+// UNCONTROLLED-FIRST (resolution #1): every `GanttConfig` field is read ONCE, at construction,
+// except two that stay reactive: `onTaskChange` (routed through `configRef`) and `theme`
+// (synced via `instance.setTheme`). `GanttInstance` is the source of truth afterwards — no
+// prop→store diffing. `gantt-config.ts` lists the disposition of every field.
 //
 // STRICTMODE (resolution #2, §10): the instance is created once via lazy `useRef`
 // initialization (survives the dev-only double *render*). The mount effect's cleanup calls
@@ -17,7 +17,9 @@ import { withRender, type RenderCapability } from '@fluxgantt/core/render';
 import { withInteraction } from '@fluxgantt/core/interaction';
 import { withEditHooks } from '@fluxgantt/core/edit-hooks';
 import { withViewport, type ViewportCapability } from '@fluxgantt/core/viewport';
+import { withTheme, type ThemeCapability } from '@fluxgantt/core/theme';
 import type { GanttInstance } from '@fluxgantt/core';
+import { pickConstructionConfig, syncTheme } from './gantt-config.js';
 import type { UseFluxGanttConfig, UseFluxGanttResult } from './types.js';
 
 // Minimal ambient declaration for `process.env.NODE_ENV` — this package intentionally has no
@@ -27,6 +29,10 @@ import type { UseFluxGanttConfig, UseFluxGanttResult } from './types.js';
 // guard below covers runtimes where the global is genuinely absent (e.g. an unbundled
 // `<script type="module">` load).
 declare const process: { readonly env?: { readonly NODE_ENV?: string } } | undefined;
+
+// `useLayoutEffect` warns when rendered on the server (React 18); effects never run there
+// anyway, so fall back to `useEffect` where there is no `window`.
+const useIsomorphicLayoutEffect = typeof window !== 'undefined' ? useLayoutEffect : useEffect;
 
 export function useFluxGantt(config: UseFluxGanttConfig): UseFluxGanttResult {
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -42,44 +48,41 @@ export function useFluxGantt(config: UseFluxGanttConfig): UseFluxGanttResult {
   // stateful object exactly once). Survives StrictMode's dev-only double *render* because the
   // ref persists across both synchronous render calls of the same commit; the `=== null` guard
   // makes the second call a no-op.
-  const instanceRef = useRef<(GanttInstance & RenderCapability & ViewportCapability) | null>(null);
+  const instanceRef = useRef<
+    (GanttInstance & RenderCapability & ViewportCapability & ThemeCapability) | null
+  >(null);
   if (instanceRef.current === null) {
-    // Reads `config` HERE ONLY — this block runs exactly once, so `tasks`/`dependencies`/
-    // `calendar`/`viewMode`/`density`/`locale`/`ariaLabel`/`messages`/`readOnly` are frozen
-    // at whatever the FIRST
-    // render passed (resolution #1: construction-time only). `onTaskChange` is the one field
-    // that stays reactive, via the `configRef` indirection.
-    //
-    // Each optional field is included only when actually set — `GanttConfig` has
-    // `exactOptionalPropertyTypes: true`, so writing an explicit `undefined` to an optional
-    // property that isn't itself typed `X | undefined` is a compile error, not just redundant
-    // (mirrors `gantt.ts`'s own `#rendererOptions()` pattern).
+    // Reads `config` HERE ONLY — this block runs exactly once, so every field except
+    // `onTaskChange` and `theme` is frozen at whatever the FIRST render passed (resolution #1).
+    // `onTaskChange` stays reactive via the `configRef` indirection, `theme` via the effect
+    // below. `pickConstructionConfig` copies only fields that are actually set (see
+    // `gantt-config.ts`), so core defaults apply to the rest.
     try {
       // `mount()`/`unmount()` and the drag/keyboard/click gestures are opt-in mixins on the
       // core's `/render` and `/interaction` subpaths since the facade split — a wrapper
       // component is by definition a rendering, interactive consumer, so it composes both
       // unconditionally, plus `/viewport` (scrollToTask/scrollToDate/setDensity — a chart UI always
-      // wants them). IO (`/io`) is deliberately NOT composed: the wrapper exposes no
+      // wants them) and `/theme` (setTheme/getTheme/getResolvedTheme; the `theme` prop needs it). IO (`/io`) is deliberately NOT composed: the wrapper exposes no
       // import/export surface, so a consumer who never calls it never downloads it.
-      instanceRef.current = withViewport(
-        withEditHooks(
-        withInteraction(
-          withRender(
-            createGantt({
-              ...(config.tasks !== undefined ? { tasks: config.tasks } : {}),
-              ...(config.dependencies !== undefined ? { dependencies: config.dependencies } : {}),
-              ...(config.calendar !== undefined ? { calendar: config.calendar } : {}),
-              ...(config.viewMode !== undefined ? { viewMode: config.viewMode } : {}),
-              ...(config.density !== undefined ? { density: config.density } : {}),
-              ...(config.locale !== undefined ? { locale: config.locale } : {}),
-              ...(config.readOnly !== undefined ? { readOnly: config.readOnly } : {}),
-              ...(config.enableDependencyDrag !== undefined
-                ? { enableDependencyDrag: config.enableDependencyDrag }
-                : {}),
-              onTaskChange: (task, prev) => configRef.current.onTaskChange?.(task, prev),
-            }),
+      instanceRef.current = withTheme(
+        withViewport(
+          withEditHooks(
+            withInteraction(
+              withRender(
+                createGantt({
+                  ...pickConstructionConfig(config),
+                  // Always constructed light: `withTheme` arms an OS `matchMedia` listener for
+                  // 'auto', and the instance is created during RENDER, where StrictMode / an
+                  // abandoned concurrent render can discard it with no cleanup. The real theme
+                  // is applied in the layout effect below (and disarmed on teardown). Unset
+                  // means 'light' here, not core's 'auto', because wrapper charts have always
+                  // been light; hosts opt into OS-following with `theme="auto"`.
+                  theme: 'light',
+                  onTaskChange: (task, prev) => configRef.current.onTaskChange?.(task, prev),
+                }),
+              ),
+            ),
           ),
-        ),
         ),
       );
     } catch (err) {
@@ -123,10 +126,21 @@ export function useFluxGantt(config: UseFluxGanttConfig): UseFluxGanttResult {
     }
   }, [config.tasks, config.dependencies]);
 
+  // `theme` is runtime-reactive (a dark-mode toggle is the main use case). A layout effect so a
+  // non-discrete update does not paint one frame of the old theme. `setTheme` no-ops when the
+  // value is unchanged. Declared BEFORE the mount effect so the theme is set before `mount()`.
+  useIsomorphicLayoutEffect(() => {
+    syncTheme(instance, config.theme ?? 'light');
+    // Disarm on teardown: `theme="auto"` registered a `matchMedia` listener that would otherwise
+    // retain the whole instance (the wrapper unmounts, never destroys). Re-armed by the next run
+    // of this effect (a theme change, or StrictMode's simulated remount).
+    return () => syncTheme(instance, 'light');
+  }, [instance, config.theme]);
+
   // Mount/subscribe/unmount lifecycle — ONE effect. `useLayoutEffect` (not `useEffect`) avoids
   // a one-frame flash of an empty container before the SVG paints, standard for wrapping
   // imperative rendering libraries.
-  useLayoutEffect(() => {
+  useIsomorphicLayoutEffect(() => {
     const node = containerRef.current;
     if (!node) return; // container div is always rendered unconditionally by the consumer in
     // the same render — should not happen in practice.

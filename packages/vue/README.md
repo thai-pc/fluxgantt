@@ -53,10 +53,18 @@ function onTaskMoved(task: Task, prevStart: unknown) {
 
 ## Uncontrolled data
 
-`tasks`, `dependencies`, `calendar`, `viewMode`, `density`, `locale`, `ariaLabel`, `messages` and
-`readOnly` are **read once**, when the underlying `GanttInstance` is created. The instance is the
+Every config prop (`tasks`, `dependencies`, `calendar`, `viewMode`, `density`, `locale`, `ariaLabel`, `messages`,
+`canvasViewportHeight`, `readOnly`, `enableDependencyDrag`, `schedulingMode`, `historyLimit`, `initialCollapsed`,
+`rollup`, e.g. `:rollup="computeRollup"` with `computeRollup` from `@fluxgantt/core`) is **read once**, when the underlying `GanttInstance` is created. The instance is the
 source of truth afterward — there is no prop→store diffing. Mutate through the instance, which
 `useFluxGantt()` exposes as a ref.
+
+`theme` and `onTaskChange` are the reactive props; changing `theme` calls `setTheme()` on the instance. It defaults to
+`'light'` (not core's `'auto'`, so existing charts do not flip on a dark-mode OS); pass
+`theme="auto"` to follow the OS.
+
+Behavior change: a native `aria-label="..."` attribute used to fall through to the root `<div>`; it now
+binds to the `ariaLabel` prop and names the chart's `<svg>` instead.
 
 Full prop and emit tables, plus the composable:
 [the Vue docs page](https://thai-pc.github.io/fluxgantt/docs/frameworks/vue).
