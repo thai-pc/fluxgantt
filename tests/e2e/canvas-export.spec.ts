@@ -45,9 +45,14 @@ async function expectExportError(page: Page, pattern: RegExp): Promise<void> {
   expect(await status(page).getAttribute('data-error')).toMatch(pattern);
 }
 
-/** Decodes a PNG in the page and reports opaque / transparent pixel counts of the top-left crop. */
+/** The harness page's `--fg-bg` (`examples/plain-html-demo/src/style.css`), which exports now carry
+ *  as their ground. Counting pixels that differ from it means a blank (all-ground) raster has 0. */
+const GROUND = [250, 250, 250] as const;
+
+/** Decodes a PNG in the page and reports opaque-non-ground / transparent pixel counts of the
+ *  top-left crop. */
 async function samplePng(page: Page, bytes: Buffer) {
-  return page.evaluate(async (b64) => {
+  return page.evaluate(async ([b64, ground]) => {
     const raw = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
     const bmp = await createImageBitmap(new Blob([raw], { type: 'image/png' }));
     const w = Math.min(bmp.width, 600);
@@ -64,15 +69,15 @@ async function samplePng(page: Page, bytes: Buffer) {
     const cctx = corner.getContext('2d')!;
     cctx.drawImage(bmp, bmp.width - 4, bmp.height - 4, 4, 4, 0, 0, 4, 4);
     const data = ctx.getImageData(0, 0, w, h).data;
-    let nonWhiteOpaque = 0;
+    let nonGroundOpaque = 0;
     let transparent = 0;
     for (let i = 0; i < data.length; i += 4) {
       if (data[i + 3] === 0) transparent++;
-      else if (data[i] !== 255 || data[i + 1] !== 255 || data[i + 2] !== 255) nonWhiteOpaque++;
+      else if (data[i] !== ground[0] || data[i + 1] !== ground[1] || data[i + 2] !== ground[2]) nonGroundOpaque++;
     }
     const cd = cctx.getImageData(0, 0, 4, 4).data;
-    return { nonWhiteOpaque, transparent, cornerRgba: [cd[0]!, cd[1]!, cd[2]!, cd[3]!] };
-  }, bytes.toString('base64'));
+    return { nonGroundOpaque, transparent, cornerRgba: [cd[0]!, cd[1]!, cd[2]!, cd[3]!] };
+  }, [bytes.toString('base64'), GROUND] as const);
 }
 
 async function parseSvg(page: Page, text: string) {
@@ -197,7 +202,7 @@ test.describe('exportSvg in Canvas mode', () => {
 });
 
 test.describe('exportPng in Canvas mode', () => {
-  test('scale 0.5 yields a PNG of exactly the scaled chart size, non-blank, white background', async ({
+  test('scale 0.5 yields a PNG of exactly the scaled chart size, non-blank, ground background', async ({
     page,
   }) => {
     await openHarness(page, '?scale=0.5');
@@ -210,7 +215,8 @@ test.describe('exportPng in Canvas mode', () => {
     expect(height).toBe(33_616);
     expect(width).toBeGreaterThan(160 / 2);
     const px = await samplePng(page, bytes);
-    expect(px.nonWhiteOpaque).toBeGreaterThan(200);
+    expect(px.nonGroundOpaque).toBeGreaterThan(200);
+    expect(px.cornerRgba).toEqual([...GROUND, 255]);
     expect(px.transparent).toBe(0);
   });
 
@@ -253,12 +259,12 @@ test.describe('exportPng in Canvas mode', () => {
     const bytes = await downloadBytes(await clickAndDownload(page, 'Export PNG'));
     const px = await samplePng(page, bytes);
     expect(px.transparent).toBeGreaterThan(0);
-    expect(px.nonWhiteOpaque + px.transparent).toBeGreaterThan(0);
+    expect(px.nonGroundOpaque + px.transparent).toBeGreaterThan(0);
 
     await openHarness(page, '?density=compact&scale=0.25');
-    const white = await samplePng(page, await downloadBytes(await clickAndDownload(page, 'Export PNG')));
-    expect(white.transparent).toBe(0);
-    expect(white.cornerRgba[3]).toBe(255);
+    const ground = await samplePng(page, await downloadBytes(await clickAndDownload(page, 'Export PNG')));
+    expect(ground.transparent).toBe(0);
+    expect(ground.cornerRgba).toEqual([...GROUND, 255]);
   });
 
   test('does not move focus or scroll', async ({ page }) => {

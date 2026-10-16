@@ -242,11 +242,15 @@ gantt.on('renderer:selected', () => {
 
 ### Exporting a dark chart
 
-`exportSvg()` needs no special handling — it bakes computed styles off the live chart, so a dark
-chart exports dark. Two caveats:
+`exportSvg()` and `exportPng()` bake computed styles off the live chart and paint the chart's
+resolved `--fg-bg` (`#0a0a0a` in the dark theme, `#ffffff` when unset) as the ground, so a dark
+chart exports dark with no extra step. Pass `background` to override it, or
+`background: 'transparent'` to opt out. Two caveats:
 
-- **`exportPng()` defaults to a white background.** That is wrong on a dark chart, so pass one:
-  `gantt.exportPng({ background: '#0a0a0a' })`.
+- **A host whose ground is not `--fg-bg` should pass `background`.** The library only sees the
+  `--fg-bg` custom property, not your page's CSS. A `--fg-bg` value that is not hex, `rgb()`,
+  `hsl()` (comma or space syntax) or a plain keyword, or that the browser cannot parse as a color
+  (a typo such as `blak`), falls back to white.
 - **Author custom dark colors as hex or `rgb()`/`hsl()`.** The export sanitizer whitelists those
   and rejects `oklch()`, `lab()` and `color()`, so a palette authored in `oklch()` renders
   on screen but silently falls back to the light value in the exported file.

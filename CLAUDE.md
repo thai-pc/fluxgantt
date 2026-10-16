@@ -23,7 +23,7 @@ This file is the context entry point for AI. Details are split into rules under 
    | Fixture | Measured | Budget |
    |---|---|---|
    | `createGantt()` only (hello world) | 7.50 KiB | 9 KiB |
-   | `+ withIo` | 12.60 KiB | 14 KiB |
+   | `+ withIo` | 12.61 KiB | 14 KiB |
    | `+ withRender` | 14.52 KiB | 15 KiB |
    | `+ withRender + withInteraction` | 19.07 KiB | 19.5 KiB |
    | `+ withRender + withTheme` | 15.20 KiB | 16 KiB |
@@ -31,7 +31,7 @@ This file is the context entry point for AI. Details are split into rules under 
    | `+ withRender + withViewport` | 15.42 KiB | 16 KiB |
    | `+ withConflicts` (headless) | 9.37 KiB | 10 KiB |
    | `+ withRender + withEditHooks` (not in the kitchen sink) | 15.85 KiB | 16 KiB |
-   | kitchen sink (everything = the pre-split facade) | 23.84 KiB | 24 KiB |
+   | kitchen sink (everything = the pre-split facade) | 23.85 KiB | 24 KiB |
 
    Hello world went 22.3 KiB → 7.50 KiB and the fully-composed instance 34.9 KiB → 23.84 KiB (the old "full core" check measured `dist/index.js` as a plain file, which code-splitting has since hollowed out; the kitchen-sink fixture replaces it). Non-core features are plugins.
 
@@ -81,6 +81,8 @@ This file is the context entry point for AI. Details are split into rules under 
    @fluxgantt/core size:headroom` (a non-fatal CI step) warns on any fixture under 150 B so it does
    not silently erode again. Do not spend the room by raising or lowering a limit; spend it on
    features.
+
+   The export-background change (SVG/PNG exports carry the resolved `--fg-bg`) cost +106 B on the kitchen sink and +111 B on `+ withIo` (24410 -> 24516, 12901 -> 13012) and left the other eight fixtures at +0 B. Headroom was recovered, not the limit raised, by trimming diagnostic message tails in `io/` (PNG scale/size/decode, date length, JSON `schemaVersion`; the CSV unknown-column list was kept), by routing the `fill`/`stroke` bake gate through `isValidBackground` (one color grammar instead of three regexes) and by one shared `assertValidBackground`. The review fixes (host `--fg-bg` typo gate via `CSS.supports`, space-form accepted for explicit backgrounds, Canvas-mode `exportSvg` validating before the throwaway build) are paid for by those levers: kitchen sink ends at 24424 / 24576 (152 B), `+ withIo` at 12914. The Canvas-mode PNG path resolves the ground inside the lazy `export-canvas-png` chunk, which no fixture measures.
 
    Run `pnpm size` from `packages/core` (or `pnpm size` at the root via turbo) to re-measure; the numbers above are its output, converted from its decimal-kB report to KiB. **It needs Node >= 22.19** — that is `size-limit` 14's own declared `engines.node` (`^22.19.0 || ^24.5.0 || >=26.0.0`), and the floor is enforced by the root `engines.node` so a permitted Node cannot be one the repo fails on. Before 14 the practical floor was 22.18, because `size-limit` calls `fs.glob` with `withFileTypes` (added in Node 22.2) and on an older 22.x it dies with an opaque `TypeError: i.isFile is not a function` that looks like a repo misconfiguration but is not. `.nvmrc` pins an exact version for this reason; CI reads it via `node-version-file`.
 6. **Tier-gate correctly** — Pro (resource/baseline/MSProject), Cloud (multiplayer/AI). Don't cram Pro/Cloud code into `core`.

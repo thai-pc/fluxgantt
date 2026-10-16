@@ -149,7 +149,7 @@ function validateSchemaVersion(envelope: Record<string, unknown>): void {
   const version = fg.schemaVersion;
   if (version !== '1.0') {
     throw new IoValidationError(
-      `unsupported schemaVersion "${truncateForError(String(version))}" (expected "1.0")`,
+      `unsupported schemaVersion "${truncateForError(String(version))}"`,
       '$.fluxgantt.schemaVersion',
     );
   }

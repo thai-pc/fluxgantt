@@ -375,8 +375,8 @@ Requires the `withIo` mixin (`@fluxgantt/core/io`).
 |---|---|---|
 | `exportJson(options?)` | `ExportBundle` | Serialize to the JSON bundle. Headless. |
 | `exportCsv(options?)` | `string` | Serialize tasks to CSV. Headless. |
-| `exportSvg(options?)` | `string` | Serialize the mounted chart to an SVG string. Requires `withRender` + mount. Works in Canvas mode too (full chart, max 5,000 tasks); see [Import & Export](/docs/import-export#exporting-a-large-canvas-mode-chart). |
-| `exportPng(options?)` | `Promise<Blob>` | Rasterize the mounted chart to PNG. Requires `withRender` + mount; async. In Canvas mode the whole chart is one poster-sized raster, bounded by browser canvas limits; prefer `exportSvg()` for big charts. |
+| `exportSvg(options?)` | `string` | Serialize the mounted chart to an SVG string. Options: `inlineComputedStyle`, and `background` (a CSS color or `'transparent'`; default the chart's resolved `--fg-bg`, else `#ffffff`). Requires `withRender` + mount. Works in Canvas mode too (full chart, max 5,000 tasks); see [Import & Export](/docs/import-export#exporting-a-large-canvas-mode-chart). |
+| `exportPng(options?)` | `Promise<Blob>` | Rasterize the mounted chart to PNG. Options: `scale`, and `background` (same default as `exportSvg`). Requires `withRender` + mount; async. In Canvas mode the whole chart is one poster-sized raster, bounded by browser canvas limits; prefer `exportSvg()` for big charts. |
 | `importJson(input, options?)` | `ImportSummary` | Validate + replace the dataset atomically. |
 | `importCsv(csv, options?)` | `ImportSummary` | Same, from CSV. |
 

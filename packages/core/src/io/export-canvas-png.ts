@@ -36,6 +36,7 @@ import {
 } from '../render/renderer-base.js';
 import type { TaskBarLayout } from '../render/renderer-base.js';
 import type { TaskId } from '../types.js';
+import { resolveChartBackground } from './export-background.js';
 import { resolvePngOptions } from './export-png.js';
 import type { ExportPngOptions } from './types.js';
 
@@ -71,7 +72,7 @@ export function computeExportCanvasSize(
   const pxW = Math.round(cssW * scale);
   const pxH = Math.round(cssH * scale);
   if (pxW < 1 || pxH < 1) {
-    throw new Error(`gantt.exportPng: output ${pxW}x${pxH}px is degenerate — scale too small`);
+    throw new Error(`gantt.exportPng: output ${pxW}x${pxH}px is degenerate`);
   }
   if (
     pxW > MAX_CANVAS_DIMENSION_PX ||
@@ -92,7 +93,7 @@ export async function exportCanvasPng(
   if (isLive && !isLive()) {
     throw new Error('gantt.exportPng: the chart was unmounted or remounted while exporting');
   }
-  const { scale, background } = resolvePngOptions(options);
+  const { scale, background = resolveChartBackground(handle.container) } = resolvePngOptions(options);
 
   // The painted state, not `GanttConfig`: `setDensity()`/`withResponsive` change these at runtime.
   const { input, options: o } = handle.getRenderState();
