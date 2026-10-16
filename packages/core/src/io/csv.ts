@@ -70,9 +70,7 @@ export function exportCsv(tasks: readonly Task[], options?: ExportCsvOptions): s
   const columns = options?.columns ?? DEFAULT_CSV_COLUMNS;
   for (const col of columns) {
     if (!DEFAULT_CSV_COLUMNS.includes(col)) {
-      throw new Error(
-        `exportCsv: unknown column "${col}" — must be one of ${DEFAULT_CSV_COLUMNS.join(', ')}`,
-      );
+      throw new Error(`exportCsv: unknown column "${col}" (${DEFAULT_CSV_COLUMNS})`);
     }
   }
   const timezone = options?.timezone ?? 'UTC';

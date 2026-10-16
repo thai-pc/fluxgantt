@@ -26,6 +26,7 @@ import {
   importCsv as importCsvFn,
   importJson as importJsonFn,
 } from './index.js';
+import { assertValidBackground } from './export-background.js';
 import { resolvePngOptions } from './export-png.js';
 import type * as CanvasPngModule from './export-canvas-png.js';
 import type {
@@ -106,6 +107,8 @@ export interface IoCapability {
    * blocks the main thread while it runs: about 2 s at 5,000 rows with native Temporal and about
    * 6 s with `@js-temporal/polyfill` (roughly 1 s / 3 s at 2,100 rows).
    * `inlineComputedStyle: false` skips the style-bake loop and is the fast path for huge charts.
+   *
+   * `background` defaults to the chart's resolved `--fg-bg`, else `#ffffff` (see `ExportSvgOptions`).
    */
   exportSvg(options?: ExportSvgOptions): string;
 
@@ -124,6 +127,8 @@ export interface IoCapability {
    * density is already 65,535 px tall, and Safari/WebKit's canvas-area ceiling is far lower.
    * Past the browser's limits it rejects with an actionable error; for large charts prefer
    * `exportSvg()` (vector, no pixel limit) or lower `scale`.
+   *
+   * The fill defaults to the chart's resolved `--fg-bg` (else `#ffffff`); see `ExportPngOptions.background`.
    */
   exportPng(options?: ExportPngOptions): Promise<Blob>;
 }
@@ -172,6 +177,8 @@ export function withIo<T extends GanttInstance>(instance: T): T & IoCapability {
     exportSvg(options?: ExportSvgOptions): string {
       const handle = internal.assertMounted('exportSvg');
       if ('svg' in handle) return exportSvgFn(handle.svg, options);
+      // Validate before the (up to 5,000-row) throwaway build, as exportPng does.
+      assertValidBackground(options?.background, 'exportSvg');
       // Canvas mode: serialize a throwaway, un-windowed SVG built from the painted state.
       const src = handle.createExportSvg();
       try {

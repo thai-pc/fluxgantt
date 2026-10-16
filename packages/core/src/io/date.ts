@@ -43,7 +43,7 @@ export function assertParsableDateInput(raw: unknown, path: string): string {
   // Temporal's parser (which otherwise had only the blanket maxInputLengthChars gate).
   if (raw.length > MAX_DATE_STRING_LENGTH) {
     throw new IoValidationError(
-      `date string exceeds max length ${MAX_DATE_STRING_LENGTH} (got ${raw.length})`,
+      `date string exceeds max length ${MAX_DATE_STRING_LENGTH}`,
       path,
     );
   }

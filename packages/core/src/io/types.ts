@@ -95,6 +95,13 @@ export interface ExportSvgOptions {
    * will NOT visually match the live page when opened standalone.
    */
   readonly inlineComputedStyle?: boolean;
+  /**
+   * Ground painted as the first rendered element of the exported SVG. A CSS color (hex/rgb()/
+   * hsl() or a bare keyword like `'white'`) or `'transparent'` to omit it. Default: the chart's
+   * resolved `--fg-bg` custom property (dark theme: `#0a0a0a`), else `'#ffffff'`. An invalid
+   * value throws. A host whose ground is not `--fg-bg` should pass this explicitly.
+   */
+  readonly background?: string | 'transparent';
 }
 
 export interface ExportPngOptions {
@@ -110,10 +117,10 @@ export interface ExportPngOptions {
    */
   readonly scale?: number;
   /**
-   * Fill painted under the rasterized chart before drawing (the source SVG has no background
-   * rect, so a naive rasterization is transparent). A CSS color string — the `Task.color`
-   * whitelist (hex/rgb()/hsl()) OR a bare CSS keyword (`'white'`/`'black'`/…) — or the literal
-   * `'transparent'` to skip the fill. Default `'#ffffff'`.
+   * Fill painted under the rasterized chart before drawing. A CSS color string — the
+   * `Task.color` whitelist (hex/rgb()/hsl()) OR a bare CSS keyword (`'white'`/`'black'`/…) — or
+   * the literal `'transparent'` to skip the fill. Default: the chart's resolved `--fg-bg` custom
+   * property (dark theme: `#0a0a0a`), else `'#ffffff'`.
    */
   readonly background?: string | 'transparent';
   // NOTE: no `inlineComputedStyle` — PNG rasterizes via an `<img>` in an isolated document with

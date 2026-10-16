@@ -84,6 +84,7 @@ function installCanvas(over: Partial<Pick<Probe, 'alpha' | 'blob'>> = {}): Probe
     },
     set(target, prop: string, value) {
       if (prop === 'font') probe.fonts.push(value);
+      if (prop === 'fillStyle') probe.calls.push({ name: 'fillStyle=', args: [value] });
       target[prop] = value;
       return true;
     },
@@ -154,6 +155,19 @@ describe('Canvas-mode exportSvg (handle.createExportSvg)', () => {
     src.dispose();
     expect(parse(canvasOut).querySelector('title')!.textContent).toBe(parse(svgOut).querySelector('title')!.textContent);
     expect(parse(canvasOut).querySelectorAll('[role="row"]')).toHaveLength(5);
+  });
+
+  it('carries the container --fg-bg as a ground rect (the throwaway SVG inherits it) and leaves no residue', () => {
+    const { el, handle } = mountCanvas(flat(3));
+    el.style.setProperty('--fg-bg', '#0a0a0a');
+    const before = el.childElementCount;
+    const src = handle.createExportSvg();
+    const out = exportSvg(src.svg, { inlineComputedStyle: false });
+    src.dispose();
+    const rect = parse(out).documentElement.querySelector('rect')!;
+    expect(rect.getAttribute('fill')).toBe('#0a0a0a');
+    expect(rect.getAttribute('width')).toBe('100%');
+    expect(el.childElementCount).toBe(before);
   });
 
   it('escapes hostile task names and drops hostile colors', () => {
@@ -306,6 +320,18 @@ describe('facade: Canvas-mode export through withIo()', () => {
     gantt.unmount();
     expect(() => gantt.exportSvg()).toThrow(/not mounted/);
     await expect(gantt.exportPng()).rejects.toThrow(/not mounted/);
+  }, HEAVY);
+
+  it('exportSvg rejects an invalid background before building the throwaway renderer (no residue)', async () => {
+    const { el, gantt } = await mountFacade(inputs(CANVAS_AUTO_SWITCH_THRESHOLD + 1));
+    const kids = el.childElementCount;
+    const before = el.querySelectorAll('*').length;
+    for (const bad of ['red;x:y', 'url(x)', '']) {
+      expect(() => gantt.exportSvg({ background: bad })).toThrow(/gantt\.exportSvg: invalid background/);
+    }
+    expect(el.childElementCount).toBe(kids);
+    expect(el.querySelectorAll('*').length).toBe(before);
+    expect(() => gantt.exportSvg({ background: 'transparent' })).not.toThrow();
   }, HEAVY);
 
   it('exportPng resolves a Blob and paints every row (not just the live window)', async () => {
@@ -499,6 +525,25 @@ describe('exportCanvasPng', () => {
     probe.calls.length = 0;
     await exportCanvasPng(h, { background: '#fff' });
     expect(fullFills()).toBe(1);
+  });
+
+  it('default fill is the container --fg-bg, else white; explicit wins; invalid host value falls back', async () => {
+    const probe = installCanvas();
+    const h = handleFor(flat(2));
+    const w = Math.round(h.getLabelColumnWidth() + h.getTimeScale().totalWidth);
+    // The fillStyle assigned immediately before the origin fillRect as wide as the whole bitmap.
+    const bgFill = async (o?: { background?: string }): Promise<unknown> => {
+      probe.calls.length = 0;
+      await exportCanvasPng(h, o);
+      const i = probe.calls.findIndex((c) => c.name === 'fillRect' && c.args[0] === 0 && c.args[1] === 0 && c.args[2] === w);
+      return probe.calls[i - 1]!.args[0];
+    };
+    expect(await bgFill()).toBe('#ffffff');
+    h.container.style.setProperty('--fg-bg', '#0a0a0a');
+    expect(await bgFill()).toBe('#0a0a0a');
+    expect(await bgFill({ background: '#123456' })).toBe('#123456');
+    h.container.style.setProperty('--fg-bg', 'oklch(0.2 0 0)');
+    expect(await bgFill()).toBe('#ffffff');
   });
 
   it('PNG height reflects the painted density after setOptions', async () => {

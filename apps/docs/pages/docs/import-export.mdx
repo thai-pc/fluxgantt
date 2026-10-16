@@ -37,6 +37,10 @@ const blob = await gantt.exportPng();       // Promise<Blob> — rasterized PNG
 
 - `exportSvg()` bakes computed styles inline and adds the XML declaration + `xmlns`, so the
   string is a standalone SVG file.
+- Both exports paint a ground behind the chart: the chart's resolved `--fg-bg` (dark theme
+  `#0a0a0a`), else `#ffffff`. Pass `{ background: '#fafafa' }` (a hex, `rgb()`/`hsl()` or keyword)
+  to override, or `{ background: 'transparent' }` to leave it out (an invalid value throws /
+  rejects). `exportSvg()` adds it as a `<rect>` in the exported copy only.
 - `exportPng()` is **async** (it waits for the browser to decode the SVG, or in Canvas mode for
   the Canvas export module to load, before rasterizing)
   and returns a `Blob`. Both **throw / reject** if the instance was never mounted (there is no

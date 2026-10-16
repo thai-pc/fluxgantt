@@ -5,7 +5,7 @@
 // Imports `exportSvg` from `./export-svg.js` — one-directional (`export-svg.ts` never imports
 // this file), so `import { exportSvg } from '@fluxgantt/core'` alone never pulls this
 // canvas-rasterization path into a consumer's bundle.
-import { validateTaskColor } from '../render/renderer-base.js';
+import { assertValidBackground, resolveChartBackground } from './export-background.js';
 import { exportSvg } from './export-svg.js';
 import type { ExportPngOptions } from './types.js';
 
@@ -24,36 +24,20 @@ export const MAX_PNG_DIMENSION_PX = 8192;
  */
 export const MAX_PNG_AREA_PX = 4096 * 4096;
 
-/** A CSS color safe to pass to `ctx.fillStyle` — the `Task.color` whitelist (hex/rgb/hsl),
- *  `'transparent'`, OR a bare CSS keyword (`white`/`black`/…): a letters-only token can't be a
- *  `url()`/`javascript:`/injection vector, and unlike the strict `validateTaskColor` whitelist
- *  it accepts the natural named colors a caller would reach for (review B5). */
-const BARE_COLOR_KEYWORD = /^[a-zA-Z]+$/;
-
-export function isValidBackground(background: string): boolean {
-  return (
-    background === 'transparent' ||
-    BARE_COLOR_KEYWORD.test(background) ||
-    validateTaskColor(background) !== undefined
-  );
-}
-
 /** Validates and defaults `ExportPngOptions.scale`/`background` — the ONE copy shared by the SVG
  *  path, the Canvas mixin branch and the lazy Canvas module (each used to carry its own, and the
  *  mixin's copy was shipped bytes in every `withIo` bundle). Throws scale-first. NOT part of the
  *  public surface (`io/index.ts` does not re-export it). */
-export function resolvePngOptions(options?: ExportPngOptions): { scale: number; background: string } {
+export function resolvePngOptions(options?: ExportPngOptions): { scale: number; background: string | undefined } {
   const scale = options?.scale ?? 1;
   if (!Number.isFinite(scale) || scale <= 0) {
-    throw new Error(`gantt.exportPng: invalid scale (${scale}) — must be a finite number > 0`);
+    throw new Error(`gantt.exportPng: invalid scale (${scale})`);
   }
-  const background = options?.background ?? '#ffffff';
+  const background = options?.background;
   // Canvas silently IGNORES an invalid fillStyle (keeps the previous value / defaults to
   // black) rather than throwing — validating here converts a silent footgun into a clear
   // rejection.
-  if (!isValidBackground(background)) {
-    throw new Error(`gantt.exportPng: invalid background "${background}"`);
-  }
+  assertValidBackground(background, 'exportPng');
   return { scale, background };
 }
 
@@ -68,7 +52,7 @@ export function resolvePngOptions(options?: ExportPngOptions): { scale: number; 
  * caller never needs a synchronous try/catch around the call site itself (spec §5.2).
  */
 export async function exportPng(svg: SVGSVGElement, options?: ExportPngOptions): Promise<Blob> {
-  const { scale, background } = resolvePngOptions(options);
+  const { scale, background = resolveChartBackground(svg) } = resolvePngOptions(options);
 
   const width = Number(svg.getAttribute('width'));
   const height = Number(svg.getAttribute('height'));
@@ -76,14 +60,14 @@ export async function exportPng(svg: SVGSVGElement, options?: ExportPngOptions):
     // A non-numeric width/height (e.g. `"800px"`) would coerce to NaN and slip past the size
     // guards below (`NaN > MAX` is false), then canvas coerces NaN → 0 → a blank raster
     // surfacing as a misleading "toBlob returned null". Fail clearly instead (review A3).
-    throw new Error(`gantt.exportPng: the SVG has no valid numeric width/height (${width}x${height})`);
+    throw new Error(`gantt.exportPng: bad width/height (${width}x${height})`);
   }
   const pxWidth = Math.round(width * scale);
   const pxHeight = Math.round(height * scale);
   if (pxWidth < 1 || pxHeight < 1) {
     // A degenerately small scale rounds a side to 0 → null blob. Clear error, not a confusing
     // "toBlob returned null" (review A4).
-    throw new Error(`gantt.exportPng: output ${pxWidth}x${pxHeight}px is degenerate — scale too small`);
+    throw new Error(`gantt.exportPng: output ${pxWidth}x${pxHeight}px is degenerate`);
   }
   if (pxWidth > MAX_PNG_DIMENSION_PX || pxHeight > MAX_PNG_DIMENSION_PX || pxWidth * pxHeight > MAX_PNG_AREA_PX) {
     // Known limitation (no tiling) turned into a clear, guarded error instead of a silent
@@ -91,7 +75,7 @@ export async function exportPng(svg: SVGSVGElement, options?: ExportPngOptions):
     // per-side limit AND the total-area cap (review B1).
     throw new Error(
       `gantt.exportPng: output ${pxWidth}x${pxHeight}px exceeds the ${MAX_PNG_DIMENSION_PX}px ` +
-        'per-side / total-area canvas limit — reduce scale or the visible time range/task count',
+        'per-side / total-area limit — lower scale',
     );
   }
 
@@ -99,7 +83,7 @@ export async function exportPng(svg: SVGSVGElement, options?: ExportPngOptions):
   // document with no access to the host's `--fg-*` custom properties, so an un-baked SVG would
   // resolve every color to its hardcoded fallback and silently mis-theme (review B4 — hence no
   // `inlineComputedStyle` option on `ExportPngOptions`).
-  const svgString = exportSvg(svg, { inlineComputedStyle: true });
+  const svgString = exportSvg(svg, { inlineComputedStyle: true, background: 'transparent' });
   const blob = new Blob([svgString], { type: 'image/svg+xml;charset=utf-8' });
   const url = URL.createObjectURL(blob);
 
@@ -113,7 +97,7 @@ export async function exportPng(svg: SVGSVGElement, options?: ExportPngOptions):
     // assets), so `canvas.toBlob()` below is safe without a `crossOrigin` dance.
     await new Promise<void>((resolve, reject) => {
       img.onload = () => resolve();
-      img.onerror = () => reject(new Error('gantt.exportPng: failed to decode the exported SVG'));
+      img.onerror = () => reject(new Error('gantt.exportPng: failed to decode the SVG'));
       img.src = url;
     });
 

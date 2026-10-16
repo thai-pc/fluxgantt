@@ -11,7 +11,7 @@
 // escapes text-node content automatically, so no code path here can turn task data into markup.
 // The one thing THIS file adds is baked `getComputedStyle()` values — gated through
 // `isSafeStyleValue()` (a hard whitelist) before ever being written into the clone.
-import { validateTaskColor } from '../render/renderer-base.js';
+import { assertValidBackground, isValidBackground, resolveChartBackground } from './export-background.js';
 import type { ExportSvgOptions } from './types.js';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
@@ -35,15 +35,6 @@ const BAKED_STYLE_PROPERTIES = [
 
 // --- Security: whitelist gate for baked computed-style values (spec §6.3) -----------------
 
-const SAFE_PAINT_KEYWORDS = new Set(['none', 'currentcolor', 'transparent']);
-// Modern browsers may serialize `getComputedStyle()` colors in the SPACE-separated CSS Color 4
-// form (`rgb(100 116 139)` / `rgb(100 116 139 / 0.5)`), which the legacy comma-form grammar in
-// `validateTaskColor` (renderer-base.ts) does not accept. Accept that form too so a resolved
-// value isn't silently dropped (which would revert the clone to its `var(--fg-token, fallback)`
-// and break WYSIWYG). The shared hex / comma-rgb / comma-hsl grammar is REUSED from
-// `validateTaskColor` (single source of truth — no drifting duplicate whitelist, review B2).
-const RGB_SPACE = /^rgba?\(\s*\d{1,3}\s+\d{1,3}\s+\d{1,3}\s*(\/\s*(0|1|0?\.\d+)\s*)?\)$/i;
-const HSL_SPACE = /^hsla?\(\s*\d{1,3}(deg)?\s+\d{1,3}%\s+\d{1,3}%\s*(\/\s*(0|1|0?\.\d+)\s*)?\)$/i;
 /** A same-document SVG paint-server fragment reference only — no scheme, no external URL (the
  *  only `url()` form `fill`/`stroke` can legitimately resolve to, spec §6.3). Quotes optional:
  *  `getComputedStyle` serializes paint-server refs as `url("#id")` (review B6). */
@@ -65,14 +56,9 @@ const SAFE_TOKEN = /^[A-Za-z0-9 %.,-]+$/;
 export function isSafeStyleValue(prop: string, value: string): boolean {
   if (value === '') return false;
   if (prop === 'fill' || prop === 'stroke') {
-    const lower = value.trim().toLowerCase();
-    return (
-      SAFE_PAINT_KEYWORDS.has(lower) ||
-      validateTaskColor(value) !== undefined || // shared hex / comma-rgb / comma-hsl grammar
-      RGB_SPACE.test(value) ||
-      HSL_SPACE.test(value) ||
-      LOCAL_PAINT_URL_REF.test(value)
-    );
+    // The shared color grammar (hex / comma + space rgb()/hsl() / letters-only keyword such as
+    // `none`/`currentcolor`) plus a same-document paint-server reference.
+    return isValidBackground(value) || LOCAL_PAINT_URL_REF.test(value);
   }
   return SAFE_TOKEN.test(value);
 }
@@ -90,6 +76,10 @@ export function isSafeStyleValue(prop: string, value: string): boolean {
  */
 export function exportSvg(svg: SVGSVGElement, options?: ExportSvgOptions): string {
   const inline = options?.inlineComputedStyle ?? true;
+  // Default read from the LIVE svg: a detached clone has no cascade, so no `--fg-bg`. The
+  // resolved default is always valid, so one check covers both sources.
+  const bg = options?.background ?? resolveChartBackground(svg);
+  assertValidBackground(bg, 'exportSvg');
 
   // 1. Deep clone. NEVER append the clone into `document`.
   const clone = svg.cloneNode(true) as SVGSVGElement;
@@ -128,6 +118,17 @@ export function exportSvg(svg: SVGSVGElement, options?: ExportSvgOptions): strin
   //     descriptions of the chart's structure/state at export time and are plain attributes,
   //     not interpolated user strings, so they pose no security or correctness issue.
   clone.querySelectorAll('[tabindex]').forEach((el) => el.removeAttribute('tabindex'));
+
+  // 5c. Ground: first rendered child of the clone only (never the live DOM). Inserted AFTER the
+  //     live/clone index pairing and the bake above, which it would otherwise shift. `fill` is an
+  //     attribute set via setAttribute from a validated value, never markup.
+  if (bg !== 'transparent') {
+    const rect = document.createElementNS(SVG_NS, 'rect');
+    rect.setAttribute('width', '100%');
+    rect.setAttribute('height', '100%');
+    rect.setAttribute('fill', bg);
+    clone.prepend(rect);
+  }
 
   // 6. A11y: promote the existing aria-label into a <title> — more portable than aria-label
   //    alone for standalone-file / `<img src>` contexts (spec §8).
@@ -181,7 +182,7 @@ function bakeComputedStyles(liveEls: NodeListOf<SVGElement>, cloneEls: NodeListO
         cloned.style.setProperty(prop, resolved);
       } else if (!warnedProps.has(prop)) {
         warnedProps.add(prop);
-        console.warn(`exportSvg: computed "${prop}" failed the safety check — left as-is`);
+        console.warn(`exportSvg: unsafe computed "${prop}" skipped`);
       }
     }
   }

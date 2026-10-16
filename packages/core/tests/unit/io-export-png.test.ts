@@ -173,6 +173,35 @@ describe('exportPng — background', () => {
     expect(fakeCtx.calls.indexOf('fillRect')).toBeLessThan(fakeCtx.calls.indexOf('drawImage'));
   });
 
+  it('default background follows the chart --fg-bg (dark theme), else white', async () => {
+    const svg = makeSvg();
+    svg.style.setProperty('--fg-bg', '#0a0a0a');
+    await exportPng(svg);
+    expect(fakeCtx.fillStyle).toBe('#0a0a0a');
+  });
+
+  it('a host --fg-bg that fails the whitelist falls back to white without throwing', async () => {
+    const svg = makeSvg();
+    svg.style.setProperty('--fg-bg', 'url(javascript:alert(1))');
+    await exportPng(svg);
+    expect(fakeCtx.fillStyle).toBe('#ffffff');
+  });
+
+  it('an explicit background beats --fg-bg', async () => {
+    const svg = makeSvg();
+    svg.style.setProperty('--fg-bg', '#0a0a0a');
+    await exportPng(svg, { background: 'white' });
+    expect(fakeCtx.fillStyle).toBe('white');
+  });
+
+  it('the SVG string handed to the Image carries NO background rect', async () => {
+    const svg = makeSvg();
+    svg.style.setProperty('--fg-bg', '#0a0a0a');
+    await exportPng(svg);
+    const text = await readBlobText(createObjectUrlCalls[0]!);
+    expect(new DOMParser().parseFromString(text, 'image/svg+xml').querySelectorAll('rect')).toHaveLength(1);
+  });
+
   it('background: "transparent" never calls fillRect', async () => {
     const svg = makeSvg();
     await exportPng(svg, { background: 'transparent' });
@@ -204,7 +233,7 @@ describe('exportPng — dimension guards (review A3/A4/B1)', () => {
   it('rejects a non-numeric SVG width/height before any Image/canvas work (A3)', async () => {
     const svg = makeSvg();
     svg.setAttribute('width', '800px'); // Number("800px") = NaN
-    await expect(exportPng(svg)).rejects.toThrow(/no valid numeric width\/height/);
+    await expect(exportPng(svg)).rejects.toThrow(/bad width\/height/);
     expect(imageConstructCount).toBe(0);
   });
 
@@ -245,7 +274,8 @@ describe('exportPng — MAX_PNG_DIMENSION_PX guard', () => {
 describe('exportPng — SVG pipeline reuse', () => {
   it('the Blob handed to URL.createObjectURL contains the SAME string exportSvg() produces', async () => {
     const svg = makeSvg();
-    const expected = exportSvg(svg);
+    // PNG hands exportSvg a 'transparent' ground: the canvas fill is the single source of truth.
+    const expected = exportSvg(svg, { background: 'transparent' });
     await exportPng(svg);
     expect(createObjectUrlCalls).toHaveLength(1);
     const actual = await readBlobText(createObjectUrlCalls[0]!);
@@ -319,8 +349,8 @@ describe('exportPng — facade (gantt.ts)', () => {
 });
 
 describe('resolvePngOptions', () => {
-  it('defaults to scale 1 and a white background', () => {
-    expect(resolvePngOptions()).toEqual({ scale: 1, background: '#ffffff' });
+  it('defaults to scale 1 and leaves the background to the caller (resolved from the chart)', () => {
+    expect(resolvePngOptions()).toEqual({ scale: 1, background: undefined });
     expect(resolvePngOptions({ scale: 2, background: 'transparent' })).toEqual({
       scale: 2,
       background: 'transparent',
