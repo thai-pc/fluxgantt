@@ -172,6 +172,18 @@ describe('<FluxGantt> theme', () => {
     expect(root.style.getPropertyValue('--fg-bg')).toBe('#123456');
   });
 
+  it('unmount hands the container back with the host inline --fg-bg, not the dark token', () => {
+    const wrapper = mount(FluxGantt, {
+      props: { tasks: TWO, theme: 'dark' },
+      attrs: { style: { '--fg-bg': '#123456' } },
+      attachTo: document.body,
+    });
+    const root = wrapper.element as HTMLElement;
+    expect(root.style.getPropertyValue('--fg-bg')).not.toBe('#123456');
+    wrapper.unmount();
+    expect(root.style.getPropertyValue('--fg-bg')).toBe('#123456');
+  });
+
   it('a theme change after ref.destroy() does not throw', async () => {
     const { wrapper, ref } = mountChart({ tasks: TWO });
     ref.destroy();

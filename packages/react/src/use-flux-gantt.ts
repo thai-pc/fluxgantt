@@ -131,10 +131,8 @@ export function useFluxGantt(config: UseFluxGanttConfig): UseFluxGanttResult {
   // value is unchanged. Declared BEFORE the mount effect so the theme is set before `mount()`.
   useIsomorphicLayoutEffect(() => {
     syncTheme(instance, config.theme ?? 'light');
-    // Disarm on teardown: `theme="auto"` registered a `matchMedia` listener that would otherwise
-    // retain the whole instance (the wrapper unmounts, never destroys). Re-armed by the next run
-    // of this effect (a theme change, or StrictMode's simulated remount).
-    return () => syncTheme(instance, 'light');
+    // No teardown: `instance.unmount()` (the mount effect's cleanup) restores the container and
+    // disarms the `theme="auto"` `matchMedia` listener inside core.
   }, [instance, config.theme]);
 
   // Mount/subscribe/unmount lifecycle — ONE effect. `useLayoutEffect` (not `useEffect`) avoids
