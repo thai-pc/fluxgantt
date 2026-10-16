@@ -12,6 +12,9 @@ import type {
   GanttInstance,
   Task,
   TaskActivatedPayload,
+  GanttMessages,
+  RollupProvider,
+  SchedulingMode,
   TaskContextRequestedPayload,
   TaskId,
 } from '@fluxgantt/core';
@@ -75,14 +78,17 @@ function exposableInstance(instance: GanttInstance): GanttInstance {
 }
 
 /**
- * Note on construction-only props: `viewMode`/`density`/`locale`/`readOnly`/`calendar`/`enableDependencyDrag` are
- * read only once, when the underlying `GanttInstance` is created (`GanttInstance` has no
- * `setViewMode`/`setDensity`/`setLocale`/`setReadOnly`/`setCalendar` — same facade gap react
+ * Note on construction-only props: every `GanttConfig` prop except `theme` and `onTaskChange`
+ * (`tasks`, `dependencies`, `calendar`, `viewMode`, `density`, `locale`, `ariaLabel`, `messages`,
+ * `canvasViewportHeight`, `readOnly`, `enableDependencyDrag`, `schedulingMode`, `historyLimit`,
+ * `initialCollapsed`, `rollup`) is read only once, when the underlying `GanttInstance` is
+ * created (`GanttInstance` has no `setViewMode`/`setDensity`/`setLocale`/`setReadOnly`/`setCalendar` — same facade gap react
  * documented). Changing these props after mount is a no-op. A consumer who needs a
  * prop-driven `viewMode` change can force a full remount via Vue's `:key`
  * (`<FluxGantt :key="viewMode" :view-mode="viewMode" ... />`) — Vue tears down the old
  * component instance (and its `GanttInstance`) and mounts a fresh one, the same mechanism
- * react's `key`-remount workaround uses.
+ * react's `key`-remount workaround uses. `theme` is reactive (applied via `setTheme`) and
+ * defaults to `'light'`, not core's `'auto'`.
  *
  * Note on `class`/`style`: intentionally absent from `props` below — see `types.ts`'s
  * `FluxGanttProps` doc-comment. Vue's default attribute fallthrough handles them.
@@ -100,6 +106,18 @@ export const FluxGantt = defineComponent({
     viewMode: { type: String as PropType<ViewMode>, required: false },
     density: { type: String as PropType<Density>, required: false },
     locale: { type: String, required: false },
+    ariaLabel: { type: String, required: false },
+    messages: { type: Object as PropType<GanttMessages>, required: false },
+    theme: {
+      type: String as PropType<'light' | 'dark' | 'auto'>,
+      required: false,
+      validator: (v: string) => v === 'light' || v === 'dark' || v === 'auto',
+    },
+    canvasViewportHeight: { type: Number, required: false },
+    schedulingMode: { type: String as PropType<SchedulingMode>, required: false },
+    historyLimit: { type: Number, required: false },
+    initialCollapsed: { type: Array as PropType<readonly TaskId[]>, required: false },
+    rollup: { type: Function as PropType<RollupProvider>, required: false },
     // `default: undefined` overrides Vue's Boolean-prop special case (an absent Boolean prop
     // WITHOUT an explicit default resolves to `false`, not `undefined`) — preserves the
     // facade's real tri-state ("unset" lets `GanttConfig`'s own default apply, distinct from

@@ -41,7 +41,10 @@ all of them must be applied **before the first `mount()`**: `mount()` reads the 
 hooks at mount time, so composing `withInteraction` onto an already-mounted instance takes
 effect only on the next mount.
 
-The React and Vue wrappers compose `withRender` + `withInteraction` + `withEditHooks` + `withViewport` for you.
+The React and Vue wrappers compose `withRender` + `withInteraction` + `withEditHooks` + `withViewport` + `withTheme` for you,
+and forward every `GanttConfig` field. All of them are construction-time only except `onTaskChange` and `theme`, which are
+reactive. The one deliberate deviation from "unset means core default": the wrappers' `theme` defaults to `'light'`, not
+`'auto'` (wrapper charts have always been light); pass `theme="auto"` to follow the OS.
 
 ## `GanttConfig`
 
@@ -61,8 +64,8 @@ The React and Vue wrappers compose `withRender` + `withInteraction` + `withEditH
 | `initialCollapsed` | `readonly TaskId[]` | `[]` | Tasks to start collapsed. Unknown or leaf ids are dropped silently; fires no `collapse:changed`. |
 | `historyLimit` | `number` | `100` | Undo entries retained. Oldest is evicted past the limit (ring buffer). `0` opts out of undo/redo entirely without affecting anything else. Must be a non-negative integer — throws at construction otherwise. Construction-time only. |
 | `canvasViewportHeight` | `number` | `600` | Visible scroll-viewport height, in px, of the mounted container **in Canvas mode only** (no SVG equivalent). Bounds the `<canvas>` backing store. |
-| `theme` | `'light' \| 'dark' \| 'auto'` | — | Initial theme. Applied by [`withTheme`](/docs/theming); the base bundle only carries the field. |
-| `rollup` | `boolean` | `false` | Derive each parent's span/progress from its children. See [Hierarchy](/docs/concepts/hierarchy). |
+| `theme` | `'light' \| 'dark' \| 'auto'` | `'auto'` in core; `'light'` in the React/Vue wrappers | Initial theme. Applied by [`withTheme`](/docs/theming); the base bundle only carries the field. The wrappers compose `withTheme` and keep `theme` reactive. |
+| `rollup` | `RollupProvider` | — | Draw each parent at its rolled-up span (earliest descendant start to latest descendant end, duration-weighted progress) instead of its authored dates. Pass the core implementation: `rollup: computeRollup` (from `@fluxgantt/core`). Derived on read: `getTasks()`, export, undo and critical path still see authored dates. Mounted charts only. Construction-time only. See [Hierarchy](/docs/concepts/hierarchy). |
 | `onTaskChange` | `(task, prev) => void` | — | Catch-all fired whenever a task field changes. |
 
 ## `GanttInstance` methods

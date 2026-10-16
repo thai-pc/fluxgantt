@@ -5,10 +5,10 @@
 // a hook on every render. This is a load-bearing difference from `@fluxgantt/react`:
 //   - No lazy-`useRef`-guard pattern is needed to construct the `GanttInstance` "only once" —
 //     this function's top-level `createGantt(...)` call already runs exactly once by
-//     construction. `tasks`/`dependencies`/`calendar`/`viewMode`/`density`/`locale`/
-//     `ariaLabel`/`messages`/`readOnly`
-//     are naturally construction-time-only (resolution #5) as a side effect of this, not
-//     something the composable has to defend against re-running.
+//     construction. Every `GanttConfig` field is therefore construction-time-only (resolution
+//     #5) as a side effect of this, EXCEPT `theme` (synced via a `watch` -> `setTheme`) and
+//     `onTaskChange` (read at call time). `gantt-config.ts` lists the disposition of each field;
+//     nothing about it is something the composable has to defend against re-running.
 //   - No `configRef.current = config` "always latest" indirection is needed either. `config`
 //     is expected to be a STABLE, LIVE object reference for the composable's whole lifetime —
 //     in practice, `<FluxGantt>` passes its own reactive `props` object straight through
@@ -32,7 +32,9 @@ import { withRender, type RenderCapability } from '@fluxgantt/core/render';
 import { withInteraction } from '@fluxgantt/core/interaction';
 import { withEditHooks } from '@fluxgantt/core/edit-hooks';
 import { withViewport, type ViewportCapability } from '@fluxgantt/core/viewport';
+import { withTheme, type ThemeCapability } from '@fluxgantt/core/theme';
 import type { GanttInstance } from '@fluxgantt/core';
+import { pickConstructionConfig, syncTheme } from './gantt-config.js';
 import type { UseFluxGanttConfig, UseFluxGanttResult } from './types.js';
 
 // Minimal ambient declaration for `process.env.NODE_ENV`, mirroring react's own — this
@@ -43,35 +45,33 @@ declare const process: { readonly env?: { readonly NODE_ENV?: string } } | undef
 export function useFluxGantt(config: UseFluxGanttConfig): UseFluxGanttResult {
   const containerRef = ref<HTMLDivElement | null>(null);
 
-  let instance: GanttInstance & RenderCapability & ViewportCapability;
+  let instance: GanttInstance & RenderCapability & ViewportCapability & ThemeCapability;
   try {
-    // `exactOptionalPropertyTypes` — only include a key when actually set, same pattern
-    // `gantt.ts`'s own `#rendererOptions()` and react's `use-flux-gantt.ts` use.
+    // `pickConstructionConfig` copies only fields that are actually set (`exactOptionalPropertyTypes`,
+    // and so core defaults apply to the rest) — see `gantt-config.ts`.
     // `mount()`/`unmount()` and the drag/keyboard/click gestures are opt-in mixins on the
     // core's `/render` and `/interaction` subpaths since the facade split — a wrapper component
     // is by definition a rendering, interactive consumer, so it composes both unconditionally,
-    // plus `/viewport` (scrollToTask/scrollToDate/setDensity).
+    // plus `/viewport` (scrollToTask/scrollToDate/setDensity) and `/theme` (the `theme` prop needs it).
     // IO (`/io`) is deliberately NOT composed: the wrapper exposes no import/export surface, so
     // a consumer who never calls it never downloads it.
-    instance = withViewport(
-      withEditHooks(
-      withInteraction(
-        withRender(
-          createGantt({
-            ...(config.tasks !== undefined ? { tasks: config.tasks } : {}),
-            ...(config.dependencies !== undefined ? { dependencies: config.dependencies } : {}),
-            ...(config.calendar !== undefined ? { calendar: config.calendar } : {}),
-            ...(config.viewMode !== undefined ? { viewMode: config.viewMode } : {}),
-            ...(config.density !== undefined ? { density: config.density } : {}),
-            ...(config.locale !== undefined ? { locale: config.locale } : {}),
-            ...(config.readOnly !== undefined ? { readOnly: config.readOnly } : {}),
-            ...(config.enableDependencyDrag !== undefined
-              ? { enableDependencyDrag: config.enableDependencyDrag }
-              : {}),
-            onTaskChange: (task, prev) => config.onTaskChange?.(task, prev),
-          }),
+    instance = withTheme(
+      withViewport(
+        withEditHooks(
+          withInteraction(
+            withRender(
+              createGantt({
+                ...pickConstructionConfig(config),
+                // Always constructed light so no OS `matchMedia` listener is armed before
+                // mount; the real theme is applied in `onMounted` and disarmed in
+                // `onBeforeUnmount`. Unset means 'light' here, not core's 'auto', because
+                // wrapper charts have always been light; hosts opt in with `theme="auto"`.
+                theme: 'light',
+                onTaskChange: (task, prev) => config.onTaskChange?.(task, prev),
+              }),
+            ),
+          ),
         ),
-      ),
       ),
     );
   } catch (err) {
@@ -85,6 +85,13 @@ export function useFluxGantt(config: UseFluxGanttConfig): UseFluxGanttResult {
       err instanceof Error ? { cause: err } : undefined,
     );
   }
+
+  // `theme` is runtime-reactive (a dark-mode toggle is the main use case). Not immediate:
+  // `onMounted` applies the initial value. `setTheme` no-ops when unchanged.
+  watch(
+    () => config.theme,
+    (theme) => syncTheme(instance, theme ?? 'light'),
+  );
 
   // Dev-only: warn if `tasks`/`dependencies` change identity after construction. Implemented
   // via `watch` (not a manual ref+effect diff like react) because `config` is expected to be
@@ -123,11 +130,15 @@ export function useFluxGantt(config: UseFluxGanttConfig): UseFluxGanttResult {
     const node = containerRef.value;
     if (!node) return; // container div is always rendered unconditionally by the render
     // function in the same setup() — should not happen in practice.
+    syncTheme(instance, config.theme ?? 'light');
     instance.mount(node);
   });
 
   onBeforeUnmount(() => {
     instance.unmount(); // NOT destroy() — see module doc-comment above.
+    // Disarm the `matchMedia` listener `theme="auto"` registered (it would otherwise retain
+    // the whole instance until page unload).
+    syncTheme(instance, 'light');
   });
 
   return { containerRef, instance };

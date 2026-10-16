@@ -174,7 +174,8 @@ gantt.getResolvedTheme(); // 'dark'  — what is actually painted
 ```
 
 The initial value can also come from config: `createGantt({ tasks, theme: 'dark' })`. It
-defaults to `'auto'`.
+defaults to `'auto'`. The React and Vue wrappers compose `withTheme` for you, expose `theme` as a reactive
+prop, and default it to `'light'` (not `'auto'`) so existing charts do not flip on a dark-mode OS.
 
 ### What `'auto'` does
 
@@ -218,8 +219,16 @@ The table is exported as `DARK_TOKENS` from `@fluxgantt/core/theme` if you want 
 it. **Task accent colors are deliberately untouched** — indigo/red/emerald/amber are saturated
 mid-tones that read on both grounds, and re-tinting them would change what "critical red" means.
 
-Your own overrides still win as long as they are more specific or set closer to the chart. To
-restyle only in dark mode, key off the resolved theme yourself:
+A note on precedence: `withTheme` writes the dark tokens as **inline** custom properties on the
+mount container, and an inline declaration beats any class rule on that same element. So while a
+chart is dark, a rule such as `.fg-gantt { --fg-bg: ... }` (or `#my-chart { ... }`) on the container
+loses for those 13 tokens, and so does an inline value the host set on the container: `withTheme`
+overwrites it, and restores it when the chart returns to light or is destroyed. (In the Vue wrapper a
+reactive `style` binding on `<FluxGantt>` is re-applied on every re-render, so there a host inline
+value can win again after a runtime switch to dark. Do not rely on either behaviour.) To override a dark
+token, declare it on a descendant, which beats the inherited inline value:
+`.fg-gantt .fg-timeline { --fg-bg: #000; }`. Tokens outside the table (task accents, geometry)
+are never written inline, so a plain container rule works for them. To restyle only in dark mode, key off the resolved theme yourself:
 
 ```ts
 gantt.on('renderer:selected', () => {

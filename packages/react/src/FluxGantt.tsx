@@ -5,13 +5,16 @@ import { useFluxGantt } from './use-flux-gantt.js';
 import type { FluxGanttProps, FluxGanttRef } from './types.js';
 
 /**
- * Note on construction-only props: `viewMode`/`density`/`locale`/`readOnly`/`calendar`/`enableDependencyDrag` are
- * read only once, when the underlying `GanttInstance` is created (`GanttInstance` has no
+ * Note on construction-only props: every `GanttConfig` prop except `theme` and
+ * `onTaskChange` (`tasks`, `dependencies`, `calendar`, `viewMode`, `density`, `locale`,
+ * `ariaLabel`, `messages`, `canvasViewportHeight`, `readOnly`, `enableDependencyDrag`,
+ * `schedulingMode`, `historyLimit`, `initialCollapsed`, `rollup`) is read only once, when the underlying `GanttInstance` is created (`GanttInstance` has no
  * `setViewMode`/`setDensity`/`setLocale`/`setReadOnly`/`setCalendar`). Changing these props
  * after mount is a no-op. A consumer who needs a prop-driven `viewMode` change (etc.) can force
  * a full remount by changing `<FluxGantt>`'s `key`, e.g.
  * `<FluxGantt key={viewMode} viewMode={viewMode} ... />` — React tears down the old component
- * (and its instance) and mounts a fresh one.
+ * (and its instance) and mounts a fresh one. `theme` is reactive (applied via `setTheme`) and
+ * defaults to `'light'`, not core's `'auto'`.
  */
 export const FluxGantt = forwardRef<FluxGanttRef, FluxGanttProps>(function FluxGantt(
   { className, style, ...config },

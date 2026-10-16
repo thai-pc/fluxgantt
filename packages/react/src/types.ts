@@ -2,6 +2,7 @@
 import type { CSSProperties, RefObject } from 'react';
 import type { RenderCapability } from '@fluxgantt/core/render';
 import type { ViewportCapability } from '@fluxgantt/core/viewport';
+import type { ThemeCapability } from '@fluxgantt/core/theme';
 import type {
   DateInput,
   Dependency,
@@ -15,10 +16,11 @@ import type {
 } from '@fluxgantt/core';
 
 /**
- * Config accepted by `useFluxGantt`. Extends `GanttConfig` as-is (resolution #1:
- * `tasks`/`dependencies`/`calendar`/`viewMode`/`density`/`locale`/`readOnly` are
- * construction-time-only — see `use-flux-gantt.ts`) and adds one discrete callback prop per
- * `GanttEventMap` event that exists on the facade today (resolution #4+#7).
+ * Config accepted by `useFluxGantt`. Extends `GanttConfig` as-is. Every field is
+ * forwarded to `createGantt` (see `gantt-config.ts`). All are construction-time-only (resolution
+ * #1) except `theme` (reactive via `setTheme`; defaults to `'light'` here, not core's `'auto'`)
+ * and `onTaskChange` (always-latest). On top of `GanttConfig` it adds one discrete callback prop
+ * per `GanttEventMap` event that exists on the facade today (resolution #4+#7).
  * `onTaskChange` is inherited unchanged from `GanttConfig` — it is the facade's own
  * "any field changed" catch-all, a different layer from the discrete events below; both
  * coexist (see `FluxGantt.tsx`).
@@ -51,11 +53,12 @@ export interface UseFluxGanttResult {
   /** The full `GanttInstance` (resolution #6 — no curated subset), plus `RenderCapability`
    *  (`mount`/`unmount`/`refresh`, from the opt-in `@fluxgantt/core/render` mixin) and
    *  `ViewportCapability` (`scrollToTask`/`scrollToDate`/`setDensity`, from the opt-in
-   *  `@fluxgantt/core/viewport` mixin; the `density` prop stays construction-time). The wrapper
-   *  composes both for you (see `use-flux-gantt.ts`). In SVG mode the scroll methods need the
+   *  `@fluxgantt/core/viewport` mixin; the `density` prop stays construction-time) and
+   *  `ThemeCapability` (`setTheme`/`getTheme`/`getResolvedTheme`, `@fluxgantt/core/theme`).
+   *  The wrapper composes all of them for you (see `use-flux-gantt.ts`). In SVG mode the scroll methods need the
    *  container to be the scroll viewport: give it a bounded height and `overflow: auto`.
    *  Stable identity across renders (created once). */
-  readonly instance: GanttInstance & RenderCapability & ViewportCapability;
+  readonly instance: GanttInstance & RenderCapability & ViewportCapability & ThemeCapability;
 }
 
 export interface FluxGanttProps extends UseFluxGanttConfig {
@@ -64,4 +67,7 @@ export interface FluxGanttProps extends UseFluxGanttConfig {
 }
 
 /** Type of the value `<FluxGantt ref={...}>` exposes via `useImperativeHandle`. */
-export type FluxGanttRef = GanttInstance & RenderCapability & ViewportCapability;
+export type FluxGanttRef = GanttInstance &
+  RenderCapability &
+  ViewportCapability &
+  ThemeCapability;

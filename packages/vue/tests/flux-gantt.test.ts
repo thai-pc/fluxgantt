@@ -249,6 +249,14 @@ describe('<FluxGantt>', () => {
       'readOnly',
       'enableDependencyDrag',
       'onTaskChange',
+      'ariaLabel',
+      'messages',
+      'theme',
+      'canvasViewportHeight',
+      'schedulingMode',
+      'historyLimit',
+      'initialCollapsed',
+      'rollup',
     ].sort();
     const expectedEmitKeys = [
       'task-added',
