@@ -156,10 +156,11 @@ export const ARROWHEAD_MARKER_ID = 'fg-dep-arrowhead';
 // NOTE on what is deliberately NOT here: the coarse-pointer link-handle radius override
 // (`--fg-link-handle-radius: 12px` under `@media (pointer: coarse)`) lives in
 // `responsive/mixin.ts`'s injected stylesheet, not in the literal below. Reason is byte budget,
-// not taste: every character inside these template literals — comments included — is SHIPPED in
-// `withRender`'s bundle, and that block measured ~480 B gzip against 307 B of headroom
-// (spec-responsive-mobile.md's budget gate, lever (a)). Putting it in the opt-in mixin keeps it
-// at +0 B for charts that do not compose `withResponsive()`.
+// not taste: every character inside these style literals — comments and indentation included —
+// is SHIPPED in `withRender`'s bundle (so the three literals below are minified by hand and their
+// rationale lives in `//` comments above them, which cost nothing), and that block measured
+// ~480 B gzip against 307 B of headroom (spec-responsive-mobile.md's budget gate, lever (a)).
+// Putting it in the opt-in mixin keeps it at +0 B for charts that do not compose `withResponsive()`.
 // Static CSS text — NEVER derived from task/user data (security.md: nothing here is
 // interpolated; this is a compile-time constant string assigned via .textContent, not
 // innerHTML, not a template literal built from any external input). Provides the pure-CSS
@@ -167,30 +168,18 @@ export const ARROWHEAD_MARKER_ID = 'fg-dep-arrowhead';
 // base stylesheet file anywhere in `packages/core`, so this is injected as a static inline
 // `<style>` child on every full repaint (same "works with zero required host CSS" posture the
 // rest of this file already keeps via inline `style.setProperty(...)`).
-const LINK_HANDLE_STYLE_TEXT = `
-.fg-task__link-handle {
-  opacity: 0;
-  /* pointer-events none while hidden — an opacity:0 element is STILL hit-testable (unlike
-     display/visibility), so with 'all' the invisible handle sitting on the bar's start/end
-     anchor would shadow drag-resize's edge zone / drag-move and swallow those pointerdowns
-     at priority -10. Only the REVEALED handle (below) is grabbable. */
-  pointer-events: none;
-  transition: opacity var(--fg-transition-fast, 100ms ease-out);
-}
-.fg-task:hover .fg-task__link-handle,
-.fg-task:focus-within .fg-task__link-handle {
-  opacity: 1;
-  pointer-events: all;
-}
-@media (hover: none) {
-  /* No hover concept on touch — reveal (and enable) unconditionally rather than ship a
-     feature that is structurally invisible/undiscoverable there. */
-  .fg-task__link-handle { opacity: 1; pointer-events: all; }
-}
-@media (prefers-reduced-motion: reduce) {
-  .fg-task__link-handle { transition: none; }
-}
-`;
+// Why each rule exists (kept here, NOT in the literal — comments there would ship):
+//  - `pointer-events:none` while hidden: an opacity:0 element is STILL hit-testable (unlike
+//    display/visibility), so with 'all' the invisible handle sitting on the bar's start/end
+//    anchor would shadow drag-resize's edge zone / drag-move and swallow those pointerdowns at
+//    priority -10. Only the REVEALED handle (hover / focus-within) is grabbable.
+//  - `@media (hover:none)`: no hover concept on touch — reveal (and enable) unconditionally
+//    rather than ship a feature that is structurally invisible/undiscoverable there.
+const LINK_HANDLE_STYLE_TEXT =
+  '.fg-task__link-handle{opacity:0;pointer-events:none;transition:opacity var(--fg-transition-fast,100ms ease-out)}' +
+  '.fg-task:hover .fg-task__link-handle,.fg-task:focus-within .fg-task__link-handle{opacity:1;pointer-events:all}' +
+  '@media (hover:none){.fg-task__link-handle{opacity:1;pointer-events:all}}' +
+  '@media (prefers-reduced-motion:reduce){.fg-task__link-handle{transition:none}}';
 
 // Static CSS text — compile-time constant, never derived from task/user data (security.md).
 // Selection is a pure-CSS `outline` (a separate box-model property from SVG `stroke`) —
@@ -199,12 +188,8 @@ const LINK_HANDLE_STYLE_TEXT = `
 // critical and selected keeps BOTH signals visible (spec-selection.md §7.3). Always-on,
 // unconditional (unlike LINK_HANDLE_STYLE_TEXT, which is gated behind `showLinkHandles`) —
 // selection must stay visible even in a `readOnly` chart.
-const SELECTION_STYLE_TEXT = `
-.fg-task--selected .fg-task__bar {
-  outline: var(--fg-task-selected-width, 2px) solid var(--fg-task-selected, #4338ca);
-  outline-offset: var(--fg-task-selected-offset, 2px);
-}
-`;
+const SELECTION_STYLE_TEXT =
+  '.fg-task--selected .fg-task__bar{outline:var(--fg-task-selected-width,2px) solid var(--fg-task-selected,#4338ca);outline-offset:var(--fg-task-selected-offset,2px)}';
 
 /** Geometry offset (px) between the task bar's own edge and the extra focus-ring `<rect>`'s
  *  edge — matches the `--fg-task-focus-offset` design token's default (spec §5.1). SVG
@@ -237,25 +222,13 @@ const FOCUS_RING_OFFSET_PX = 5;
 // interaction never spuriously shows the keyboard ring. Always-on, unconditional (matches
 // SELECTION_STYLE_TEXT's posture — focus must stay visible even in a `readOnly` chart, since
 // Arrow/Space navigation stays active there).
-const FOCUS_STYLE_TEXT = `
-.fg-timeline__row:focus-visible {
-  outline: none; /* the row <g> itself is not the visual target; suppress default UA outline on it */
-}
-.fg-task__focus-ring {
-  fill: none;
-  stroke: none;
-  pointer-events: none;
-}
-.fg-timeline__row:focus-visible .fg-task__focus-ring {
-  stroke: var(--fg-task-focus, #0ea5e9);
-  stroke-width: var(--fg-task-focus-width, 2px);
-}
-@media (prefers-reduced-motion: reduce) {
-  .fg-task__focus-ring {
-    transition: none;
-  }
-}
-`;
+// `.fg-timeline__row:focus-visible{outline:none}`: the row <g> itself is not the visual target,
+// so the default UA outline on it is suppressed (the ring is the `.fg-task__focus-ring` rect).
+const FOCUS_STYLE_TEXT =
+  '.fg-timeline__row:focus-visible{outline:none}' +
+  '.fg-task__focus-ring{fill:none;stroke:none;pointer-events:none}' +
+  '.fg-timeline__row:focus-visible .fg-task__focus-ring{stroke:var(--fg-task-focus,#0ea5e9);stroke-width:var(--fg-task-focus-width,2px)}' +
+  '@media (prefers-reduced-motion:reduce){.fg-task__focus-ring{transition:none}}';
 
 /** Defensive string-length cap applied to any task field folded into an `aria-label`
  *  attribute value (security.md "limit string length"). */
@@ -434,9 +407,9 @@ export function createSvgRenderer(
     const focusedTaskId = currentInput.focusedTaskId ?? rows[0]?.task.id;
 
     svg.appendChild(createArrowheadMarker());
-    svg.appendChild(createSelectionStyle());
-    svg.appendChild(createFocusStyle());
-    if (showLinkHandles) svg.appendChild(createLinkHandleStyle());
+    svg.appendChild(createStyle(SELECTION_STYLE_TEXT));
+    svg.appendChild(createStyle(FOCUS_STYLE_TEXT));
+    if (showLinkHandles) svg.appendChild(createStyle(LINK_HANDLE_STYLE_TEXT));
     svg.appendChild(renderGrid(gridColumns, offsetX, totalHeight));
     svg.appendChild(renderHeader(gridColumns, offsetX, timeScale.totalWidth));
     svg.appendChild(
@@ -513,21 +486,9 @@ function createArrowheadMarker(): SVGDefsElement {
   return defs;
 }
 
-function createLinkHandleStyle(): SVGStyleElement {
+function createStyle(text: string): SVGStyleElement {
   const style = document.createElementNS(SVG_NS, 'style') as SVGStyleElement;
-  style.textContent = LINK_HANDLE_STYLE_TEXT;
-  return style;
-}
-
-function createFocusStyle(): SVGStyleElement {
-  const style = document.createElementNS(SVG_NS, 'style') as SVGStyleElement;
-  style.textContent = FOCUS_STYLE_TEXT;
-  return style;
-}
-
-function createSelectionStyle(): SVGStyleElement {
-  const style = document.createElementNS(SVG_NS, 'style') as SVGStyleElement;
-  style.textContent = SELECTION_STYLE_TEXT;
+  style.textContent = text;
   return style;
 }
 

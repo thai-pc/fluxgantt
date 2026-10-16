@@ -35,7 +35,7 @@ import {
 } from '../render/renderer-base.js';
 import type { TaskBarLayout } from '../render/renderer-base.js';
 import type { TaskId } from '../types.js';
-import { isValidBackground } from './export-png.js';
+import { resolvePngOptions } from './export-png.js';
 import type { ExportPngOptions } from './types.js';
 
 /**
@@ -91,14 +91,7 @@ export async function exportCanvasPng(
   if (isLive && !isLive()) {
     throw new Error('gantt.exportPng: the chart was unmounted or remounted while exporting');
   }
-  const scale = options?.scale ?? 1;
-  if (!Number.isFinite(scale) || scale <= 0) {
-    throw new Error(`gantt.exportPng: invalid scale (${scale}) — must be a finite number > 0`);
-  }
-  const background = options?.background ?? '#ffffff';
-  if (!isValidBackground(background)) {
-    throw new Error(`gantt.exportPng: invalid background "${background}"`);
-  }
+  const { scale, background } = resolvePngOptions(options);
 
   // The painted state, not `GanttConfig`: `setDensity()`/`withResponsive` change these at runtime.
   const { input, options: o } = handle.getRenderState();

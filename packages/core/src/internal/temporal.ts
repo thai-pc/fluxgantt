@@ -11,8 +11,8 @@ export function getTemporal(): TemporalApi {
   const t = (globalThis as { Temporal?: TemporalApi }).Temporal;
   if (!t) {
     throw new Error(
-      '@fluxgantt/core: Temporal API is not available. Use a runtime with native Temporal, ' +
-        'or install @js-temporal/polyfill and set `globalThis.Temporal` before using calendar/CPM.',
+      '@fluxgantt/core: Temporal API is not available. Use native Temporal or set ' +
+        'globalThis.Temporal from @js-temporal/polyfill.',
     );
   }
   return t;

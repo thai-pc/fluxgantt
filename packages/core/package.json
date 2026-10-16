@@ -91,7 +91,8 @@
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "clean": "rimraf dist .turbo",
-    "size": "size-limit"
+    "size": "size-limit",
+    "size:headroom": "node scripts/size-headroom.mjs"
   },
   "devDependencies": {
     "@fluxgantt/eslint-config": "workspace:*",
