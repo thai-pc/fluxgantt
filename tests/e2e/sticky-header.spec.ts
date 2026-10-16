@@ -221,3 +221,56 @@ test('the export while scrolled equals the unscrolled export: header at y 0, one
   expect(scrolled).not.toContain('sticky');
   expect(scrolled).toMatch(/<g class="fg-timeline__header"><rect x="160" y="0"/);
 });
+
+// RTL host page: the chart svg sits at the inline-start (right) edge of an RTL block, so a
+// physically-left float would drift off the day columns. The band must track the chart's columns
+// with 0 px offset, for a chart wider than its scroller and for one narrower than its container.
+for (const [label, width] of [
+  ['wider than the scroller', 700],
+  ['narrower than the container', 5000],
+] as const) {
+  test(`under dir="rtl" the band stays aligned with the chart columns (chart ${label})`, async ({ page }) => {
+    await page.evaluate(() => {
+      document.documentElement.dir = 'rtl';
+    });
+    await page.evaluate((w) => {
+      document.getElementById('gantt')!.style.width = `${w}px`;
+    }, width);
+    for (const [top, left] of [[0, 0], [150, 0], [150, 120]] as const) {
+      await page.evaluate(
+        ([t, l]) => {
+          const c = document.getElementById('gantt')!;
+          c.scrollTop = t as number;
+          // RTL scrollLeft is zero or negative; only meaningful when the content overflows.
+          c.scrollLeft = -(l as number);
+        },
+        [top, left] as const,
+      );
+      await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => r(null))));
+      const dx = await page.evaluate(() => {
+        const c = document.getElementById('gantt')!;
+        const band = c.querySelector('svg.fg-timeline__sticky-header')!.getBoundingClientRect();
+        const chart = c.querySelector('svg.fg-timeline')!.getBoundingClientRect();
+        return band.left - chart.left;
+      });
+      expect(Math.abs(dx)).toBeLessThanOrEqual(0.5);
+    }
+  });
+}
+
+// The float must add no scroll size: the scroller's scrollable area is exactly the chart's.
+test('the band adds no scroll height or width (the float is out of flow)', async ({ page }) => {
+  const m = await page.evaluate(() => {
+    const c = document.getElementById('gantt')!;
+    const chart = c.querySelector('svg.fg-timeline')!.getBoundingClientRect();
+    return {
+      scrollHeight: c.scrollHeight,
+      scrollWidth: c.scrollWidth,
+      clientWidth: c.clientWidth,
+      chartHeight: chart.height,
+      chartWidth: chart.width,
+    };
+  });
+  expect(m.scrollHeight).toBe(Math.round(m.chartHeight));
+  expect(m.scrollWidth).toBe(Math.max(Math.round(m.chartWidth), m.clientWidth));
+});

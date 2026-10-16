@@ -57,8 +57,9 @@ export interface ScrollToDateOptions {
  *
  * **Precondition (SVG mode):** the mount container IS the scroll viewport. Give it a bounded
  * height and `overflow: auto` (e.g. `style="height: 420px; overflow: auto"`) and lay it out as a
- * block (the pinned header is a `position: sticky` sibling, so a flex-row container would place
- * it beside the chart). The SVG renderer does not make its container scrollable (Canvas mode sets `overflow-y: auto` itself); on a
+ * block or grid, not flex (the pinned header is a floated `position: sticky` sibling: a flex row
+ * places it beside the chart and an auto-height flex column collapses to ~32px) with no
+ * `padding-top` (sticky pins at the padding edge). The SVG renderer does not make its container scrollable (Canvas mode sets `overflow-y: auto` itself); on a
  * non-scrollable container the browser ignores the offsets, yet the methods still return `true`
  * because the return value reports that the target exists and an offset was written, not that the
  * container moved.

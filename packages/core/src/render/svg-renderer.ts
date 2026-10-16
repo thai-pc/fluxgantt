@@ -277,7 +277,9 @@ export function createSvgRenderer(
     {
       position: 'sticky',
       top: '0',
-      float: 'left',
+      // Logical, not 'left': in an RTL host the chart svg sits at the inline-start (right) edge, and
+      // a physical left float would misalign the date labels with the day columns.
+      float: 'inline-start',
       overflow: 'visible',
       'clip-path': 'inset(0 0 -1px)',
       background: 'var(--fg-bg-subtle, #f3f4f6)',
@@ -591,6 +593,11 @@ function renderHeader(tiers: HeaderTiers, offsetX: number, timelineWidth: number
 
   [tiers.upper, tiers.lower].forEach((tier, row) => {
     for (const l of tier) {
+      // Inline style (not presentation attributes): a host `text { font-size }` rule beats an
+      // attribute but never an inline style, and `exportSvg` clones keep it. Family is pinned
+      // too (unlike row labels, which inherit the host font) because the label-fit estimator
+      // is only conservative for system-ui metrics. The label is Temporal/Intl-formatted (never
+      // user input) but still goes through createTextNode: no innerHTML policy applies everywhere.
       const text = el(
         'text',
         { class: 'fg-timeline__header-label', x: offsetX + l.x, y: row ? 24 : 8 },
@@ -726,6 +733,8 @@ function renderRows(
       },
       { 'dominant-baseline': 'middle', fill: 'var(--fg-fg, #18181b)' },
     );
+    // SECURITY: `task.name` is untrusted host-app data — text node only, never innerHTML
+    // or a template string assembled into markup (security.md §1, spec §8).
     label.appendChild(document.createTextNode(row.task.name));
     cell.appendChild(label);
 
@@ -869,6 +878,10 @@ function renderTaskBar(
   // copy that rotation — an axis-aligned ring around a diamond still unambiguously indicates
   // "this row", and matching the diamond's rotated bounding box exactly is unnecessary
   // precision for a focus indicator.
+  // `fill` MUST be set inline (not left to the `<style>` block's `.fg-task__focus-ring` rule):
+  // an SVG `<rect>`'s default `fill` is BLACK (unlike `stroke`, already `none`), so when
+  // `exportSvg()` strips every `<style>` element the ring would otherwise export as a solid
+  // black box over the bar. `stroke` is safely left to the CSS rule.
   const focusRing = el(
     'rect',
     {
@@ -902,6 +915,9 @@ function renderLinkHandle(
   edge: 'start' | 'end',
 ): SVGCircleElement {
   const anchor = anchorOf(bar, edge); // same anchor math committed dependency arrows use
+  // A11y: `aria-hidden` — no keyboard-reachable equivalent exists yet (same posture as
+  // drag-move/drag-resize, which are pointer-only today): hide from AT rather than expose an
+  // affordance that cannot be operated without a pointer.
   const circle = el(
     'circle',
     {

@@ -762,7 +762,7 @@ describe('sticky header overlay (pinned date axis)', () => {
     expect(overlay.style.top).toBe('0px');
     // A float: it adds no in-flow height, and a sticky box can only travel while its margin box
     // stays inside the container (an in-flow bottom margin would pin it in place).
-    expect(overlay.style.float).toBe('left');
+    expect(overlay.style.float).toBe('inline-start');
     expect(overlay.querySelector('[tabindex]')).toBeNull();
     expect(overlay.querySelector('[role]')).toBeNull();
     expect(overlay.style.transition).toBe('');
@@ -776,7 +776,7 @@ describe('sticky header overlay (pinned date axis)', () => {
     expect(H).toBeGreaterThan(32);
     expect(overlay.getAttribute('width')).toBe(h.svg.getAttribute('width'));
     expect(overlay.style.marginTop).toBe(`-${H}px`);
-    
+
   });
 
   it('holds one header clone whose labels match the chart header, never any row content', () => {
