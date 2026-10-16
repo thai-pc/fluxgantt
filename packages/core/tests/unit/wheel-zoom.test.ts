@@ -110,6 +110,16 @@ describe('enableWheelZoom — DOM interaction', () => {
     expect(prevented).toBe(true);
   });
 
+  it('Ctrl+wheel over the pinned sticky header band zooms too (listener is on the container)', () => {
+    const { handle, onZoomIn } = setup();
+    const band = container.querySelector('.fg-timeline__sticky-header');
+    expect(band).not.toBeNull();
+    const prevented = dispatchWheel(band as Element, { deltaY: -100, ctrlKey: true });
+    expect(onZoomIn).toHaveBeenCalledTimes(1);
+    expect(prevented).toBe(true);
+    expect(handle.container).toBe(container);
+  });
+
   it('several consecutive Ctrl+wheel-up events in a row do not throw', () => {
     const { handle, onZoomIn } = setup();
     expect(() => {
@@ -151,7 +161,7 @@ describe('enableWheelZoom — DOM interaction', () => {
 
   it('registers the wheel listener with { passive: false }', () => {
     const handle = createSvgRenderer(container, { tasks, dependencies: [] });
-    const addEventListenerSpy = vi.spyOn(handle.svg, 'addEventListener');
+    const addEventListenerSpy = vi.spyOn(handle.container, 'addEventListener');
     enableWheelZoom(handle, { onZoomIn: vi.fn(), onZoomOut: vi.fn() });
     expect(addEventListenerSpy).toHaveBeenCalledWith(
       'wheel',

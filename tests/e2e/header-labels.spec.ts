@@ -11,13 +11,13 @@ for (const mode of ['day', 'week', 'month', 'quarter', 'year']) {
     await page.evaluate((m) => {
       (window as unknown as { __gantt: { zoomTo(m: string): void } }).__gantt.zoomTo(m);
     }, mode);
-    await expectHeaderLabelsDisjoint(page, '#gantt svg');
+    await expectHeaderLabelsDisjoint(page, '#gantt svg.fg-timeline');
   });
 }
 
 test('header labels do not intersect with the vi locale', async ({ page }) => {
   await page.goto('/i18n.html');
-  await expectHeaderLabelsDisjoint(page, '#gantt svg');
+  await expectHeaderLabelsDisjoint(page, '#gantt svg.fg-timeline');
 });
 
 // Canvas paint-order regression: the header is painted before the rows and is pinned, so a

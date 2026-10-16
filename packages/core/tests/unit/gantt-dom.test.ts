@@ -361,8 +361,8 @@ describe('unmount() / remount()', () => {
     gantt.mount(container);
     gantt.mount(container2); // implicit remount into a different container
 
-    expect(container.querySelectorAll('svg')).toHaveLength(0); // old mount torn down
-    expect(container2.querySelectorAll('svg')).toHaveLength(1);
+    expect(container.querySelectorAll('svg.fg-timeline')).toHaveLength(0); // old mount torn down
+    expect(container2.querySelectorAll('svg.fg-timeline')).toHaveLength(1);
 
     container2.remove();
   });
@@ -371,7 +371,7 @@ describe('unmount() / remount()', () => {
     const gantt = createGantt({ tasks: [taskInput('a', '2026-01-05T09:00', '2026-01-06T09:00')] });
     gantt.mount(container);
     gantt.mount(container);
-    expect(container.querySelectorAll('svg')).toHaveLength(1);
+    expect(container.querySelectorAll('svg.fg-timeline')).toHaveLength(1);
   });
 });
 

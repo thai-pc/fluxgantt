@@ -15,7 +15,7 @@ test('a chart with host-supplied messages has no detectable axe violations', asy
 
 test("the host's ariaLabel is the chart's computed accessible name", async ({ page }) => {
   await page.goto('/i18n.html');
-  await expect(page.locator('#gantt svg')).toHaveAccessibleName('Kế hoạch dự án');
+  await expect(page.locator('#gantt svg.fg-timeline')).toHaveAccessibleName('Kế hoạch dự án');
 });
 
 test("a task's computed accessible name is the host sentence, in the host's clause order", async ({

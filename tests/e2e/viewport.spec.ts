@@ -92,9 +92,9 @@ test.describe('SVG renderer (60 tasks, 420px scroll container)', () => {
 
     expect(await g(page, (x) => x.scrollToTask('phase-1'))).toBe(true);
     await expectInside(page, (await svgRow(page, 'phase-1').boundingBox())!, { checkX: false });
-    // 'nearest' aligns the row (not the header band above it) to the top edge, so scrollTop is
-    // at most one header height; the SVG header scrolls with the content.
-    expect((await scroll(page)).top).toBeLessThanOrEqual(HEADER_HEIGHT);
+    // 'nearest' aligns phase-1 (the first row) to the top of the row band; the pinned header is
+    // not part of the scrollable rows, so scrollTop returns to 0.
+    expect((await scroll(page)).top).toBe(0);
   });
 
   test("align 'nearest' is a no-op when the task is already fully visible", async ({ page }) => {
@@ -115,7 +115,8 @@ test.describe('SVG renderer (60 tasks, 420px scroll container)', () => {
     await g(page, (x) => x.scrollToTask('filler-30', { align: 'start' }));
     let c = await containerRect(page);
     let r = (await svgRow(page, 'filler-30').boundingBox())!;
-    expect(Math.abs(r.y - c.y)).toBeLessThanOrEqual(tol);
+    // The date axis is pinned, so 'start' parks the row directly UNDER the 32px band.
+    expect(Math.abs(r.y - (c.y + HEADER_HEIGHT))).toBeLessThanOrEqual(tol);
 
     await g(page, (x) => x.scrollToTask('filler-40', { align: 'end' }));
     c = await containerRect(page);
@@ -126,7 +127,7 @@ test.describe('SVG renderer (60 tasks, 420px scroll container)', () => {
     await g(page, (x) => x.scrollToTask('filler-20', { align: 'center' }));
     c = await containerRect(page);
     r = (await svgRow(page, 'filler-20').boundingBox())!;
-    expect(Math.abs(r.y + r.height / 2 - (c.y + s.h / 2))).toBeLessThanOrEqual(tol);
+    expect(Math.abs(r.y + r.height / 2 - (c.y + HEADER_HEIGHT + (s.h - HEADER_HEIGHT) / 2))).toBeLessThanOrEqual(tol);
   });
 
   test('a collapsed ancestor is auto-expanded (collapse:changed fires once); expand:false leaves it', async ({
@@ -197,7 +198,7 @@ test.describe('SVG renderer (60 tasks, 420px scroll container)', () => {
       w.__vp = [];
       x.on('viewport:changed', (p) => w.__vp.push(p));
     });
-    // Park the 20th filler exactly at the top edge of the body.
+    // Park the 20th filler directly under the pinned header band.
     await g(page, (x) => x.scrollToTask('filler-20', { align: 'start' }));
     const topId = 'filler-20';
     const pitch = async () => {
@@ -213,7 +214,7 @@ test.describe('SVG renderer (60 tasks, 420px scroll container)', () => {
       // Anchor: the same row is still the top-most visible row (within a pixel of the edge).
       const c = await containerRect(page);
       const r = (await svgRow(page, topId).boundingBox())!;
-      expect(Math.abs(r.y - c.y)).toBeLessThanOrEqual(5);
+      expect(Math.abs(r.y - (c.y + HEADER_HEIGHT))).toBeLessThanOrEqual(5);
     }
 
     const events = await g(page, () => (window as unknown as { __vp: unknown[] }).__vp);

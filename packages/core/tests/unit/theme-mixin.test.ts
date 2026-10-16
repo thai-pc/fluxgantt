@@ -515,7 +515,7 @@ describe('withTheme — unmount() restores the host container', () => {
       expect(container.querySelector('svg')).toBeNull();
       gantt.mount(container);
       expect(darkTokenCount(container)).toBe(TOKEN_KEYS.length);
-      expect(container.querySelectorAll('svg').length).toBe(1);
+      expect(container.querySelectorAll('svg.fg-timeline').length).toBe(1);
       gantt.destroy();
       expect(darkTokenCount(container)).toBe(0);
       expect(container.querySelector('svg')).toBeNull();

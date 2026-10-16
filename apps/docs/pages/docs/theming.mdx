@@ -137,11 +137,16 @@ The renderer uses BEM classes, all `fg-`-prefixed so they never clash with your 
 .fg-task  .fg-task__bar  .fg-task__progress
 .fg-task--critical  .fg-task--selected  .fg-task--milestone
 .fg-dependency  .fg-dependency--fs
-.fg-timeline__today-line
+.fg-timeline__today-line  .fg-timeline__sticky-header
 ```
 
 `.fg-timeline__today-line` is `aria-hidden` — it is decoration, and the chart root is a
 `role="grid"`/`"treegrid"` whose children must be row-structured.
+
+`.fg-timeline__sticky-header` is the pinned date axis: an `aria-hidden` `<svg>` after the chart that
+replicates the header (and its `.fg-timeline__header-label` text) so it stays at the top while the
+rows scroll. It reads the same `--fg-*` tokens as the header, so theming needs nothing extra; host
+CSS that targets header labels applies to both copies.
 
 ## Critical path without color
 

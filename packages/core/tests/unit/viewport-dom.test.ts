@@ -76,8 +76,8 @@ describe('scrollToTask (SVG)', () => {
   it('scrolls a below-the-fold row to the bottom edge (nearest)', () => {
     const { g, geo } = mounted(manyTasks(40));
     expect(g.scrollToTask(toTaskId('t30'))).toBe(true);
-    // header + 30 rows, plus the row's own height, minus the viewport height
-    expect(geo.top).toBe(HEADER + 30 * ROW_HEIGHT.default + ROW_HEIGHT.default - 300);
+    // 30 rows, plus the row's own height, minus the row band (the pinned header is not part of it)
+    expect(geo.top).toBe(30 * ROW_HEIGHT.default + ROW_HEIGHT.default - (300 - HEADER));
   });
 
   it('leaves an already-visible row untouched', () => {
@@ -92,17 +92,32 @@ describe('scrollToTask (SVG)', () => {
     const { g, geo } = mounted(manyTasks(40));
     geo.top = 600;
     g.scrollToTask(toTaskId('t2'));
-    expect(geo.top).toBe(HEADER + 2 * ROW_HEIGHT.default);
+    expect(geo.top).toBe(2 * ROW_HEIGHT.default);
   });
 
   it.each([
-    ['start', HEADER + 10 * 32],
-    ['center', HEADER + 10 * 32 + 16 - 150],
-    ['end', HEADER + 10 * 32 + 32 - 300],
+    ['start', 10 * 32],
+    ['center', 10 * 32 + 16 - (300 - HEADER) / 2],
+    ['end', 10 * 32 + 32 - (300 - HEADER)],
   ] as const)('align %s', (align, expected) => {
     const { g, geo } = mounted(manyTasks(40));
     g.scrollToTask(toTaskId('t10'), { align });
     expect(geo.top).toBe(expected);
+  });
+
+  it('a container no taller than the pinned header gets no vertical write (horizontal untouched)', () => {
+    const { g, geo } = mounted(manyTasks(40), {}, HEADER);
+    geo.top = 123;
+    g.scrollToTask(toTaskId('t30'), { align: 'start' });
+    expect(geo.top).toBe(123);
+  });
+
+  it('start lands the row directly under the band for the first and the last row', () => {
+    const { g, geo } = mounted(manyTasks(40));
+    g.scrollToTask(toTaskId('t0'), { align: 'start' });
+    expect(geo.top).toBe(0);
+    g.scrollToTask(toTaskId('t39'), { align: 'start' });
+    expect(geo.top).toBe(39 * ROW_HEIGHT.default);
   });
 
   it('clamps the target at 0', () => {
@@ -291,12 +306,12 @@ describe('setDensity (mounted)', () => {
     const { g, geo } = mounted(manyTasks(40));
     const handle = getInternal(g).getMountState()!.rendererHandle;
     const spy = vi.spyOn(handle, 'setOptions');
-    geo.top = HEADER + 10 * 32; // row 10 at the top edge
+    geo.top = 10 * 32; // row 10 at the top edge
     const seen: unknown[] = [];
     g.on('viewport:changed', (p) => seen.push(p));
     g.setDensity('compact');
     expect(spy).toHaveBeenCalledTimes(1);
-    expect(geo.top).toBe(HEADER + 10 * ROW_HEIGHT.compact);
+    expect(geo.top).toBe(10 * ROW_HEIGHT.compact);
     expect(seen).toEqual([{ viewMode: 'week', density: 'compact' }]);
   });
 

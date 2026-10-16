@@ -135,7 +135,7 @@ test.describe('real mount() path: dimension-exceeded fallback under WebKit (spec
       'data-canvas-fallback-reason',
       'dimension-exceeded',
     );
-    await expect(page.locator('#gantt svg')).toBeVisible();
+    await expect(page.locator('#gantt svg.fg-timeline')).toBeVisible();
     await expect(page.locator('#gantt .fg-timeline-canvas')).toHaveCount(0);
 
     const canvasFallbackWarnings = warnings.filter((text) =>

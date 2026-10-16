@@ -30,7 +30,7 @@ const touch = (type: 'touchStart' | 'touchMove' | 'touchEnd', x = 0, y = 0) =>
 
 test.beforeEach(async ({ page, context }) => {
   await page.goto('/edit-hooks.html?touch=1');
-  await expect(page.locator('#gantt svg')).toBeVisible();
+  await expect(page.locator('#gantt svg.fg-timeline')).toBeVisible();
   await expect
     .poll(() => page.evaluate(() => (window as never as { __gantt: { isCoarsePointer(): boolean } }).__gantt.isCoarsePointer()))
     .toBe(true);

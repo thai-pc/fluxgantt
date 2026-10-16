@@ -129,7 +129,7 @@ export function withRender<T extends GanttInstance>(instance: T): T & RenderCapa
     refresh(): void {
       const mount = internal.getMountState();
       if (internal.isDestroyed() || !mount) return; // nothing to refresh headless or post-destroy
-      renderNow(internal, mount.rendererHandle, mount.renderer, mount.getFocusedTaskId);
+      renderNow(internal, mount.rendererHandle, mount.getFocusedTaskId);
     },
   };
 
@@ -235,7 +235,7 @@ function finishMount(
   // state) because `effect()` runs its callback synchronously, immediately, on this very call —
   // BEFORE the mount state is stored below.
   const disposeEffect = effect(() => {
-    renderNow(internal, handle, renderer, getFocusedTaskId);
+    renderNow(internal, handle, getFocusedTaskId);
   });
 
   const state: MountState = {
@@ -303,7 +303,6 @@ function withScrollAnchor(
 function renderNow(
   internal: GanttInternal,
   handle: SvgRendererHandle | CanvasRendererHandle,
-  renderer: RendererKind,
   getFocusedTaskId: () => TaskId | undefined,
 ): void {
   // Track all three stores' revisions — read .value unconditionally so this effect re-runs on
@@ -370,7 +369,7 @@ function renderNow(
   // opposite transition — this must stay tasks.length-conditional.
   const focusedTaskId = getFocusedTaskId();
   if (tasks.length === 0) {
-    applyViewportOptionsFor(handle, renderer, viewMode, emptyStateTimeRange(internal));
+    applyViewportOptions(handle, viewMode, emptyStateTimeRange(internal));
     handle.update({
       tasks,
       dependencies,
@@ -390,52 +389,23 @@ function renderNow(
       ...(criticalPath !== undefined ? { criticalPath } : {}),
       ...(rollup !== undefined ? { rollup } : {}),
     });
-    applyViewportOptionsFor(handle, renderer, viewMode, undefined);
+    applyViewportOptions(handle, viewMode, undefined);
   }
 }
 
 /**
- * Renderer-kind-aware dispatch for the `setOptions()` half of `renderNow` (spec-canvas-auto-
- * switch.md §6.1) — the ONE call in `renderNow` that must branch explicitly rather than go
- * through a unified union call: `SvgRendererOptions` carries `showLinkHandles` (a
- * Canvas-irrelevant field), while `CanvasRendererOptions` does not. `handle.update(...)` needs
- * no equivalent branch — `SvgRendererInput`/`CanvasRendererInput` are structurally identical.
- */
-function applyViewportOptionsFor(
-  handle: SvgRendererHandle | CanvasRendererHandle,
-  renderer: RendererKind,
-  viewMode: ViewMode,
-  timeRange: { start: Temporal.ZonedDateTime; end: Temporal.ZonedDateTime } | undefined,
-): void {
-  if (renderer === 'canvas') {
-    const clear: {
-      viewMode: ViewMode;
-      timeRange: { start: Temporal.ZonedDateTime; end: Temporal.ZonedDateTime } | undefined;
-    } = { viewMode, timeRange };
-    (handle as CanvasRendererHandle).setOptions(clear as unknown as Partial<CanvasRendererOptions>);
-    return;
-  }
-  applyViewportOptions(handle as SvgRendererHandle, viewMode, timeRange);
-}
-
-/**
- * Sets `viewMode` and — or explicitly clears — `SvgRendererOptions.timeRange` in a SINGLE
- * `setOptions()` call. `SvgRendererOptions.timeRange` is optional but not typed `X | undefined`,
- * so `exactOptionalPropertyTypes` forbids writing `undefined` directly into a
- * `Partial<SvgRendererOptions>`-typed object literal — this helper isolates that one narrow,
- * deliberate cast instead of fighting the check inline in `renderNow`.
+ * Sets `viewMode` and — or explicitly clears — `timeRange` in a SINGLE `setOptions()` call, for
+ * either renderer (both take the same `{ viewMode, timeRange }` merge at runtime).
+ * `timeRange` is optional but not typed `X | undefined`, so `exactOptionalPropertyTypes` forbids
+ * writing `undefined` into a `Partial<...Options>` literal — this isolates the one narrow cast.
  */
 function applyViewportOptions(
-  handle: SvgRendererHandle,
+  handle: SvgRendererHandle | CanvasRendererHandle,
   viewMode: ViewMode,
   timeRange: { start: Temporal.ZonedDateTime; end: Temporal.ZonedDateTime } | undefined,
 ): void {
-  if (timeRange) {
-    handle.setOptions({ viewMode, timeRange });
-    return;
-  }
-  const clear: { viewMode: ViewMode; timeRange: undefined } = { viewMode, timeRange: undefined };
-  handle.setOptions(clear as unknown as Partial<SvgRendererOptions>);
+  const next = { viewMode, timeRange };
+  handle.setOptions(next as unknown as Partial<SvgRendererOptions & CanvasRendererOptions>);
 }
 
 function emptyStateTimeRange(

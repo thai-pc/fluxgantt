@@ -1,5 +1,6 @@
 // Interaction layer — mouse wheel + Ctrl zoom (spec §8.4 "Zoom" table, row 1). A single
-// `wheel` listener on `handle.svg`, active ONLY when `event.ctrlKey` is set — a plain wheel
+// `wheel` listener on `handle.container` (not the chart svg, so Ctrl+wheel over the pinned
+// sticky header band, a sibling svg, zooms too), active ONLY when `event.ctrlKey` is set — a plain wheel
 // event (the overwhelmingly common case: normal vertical/trackpad scroll over the chart) is
 // completely untouched: no `preventDefault()`, no zoom call, so the container's own
 // `overflow: auto` scrolling and the host page's own scroll behavior are never disturbed.
@@ -60,7 +61,7 @@ export function enableWheelZoom(
   // Ctrl+wheel would still fire onZoomIn/onZoomOut but could NOT suppress the browser's own
   // native page-zoom/pinch-zoom, defeating the whole point of calling preventDefault() at
   // all (spec-wheel-zoom.md §5).
-  handle.svg.addEventListener('wheel', onWheel, { passive: false });
+  handle.container.addEventListener('wheel', onWheel, { passive: false });
 
   return dispose;
 
@@ -80,6 +81,6 @@ export function enableWheelZoom(
   function dispose(): void {
     if (disposed) return;
     disposed = true;
-    handle.svg.removeEventListener('wheel', onWheel);
+    handle.container.removeEventListener('wheel', onWheel);
   }
 }
