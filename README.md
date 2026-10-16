@@ -110,17 +110,17 @@ The StackBlitz links go live with the next release and return a 404 until then.
 
 Rendering, interaction, IO, theming and responsive behaviour are **opt-in mixins on separate
 subpath exports**, so you download what you compose and nothing else. Measured with `pnpm size`
-(gzip), enforced as a budget on every pull request:
+(gzip, ESM bundler output), enforced as a budget on every pull request:
 
 | What you compose | gzip |
 |---|---|
-| `createGantt()` — headless engine only | **7.71 KiB** |
-| `+ withIo` | 12.67 KiB |
-| `+ withRender` — a painted chart | 14.74 KiB |
-| `+ withRender + withInteraction` — a fully editable chart | **19.17 KiB** |
-| `+ withRender + withTheme` | 15.26 KiB |
-| `+ withRender + withInteraction + withResponsive` | 19.91 KiB |
-| Every capability composed | 23.82 KiB |
+| `createGantt()` — headless engine only | **7.50 KiB** |
+| `+ withIo` | 12.60 KiB |
+| `+ withRender` — a painted chart | 13.86 KiB |
+| `+ withRender + withInteraction` — a fully editable chart | **18.40 KiB** |
+| `+ withRender + withTheme` | 14.38 KiB |
+| `+ withRender + withInteraction + withResponsive` | 19.18 KiB |
+| Every capability composed | 23.16 KiB |
 
 Required host CSS: **none** — every visual property is written inline with a `--fg-*` token
 fallback, so a stylesheet is only needed to *override* defaults.

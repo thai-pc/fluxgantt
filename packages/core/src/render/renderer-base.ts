@@ -340,8 +340,7 @@ export function layoutRows(
   function visit(task: Task, depth: number, hiddenByAncestor: boolean): void {
     if (depth > MAX_HIERARCHY_DEPTH) {
       throw new Error(
-        `layoutRows: hierarchy nesting exceeds max depth (${MAX_HIERARCHY_DEPTH}) at task "${task.id}" — ` +
-          'the parent chain is unreasonably deep.',
+        `layoutRows: hierarchy nesting exceeds max depth (${MAX_HIERARCHY_DEPTH}) at task "${task.id}"`,
       );
     }
     if (visiting.has(task.id)) {
@@ -619,8 +618,7 @@ export function computeGridColumns(
     guard++;
     if (guard > MAX_GRID_COLUMNS) {
       throw new Error(
-        `computeGridColumns: exceeded max column guard (${MAX_GRID_COLUMNS}) — the time range is ` +
-          'unreasonably large; narrow `options.timeRange` or the task date spread.',
+        `computeGridColumns: exceeded max column guard (${MAX_GRID_COLUMNS}) — narrow options.timeRange or the task date range (check for an out-of-range date)`,
       );
     }
     cols.push({

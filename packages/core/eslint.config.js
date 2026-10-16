@@ -14,6 +14,13 @@ export default [
     },
   },
   {
+    // Node-run tooling scripts (`pnpm size:headroom`): console/process are Node globals.
+    files: ['scripts/**/*.mjs'],
+    languageOptions: {
+      globals: { console: 'readonly', process: 'readonly' },
+    },
+  },
+  {
     // SECURITY (security.md §1, spec-svg-renderer.md §8): the render layer writes
     // untrusted host-app strings (task.name/notes/meta) into the DOM. Enforce
     // textContent/createTextNode + setAttribute only — never HTML-parsing sinks — so an

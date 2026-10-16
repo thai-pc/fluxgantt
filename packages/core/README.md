@@ -128,10 +128,10 @@ Measured gzip, enforced in CI against real fixtures:
 
 | Composition | gzip |
 |---|---|
-| `createGantt()` alone | 7.71 KiB |
-| `+ withRender()` | 14.74 KiB |
-| `+ withRender() + withInteraction()` | 19.17 KiB |
-| everything | 23.82 KiB |
+| `createGantt()` alone | 7.50 KiB |
+| `+ withRender()` | 13.86 KiB |
+| `+ withRender() + withInteraction()` | 18.40 KiB |
+| everything | 23.16 KiB |
 
 ## Framework wrappers
 

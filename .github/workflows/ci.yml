@@ -59,6 +59,9 @@ jobs:
       - name: "Bundle size (7 gzip fixtures, budgets in packages/core/.size-limit.json)"
         run: pnpm size
 
+      - name: "Bundle headroom (non-fatal: warns when a fixture is within 150 B of its limit)"
+        run: pnpm --filter @fluxgantt/core size:headroom
+
       - name: Unit tests
         run: pnpm test
 

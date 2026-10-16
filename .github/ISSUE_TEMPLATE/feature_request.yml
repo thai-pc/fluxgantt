@@ -12,7 +12,7 @@ body:
           multiplayer, comments and AI are Cloud. `.claude/rules/project-overview.md` has the
           matrix. Core stays MIT and stays small.
         - **Bundle budget.** Core is measured in CI against per-capability gzip budgets (hello
-          world is 7.71 KiB). Anything with real byte weight belongs behind an opt-in subpath
+          world is 7.50 KiB). Anything with real byte weight belongs behind an opt-in subpath
           mixin rather than in the base.
 
   - type: textarea

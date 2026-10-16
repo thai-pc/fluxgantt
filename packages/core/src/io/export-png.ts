@@ -38,6 +38,25 @@ export function isValidBackground(background: string): boolean {
   );
 }
 
+/** Validates and defaults `ExportPngOptions.scale`/`background` — the ONE copy shared by the SVG
+ *  path, the Canvas mixin branch and the lazy Canvas module (each used to carry its own, and the
+ *  mixin's copy was shipped bytes in every `withIo` bundle). Throws scale-first. NOT part of the
+ *  public surface (`io/index.ts` does not re-export it). */
+export function resolvePngOptions(options?: ExportPngOptions): { scale: number; background: string } {
+  const scale = options?.scale ?? 1;
+  if (!Number.isFinite(scale) || scale <= 0) {
+    throw new Error(`gantt.exportPng: invalid scale (${scale}) — must be a finite number > 0`);
+  }
+  const background = options?.background ?? '#ffffff';
+  // Canvas silently IGNORES an invalid fillStyle (keeps the previous value / defaults to
+  // black) rather than throwing — validating here converts a silent footgun into a clear
+  // rejection.
+  if (!isValidBackground(background)) {
+    throw new Error(`gantt.exportPng: invalid background "${background}"`);
+  }
+  return { scale, background };
+}
+
 /**
  * Rasterizes the currently-mounted `svg` (`SvgRendererHandle.svg`) to a PNG. Internally calls
  * `exportSvg()` to get a baked/sanitized SVG string, draws it onto an in-memory `<canvas>`, and
@@ -49,18 +68,7 @@ export function isValidBackground(background: string): boolean {
  * caller never needs a synchronous try/catch around the call site itself (spec §5.2).
  */
 export async function exportPng(svg: SVGSVGElement, options?: ExportPngOptions): Promise<Blob> {
-  const scale = options?.scale ?? 1;
-  if (!Number.isFinite(scale) || scale <= 0) {
-    throw new Error(`gantt.exportPng: invalid scale (${scale}) — must be a finite number > 0`);
-  }
-
-  const background = options?.background ?? '#ffffff';
-  if (!isValidBackground(background)) {
-    // Canvas silently IGNORES an invalid fillStyle (keeps the previous value / defaults to
-    // black) rather than throwing — validating here converts a silent footgun into a clear
-    // synchronous rejection.
-    throw new Error(`gantt.exportPng: invalid background "${background}"`);
-  }
+  const { scale, background } = resolvePngOptions(options);
 
   const width = Number(svg.getAttribute('width'));
   const height = Number(svg.getAttribute('height'));

@@ -122,7 +122,7 @@ export function computeRollup(
     if (depth > MAX_HIERARCHY_DEPTH) {
       throw new Error(
         `${CALLER_NAME}: hierarchy nesting exceeds max depth (${MAX_HIERARCHY_DEPTH}) at task ` +
-          `"${task.id}" — the parent chain is unreasonably deep.`,
+          `"${task.id}"`,
       );
     }
     if (visiting.has(task.id)) {

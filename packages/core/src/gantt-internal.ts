@@ -191,8 +191,7 @@ export function getInternal(instance: object): GanttInternal {
   const internal = (instance as Partial<WithInternal>)[INTERNAL];
   if (!internal) {
     throw new Error(
-      '@fluxgantt/core: withIo/withRender/withInteraction can only be applied to an instance ' +
-        'returned by createGantt() from @fluxgantt/core — this object has no internal state.',
+      '@fluxgantt/core: with* mixins need an instance from createGantt() from this same copy of @fluxgantt/core — this object has no internal state.',
     );
   }
   return internal;

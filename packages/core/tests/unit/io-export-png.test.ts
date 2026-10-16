@@ -5,7 +5,7 @@
 // canvas/Image/URL pipeline stubbed. Real rasterization proof (actual pixels) needs a
 // Playwright e2e test in a real browser (see io-export-svg.test.ts's header note + spec §12.4).
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { exportPng, MAX_PNG_DIMENSION_PX } from '../../src/io/export-png.js';
+import { exportPng, resolvePngOptions, MAX_PNG_DIMENSION_PX } from '../../src/io/export-png.js';
 import { exportSvg } from '../../src/io/export-svg.js';
 import { createGantt } from '../helpers/create-gantt.js';
 import { toTaskId } from '../../src/types.js';
@@ -316,4 +316,25 @@ describe('exportPng — facade (gantt.ts)', () => {
   // not real rasterization or real CSS-custom-property resolution (spec §12.4). The actual
   // WYSIWYG + pixel proof requires a real browser and is deferred to a Playwright e2e.
   it.todo('e2e (playwright): a host --fg-* override is baked into the real rasterized PNG');
+});
+
+describe('resolvePngOptions', () => {
+  it('defaults to scale 1 and a white background', () => {
+    expect(resolvePngOptions()).toEqual({ scale: 1, background: '#ffffff' });
+    expect(resolvePngOptions({ scale: 2, background: 'transparent' })).toEqual({
+      scale: 2,
+      background: 'transparent',
+    });
+  });
+
+  it.each([0, -1, Number.NaN, Number.POSITIVE_INFINITY])('rejects scale %s', (scale) => {
+    expect(() => resolvePngOptions({ scale })).toThrow(/gantt\.exportPng: invalid scale/);
+  });
+
+  it('rejects an unsafe background, and checks scale first', () => {
+    expect(() => resolvePngOptions({ background: 'url(x)' })).toThrow(
+      'gantt.exportPng: invalid background "url(x)"',
+    );
+    expect(() => resolvePngOptions({ scale: 0, background: 'url(x)' })).toThrow(/invalid scale/);
+  });
 });

@@ -26,7 +26,7 @@ import {
   importCsv as importCsvFn,
   importJson as importJsonFn,
 } from './index.js';
-import { isValidBackground } from './export-png.js';
+import { resolvePngOptions } from './export-png.js';
 import type * as CanvasPngModule from './export-canvas-png.js';
 import type {
   ExportBundle,
@@ -185,12 +185,7 @@ export function withIo<T extends GanttInstance>(instance: T): T & IoCapability {
       const handle = internal.assertMounted('exportPng');
       if ('svg' in handle) return exportPngFn(handle.svg, options);
       // Argument errors first (as in SVG mode), before the chunk load opens an await window.
-      const sc = options?.scale ?? 1;
-      if (!Number.isFinite(sc) || sc <= 0) {
-        throw new Error(`gantt.exportPng: invalid scale (${sc}) — must be a finite number > 0`);
-      }
-      const bg = options?.background ?? '#ffffff';
-      if (!isValidBackground(bg)) throw new Error(`gantt.exportPng: invalid background "${bg}"`);
+      resolvePngOptions(options);
       let mod: typeof CanvasPngModule;
       try {
         mod = await import('./export-canvas-png.js');

@@ -153,6 +153,13 @@ describe('keyboard-nav — ARIA grid/row/gridcell structure (spec-keyboard-nav.m
     expect(styles).toContain('fg-task__focus-ring');
     expect(styles).toContain(':focus-visible');
   });
+
+  it('injected <style> text carries no CSS comments and stays small (every char is shipped bytes)', () => {
+    const h = createSvgRenderer(container, { tasks: baseTasks, dependencies: baseDeps });
+    const styles = [...h.svg.querySelectorAll('style')].map((s) => s.textContent ?? '').join('');
+    expect(styles).not.toContain('/*');
+    expect(styles.length).toBeLessThan(1000);
+  });
 });
 
 describe('collapse/expand — toggle glyph + aria-expanded (spec-collapse-expand.md §6.2/§9.7)', () => {
