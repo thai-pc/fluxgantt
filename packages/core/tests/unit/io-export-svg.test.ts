@@ -86,6 +86,14 @@ function mockComputedStyle(overrides: Partial<typeof SAFE_STYLE_DEFAULTS> = {}):
 }
 
 describe('exportSvg — structure', () => {
+  it('keeps the pinned header font style (export parity with the live view)', () => {
+    const h = createSvgRenderer(container, { tasks: baseTasks, dependencies: baseDeps });
+    const doc = new DOMParser().parseFromString(exportSvg(h.svg), 'image/svg+xml');
+    const labels = Array.from(doc.querySelectorAll('.fg-timeline__header-label'));
+    expect(labels.length).toBeGreaterThan(0);
+    for (const l of labels) expect(l.getAttribute('style')).toMatch(/font:\s*12px system-ui/);
+  });
+
   it('emits an XML declaration + explicit xmlns and parses cleanly', () => {
     const h = createSvgRenderer(container, { tasks: baseTasks, dependencies: baseDeps });
     const out = exportSvg(h.svg);

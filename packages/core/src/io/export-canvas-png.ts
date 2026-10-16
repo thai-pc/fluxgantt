@@ -29,6 +29,7 @@ import type { CanvasRendererHandle } from '../render/canvas-renderer.js';
 import {
   ROW_HEIGHT,
   computeGridColumns,
+  computeHeaderTiers,
   layoutRows,
   layoutTaskBar,
   todayLineX,
@@ -159,7 +160,13 @@ export async function exportCanvasPng(
     const critical = new Set(input.criticalPath?.criticalTaskIds ?? []);
 
     paintGrid(ctx, cols, offsetX, cssH, tokens);
-    paintHeader(ctx, cols, offsetX, timeScale.totalWidth, tokens);
+    paintHeader(
+      ctx,
+      computeHeaderTiers(timeScale, o.viewMode ?? 'week', o.locale ?? 'en', cols),
+      offsetX,
+      timeScale.totalWidth,
+      tokens,
+    );
     paintLabelDivider(ctx, offsetX, cssH, tokens);
     const todayX = todayLineX(timeScale, now);
     if (todayX !== null) paintTodayLine(ctx, todayX, offsetX, cssH, tokens);
