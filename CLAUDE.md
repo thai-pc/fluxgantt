@@ -22,18 +22,18 @@ This file is the context entry point for AI. Details are split into rules under 
 
    | Fixture | Measured | Budget |
    |---|---|---|
-   | `createGantt()` only (hello world) | 7.61 KiB | 9 KiB |
-   | `+ withIo` | 13.03 KiB (includes ~250-300 B of measurement-only esbuild IIFE import helpers, not a consumer cost) | 14 KiB |
-   | `+ withRender` | 14.68 KiB | 15 KiB |
-   | `+ withRender + withInteraction` | 19.21 KiB | 19.5 KiB |
-   | `+ withRender + withTheme` | 15.19 KiB | 16 KiB |
-   | `+ withRender + withInteraction + withResponsive` | 19.98 KiB | 21 KiB |
-   | `+ withRender + withViewport` | 15.57 KiB | 16 KiB |
-   | `+ withConflicts` (headless) | 9.48 KiB | 10 KiB |
-| `+ withRender + withEditHooks` (not in the kitchen sink) | 15.99 KiB | 16 KiB |
-   | kitchen sink (everything = the pre-split facade) | 23.99 KiB | 24 KiB |
+   | `createGantt()` only (hello world) | 7.50 KiB | 9 KiB |
+   | `+ withIo` | 12.60 KiB | 14 KiB |
+   | `+ withRender` | 13.86 KiB | 15 KiB |
+   | `+ withRender + withInteraction` | 18.40 KiB | 19.5 KiB |
+   | `+ withRender + withTheme` | 14.38 KiB | 16 KiB |
+   | `+ withRender + withInteraction + withResponsive` | 19.18 KiB | 21 KiB |
+   | `+ withRender + withViewport` | 14.76 KiB | 16 KiB |
+   | `+ withConflicts` (headless) | 9.37 KiB | 10 KiB |
+   | `+ withRender + withEditHooks` (not in the kitchen sink) | 15.18 KiB | 16 KiB |
+   | kitchen sink (everything = the pre-split facade) | 23.16 KiB | 24 KiB |
 
-   Hello world went 22.3 KiB → 7.61 KiB and the fully-composed instance 34.9 KiB → 23.99 KiB (the old "full core" check measured `dist/index.js` as a plain file, which code-splitting has since hollowed out; the kitchen-sink fixture replaces it). Non-core features are plugins.
+   Hello world went 22.3 KiB → 7.50 KiB and the fully-composed instance 34.9 KiB → 23.16 KiB (the old "full core" check measured `dist/index.js` as a plain file, which code-splitting has since hollowed out; the kitchen-sink fixture replaces it). Non-core features are plugins.
 
    The `withRender + withInteraction` budget was raised 19 → 19.5 KiB once, for the i18n scaffold (`GanttConfig.messages`), after the levers this rule prefers were measured and came up ~67 B short: merging the two renderer-option builders recovered only 13 B, and ~68 B of the cost is the irreducible price of threading host messages through both renderers. Justified as WCAG-adjacent — the strings in question are accessible names. Treat that as the exception it was, not a precedent: the rule is still change the shape, not the budget.
 
@@ -45,6 +45,42 @@ This file is the context entry point for AI. Details are split into rules under 
    `@fluxgantt/core/responsive` subpath, which left all six pre-existing fixtures at **+0 B** and
    put the 783 B where only charts that ask for it pay. Remember the template-literal trap the next
    time a renderer needs a CSS rule.
+
+   The 2026-10 headroom pass is the same rule followed again. After 0.3.0 two fixtures sat at 9-10 B
+   of headroom (kitchen sink 24566 / 24576, `with-edit-hooks` 16375 / 16384) and the next small
+   feature would have forced a bump. Nothing was raised; bytes were stripped instead (gzip bytes,
+   measured one lever at a time, kitchen sink / `with-edit-hooks` / `withRender`):
+   (1) the three CSS template literals that stayed in `svg-renderer.ts` after the responsive pass
+   still shipped ~700 chars of comments and indentation in every render fixture; they are now
+   hand-minified single-line strings with the rationale in `//` comments above them, about
+   **380-390 B** off each render fixture (a unit test now fails on a `/*` in the injected `<style>`
+   text); (2) five diagnostic strings lost their second sentence (every asserted substring kept;
+   two of them later got a short actionable hint back after review), about **140-175 B** off each
+   fixture that holds them; (3) the PNG scale/background validation that lived in three places is one
+   `resolvePngOptions()`, about **8 B** and only on the kitchen sink / `+ withIo` (kept for the
+   dedupe, not the bytes). Net effect of the code levers, before any measurement change:
+   24566 → 24030 (546 B of headroom), 16375 → 15866 (518 B), 15026 → 14501 (859 B), with exported
+   SVG output byte-identical.
+   Then a measurement fix, not a code change: the size-limit fixtures used to be bundled as an IIFE,
+   and esbuild prepends its CJS-interop helpers (`__toESM`, a "Dynamic require" shim) to any bundle
+   holding an external dynamic `import()` — dead code no consumer's ESM bundler ships. The raw
+   difference between the IIFE and ESM outputs is ~740 B (736 B measured on the kitchen sink: ~725 B
+   of dead helpers plus the ~10-25 B `"use strict";(()=>{...})()` wrapper), worth 5-322 B gzip
+   depending on the fixture (5-6 B on the two without an external `import()`). `fixtureConfig()` now
+   sets `format: 'esm'`, so **fixtures measure ESM output**; the bundled modules are unchanged (same
+   inputs, same `external` list, identical per-input bytes in esbuild's metafile). One caveat:
+   size-limit subtracts a fixed 32 B "empty project" calibration, which is the gzip of an empty IIFE;
+   an empty ESM output gzips to ~20 B, so ESM figures read about 12 B lower than the true
+   bundle (negligible next to the headroom, but real). Before / after (bytes):
+   hello world 7684 → 7679, `+ withIo` 13225 → 12903, `+ withRender` 14501 → 14196,
+   `+ withRender + withInteraction` 19157 → 18837, `+ withRender + withTheme` 15031 → 14723,
+   `+ withRender + withInteraction + withResponsive` 19957 → 19639, `+ withRender + withViewport`
+   15417 → 15112, `+ withConflicts` 9603 → 9597, `+ withRender + withEditHooks` 15866 → 15549,
+   kitchen sink 24030 → 23711. No limit moved. Headroom is now 865 B (kitchen sink) and 835 B
+   (`with-edit-hooks`); the tightest fixture is `+ withConflicts` at 643 B. `pnpm --filter
+   @fluxgantt/core size:headroom` (a non-fatal CI step) warns on any fixture under 150 B so it does
+   not silently erode again. Do not spend the room by raising or lowering a limit; spend it on
+   features.
 
    Run `pnpm size` from `packages/core` (or `pnpm size` at the root via turbo) to re-measure; the numbers above are its output, converted from its decimal-kB report to KiB. **It needs Node >= 22.19** — that is `size-limit` 14's own declared `engines.node` (`^22.19.0 || ^24.5.0 || >=26.0.0`), and the floor is enforced by the root `engines.node` so a permitted Node cannot be one the repo fails on. Before 14 the practical floor was 22.18, because `size-limit` calls `fs.glob` with `withFileTypes` (added in Node 22.2) and on an older 22.x it dies with an opaque `TypeError: i.isFile is not a function` that looks like a repo misconfiguration but is not. `.nvmrc` pins an exact version for this reason; CI reads it via `node-version-file`.
 6. **Tier-gate correctly** — Pro (resource/baseline/MSProject), Cloud (multiplayer/AI). Don't cram Pro/Cloud code into `core`.

@@ -12,21 +12,24 @@
 // The same applies to `io/mixin.ts`'s `import('./export-canvas-png.js')` (Canvas-mode PNG export,
 // loaded on first use). Marking the Canvas-renderer and Canvas-PNG modules `external` reproduces that real-world behavior: esbuild
 // leaves the `import()` call as-is (a few bytes of inert glue) instead of inlining ~20 KB of
-// Canvas rendering logic a consumer only pays for above the auto-switch threshold. Every other
-// option mirrors `@size-limit/esbuild`'s own defaults so these stay apples-to-apples with each
-// other and with prior measurements.
+// Canvas rendering logic a consumer only pays for above the auto-switch threshold. Apart from
+// `external` and `format` (below), every option mirrors `@size-limit/esbuild`'s own defaults so
+// these stay apples-to-apples with each other.
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const here = dirname(fileURLToPath(import.meta.url));
 
-// MEASUREMENT-ONLY OVERHEAD: this config emits an IIFE (no `format`), and once a bundle holds an
-// external dynamic `import()` esbuild injects its CJS-interop helpers (`__toESM`, the "Dynamic
-// require" shim: ~740 raw bytes, ~250-300 B gzip). Since `io/mixin.ts` gained
-// `import('./export-canvas-png.js')`, the `+ withIo` fixture pays that; a real ESM bundler does not.
-// Do NOT shrink IO code to recover it. `format: 'esm'` would rebase every fixture and the
-// CLAUDE.md table.
+// `format: 'esm'` is deliberate and is the second deviation from size-limit's defaults. Without it
+// esbuild emits an IIFE, and once a bundle holds an external dynamic `import()` it prepends its
+// CJS-interop helpers (`__toESM`, the "Dynamic require" shim) that nothing calls and that no real
+// ESM bundler ships: ~740 raw bytes counting the IIFE wrapper (736 B measured on the kitchen
+// sink), worth ~250-320 B gzip on every fixture that reaches `withRender` or `withIo`.
+// Verified (2026-10) that switching changes ONLY the wrapper and those dead helpers: the metafile
+// shows the same inputs with identical per-input bytes either way. Fixtures therefore measure ESM
+// output. Caveat: size-limit subtracts a fixed 32 B calibration (the gzip of an empty IIFE); an
+// empty ESM output gzips to ~20 B, so the figures here read ~12 B lower than the true bundle.
 /** @param {string} fixture bare fixture filename, e.g. `'hello-world.js'` */
 export function fixtureConfig(fixture) {
   return {
@@ -40,6 +43,7 @@ export function fixtureConfig(fixture) {
     minifySyntax: true,
     minifyWhitespace: true,
     outdir: join(tmpdir(), `fluxgantt-size-limit-${fixture.replace(/\.js$/, '')}`),
+    format: 'esm',
     treeShaking: true,
     write: true,
   };

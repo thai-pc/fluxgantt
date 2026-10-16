@@ -5,12 +5,11 @@
 // Do NOT add anything else here — this file IS the budget.
 //
 // DELIBERATELY EXCLUDES `withTheme` (@fluxgantt/core/theme), despite the name: the theme mixin
-// measures ~440 B gzipped and this fixture has ~380 B of headroom, so composing it here would
-// force a budget bump — which golden rule 5 forbids. The floor was measured, not assumed (every
-// reduction attempted, including dropping the destroy-cleanup entirely, still left ~97 B over).
-// `withTheme` therefore has its own fixture, `with-theme.js`. Revisit if this budget ever gains
-// room. `withViewport` and `withConflicts` are excluded for the same headroom reason and have
-// their own fixtures (`with-viewport.js`, `with-conflicts.js`).
+// measures ~440 B gzipped. When this was written the fixture had ~380 B of headroom, so composing
+// it would have forced a budget bump (golden rule 5 forbids that); after the 2026-10 headroom pass
+// there is ~850 B, kept as a buffer rather than spent. `withTheme` therefore still has its own
+// fixture, `with-theme.js`. `withViewport` and `withConflicts` are excluded for the same reason and
+// have their own fixtures (`with-viewport.js`, `with-conflicts.js`).
 import { createGantt } from '@fluxgantt/core';
 import { withIo } from '@fluxgantt/core/io';
 import { withRender } from '@fluxgantt/core/render';

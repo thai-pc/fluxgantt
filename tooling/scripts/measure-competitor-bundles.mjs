@@ -15,7 +15,9 @@
 //     IS what a consumer ships. FluxGantt's own numbers come from `pnpm size`, which DOES
 //     tree-shake, because FluxGantt is `"sideEffects": false` and its capabilities are separate
 //     subpath exports — that asymmetry favours the competitor if anything, and is the honest
-//     reading of "what lands in your app".
+//     reading of "what lands in your app". FluxGantt's fixtures are also measured as ESM output
+//     (not an IIFE) with size-limit's fixed 32 B empty-IIFE calibration subtracted, which reads
+//     ~12 B low for ESM; the competitor numbers here have no such correction.
 //   * Add the stylesheet, gzipped separately. A Gantt that does not paint is not a comparison:
 //     dhtmlx and Frappe both require their CSS, FluxGantt requires none (every visual property
 //     is written inline with a `--fg-*` token fallback). Reporting JS alone would hide that.
