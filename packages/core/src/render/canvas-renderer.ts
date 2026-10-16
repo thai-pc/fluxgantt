@@ -97,6 +97,7 @@ import {
   TOGGLE_GLYPH_GUTTER_PX,
   createTimeScale,
   computeGridColumns,
+  computeHeaderTiers,
   deriveTimeRange,
   layoutDependencyPath,
   layoutRows,
@@ -110,6 +111,7 @@ import {
   buildTaskAriaLabel,
   type GanttMessages,
   type GridColumn,
+  type HeaderTiers,
   type RolledUpRow,
   type RowLayout,
   type TaskBarLayout,
@@ -626,7 +628,7 @@ export function resolveDesignTokens(container: HTMLElement): DesignTokens {
     gridWeekend: color('--fg-grid-weekend', '#f9fafb'),
     gridLine: color('--fg-grid-line', '#e5e7eb'),
     bgSubtle: color('--fg-bg-subtle', '#f3f4f6'),
-    fgMuted: color('--fg-fg-muted', '#71717a'),
+    fgMuted: color('--fg-fg-muted', '#6b6b73'),
     borderStrong: color('--fg-border-strong', '#d4d4d8'),
     border: color('--fg-border', '#e5e7eb'),
     fg: color('--fg-fg', '#18181b'),
@@ -1259,7 +1261,13 @@ export function createCanvasRenderer(
     // painting it only across the bounded viewport (rather than the full, unbounded content
     // height) is visually indistinguishable from before.
     paintGrid(ctx, gridColumns, offsetX, resolvedViewportHeightPx, tokens);
-    paintHeader(ctx, gridColumns, offsetX, timeScale.totalWidth, tokens);
+    paintHeader(
+      ctx,
+      computeHeaderTiers(timeScale, viewMode, locale, gridColumns),
+      offsetX,
+      timeScale.totalWidth,
+      tokens,
+    );
     paintLabelDivider(ctx, offsetX, resolvedViewportHeightPx, tokens);
 
     // Today marker (spec §9.1) — local/unwindowed for the same reason the three paints above
@@ -1477,7 +1485,7 @@ export function paintGrid(
 
 export function paintHeader(
   ctx: CanvasRenderingContext2D,
-  columns: readonly GridColumn[],
+  tiers: HeaderTiers,
   offsetX: number,
   timelineWidth: number,
   tokens: DesignTokens,
@@ -1489,14 +1497,13 @@ export function paintHeader(
 
     ctx.fillStyle = tokens.fgMuted;
     ctx.font = TASK_LABEL_FONT;
-    ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    for (const col of columns) {
-      const x = col.x + offsetX;
-      // Label is Temporal/Intl-formatted (never user input), but fillText is
-      // injection-safe by construction regardless — consistent no-markup-sink policy.
-      ctx.fillText(col.label, x + col.width / 2, HEADER_HEIGHT / 2);
-    }
+    // Label is Temporal/Intl-formatted (never user input), but fillText is
+    // injection-safe by construction regardless — consistent no-markup-sink policy.
+    ctx.textAlign = 'left';
+    for (const l of tiers.upper) ctx.fillText(l.text, offsetX + l.x, 8);
+    ctx.textAlign = 'center';
+    for (const l of tiers.lower) ctx.fillText(l.text, offsetX + l.x, 24);
     ctx.textAlign = 'start'; // restore default before the divider stroke below (defensive)
 
     ctx.strokeStyle = tokens.borderStrong;

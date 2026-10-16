@@ -17,6 +17,8 @@ import {
   TOGGLE_GLYPH_GUTTER_PX,
   createTimeScale,
   computeGridColumns,
+  computeHeaderTiers,
+  HEADER_FONT_PX,
   deriveTimeRange,
   layoutDependencyPath,
   layoutRows,
@@ -31,6 +33,7 @@ import {
   buildTaskAriaLabel,
   type GanttMessages,
   type GridColumn,
+  type HeaderTiers,
   type RolledUpRow,
   type RowLayout,
   type TaskBarLayout,
@@ -411,7 +414,13 @@ export function createSvgRenderer(
     svg.appendChild(createStyle(FOCUS_STYLE_TEXT));
     if (showLinkHandles) svg.appendChild(createStyle(LINK_HANDLE_STYLE_TEXT));
     svg.appendChild(renderGrid(gridColumns, offsetX, totalHeight));
-    svg.appendChild(renderHeader(gridColumns, offsetX, timeScale.totalWidth));
+    svg.appendChild(
+      renderHeader(
+        computeHeaderTiers(timeScale, viewMode, locale, gridColumns),
+        offsetX,
+        timeScale.totalWidth,
+      ),
+    );
     svg.appendChild(
       renderDependencies(currentInput.dependencies, barByTaskId, rowHeight, offsetX, offsetY),
     );
@@ -524,7 +533,7 @@ function renderGrid(columns: readonly GridColumn[], offsetX: number, totalHeight
   return g;
 }
 
-function renderHeader(columns: readonly GridColumn[], offsetX: number, timelineWidth: number): SVGGElement {
+function renderHeader(tiers: HeaderTiers, offsetX: number, timelineWidth: number): SVGGElement {
   const g = document.createElementNS(SVG_NS, 'g') as SVGGElement;
   g.setAttribute('class', 'fg-timeline__header');
 
@@ -536,20 +545,26 @@ function renderHeader(columns: readonly GridColumn[], offsetX: number, timelineW
   bg.style.setProperty('fill', 'var(--fg-bg-subtle, #f3f4f6)');
   g.appendChild(bg);
 
-  for (const col of columns) {
-    const x = col.x + offsetX;
-    const text = document.createElementNS(SVG_NS, 'text');
-    text.setAttribute('class', 'fg-timeline__header-label');
-    text.setAttribute('x', String(x + col.width / 2));
-    text.setAttribute('y', String(HEADER_HEIGHT / 2));
-    text.style.setProperty('text-anchor', 'middle');
-    text.style.setProperty('dominant-baseline', 'middle');
-    text.style.setProperty('fill', 'var(--fg-fg-muted, #71717a)');
-    // Label is Temporal/Intl-formatted (never user input), but always via createTextNode
-    // regardless — consistent no-innerHTML policy applies everywhere in render/.
-    text.appendChild(document.createTextNode(col.label));
-    g.appendChild(text);
-  }
+  [tiers.upper, tiers.lower].forEach((tier, row) => {
+    for (const l of tier) {
+      const text = document.createElementNS(SVG_NS, 'text');
+      text.setAttribute('class', 'fg-timeline__header-label');
+      text.setAttribute('x', String(offsetX + l.x));
+      text.setAttribute('y', String(row ? 24 : 8));
+      // Inline style (not presentation attributes): a host `text { font-size }` rule beats an
+      // attribute but never an inline style, and `exportSvg` clones keep it. Family is pinned
+      // too (unlike row labels, which inherit the host font) because the label-fit estimator
+      // is only conservative for system-ui metrics.
+      text.style.setProperty('font', `${HEADER_FONT_PX}px system-ui, sans-serif`);
+      text.style.setProperty('text-anchor', row ? 'middle' : 'start');
+      text.style.setProperty('dominant-baseline', 'middle');
+      text.style.setProperty('fill', 'var(--fg-fg-muted, #6b6b73)');
+      // Label is Temporal/Intl-formatted (never user input), but always via createTextNode
+      // regardless — consistent no-innerHTML policy applies everywhere in render/.
+      text.appendChild(document.createTextNode(l.text));
+      g.appendChild(text);
+    }
+  });
 
   const divider = document.createElementNS(SVG_NS, 'line');
   divider.setAttribute('x1', String(offsetX));
@@ -722,7 +737,7 @@ function renderRowToggle(row: RowLayout, offsetY: number, rowHeight: number): SV
   path.setAttribute('class', 'fg-timeline__row-toggle');
   path.setAttribute('d', d);
   path.setAttribute('aria-hidden', 'true');
-  path.style.setProperty('fill', 'var(--fg-fg-muted, #71717a)');
+  path.style.setProperty('fill', 'var(--fg-fg-muted, #6b6b73)');
   if (!row.isCollapsed) {
     path.setAttribute('transform', `rotate(90 ${cx} ${cy})`);
   }

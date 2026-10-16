@@ -1003,7 +1003,7 @@ Prefer:
   --fg-bg:               #fafafa;
   --fg-bg-subtle:        #f3f4f6;
   --fg-fg:               #18181b;
-  --fg-fg-muted:         #71717a;
+  --fg-fg-muted:         #6b6b73;
   --fg-border:           #e5e7eb;
   --fg-border-strong:    #d4d4d8;
 

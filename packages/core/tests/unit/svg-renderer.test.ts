@@ -50,6 +50,23 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+describe('createSvgRenderer — two-tier header', () => {
+  it('header texts pin the font via inline style, use tier y 8 / 24 and per-tier anchors', () => {
+    const h = createSvgRenderer(container, { tasks: baseTasks, dependencies: baseDeps });
+    const texts = Array.from(h.svg.querySelectorAll('.fg-timeline__header-label'));
+    expect(texts.length).toBeGreaterThan(0);
+    for (const t of texts) {
+      const st = (t as SVGTextElement).style;
+      expect(st.getPropertyValue('font')).toBe('12px system-ui, sans-serif');
+      expect(st.getPropertyValue('text-anchor')).toBe(t.getAttribute('y') === '8' ? 'start' : 'middle');
+      expect(['8', '24']).toContain(t.getAttribute('y'));
+      expect(t.firstChild?.nodeType).toBe(3);
+    }
+    expect(texts.some((t) => t.getAttribute('y') === '8')).toBe(true);
+    expect(texts.some((t) => t.getAttribute('y') === '24')).toBe(true);
+  });
+});
+
 describe('createSvgRenderer — structure', () => {
   it('mounts an <svg class="fg-timeline"> with role/aria-label', () => {
     const h = createSvgRenderer(container, { tasks: baseTasks, dependencies: baseDeps });

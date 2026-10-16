@@ -1161,7 +1161,8 @@ describe('task bar paint', () => {
       fc.property(
         fc.array(
           fc.record({
-            name: fc.string({ minLength: 1, maxLength: 20 }),
+            // Prefixed so a generated name can never equal a header label ("1", " ", ...).
+            name: fc.string({ minLength: 1, maxLength: 20 }).map((n) => `~${n}`),
             offset: fc.integer({ min: 0, max: 60 }),
             span: fc.integer({ min: 1, max: 10 }),
           }),

@@ -585,7 +585,7 @@ export const MAX_GRID_COLUMNS = 20_000;
 
 const GRID_LABEL_OPTIONS: Readonly<Record<ViewMode, Intl.DateTimeFormatOptions>> = {
   day: { weekday: 'short', day: 'numeric' },
-  week: { weekday: 'short', day: 'numeric' },
+  week: { day: 'numeric' },
   month: { day: 'numeric' },
   quarter: { day: 'numeric' },
   year: { day: 'numeric' },
@@ -632,6 +632,170 @@ export function computeGridColumns(
     cursor = cursor.add({ days: 1 });
   }
   return cols;
+}
+
+// --- Two-tier header (spec-header-label-overlap.md) ---------------------------------------
+
+/**
+ * A positioned header label. `x` is the ANCHOR in CONTENT space (renderer adds `offsetX`): the
+ * LEFT edge of the text for `upper` labels (text-anchor start) and its CENTRE for `lower`
+ * labels (text-anchor middle).
+ */
+export interface HeaderLabel {
+  readonly x: number;
+  readonly text: string;
+}
+export interface HeaderTiers {
+  readonly upper: readonly HeaderLabel[];
+  readonly lower: readonly HeaderLabel[];
+}
+/** A column or month/year span a label belongs to (content space). */
+export interface HeaderSpan {
+  readonly x: number;
+  readonly width: number;
+  readonly text: string;
+}
+
+/** Header font size in px, pinned in both renderers so every label width is predictable. */
+export const HEADER_FONT_PX = 12;
+const HEADER_LABEL_GAP = 4;
+
+/**
+ * Conservative text width estimate (no DOM / `measureText`, so SVG, Canvas and both exports
+ * select identical labels and Node tests are deterministic). Per UTF-16 code unit, in em:
+ * space and ASCII punctuation 0.35; Latin capitals and Greek/Cyrillic/Hebrew/Arabic (< U+0900)
+ * 0.8; other Latin and digits 0.7; Indic (U+0900-U+0DFF, wide conjuncts) 1.2; Thai/Lao/Tibetan
+ * (U+0E00-U+10FF, narrow glyphs plus zero-width marks) 0.7; everything from U+1100 up (CJK,
+ * Hangul, Ethiopic, Khmer...) 1. Measured against Chromium at 12px system-ui, for the
+ * locales and header formats in the table in renderer-base.test.ts, the estimate stays at
+ * or above the real advance. Fonts other than system-ui are NOT covered, which is why the
+ * renderers pin the header font family.
+ */
+export function estimateTextWidth(text: string): number {
+  let w = 0;
+  for (let i = 0; i < text.length; i++) {
+    const u = text.charCodeAt(i);
+    w += ' .,:;()-/'.includes(text[i]!)
+      ? 0.35
+      : u < 0x370
+        ? u > 64 && u < 91
+          ? 0.8
+          : 0.7
+        : u < 0x900
+          ? 0.8
+          : u < 0xe00
+            ? 1.2
+            : u < 0x1100
+              ? 0.7
+              : 1;
+  }
+  return w * HEADER_FONT_PX;
+}
+
+/**
+ * Greedy left-to-right keep-list. PRECONDITION: `spans` ascending by `x`. Upper labels are
+ * left-aligned inside their span with `HEADER_LABEL_GAP` padding and must fit it; lower labels
+ * are centred on their span. Guarantee, relative to
+ * `estimateTextWidth`: every kept label lies inside `[0, totalWidth]` and consecutive kept
+ * labels are at least `HEADER_LABEL_GAP` px apart.
+ */
+export function selectHeaderLabels(
+  spans: readonly HeaderSpan[],
+  totalWidth: number,
+  upper: boolean,
+): HeaderLabel[] {
+  let lastRight = -Infinity;
+  const out: HeaderLabel[] = [];
+  for (const s of spans) {
+    const w = estimateTextWidth(s.text);
+    const left = upper ? s.x + HEADER_LABEL_GAP : s.x + (s.width - w) / 2;
+    if (
+      (upper && w + 2 * HEADER_LABEL_GAP > s.width) ||
+      left < 0 ||
+      left + w > totalWidth ||
+      left < lastRight + HEADER_LABEL_GAP
+    )
+      continue;
+    out.push({ x: upper ? left : s.x + s.width / 2, text: s.text });
+    lastRight = left + w;
+  }
+  return out;
+}
+
+/**
+ * Uniform stride for the dense tiers (month, quarter, year): every Nth span, N from the widest
+ * label and the narrowest interior span.
+ */
+function thinHeaderSpans(spans: HeaderSpan[]): HeaderSpan[] {
+  let wide = 0;
+  let narrow = Infinity;
+  spans.forEach((s, k) => {
+    wide = Math.max(wide, estimateTextWidth(s.text));
+    if (k > 0 && k < spans.length - 1) narrow = Math.min(narrow, s.width);
+  });
+  const n = Math.ceil((wide + HEADER_LABEL_GAP) / narrow) || 1;
+  return spans.filter((_, k) => k % n === 0);
+}
+
+let cacheKey = '';
+let cacheTiers: HeaderTiers = { upper: [], lower: [] };
+
+/**
+ * Two header tiers (upper: month or year spans; lower: day or month) with labels thinned so
+ * none overlap and none leaves `[0, totalWidth]`. `columns` must come from
+ * `computeGridColumns` on the same `timeScale` (column index == day index from `range.start`).
+ * Walks MONTHS, not days (the columns already carry per-day geometry), and keeps the last
+ * result so a Canvas scroll frame with unchanged inputs costs a string compare.
+ */
+export function computeHeaderTiers(
+  timeScale: TimeScale,
+  viewMode: ViewMode,
+  locale: string,
+  columns: readonly GridColumn[],
+): HeaderTiers {
+  const { range, totalWidth, pixelsPerDay } = timeScale;
+  const key = `${range.start}${range.end}${viewMode}${locale}`; // ISO strings carry the zone
+  if (key === cacheKey) return cacheTiers;
+
+  const yearly = viewMode === 'quarter' || viewMode === 'year';
+  const months: HeaderSpan[] = [];
+  const years: { x: number; width: number; text: string }[] = [];
+  let date = range.start.toPlainDate();
+  for (let i = 0; i < columns.length && columns[i]!.x < totalWidth; ) {
+    const end = Math.min(i + date.daysInMonth - date.day + 1, columns.length);
+    const last = columns[end - 1]!;
+    const x = columns[i]!.x;
+    const width = Math.min(last.x + last.width, totalWidth) - x;
+    // The yearly lower tier labels FULL months only (a clipped edge month never fits its name
+    // and would evict a full neighbour); the upper tier keeps partials, which must fit.
+    if (!yearly || width === date.daysInMonth * pixelsPerDay)
+      months.push({
+        x,
+        width,
+        text: date.toLocaleString(locale, yearly ? { month: 'short' } : { month: 'short', year: 'numeric' }),
+      });
+    if (yearly) {
+      if (!years.length || date.month === 1)
+        years.push({ x, width: 0, text: date.toLocaleString(locale, { year: 'numeric' }) });
+      years[years.length - 1]!.width += width;
+    }
+    date = date.with({ day: 1 }).add({ months: 1 });
+    i = end;
+  }
+  // Columns past the chart edge (the phantom `range.end` column) fail selectHeaderLabels' bounds test.
+  const days = yearly ? months : columns.map((c) => ({ x: c.x, width: c.width, text: c.label }));
+  // day/week labels sit on wide columns, so the greedy pass alone drops only the odd label
+  // that truly overflows; the dense tiers get one uniform stride instead.
+  cacheKey = key;
+  cacheTiers = {
+    upper: selectHeaderLabels(yearly ? years : months, totalWidth, true),
+    lower: selectHeaderLabels(
+      viewMode === 'day' || viewMode === 'week' ? days : thinHeaderSpans(days),
+      totalWidth,
+      false,
+    ),
+  };
+  return cacheTiers;
 }
 
 /**
