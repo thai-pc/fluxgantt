@@ -135,10 +135,9 @@ export function useFluxGantt(config: UseFluxGanttConfig): UseFluxGanttResult {
   });
 
   onBeforeUnmount(() => {
-    instance.unmount(); // NOT destroy() — see module doc-comment above.
-    // Disarm the `matchMedia` listener `theme="auto"` registered (it would otherwise retain
-    // the whole instance until page unload).
-    syncTheme(instance, 'light');
+    // NOT destroy() — see module doc-comment above. Core's unmount() also restores the
+    // container and disarms the `theme="auto"` `matchMedia` listener.
+    instance.unmount();
   });
 
   return { containerRef, instance };

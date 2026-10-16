@@ -49,8 +49,8 @@ export interface ThemeCapability {
   /** The CONFIGURED name — returns `'auto'` when auto, not the resolved value. Safe
    *  post-`destroy()` (returns the last value, does not throw), matching `getViewMode()`. */
   getTheme(): ThemeName;
-  /** The name currently PAINTED, i.e. `'auto'` collapsed against `prefers-color-scheme`. Safe
-   *  post-`destroy()`. Returns `'light'` in an environment with no `matchMedia`. */
+  /** The name currently PAINTED, i.e. `'auto'` collapsed against `prefers-color-scheme` (while
+   *  unmounted: what WOULD be painted, read fresh from the OS). Safe post-`destroy()`. Returns `'light'` in an environment with no `matchMedia`. */
   getResolvedTheme(): ResolvedTheme;
 }
 
@@ -74,6 +74,7 @@ export function withTheme<T extends GanttInstance>(instance: T): T & ThemeCapabi
   validate(theme, 'withTheme');
   let resolved: ResolvedTheme = 'light';
   let disposed = false;
+  let mounted = false;
   // Queried ONCE, here: `undefined` where the host has no `matchMedia` (jsdom without a stub, a
   // non-DOM runtime), which `prefersDark()` reads as light — the same degrade-quietly posture
   // the renderer takes for a missing `ResizeObserver`, never a throw.
@@ -83,7 +84,7 @@ export function withTheme<T extends GanttInstance>(instance: T): T & ThemeCapabi
 
   // The container's inline values for the dark token keys BEFORE we wrote them (`''` = absent),
   // and the element they belong to. The container belongs to the HOST, who may carry its own
-  // inline `--fg-*` overrides, so light/destroy must restore these rather than blanket-remove.
+  // inline `--fg-*` overrides, so light/unmount/destroy must restore these rather than blanket-remove.
   // `undefined` = we have written nothing, so there is nothing to undo.
   let saved: { el: HTMLElement; prior: Record<string, [string, string]> } | undefined;
 
@@ -109,7 +110,7 @@ export function withTheme<T extends GanttInstance>(instance: T): T & ThemeCapabi
    * own; `mql` is `undefined` only where `matchMedia` does not exist.
    */
   const syncWatch = (): void => {
-    if (theme === 'auto') mql?.addEventListener('change', onPreferenceChange);
+    if (theme === 'auto' && mounted && !disposed) mql?.addEventListener('change', onPreferenceChange);
     else mql?.removeEventListener('change', onPreferenceChange);
   };
 
@@ -126,7 +127,6 @@ export function withTheme<T extends GanttInstance>(instance: T): T & ThemeCapabi
     // so undoing exactly what we wrote is correct and cheaper than a second full table. Applying
     // light to a container we never darkened is a no-op, so host `--fg-*` values survive.
     if (resolved === 'dark') {
-      if (saved && saved.el !== container) restore(); // remounted into a different element
       if (!saved) {
         const prior: Record<string, [string, string]> = {};
         for (const key in DARK_TOKENS) {
@@ -152,7 +152,24 @@ export function withTheme<T extends GanttInstance>(instance: T): T & ThemeCapabi
   // hook for "re-apply now". Using the public event rather than a new `GanttInternal` slot keeps
   // mixin application order irrelevant and adds nothing to the shared interface.
   instance.on('renderer:selected', () => {
-    if (!disposed) apply();
+    // A listener registered BEFORE `withTheme` may already have unmounted during this same emit.
+    const m = internal.getMountState();
+    if (disposed || !m) return;
+    // Every mount ends through `teardownMount()` -> `rendererHandle.destroy()` (unmount(), an
+    // implicit remount, base destroy()), and there is no unmount event, so wrap the handle's
+    // destroy — the same pattern `interaction/pointer-drag.ts` uses. The listener reads the live
+    // handle each mount, which keeps application order irrelevant.
+    const handle = m.rendererHandle;
+    const inner = handle.destroy;
+    handle.destroy = (): void => {
+      restore(); // hand the host's prior inline values back; no-op when light
+      mounted = false;
+      syncWatch(); // stop following the OS while nothing is mounted
+      inner.call(handle);
+    };
+    mounted = true;
+    syncWatch();
+    apply();
   });
 
   const capability: ThemeCapability = {
@@ -168,6 +185,7 @@ export function withTheme<T extends GanttInstance>(instance: T): T & ThemeCapabi
       return theme;
     },
     getResolvedTheme(): ResolvedTheme {
+      if (theme === 'auto' && !disposed) resolved = prefersDark() ? 'dark' : 'light';
       return resolved;
     },
   };
@@ -191,8 +209,9 @@ export function withTheme<T extends GanttInstance>(instance: T): T & ThemeCapabi
     },
   });
 
-  // Resolve (and, for `'auto'`, subscribe) immediately so `getResolvedTheme()` is meaningful
-  // before the first mount. `apply()` is a no-op on the container while unmounted.
+  // Resolve immediately so `getResolvedTheme()` is meaningful before the first mount. The
+  // `'auto'` subscription is only armed once mounted (`syncWatch()` is a no-op until then), and
+  // `apply()` is a no-op on the container while unmounted.
   syncWatch();
   apply();
 

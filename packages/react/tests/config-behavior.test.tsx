@@ -211,6 +211,25 @@ describe('<FluxGantt> theme', () => {
     expect(host.style.getPropertyValue('--fg-bg')).toBe('#123456');
   });
 
+  it('unmount hands the container back with the host inline --fg-bg, not the dark token', () => {
+    const style = { '--fg-bg': '#123456' } as CSSProperties;
+    const { container, unmount } = render(<FluxGantt tasks={TWO} style={style} theme="dark" />);
+    const host = container.firstElementChild as HTMLElement;
+    expect(host.style.getPropertyValue('--fg-bg')).not.toBe('#123456');
+    unmount();
+    expect(host.style.getPropertyValue('--fg-bg')).toBe('#123456');
+  });
+
+  it('instance.unmount() while still rendered restores the host inline --fg-bg (core path only)', () => {
+    const ref = createRef<FluxGanttRef>();
+    const style = { '--fg-bg': '#123456' } as CSSProperties;
+    const { container } = render(<FluxGantt ref={ref} tasks={TWO} style={style} theme="dark" />);
+    const host = container.firstElementChild as HTMLElement;
+    expect(host.style.getPropertyValue('--fg-bg')).not.toBe('#123456');
+    ref.current!.unmount();
+    expect(host.style.getPropertyValue('--fg-bg')).toBe('#123456');
+  });
+
   it('a theme change after ref.destroy() does not throw', () => {
     const ref = createRef<FluxGanttRef>();
     const { rerender } = render(<FluxGantt ref={ref} tasks={TWO} />);
