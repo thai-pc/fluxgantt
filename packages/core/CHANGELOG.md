@@ -1,5 +1,17 @@
 # @fluxgantt/core
 
+## 0.3.1
+
+### Patch Changes
+
+- a733406: `withTheme()` no longer wipes host-set inline `--fg-*` custom properties on the mount container.
+  Switching to light (or `destroy()`) used to remove all 13 dark tokens unconditionally, deleting any
+  inline override the host had put on the same element, even when the chart had never been dark. It now
+  records each property's prior inline value before writing the dark tokens and restores exactly that
+  on light / `destroy()`; applying light to a container it never darkened is a no-op. An unknown
+  `config.theme` now throws at construction (as `setTheme` already did) instead of being accepted silently.
+- 75db6a1: Trim shipped bytes: the injected `<style>` text is minified (same rules, no comments), PNG option validation is a single internal helper, and five diagnostic messages have shorter wording (the working-calendar iteration guard, the `with*` mixin "no internal state" error, the missing-Temporal error, and the hierarchy-depth / grid-column guards). The retained phrases are `exceeded max iteration guard`, `has no internal state`, `Temporal API is not available`, `exceeds max depth` and `exceeded max column guard`; only the explanatory second sentences were dropped. No API or behavior change; exported SVG output is byte-identical.
+
 ## 0.3.0
 
 ### Minor Changes
