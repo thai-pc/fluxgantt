@@ -26,7 +26,7 @@ This file is the context entry point for AI. Details are split into rules under 
    | `+ withIo` | 12.60 KiB | 14 KiB |
    | `+ withRender` | 14.52 KiB | 15 KiB |
    | `+ withRender + withInteraction` | 19.07 KiB | 19.5 KiB |
-   | `+ withRender + withTheme` | 15.15 KiB | 16 KiB |
+   | `+ withRender + withTheme` | 15.20 KiB | 16 KiB |
    | `+ withRender + withInteraction + withResponsive` | 19.85 KiB | 21 KiB |
    | `+ withRender + withViewport` | 15.42 KiB | 16 KiB |
    | `+ withConflicts` (headless) | 9.37 KiB | 10 KiB |
