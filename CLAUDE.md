@@ -24,16 +24,16 @@ This file is the context entry point for AI. Details are split into rules under 
    |---|---|---|
    | `createGantt()` only (hello world) | 7.50 KiB | 9 KiB |
    | `+ withIo` | 12.61 KiB | 14 KiB |
-   | `+ withRender` | 14.45 KiB | 15 KiB |
-   | `+ withRender + withInteraction` | 19.00 KiB | 19.5 KiB |
-   | `+ withRender + withTheme` | 15.12 KiB | 16 KiB |
-   | `+ withRender + withInteraction + withResponsive` | 19.79 KiB | 21 KiB |
-   | `+ withRender + withViewport` | 15.31 KiB | 16 KiB |
+   | `+ withRender` | 14.47 KiB | 15 KiB |
+   | `+ withRender + withInteraction` | 19.02 KiB | 19.5 KiB |
+   | `+ withRender + withTheme` | 15.15 KiB | 16 KiB |
+   | `+ withRender + withInteraction + withResponsive` | 19.81 KiB | 21 KiB |
+   | `+ withRender + withViewport` | 15.35 KiB | 16 KiB |
    | `+ withConflicts` (headless) | 9.37 KiB | 10 KiB |
-   | `+ withRender + withEditHooks` (not in the kitchen sink) | 15.78 KiB | 16 KiB |
-   | kitchen sink (everything = the pre-split facade) | 23.79 KiB | 24 KiB |
+   | `+ withRender + withEditHooks` (not in the kitchen sink) | 15.80 KiB | 16 KiB |
+   | kitchen sink (everything = the pre-split facade) | 23.81 KiB | 24 KiB |
 
-   Hello world went 22.3 KiB → 7.50 KiB and the fully-composed instance 34.9 KiB → 23.79 KiB (the old "full core" check measured `dist/index.js` as a plain file, which code-splitting has since hollowed out; the kitchen-sink fixture replaces it). Non-core features are plugins.
+   Hello world went 22.3 KiB → 7.50 KiB and the fully-composed instance 34.9 KiB → 23.81 KiB (the old "full core" check measured `dist/index.js` as a plain file, which code-splitting has since hollowed out; the kitchen-sink fixture replaces it). Non-core features are plugins.
 
    The `withRender + withInteraction` budget was raised 19 → 19.5 KiB once, for the i18n scaffold (`GanttConfig.messages`), after the levers this rule prefers were measured and came up ~67 B short: merging the two renderer-option builders recovered only 13 B, and ~68 B of the cost is the irreducible price of threading host messages through both renderers. Justified as WCAG-adjacent — the strings in question are accessible names. Treat that as the exception it was, not a precedent: the rule is still change the shape, not the budget.
 
