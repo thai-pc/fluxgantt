@@ -271,6 +271,7 @@ export function createSvgRenderer(
   // chart svg so `container.querySelector('svg')` stays the grid. `position:sticky` is
   // compositor-native; `overflow:visible` keeps the 1px divider half below the box; the
   // background also fills the label-column corner so scrolled row labels do not show through.
+  const BAND_BG = 'var(--fg-bg-subtle, #f3f4f6)';
   const overlay = el(
     'svg',
     { class: 'fg-timeline__sticky-header', 'aria-hidden': 'true', height: HEADER_HEIGHT },
@@ -281,8 +282,11 @@ export function createSvgRenderer(
       // a physical left float would misalign the date labels with the day columns.
       float: 'inline-start',
       overflow: 'visible',
-      'clip-path': 'inset(0 0 -1px)',
-      background: 'var(--fg-bg-subtle, #f3f4f6)',
+      // -1px top: Firefox does not pixel-snap a sticky box, so at a fractional container y the
+      // opaque fill starts mid-pixel; the shadow adds an opaque row above (clipped at rest).
+      'clip-path': 'inset(-1px 0 -1px)',
+      background: BAND_BG,
+      'box-shadow': `0 -1px 0 ${BAND_BG}`,
     },
   );
   container.append(svg, overlay);

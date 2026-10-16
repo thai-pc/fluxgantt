@@ -795,7 +795,10 @@ describe('sticky header overlay (pinned date axis)', () => {
     createSvgRenderer(container, { tasks: baseTasks, dependencies: baseDeps });
     const overlay = overlayOf(container);
     expect(overlay.querySelectorAll('.fg-timeline__label-divider')).toHaveLength(1);
-    expect(overlay.style.getPropertyValue('clip-path')).toBe('inset(0 0 -1px)');
+    expect(overlay.style.getPropertyValue('clip-path')).toBe('inset(-1px 0 -1px)');
+    // Opaque extra row above the band (Firefox fractional-y ghost): shadow in the same colour.
+    expect(overlay.style.getPropertyValue('box-shadow')).toMatch(/-1px/);
+    expect(overlay.style.getPropertyValue('box-shadow')).toContain('--fg-bg-subtle');
     expect(overlay.style.overflow).toBe('visible');
   });
 
