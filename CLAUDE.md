@@ -26,7 +26,7 @@ This file is the context entry point for AI. Details are split into rules under 
    | `+ withIo` | 12.60 KiB | 14 KiB |
    | `+ withRender` | 13.86 KiB | 15 KiB |
    | `+ withRender + withInteraction` | 18.40 KiB | 19.5 KiB |
-   | `+ withRender + withTheme` | 14.38 KiB | 16 KiB |
+   | `+ withRender + withTheme` | 14.48 KiB | 16 KiB |
    | `+ withRender + withInteraction + withResponsive` | 19.18 KiB | 21 KiB |
    | `+ withRender + withViewport` | 14.76 KiB | 16 KiB |
    | `+ withConflicts` (headless) | 9.37 KiB | 10 KiB |
@@ -73,7 +73,7 @@ This file is the context entry point for AI. Details are split into rules under 
    an empty ESM output gzips to ~20 B, so ESM figures read about 12 B lower than the true
    bundle (negligible next to the headroom, but real). Before / after (bytes):
    hello world 7684 → 7679, `+ withIo` 13225 → 12903, `+ withRender` 14501 → 14196,
-   `+ withRender + withInteraction` 19157 → 18837, `+ withRender + withTheme` 15031 → 14723,
+   `+ withRender + withInteraction` 19157 → 18837, `+ withRender + withTheme` 15031 → 14723 (then → ~14830 with construction-time theme validation + host `--fg-*` override restore, ~+110 B),
    `+ withRender + withInteraction + withResponsive` 19957 → 19639, `+ withRender + withViewport`
    15417 → 15112, `+ withConflicts` 9603 → 9597, `+ withRender + withEditHooks` 15866 → 15549,
    kitchen sink 24030 → 23711. No limit moved. Headroom is now 865 B (kitchen sink) and 835 B
