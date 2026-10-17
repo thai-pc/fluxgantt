@@ -217,7 +217,7 @@ function hoursToNs(hours: number): bigint {
 function assertProgress(guard: number): void {
   if (guard > 1_000_000) {
     throw new Error(
-      'working-calendar: exceeded max iteration guard (1,000,000) — check workingDays/workingHours are non-empty',
+      'working-calendar: exceeded max iteration guard (1,000,000) — check workingDays/workingHours are non-empty and duration/lag are not huge',
     );
   }
 }
