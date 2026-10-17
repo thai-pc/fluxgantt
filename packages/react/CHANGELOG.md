@@ -1,5 +1,15 @@
 # @fluxgantt/react
 
+## 0.3.1
+
+### Patch Changes
+
+- Updated dependencies [7d4664d]
+- Updated dependencies [370c132]
+- Updated dependencies [3480f95]
+- Updated dependencies [0c280ad]
+  - @fluxgantt/core@0.4.0
+
 ## 0.3.0
 
 ### Minor Changes
