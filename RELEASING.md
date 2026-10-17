@@ -228,6 +228,18 @@ Vite 7 pin is needed; the drag was not exercised):
   proves the `src/temporal.ts` bootstrap. Playwright cannot drive real Safari; enable Safari →
   Settings → Developer → "Allow remote automation" to use `safaridriver`. WebContainers for Safari are
   beta and the first clone can stall for 6+ minutes; retry before filing a bug.
+- Device checks (2026-10-17, core 0.4.0 / react+vue 0.3.1; iOS Simulator iPhone 17, iOS 26.5, Safari 26.5;
+  Firefox 158 via geckodriver):
+  - iOS Safari: the production demo renders (SVG, Temporal polyfill active, coarse pointer detected);
+    the pinned header stays pinned while panning; one-finger pan on the chart and on the header band
+    scrolls the chart; touch-dragging a bar commits `task:moved`; long-press on a bar opens the
+    edit-hooks menu; the theme toggle cycles auto/light/dark; landscape layout OK.
+  - Not verified on a device: tap-to-select (WebDriver cannot synthesize taps on the iOS Simulator;
+    covered by the Chromium e2e specs only), pinch-zoom, iPad, real hardware.
+  - StackBlitz on iOS Safari is best-effort: the vanilla example opens in the editor but waits for
+    "Run this project" (StackBlitz warns about memory on iOS); React, Vue and headless stalled at
+    "Cloning repo from GitHub" for 3 minutes.
+  - Firefox 158 inside the StackBlitz vanilla preview: a real pointer drag moves a task.
 
 If Vite fails to boot, pin the Vite 7 line for the generated copies only, in
 `DEPENDENCY_OVERRIDES` at the top of the generator (the comment there names the keys), then
