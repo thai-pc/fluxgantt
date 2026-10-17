@@ -1,5 +1,32 @@
 # @fluxgantt/core
 
+## 0.4.0
+
+### Minor Changes
+
+- 7d4664d: Exports now carry the chart's ground. `exportSvg()` adds a full-size background `<rect>` (first rendered element, after `<title>`) to the exported copy, and `exportPng()` fills with the same color. The default is the chart's resolved `--fg-bg` custom property (`#0a0a0a` under `withTheme` dark), falling back to `#ffffff`, so a dark chart no longer exports as pale text on white or on a transparent page. `ExportSvgOptions` gains `background` (a hex/`rgb()`/`hsl()` color, a plain keyword, or `'transparent'`); an invalid value throws. Behavior change: `exportSvg()` was previously transparent, so hosts compositing the SVG over their own background should pass `background: 'transparent'`. Light charts with no `--fg-bg` export `#ffffff` PNGs exactly as before. Also trims a few diagnostic message tails (CSV unknown column, date length, JSON `schemaVersion`, PNG size/scale errors) to keep the bundle budget.
+- 3480f95: The SVG renderer now pins the date axis to the top of the scroll container (Canvas already did). The header is replicated in a `position: sticky`, `aria-hidden` `<svg class="fg-timeline__sticky-header">` placed after the chart `<svg>`, so `container.querySelector('svg')`, the ARIA grid, the exported SVG/PNG and drag/hit-testing are unchanged.
+  
+  Observable changes:
+  
+  - The container gains one sibling `<svg>` (`.fg-timeline__sticky-header`), and the chart `<svg>` gets `style="display:block"` (no inline descender gap under the chart; the exported SVG root carries it too).
+  - The label-column corner of the header is now painted with the header colour (`--fg-bg-subtle`) in SVG mode, so scrolled row labels do not show through the date axis.
+  - `scrollToTask` and `setDensity` use the same coordinates for SVG and Canvas: `align: 'start'` now puts the row directly under the 32px header (`scrollTop = row.y`), and the usable row band is `clientHeight - 32`. SVG `scrollTop` values shift by 32px compared with 0.3.x.
+  - Pointer events over the pinned header no longer reach the chart `<svg>`: clicking the header no longer clears the selection, and a dependency drag released over it links nothing.
+  - Ctrl+wheel zoom is now bound to the chart container, so it also works over the pinned header (and over blank container area).
+  - While mounted, the container's inline `scroll-padding-top` is `32px` so natively focus-scrolled rows stop below the header. A host-set inline value is overwritten while mounted and restored on unmount.
+  - The container must be laid out as a block or grid, not a flex container: a float is ignored on a flex item, so a flex row places the pinned header beside the chart and a flex column with an auto height collapses to about 32px (a flex column with a fixed height is fine). Give the scroll container no `padding-top` (a sticky box pins at the padding edge, so rows would show through the strip above it). The label column still scrolls away horizontally.
+  - Hosts where the page scrolls instead of the container (no `overflow`) now get the header pinned to the browser viewport top while the page scrolls through the chart; a fixed host navbar will cover it. Layout is unchanged.
+  - Right-to-left hosts: the header follows the chart's inline-start edge (`float: inline-start`), so the date labels stay aligned with the day columns.
+  - Firefox ignores `scroll-padding-top` when focusing an SVG row (it scrolls the container to the top); this predates the change.
+
+### Patch Changes
+
+- 370c132: Fix overlapping timeline header labels: the header is now two tiers (month or year spans above, left-aligned at the span start; days or months below) with width-aware label selection in both the SVG and Canvas renderers and their exports. No label leaves the chart area or is clipped by the right edge, and the dense tiers use one uniform stride. The header font is pinned (inline `12px system-ui, sans-serif`, so a host `text { font-size }` rule cannot break the fit and exports match the live view; row labels still inherit the host font). `GridColumn.label` in week view is now the day number only (the weekday was dropped to fit 24px columns). The default `--fg-fg-muted` fallback (`#71717a` to `#6b6b73`) is darker so the header text meets WCAG AA contrast (4.8:1, was 4.39:1) on the light header background; hosts that set `--fg-fg-muted` themselves are unaffected.
+  
+  Also fix a pre-existing Canvas paint-order bug: when the chart was scrolled vertically, task bars and label-column row text painted into the pinned header band and covered its labels. Row, dependency and focus-ring paints are now clipped to the row band below the header.
+- 0c280ad: `withTheme` now restores the mount container's prior inline `--fg-*` values on `unmount()` (and stops following `prefers-color-scheme` while unmounted), so a host-owned container is no longer left dark after the chart is unmounted.
+
 ## 0.3.1
 
 ### Patch Changes

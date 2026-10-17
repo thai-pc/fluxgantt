@@ -1,6 +1,6 @@
 // @fluxgantt/core — public entry (spec §7)
 
-export const VERSION = '0.3.1';
+export const VERSION = '0.4.0';
 
 // Public facade (spec §7)
 export { createGantt } from './gantt.js';
