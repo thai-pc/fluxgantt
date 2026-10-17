@@ -7,7 +7,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import fc from 'fast-check';
 import { createGantt } from '../../src/gantt.js';
-import type { ViewMode } from '../../src/gantt.js';
 import { getInternal } from '../../src/gantt-internal.js';
 import { withRender } from '../../src/render/mixin.js';
 import { withInteraction } from '../../src/interaction/mixin.js';
@@ -15,6 +14,7 @@ import { withEditHooks } from '../../src/edit-hooks/mixin.js';
 import { withResponsive } from '../../src/responsive/mixin.js';
 import type { ResponsiveOptions } from '../../src/responsive/mixin.js';
 import { toTaskId } from '../../src/types.js';
+import type { ViewMode } from '../../src/types.js';
 import type { TaskInput } from '../../src/store/index.js';
 
 const TASKS: readonly TaskInput[] = [
