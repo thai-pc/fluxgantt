@@ -98,19 +98,19 @@ interface ResizeState {
   readonly taskId: TaskId;
   /** The `.fg-task__bar` element — `width` is written live during the gesture, `x` is
    *  NEVER written (resolution #1 — "keep `start`"). */
-  readonly barEl: Element;
+  readonly bar: Element;
   /** The `.fg-task__progress` rect, when the bar has one (absent at `progress === 0`, and on a
    *  milestone — which never reaches here anyway). Its `width` is scaled live alongside `barEl`
    *  so the completed fraction stays proportional throughout the gesture instead of overflowing
    *  a shrinking bar. */
-  readonly progressEl: Element | null;
+  readonly fill: Element | null;
   /** The fill's share of the bar, captured at gesture start. Progress is a fraction OF THE BAR,
    *  so tracking the live width by ratio is what keeps it correct — re-deriving from
    *  `task.progress` would duplicate the renderer's own clamp here. */
-  readonly progressRatio: number;
-  readonly originalStart: DateInput;
-  readonly originalEnd: DateInput;
-  readonly originalWidth: number;
+  readonly ratio: number;
+  readonly s0: DateInput;
+  readonly e0: DateInput;
+  readonly w0: number;
 }
 
 /**
@@ -129,7 +129,7 @@ export function enableDragResize(
 ): () => void {
   const dragThresholdPx = options.dragThresholdPx ?? DEFAULT_DRAG_THRESHOLD_PX;
   // Resolved ONCE, here, rather than per hit-test: `matchMedia` is a layout-adjacent read and
-  // `hitTest` runs on every `pointerdown`. A device that gains a mouse mid-session therefore
+  // `claim` runs on every `pointerdown`. A device that gains a mouse mid-session therefore
   // keeps the zone it was enabled with — acceptable, since the coarse zone is a strict superset
   // of the fine one (it only makes the target easier to hit, never harder).
   const edgeHitZonePx =
@@ -139,11 +139,11 @@ export function enableDragResize(
       : DEFAULT_EDGE_HIT_ZONE_PX);
 
   const recognizer: PointerGestureRecognizer<ResizeState> = {
-    chromeClass: RESIZING_CLASS,
+    cls: RESIZING_CLASS,
     cursor: 'ew-resize',
     priority: RESIZE_PRIORITY,
-    dragThresholdPx,
-    hitTest(event, groupEl) {
+    slop: dragThresholdPx,
+    claim(event, groupEl) {
       // Same gate as drag-move: a rolled-up bar has no authored edge under the cursor
       // (spec-summary-rollup.md Ticket B2). Declining here also frees the edge zone, so a
       // rolled-up bar is inert rather than resize-only.
@@ -186,20 +186,20 @@ export function enableDragResize(
 
       return {
         taskId: task.id,
-        barEl,
-        progressEl,
-        progressRatio,
-        originalStart: task.start,
-        originalEnd: task.end,
-        originalWidth: barWidth,
+        bar: barEl,
+        fill: progressEl,
+        ratio: progressRatio,
+        s0: task.start,
+        e0: task.end,
+        w0: barWidth,
       };
     },
-    onMove(ctx, dxPixels) {
-      const deltaDays = snapDeltaToDay(dxPixels, ctx.timeScale);
+    move(ctx, dxPixels) {
+      const deltaDays = snapDeltaToDay(dxPixels, ctx.ts);
       const tentativeEnd = computeClampedResizedEnd(
-        ctx.timeScale,
-        ctx.state.originalStart,
-        ctx.state.originalEnd,
+        ctx.ts,
+        ctx.state.s0,
+        ctx.state.e0,
         deltaDays,
       );
       // Live pixel width derived from the SAME clamp via the already-captured `TimeScale`
@@ -212,29 +212,29 @@ export function enableDragResize(
       // space is offset-independent and correct.
       const newWidth = Math.max(
         0,
-        ctx.timeScale.dateToX(tentativeEnd) - ctx.timeScale.dateToX(ctx.state.originalStart),
+        ctx.ts.dateToX(tentativeEnd) - ctx.ts.dateToX(ctx.state.s0),
       );
-      ctx.state.barEl.setAttribute('width', String(newWidth));
-      if (ctx.state.progressEl) {
-        ctx.state.progressEl.setAttribute('width', String(newWidth * ctx.state.progressRatio));
+      ctx.state.bar.setAttribute('width', String(newWidth));
+      if (ctx.state.fill) {
+        ctx.state.fill.setAttribute('width', String(newWidth * ctx.state.ratio));
       }
       options.onResizing?.(ctx.state.taskId, tentativeEnd);
     },
-    onCommit(ctx, dxPixels) {
-      const deltaDays = snapDeltaToDay(dxPixels, ctx.timeScale);
+    commit(ctx, dxPixels) {
+      const deltaDays = snapDeltaToDay(dxPixels, ctx.ts);
       const newEnd = computeClampedResizedEnd(
-        ctx.timeScale,
-        ctx.state.originalStart,
-        ctx.state.originalEnd,
+        ctx.ts,
+        ctx.state.s0,
+        ctx.state.e0,
         deltaDays,
       );
       options.onTaskResized(ctx.state.taskId, newEnd);
     },
-    onCancel(ctx) {
+    cancel(ctx) {
       // Exact restore — width was mutated live during the gesture, `x` was never touched.
-      ctx.state.barEl.setAttribute('width', String(ctx.state.originalWidth));
-      if (ctx.state.progressEl) {
-        ctx.state.progressEl.setAttribute('width', String(ctx.state.originalWidth * ctx.state.progressRatio));
+      ctx.state.bar.setAttribute('width', String(ctx.state.w0));
+      if (ctx.state.fill) {
+        ctx.state.fill.setAttribute('width', String(ctx.state.w0 * ctx.state.ratio));
       }
     },
   };

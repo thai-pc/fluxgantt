@@ -89,8 +89,8 @@ export function computeDraggedDates(
 
 interface MoveState {
   readonly taskId: TaskId;
-  readonly originalStart: DateInput;
-  readonly originalEnd: DateInput;
+  readonly s0: DateInput;
+  readonly e0: DateInput;
 }
 
 /**
@@ -111,11 +111,11 @@ export function enableDragMove(
   const dragThresholdPx = options.dragThresholdPx ?? DEFAULT_DRAG_THRESHOLD_PX;
 
   const recognizer: PointerGestureRecognizer<MoveState> = {
-    chromeClass: DRAGGING_CLASS,
+    cls: DRAGGING_CLASS,
     cursor: 'grabbing',
     priority: MOVE_PRIORITY,
-    dragThresholdPx,
-    hitTest(_event, groupEl) {
+    slop: dragThresholdPx,
+    claim(_event, groupEl) {
       // A bar drawn at its ROLLED-UP span (spec-summary-rollup.md Ticket B2) is not draggable:
       // the painted geometry is derived on read from its descendants, so `task.start`/`end`
       // below — the only thing this gesture can commit — is NOT what the user is pointing at.
@@ -126,42 +126,42 @@ export function enableDragMove(
       const task = findGroupTask(groupEl, getTasks);
       // Race between the rendered DOM and the latest `tasks` — skip, don't throw.
       if (!task) return null;
-      return { taskId: task.id, originalStart: task.start, originalEnd: task.end };
+      return { taskId: task.id, s0: task.start, e0: task.end };
     },
-    onMove(ctx, dxPixels) {
-      const deltaDays = snapDeltaToDay(dxPixels, ctx.timeScale);
-      const pixelDx = deltaDays * ctx.timeScale.pixelsPerDay;
+    move(ctx, dxPixels) {
+      const deltaDays = snapDeltaToDay(dxPixels, ctx.ts);
+      const pixelDx = deltaDays * ctx.ts.pixelsPerDay;
       // Visual feedback during the drag: only shift the transform, do NOT call
       // handle.update()/taskStore.update() per frame (performance — renderer full-repaints).
-      ctx.groupEl.setAttribute('transform', `translate(${pixelDx} 0)`);
+      ctx.grp.setAttribute('transform', `translate(${pixelDx} 0)`);
       if (options.onDragging) {
         const { newStart, newEnd } = computeDraggedDates(
-          ctx.timeScale,
-          ctx.state.originalStart,
-          ctx.state.originalEnd,
+          ctx.ts,
+          ctx.state.s0,
+          ctx.state.e0,
           deltaDays,
         );
         options.onDragging(ctx.state.taskId, newStart, newEnd);
       }
     },
-    onCommit(ctx, dxPixels) {
+    commit(ctx, dxPixels) {
       // The coordinator already reset the drag chrome (class + cursor), so a throw from the
       // host's `onTaskMoved` can't leave `grabbing`/`fg-task--dragging` stuck.
       // The transform is intentionally kept — the bar holds its dragged position until the
       // caller re-renders with the updated task.
-      const deltaDays = snapDeltaToDay(dxPixels, ctx.timeScale);
+      const deltaDays = snapDeltaToDay(dxPixels, ctx.ts);
       const { newStart, newEnd } = computeDraggedDates(
-        ctx.timeScale,
-        ctx.state.originalStart,
-        ctx.state.originalEnd,
+        ctx.ts,
+        ctx.state.s0,
+        ctx.state.e0,
         deltaDays,
       );
       options.onTaskMoved(ctx.state.taskId, newStart, newEnd);
     },
-    onCancel(ctx) {
+    cancel(ctx) {
       // `removeAttribute` is already a no-op when nothing was set — safe to call
       // unconditionally (matches every existing cancellation-path test).
-      ctx.groupEl.removeAttribute('transform');
+      ctx.grp.removeAttribute('transform');
     },
   };
 

@@ -70,23 +70,23 @@ const LINKING_CLASS = 'fg-task--linking';
 type ClientToUserTransform = ReturnType<typeof readClientScale>;
 
 interface LinkState {
-  readonly fromTaskId: TaskId;
+  readonly from: TaskId;
   /** Which handle was grabbed — DETERMINES THE EDGE DIRECTION at commit (FS = predecessor's
    *  finish → successor's start): grabbing the owner's END/finish handle makes the owner the
    *  predecessor (owner → drop); grabbing its START handle makes the owner the successor
    *  (drop → owner). Not a display concern — it flips the argument order of `linkTasks`. */
-  readonly handleEnd: 'start' | 'end';
+  readonly edge: 'start' | 'end';
   /** SVG user-space coordinates of the grabbed handle — read directly off its own `cx`/`cy`
-   *  attributes at `hitTest()` time (no geometry re-derivation, same "read the
+   *  attributes at `claim()` time (no geometry re-derivation, same "read the
    *  already-rendered DOM" posture as `drag-resize.ts`'s `barX`/`barWidth`). */
-  readonly originX: number;
-  readonly originY: number;
-  /** Assigned exactly once, in `onDragStart` — `null` before the gesture passes the
+  readonly ox: number;
+  readonly oy: number;
+  /** Assigned exactly once, in `start` — `null` before the gesture passes the
    *  threshold. */
-  previewPath: SVGPathElement | null;
-  /** Captured once in `onDragStart` so `onMove` doesn't force a layout reflow
+  line: SVGPathElement | null;
+  /** Captured once in `start` so `onMove` doesn't force a layout reflow
    *  (`getBoundingClientRect`) + reparse the viewBox on every `pointermove`. */
-  transform: ClientToUserTransform | null;
+  xf: ClientToUserTransform | null;
 }
 
 /**
@@ -106,12 +106,12 @@ export function enableDragCreateDep(
   const dragThresholdPx = options.dragThresholdPx ?? DEFAULT_DRAG_THRESHOLD_PX;
 
   const recognizer: PointerGestureRecognizer<LinkState> = {
-    chromeClass: LINKING_CLASS,
+    cls: LINKING_CLASS,
     cursor: 'crosshair',
     priority: LINK_PRIORITY,
-    dragThresholdPx,
+    slop: dragThresholdPx,
 
-    hitTest(event, groupEl) {
+    claim(event, groupEl) {
       if (!(event.target instanceof Element)) return null;
       const handleEl = event.target.closest('.fg-task__link-handle');
       // Decision 1's core constraint: ONLY a pointerdown squarely on a handle claims this
@@ -129,13 +129,13 @@ export function enableDragCreateDep(
       const cy = Number(handleEl.getAttribute('cy'));
       if (!Number.isFinite(cx) || !Number.isFinite(cy)) return null;
 
-      return { fromTaskId, handleEnd, originX: cx, originY: cy, previewPath: null, transform: null };
+      return { from: fromTaskId, edge: handleEnd, ox: cx, oy: cy, line: null, xf: null };
     },
 
-    onDragStart(ctx) {
+    start(ctx) {
       // CRITICAL, non-obvious (spec §4.2): the shared coordinator (`pointer-drag.ts`'s
       // `onPointerDown`) unconditionally calls `captureEl.setPointerCapture(pointerId)` for
-      // whatever recognizer claimed the gesture — `captureEl` here is the handle circle
+      // whatever recognizer claimed the gesture — `cap` here is the handle circle
       // itself. Per the Pointer Events spec, once an element has pointer capture, EVERY
       // subsequent event for that pointerId (including the final `pointerup`) is RETARGETED
       // to the capturing element — `event.target` would stay pinned to the origin handle for
@@ -149,7 +149,7 @@ export function enableDragCreateDep(
       // whether `window` listeners fire), and the coordinator's own `teardownListeners()`
       // already calls `releasePointerCapture` again defensively (idempotent, try/catch).
       try {
-        ctx.captureEl.releasePointerCapture?.(ctx.pointerId);
+        ctx.cap.releasePointerCapture?.(ctx.pointerId);
       } catch {
         // Best-effort — mirrors pointer-drag.ts's own posture for this exact call.
       }
@@ -158,7 +158,7 @@ export function enableDragCreateDep(
       path.setAttribute('class', 'fg-dependency-preview');
       path.setAttribute(
         'd',
-        `M ${ctx.state.originX} ${ctx.state.originY} L ${ctx.state.originX} ${ctx.state.originY}`,
+        `M ${ctx.state.ox} ${ctx.state.oy} L ${ctx.state.ox} ${ctx.state.oy}`,
       );
       path.setAttribute('marker-end', `url(#${ARROWHEAD_MARKER_ID})`);
       path.style.setProperty('fill', 'none');
@@ -170,23 +170,23 @@ export function enableDragCreateDep(
       // no `.fg-task` ancestor, spuriously reading as "no drop target".
       path.style.setProperty('pointer-events', 'none');
       handle.svg.appendChild(path);
-      ctx.state.previewPath = path;
-      ctx.state.transform = readClientScale(handle.svg);
+      ctx.state.line = path;
+      ctx.state.xf = readClientScale(handle.svg);
     },
 
-    onMove(ctx, _dxPixels, event) {
-      const path = ctx.state.previewPath;
-      if (!path || !ctx.state.transform) return; // defensive; onDragStart always runs first
-      const { x, y } = applyTransform(ctx.state.transform, event.clientX, event.clientY);
-      path.setAttribute('d', `M ${ctx.state.originX} ${ctx.state.originY} L ${x} ${y}`);
+    move(ctx, _dxPixels, event) {
+      const path = ctx.state.line;
+      if (!path || !ctx.state.xf) return; // defensive; onDragStart always runs first
+      const { x, y } = applyTransform(ctx.state.xf, event.clientX, event.clientY);
+      path.setAttribute('d', `M ${ctx.state.ox} ${ctx.state.oy} L ${x} ${y}`);
       if (options.onLinking) {
-        options.onLinking(ctx.state.fromTaskId, resolveDropTarget(event, ctx.state.fromTaskId));
+        options.onLinking(ctx.state.from, resolveDropTarget(event, ctx.state.from));
       }
     },
 
-    onCommit(ctx, _dxPixels, event) {
-      ctx.state.previewPath?.remove();
-      const dropId = resolveDropTarget(event, ctx.state.fromTaskId);
+    commit(ctx, _dxPixels, event) {
+      ctx.state.line?.remove();
+      const dropId = resolveDropTarget(event, ctx.state.from);
       // Empty space OR self — decision 2's silent revert, resolved right here so the
       // facade's commit handler only ever has to deal with STORE-level rejections
       // (duplicate-pair / cycle), never a self-pair.
@@ -196,12 +196,12 @@ export function enableDragCreateDep(
       // (owner → drop); grabbing its START handle → owner is the successor (drop → owner).
       // Without this, a drag started from a start-handle produced the REVERSED dependency.
       const [from, to] =
-        ctx.state.handleEnd === 'start' ? [dropId, ctx.state.fromTaskId] : [ctx.state.fromTaskId, dropId];
+        ctx.state.edge === 'start' ? [dropId, ctx.state.from] : [ctx.state.from, dropId];
       options.onDependencyCreated(from, to);
     },
 
-    onCancel(ctx) {
-      ctx.state.previewPath?.remove();
+    cancel(ctx) {
+      ctx.state.line?.remove();
     },
   };
 
