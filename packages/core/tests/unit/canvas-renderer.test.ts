@@ -850,7 +850,7 @@ describe('hitTestRow', () => {
     stubRect(h.canvas, {});
     // HEADER_HEIGHT = 32, ROW_HEIGHT.default = 32 — midpoint of row 0's band.
     const hit = h.hitTestRow(100, 32 + 16);
-    expect(hit).toEqual({ taskId: baseTasks[0]!.id, rowIndex: 0, hitToggle: false });
+    expect(hit).toEqual({ taskId: baseTasks[0]!.id, rowIndex: 0, hitToggle: false, onBar: false });
   });
 
   it('click inside a deeply-nested row band resolves correctly regardless of label indentation', () => {
@@ -860,7 +860,7 @@ describe('hitTestRow', () => {
     const h = createCanvasRenderer(container, { tasks: baseTasks, dependencies: baseDeps });
     stubRect(h.canvas, {});
     const hit = h.hitTestRow(100, 32 + 32 + 16); // row index 1's band midpoint
-    expect(hit).toEqual({ taskId: baseTasks[1]!.id, rowIndex: 1, hitToggle: false });
+    expect(hit).toEqual({ taskId: baseTasks[1]!.id, rowIndex: 1, hitToggle: false, onBar: false });
   });
 
   it('click in the header band (y < HEADER_HEIGHT) resolves to undefined', () => {
@@ -898,7 +898,7 @@ describe('hitTestRow', () => {
     stubRect(h.canvas, {});
     // Exact boundary between row 0 and row 1: y = HEADER_HEIGHT + ROW_HEIGHT = 64.
     const hit = h.hitTestRow(100, 64);
-    expect(hit).toEqual({ taskId: baseTasks[1]!.id, rowIndex: 1, hitToggle: false });
+    expect(hit).toEqual({ taskId: baseTasks[1]!.id, rowIndex: 1, hitToggle: false, onBar: false });
   });
 
   it.each(['compact', 'default', 'comfortable'] as const)('resolves correctly at density=%s', (density) => {
@@ -916,11 +916,11 @@ describe('hitTestRow', () => {
     installMockContext(mock);
     const h = createCanvasRenderer(container, { tasks: [baseTasks[0]!], dependencies: [] });
     stubRect(h.canvas, {});
-    expect(h.hitTestRow(100, 32 + 1)).toEqual({ taskId: baseTasks[0]!.id, rowIndex: 0, hitToggle: false });
+    expect(h.hitTestRow(100, 32 + 1)).toEqual({ taskId: baseTasks[0]!.id, rowIndex: 0, hitToggle: false, onBar: false });
 
     const swapped = task('z', '2026-01-05T09:00', '2026-01-07T17:00');
     h.update({ tasks: [swapped], dependencies: [] });
-    expect(h.hitTestRow(100, 32 + 1)).toEqual({ taskId: swapped.id, rowIndex: 0, hitToggle: false });
+    expect(h.hitTestRow(100, 32 + 1)).toEqual({ taskId: swapped.id, rowIndex: 0, hitToggle: false, onBar: false });
   });
 
   it('accounts for a non-zero container.scrollTop (fix #37) — a click at the same canvas-local pixel resolves to a different row once scrolled', () => {
@@ -931,12 +931,12 @@ describe('hitTestRow', () => {
     stubRect(h.canvas, {});
 
     // At scrollTop=0, a click at the row-0 band midpoint resolves to row 0.
-    expect(h.hitTestRow(100, 32 + 16)).toEqual({ taskId: toTaskId('t0'), rowIndex: 0, hitToggle: false });
+    expect(h.hitTestRow(100, 32 + 16)).toEqual({ taskId: toTaskId('t0'), rowIndex: 0, hitToggle: false, onBar: false });
 
     // Scroll down by exactly 5 rows (5 * 32 = 160px) — the SAME canvas-local pixel now maps
     // to content-space row 5, not row 0 (`hitTestRow` must add back `container.scrollTop`).
     h.container.scrollTop = 160;
-    expect(h.hitTestRow(100, 32 + 16)).toEqual({ taskId: toTaskId('t5'), rowIndex: 5, hitToggle: false });
+    expect(h.hitTestRow(100, 32 + 16)).toEqual({ taskId: toTaskId('t5'), rowIndex: 5, hitToggle: false, onBar: false });
   });
 });
 

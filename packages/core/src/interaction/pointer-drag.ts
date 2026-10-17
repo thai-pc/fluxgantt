@@ -15,9 +15,10 @@
 // to, per architecture.md "Interaction". Still does NOT import react/vue/svelte.
 //
 // Internal coordination primitive — NOT exported from `interaction/index.ts` or
-// `core/index.ts` (spec §0): only `drag-move.ts`/`drag-resize.ts` import this module,
+// `core/index.ts` (spec §0): only the drag recognizers and `interaction/mixin.ts` import this module,
 // keeping the public surface small (coding-conventions.md).
-import type { SvgRendererHandle, TimeScale } from '../render/index.js';
+import type { InteractiveRendererHandle } from '../render/interactive-renderer-handle.js';
+import type { TimeScale } from '../render/renderer-base.js';
 import type { Task } from '../types.js';
 
 export interface PointerGestureContext<TState> {
@@ -96,33 +97,9 @@ export interface PointerDragController {
   register<TState>(recognizer: PointerGestureRecognizer<TState>): () => void;
 }
 
-export const DEFAULT_DRAG_THRESHOLD_PX = 4;
-
-/**
- * Clamp for the snapped day-delta (review B2, drag-move.ts's original comment, kept
- * verbatim). `Number.isFinite` alone lets a finite but absurd `clientX` (e.g. 1e8) through,
- * and `ZonedDateTime.add({ days: 1e8 })` throws a `RangeError` (Temporal's
- * representable-instant limit) — which would escape a pointer handler and leave the drag UI
- * wedged. ±366,000 days ≈ 1,000 years: far beyond any real drag, always inside Temporal's
- * range regardless of the task's base date.
- */
-export const MAX_DRAG_DAYS = 366_000;
-
-/**
- * Snap a pixel delta to the nearest whole day (by `timeScale.pixelsPerDay`). Returns the
- * NUMBER OF DAYS (N), not pixels. Canonical home (moved verbatim from `drag-move.ts` —
- * `drag-move.ts` re-exports this same function so its existing test's import path keeps
- * resolving unedited).
- */
-export function snapDeltaToDay(dxPixels: number, timeScale: TimeScale): number {
-  if (!Number.isFinite(dxPixels) || !Number.isFinite(timeScale.pixelsPerDay) || timeScale.pixelsPerDay === 0) {
-    return 0;
-  }
-  const n = Math.round(dxPixels / timeScale.pixelsPerDay);
-  // Clamp a finite-but-absurd delta so a recognizer's `.add({ days: n })` commit path can
-  // never throw a Temporal RangeError (review B2).
-  return Math.max(-MAX_DRAG_DAYS, Math.min(MAX_DRAG_DAYS, n));
-}
+// Canonical home is `internal/drag-math.ts` (shared with the Canvas recognizers); re-exported so existing
+// import paths keep resolving.
+export { DEFAULT_DRAG_THRESHOLD_PX, MAX_DRAG_DAYS, snapDeltaToDay } from '../internal/drag-math.js';
 
 /** The task a `.fg-task[data-task-id]` group stands for (`undefined` on a DOM/data race). */
 export function findGroupTask(groupEl: Element, getTasks: () => readonly Task[]): Task | undefined {
@@ -151,13 +128,20 @@ interface OpenGesture {
   moved: boolean;
 }
 
-const controllers = new WeakMap<SvgRendererHandle, PointerDragController>();
+/** What the coordinator needs from a renderer: SVG and Canvas handles both satisfy it. `hitTestBar`
+ *  is present only on Canvas and doubles as the discriminator (no per-bar DOM to `closest()`). */
+type DragSurface = Pick<InteractiveRendererHandle, 'pointerEventTarget' | 'hitTestBar'> & {
+  destroy(): void;
+  getTimeScale(): TimeScale;
+};
+
+const controllers = new WeakMap<DragSurface, PointerDragController>();
 
 /**
- * One controller per `SvgRendererHandle`, created lazily, found via a `WeakMap` (no manual
+ * One controller per renderer handle (SVG or Canvas), created lazily, found via a `WeakMap` (no manual
  * cleanup needed).
  */
-export function getPointerDragController(handle: SvgRendererHandle): PointerDragController {
+export function getPointerDragController(handle: DragSurface): PointerDragController {
   let controller = controllers.get(handle);
   if (!controller) {
     controller = createController(handle);
@@ -166,7 +150,7 @@ export function getPointerDragController(handle: SvgRendererHandle): PointerDrag
   return controller;
 }
 
-function createController(handle: SvgRendererHandle): PointerDragController {
+function createController(handle: DragSurface): PointerDragController {
   const recognizers: PointerGestureRecognizer<unknown>[] = [];
   let state: OpenGesture | null = null;
   let attached = false;
@@ -197,7 +181,8 @@ function createController(handle: SvgRendererHandle): PointerDragController {
   function ensureAttached(): void {
     if (attached) return;
     attached = true;
-    handle.svg.addEventListener('pointerdown', onPointerDown);
+    // `Element.addEventListener` only knows `ElementEventMap`, which has no `pointerdown`.
+    handle.pointerEventTarget.addEventListener('pointerdown', onPointerDown as EventListener);
 
     // B1 (High, inherited from drag-move.ts): `register()` and the renderer handle are two
     // independent lifecycles. If the host calls `handle.destroy()` while a gesture is open,
@@ -222,7 +207,7 @@ function createController(handle: SvgRendererHandle): PointerDragController {
   function detach(): void {
     if (!attached) return;
     attached = false;
-    handle.svg.removeEventListener('pointerdown', onPointerDown);
+    handle.pointerEventTarget.removeEventListener('pointerdown', onPointerDown as EventListener);
     if (handle.destroy === wrappedDestroy && originalDestroy) {
       handle.destroy = originalDestroy;
     }
@@ -241,7 +226,7 @@ function createController(handle: SvgRendererHandle): PointerDragController {
     if (!(event.target instanceof Element)) return;
     // Not a drag on a task bar — return early, do NOT preventDefault/stopPropagation
     // (don't block future click/selection on grid/header/empty space).
-    const groupEl = event.target.closest('.fg-task[data-task-id]');
+    const groupEl = handle.hitTestBar ? handle.pointerEventTarget : event.target.closest('.fg-task[data-task-id]');
     if (!groupEl) return;
 
     // Pointer coordinates are untrusted numeric input — bail at pointerdown if already

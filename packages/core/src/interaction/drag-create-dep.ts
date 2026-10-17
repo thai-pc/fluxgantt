@@ -24,12 +24,8 @@ import type { SvgRendererHandle } from '../render/index.js';
 import { ARROWHEAD_MARKER_ID } from '../render/index.js';
 import type { Task, TaskId } from '../types.js';
 import { toTaskId } from '../types.js';
-import {
-  getPointerDragController,
-  DEFAULT_DRAG_THRESHOLD_PX,
-  findGroupTask,
-  readClientScale,
-} from './pointer-drag.js';
+import { DEFAULT_DRAG_THRESHOLD_PX } from '../internal/drag-math.js';
+import { getPointerDragController, findGroupTask, readClientScale } from './pointer-drag.js';
 import type { PointerGestureRecognizer } from './pointer-drag.js';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';

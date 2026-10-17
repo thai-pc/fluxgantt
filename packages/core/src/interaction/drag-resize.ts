@@ -20,19 +20,20 @@
 // Registers through the shared `pointer-drag.ts` coordinator with `RESIZE_PRIORITY <
 // MOVE_PRIORITY` so an edge-zone claim always wins over `drag-move.ts`'s whole-bar claim on
 // the same `pointerdown` (resolution #8).
-import { normalizeDate } from '../compute/working-calendar.js';
-import { getTemporal } from '../internal/temporal.js';
-import type { SvgRendererHandle, TimeScale } from '../render/index.js';
+import type { SvgRendererHandle } from '../render/index.js';
 import type { DateInput, Task, TaskId } from '../types.js';
 import type { Temporal } from '@js-temporal/polyfill';
 import {
-  getPointerDragController,
+  COARSE_EDGE_HIT_ZONE_PX,
   DEFAULT_DRAG_THRESHOLD_PX,
-  findGroupTask,
-  readClientScale,
+  EDGE_HIT_ZONE_PX as DEFAULT_EDGE_HIT_ZONE_PX,
+  computeClampedResizedEnd,
   snapDeltaToDay,
-} from './pointer-drag.js';
+} from '../internal/drag-math.js';
+import { getPointerDragController, findGroupTask, readClientScale } from './pointer-drag.js';
 import type { PointerGestureRecognizer } from './pointer-drag.js';
+
+export { computeClampedResizedEnd } from '../internal/drag-math.js';
 
 export interface DragResizeOptions {
   /** Called EXACTLY ONCE on a past-threshold `pointerup` that started in the right-edge
@@ -55,44 +56,8 @@ export interface DragResizeOptions {
   onResizing?(taskId: TaskId, tentativeEnd: Temporal.ZonedDateTime): void;
 }
 
-const DEFAULT_EDGE_HIT_ZONE_PX = 8;
-/** Coarse-pointer edge zone (spec-responsive-mobile.md): WCAG 2.2 SC 2.5.8 Target Size (Minimum)
- *  is 24x24 CSS px, and 8px of bar edge is not reachable with a fingertip. Kept in lockstep with
- *  the `@media (pointer: coarse)` `--fg-link-handle-radius: 12px` in `svg-renderer.ts`: that
- *  handle sits ON the bar's end anchor at a HIGHER gesture priority than this recognizer, so it
- *  shadows the innermost 12px of this zone. 24 > 12 is exactly what leaves a reachable band of
- *  edge-resize beside the handle — narrowing this, or widening that radius, makes touch resize
- *  unreachable. Change one and re-check the other. */
-const COARSE_EDGE_HIT_ZONE_PX = 24;
 const RESIZE_PRIORITY = 0; // lower than MOVE_PRIORITY (10) — edge wins (resolution #8)
 const RESIZING_CLASS = 'fg-task--resizing';
-
-/**
- * Mirrors `computeDraggedDates`' shape/spirit but resize-specific: only `end` moves, floored
- * at `start + 1 calendar day` (resolution #3 — matches the day-snap granularity). Pure,
- * Temporal-only, headless-testable without DOM — same posture as `computeDraggedDates`.
- */
-export function computeClampedResizedEnd(
-  timeScale: TimeScale,
-  originalStart: DateInput,
-  originalEnd: DateInput,
-  deltaDays: number,
-): Temporal.ZonedDateTime {
-  const timezone = timeScale.range.start.timeZoneId;
-  const start = normalizeDate(originalStart, timezone);
-  const end = normalizeDate(originalEnd, timezone);
-  const tentativeEnd = end.add({ days: deltaDays });
-  // Floor the end so a resize can't invert/over-shrink the bar — but NEVER expand a task that
-  // is naturally shorter than the 1-day snap unit (review A2). The minimum is the EARLIER of
-  // `start + 1 calendar day` and the task's own original end: for a multi-day task this is
-  // `start + 1 day` (day-snap granularity, resolution #3); for a sub-day task it is the
-  // original end, so a zero-day delta leaves it unchanged instead of ballooning it to a full
-  // day (which would then snap back on commit through the working-hours pipeline).
-  const compare = getTemporal().ZonedDateTime.compare;
-  const dayFloor = start.add({ days: 1 });
-  const minEnd = compare(end, dayFloor) < 0 ? end : dayFloor;
-  return compare(tentativeEnd, minEnd) < 0 ? minEnd : tentativeEnd;
-}
 
 interface ResizeState {
   readonly taskId: TaskId;

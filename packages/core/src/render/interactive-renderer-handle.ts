@@ -4,6 +4,16 @@
 // without violating either file's module-isolation rules.
 import type { TaskId } from '../types.js';
 
+/** Where a press on a Canvas bar lands: a link handle, the resizable end edge, or the movable body. */
+export type BarZone = 'link-start' | 'link-end' | 'resize-end' | 'body';
+
+/** The bar zone a drag recognizer would claim at a point (see `InteractiveRendererHandle.hitTestBar`). */
+export interface BarHit {
+  /** Resolved from the laid-out rows, never parsed from DOM. */
+  readonly taskId: TaskId;
+  readonly zone: BarZone;
+}
+
 /**
  * Minimal structural contract both `SvgRendererHandle` and `CanvasRendererHandle` satisfy.
  * `interactionRoot` (typed `Element` — the narrowest common ancestor of `SVGSVGElement` and
@@ -48,8 +58,18 @@ export interface InteractiveRendererHandle {
    * meaningless, so keyboard-driven host UI (edit hooks) anchors here instead.
    */
   getRowAnchor?(rowIndex: number): { readonly clientX: number; readonly clientY: number };
+  /**
+   * Canvas only. The bar zone a drag recognizer would CLAIM at this client point, or `undefined`
+   * (header, outside any bar, rolled-up body, milestone edge, or no drag attached, e.g. `readOnly`).
+   * Its presence also tells the pointer-drag coordinator there is no per-bar DOM. `pointerType`
+   * gates the link-handle zones: on touch they only claim for a selected bar (the only bars whose
+   * handles are revealed there).
+   */
+  hitTestBar?(clientX: number, clientY: number, pointerType?: string): BarHit | undefined;
+  /** `onBar` (Canvas): the point is inside the bar rect / milestone diamond, so edit hooks can use
+   *  the drag threshold as the long-press slop. */
   hitTestRow?(
     clientX: number,
     clientY: number,
-  ): { taskId: TaskId; rowIndex: number; hitToggle: boolean } | undefined;
+  ): { taskId: TaskId; rowIndex: number; hitToggle: boolean; onBar?: boolean } | undefined;
 }

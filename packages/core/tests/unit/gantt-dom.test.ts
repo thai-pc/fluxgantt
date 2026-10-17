@@ -17,7 +17,8 @@ import { createGantt } from '../helpers/create-gantt.js';
 import { getInternal } from '../../src/gantt-internal.js';
 import { CANVAS_AUTO_SWITCH_THRESHOLD } from '../../src/render/mixin.js';
 import { createSvgRenderer } from '../../src/render/svg-renderer.js';
-import { CanvasDimensionExceededError, createCanvasRenderer } from '../../src/render/canvas-renderer.js';
+import { CanvasDimensionExceededError, createCanvasRenderer, type CanvasRendererHandle } from '../../src/render/canvas-renderer.js';
+import { layoutRows, layoutTaskBar } from '../../src/render/renderer-base.js';
 import { computeRollup } from '../../src/compute/rollup.js';
 import { toTaskId, type Task } from '../../src/types.js';
 import type { TaskInput } from '../../src/store/index.js';
@@ -1245,8 +1246,70 @@ describe('renderer auto-switch (spec-canvas-auto-switch.md)', () => {
     HEAVY_TEST_TIMEOUT_MS,
   );
 
+  /** jsdom has no layout: give the canvas its content box and the scroll container its (narrower)
+   *  visible box, which the drag hit-test also checks. */
+  function stubBoxes(h: CanvasRendererHandle): void {
+    const box = (w: number) => ({ left: 0, top: 0, right: w, bottom: 600, x: 0, y: 0, width: w, height: 600, toJSON: () => ({}) });
+    vi.spyOn(h.canvas, 'getBoundingClientRect').mockReturnValue(box(4000));
+    vi.spyOn(h.container, 'getBoundingClientRect').mockReturnValue(box(1500));
+    Object.defineProperty(h.container, 'clientWidth', { value: 1500, configurable: true });
+    Object.defineProperty(h.container, 'clientHeight', { value: 600, configurable: true });
+  }
+
+  /** The live Canvas handle of a mounted chart (typed through the internal mount slot). */
+  function canvasHandleOf(gantt: ReturnType<typeof createGantt>): CanvasRendererHandle {
+    return getInternal(gantt).mountOf()!.handle as CanvasRendererHandle;
+  }
+
   it(
-    'readOnly: true in Canvas mode — the SVG-only interaction disposers are inert no-ops; unmount()/destroy() do not throw and are idempotent',
+    'Canvas mode: an editable chart attaches drag (a bar drag emits task:moved and moves the task); a readOnly chart attaches none',
+    async () => {
+      installMockCanvasContext();
+      const tasks = [taskInput('wide', '2026-01-05T00:00', '2026-01-09T00:00'), ...buildManyTasks(CANVAS_AUTO_SWITCH_THRESHOLD)];
+
+      const editable = createGantt({ tasks });
+      const moved = vi.fn();
+      editable.on('task:moved', moved);
+      editable.mount(container);
+      await vi.waitFor(() => expect(container.querySelector('canvas')).not.toBeNull(), HEAVY_WAIT_FOR_TIMEOUT_MS);
+      const handle = canvasHandleOf(editable);
+      stubBoxes(handle);
+      const rows = layoutRows(handle.getRenderState().input.tasks, 'default');
+      const bar = layoutTaskBar(rows[0]!.task, handle.getTimeScale(), rows[0]!, 32);
+      const left = handle.getLabelColumnWidth() + bar.x;
+      const y = 32 + bar.y + bar.height / 2;
+      expect(handle.hitTestBar(left + 40, y)).toEqual({ taskId: 'wide', zone: 'body' });
+
+      const ptr = (type: string, x: number): PointerEvent =>
+        new PointerEvent(type, { bubbles: true, cancelable: true, clientX: x, clientY: y, pointerId: 1, pointerType: 'mouse' });
+      handle.canvas.dispatchEvent(ptr('pointerdown', left + 40));
+      window.dispatchEvent(ptr('pointermove', left + 40 + 48));
+      window.dispatchEvent(ptr('pointerup', left + 40 + 48));
+      expect(moved).toHaveBeenCalledTimes(1);
+      expect(String(editable.getTask(toTaskId('wide'))!.start)).toContain('2026-01-07');
+      editable.destroy();
+      expect(container.querySelector('.fg-timeline-canvas-overlay')).toBeNull();
+
+      const readOnly = createGantt({ tasks, readOnly: true });
+      const movedRo = vi.fn();
+      readOnly.on('task:moved', movedRo);
+      readOnly.mount(container);
+      await vi.waitFor(() => expect(container.querySelector('canvas')).not.toBeNull(), HEAVY_WAIT_FOR_TIMEOUT_MS);
+      const roHandle = canvasHandleOf(readOnly);
+      stubBoxes(roHandle);
+      expect(roHandle.hitTestBar(left + 40, y)).toBeUndefined(); // no drag attached
+      roHandle.canvas.dispatchEvent(ptr('pointerdown', left + 40));
+      window.dispatchEvent(ptr('pointermove', left + 40 + 48));
+      window.dispatchEvent(ptr('pointerup', left + 40 + 48));
+      expect(movedRo).not.toHaveBeenCalled();
+      expect(container.querySelector('.fg-timeline-canvas-overlay')).toBeNull();
+      readOnly.destroy();
+    },
+    HEAVY_TEST_TIMEOUT_MS * 3, // two real above-threshold mounts + a cascading commit
+  );
+
+  it(
+    'readOnly: true in Canvas mode — no drag is attached; unmount()/destroy() do not throw and are idempotent',
     async () => {
       installMockCanvasContext();
       const gantt = createGantt({

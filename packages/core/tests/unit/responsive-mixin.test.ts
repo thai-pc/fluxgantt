@@ -16,6 +16,7 @@ import type { ResponsiveOptions } from '../../src/responsive/mixin.js';
 import { ROW_HEIGHT } from '../../src/render/renderer-base.js';
 import type { Density } from '../../src/types.js';
 import { toTaskId } from '../../src/types.js';
+import { getInternal } from '../../src/gantt-internal.js';
 import type { TaskInput } from '../../src/store/index.js';
 
 const TASKS: readonly TaskInput[] = [
@@ -312,6 +313,31 @@ describe('withResponsive — the pan recognizer (touch arbitration)', () => {
     // Not panned — this is the load-bearing assertion of the whole arbitration design.
     expect(container.scrollLeft).toBe(500);
     expect(container.scrollTop).toBe(100);
+  });
+
+  it('Canvas: a pointerdown that `hitTestBar` claims is left to the drag recognizers; one it declines pans', () => {
+    // A Canvas target is always the <canvas>, so `closest('.fg-task')` can never find a bar: the
+    // handle's geometric `hitTestBar` answers instead (undefined on an SVG handle). Simulated by
+    // bolting it onto the live handle and pressing on the chart background.
+    const { gantt, svg } = mountWithScroll();
+    const handle = getInternal(gantt).mountOf()!.handle as unknown as {
+      hitTestBar?: (x: number, y: number, pointerType?: string) => { taskId: string; zone: string } | undefined;
+    };
+    const seen: Array<[number, number, string | undefined]> = [];
+    let claim = true;
+    handle.hitTestBar = (x, y, t) => (seen.push([x, y, t]), claim ? { taskId: 't1', zone: 'body' } : undefined);
+    const grid = svg.querySelector('.fg-timeline__row') ?? svg;
+
+    pointer('pointerdown', grid, 300, 400);
+    pointer('pointermove', grid, 250, 380);
+    expect(container.scrollLeft).toBe(500); // claimed: no pan
+    expect(seen[0]).toEqual([300, 400, 'touch']);
+    pointer('pointerup', grid, 250, 380);
+
+    claim = false;
+    pointer('pointerdown', grid, 300, 400);
+    pointer('pointermove', grid, 250, 380);
+    expect(container.scrollLeft).toBe(550); // declined: pans
   });
 
   it('a pointerdown on a bar CHILD (the rendered rect/label) is also declined, via closest()', () => {

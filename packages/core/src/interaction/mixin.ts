@@ -22,6 +22,7 @@ import { layoutRows } from '../render/renderer-base.js';
 import type { SvgRendererHandle } from '../render/svg-renderer.js';
 import type { CanvasRendererHandle } from '../render/canvas-renderer.js';
 import { enableDragMove } from './drag-move.js';
+import { getPointerDragController } from './pointer-drag.js';
 import { enableDragResize } from './drag-resize.js';
 import { enableDragCreateDep } from './drag-create-dep.js';
 import { enableClickSelect } from './selection.js';
@@ -165,37 +166,39 @@ function wireInto(
   // never get pushed in Canvas mode).
   const disposers = [clickSelectDispose, collapseToggleDispose, keyboardNav.dispose];
 
+  // One callbacks object for both renderers: SVG hands each recognizer its own slice, Canvas passes
+  // the lot to `attachDrag`. Registration order never sets priority (explicit numbers do).
+  const callbacks = {
+    onTaskResized: (taskId: TaskId, newEnd: Temporal.ZonedDateTime) => commitResize(instance, internal, taskId, newEnd),
+    onTaskMoved: (taskId: TaskId, newStart: Temporal.ZonedDateTime, newEnd: Temporal.ZonedDateTime) =>
+      commitDrag(internal, taskId, newStart, newEnd),
+    onDependencyCreated:
+      config.enableDependencyDrag !== false
+        ? (fromTaskId: TaskId, toTaskId: TaskId) => commitCreateDep(instance, internal, fromTaskId, toTaskId)
+        : undefined,
+  };
   if (renderer === 'svg') {
-    // Cast, not a narrow: `renderer`/`handle` are two separate parameters, so TypeScript cannot
-    // correlate a check on one to narrow the other — this invariant (renderer === 'svg' implies
-    // the handle was produced by createSvgRenderer()) is guaranteed by construction in
-    // `render/mixin.ts` and documented here.
+    // Cast, not a narrow: `renderer`/`handle` are separate parameters, so TypeScript cannot
+    // correlate them; renderer === 'svg' implies an SVG handle by construction in `render/mixin.ts`.
     const svgHandle = handle as SvgRendererHandle;
     if (!config.readOnly) {
-      // Registration order is irrelevant to priority (pointer-drag.ts uses an explicit numeric
-      // priority, not call order) — all three wire through the SAME coordinator on `svgHandle`,
-      // so a handle claim always wins over an edge-zone claim, which always wins over a
-      // whole-bar claim.
-      disposers.push(enableDragResize(svgHandle, () => internal.tasks.all(), {
-        onTaskResized: (taskId, newEnd) => commitResize(instance, internal, taskId, newEnd),
-      }));
-      disposers.push(enableDragMove(svgHandle, () => internal.tasks.all(), {
-        onTaskMoved: (taskId, newStart, newEnd) => commitDrag(internal, taskId, newStart, newEnd),
-      }));
-      if (config.enableDependencyDrag !== false) {
-        disposers.push(enableDragCreateDep(svgHandle, () => internal.tasks.all(), {
-          onDependencyCreated: (fromTaskId, toTaskId) => commitCreateDep(instance, internal, fromTaskId, toTaskId),
-        }));
+      const getTasks = () => internal.tasks.all();
+      disposers.push(enableDragResize(svgHandle, getTasks, callbacks), enableDragMove(svgHandle, getTasks, callbacks));
+      if (callbacks.onDependencyCreated) {
+        disposers.push(enableDragCreateDep(svgHandle, getTasks, { onDependencyCreated: callbacks.onDependencyCreated }));
       }
     }
     // Registered UNCONDITIONALLY, same posture as enableKeyboardNav's zoom case arms — Ctrl+wheel
     // mutates no store state, so readOnly has nothing to protect against here (spec-wheel-zoom.md §4).
+    // Canvas: wheel-zoom stays SVG-only.
     disposers.push(enableWheelZoom(svgHandle, {
       onZoomIn: () => instance.zoomIn(),
       onZoomOut: () => instance.zoomOut(),
     }));
+  } else if (!config.readOnly) {
+    const canvasHandle = handle as CanvasRendererHandle;
+    disposers.push(canvasHandle.attachDrag(getPointerDragController(canvasHandle), callbacks));
   }
-  // Canvas mode: drag-move/drag-resize/drag-create-dep/wheel-zoom stay SVG-only.
 
   return {
     focusedId: keyboardNav.getFocusedTaskId,

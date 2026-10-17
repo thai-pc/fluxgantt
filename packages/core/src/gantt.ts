@@ -136,8 +136,8 @@ export interface GanttConfig {
   readonly readOnly?: boolean;
 
   /** Default `true`. `false`: no connector handles are rendered and drag-create-dependency is not
-   *  wired; move/resize stay available and programmatic `linkTasks()` is unaffected. SVG only
-   *  (Canvas has no drag). Construction-time only. `readOnly: true` still wins. */
+   *  wired; move/resize stay available and programmatic `linkTasks()` is unaffected. Both renderers
+   *  (Canvas draws its handles on an overlay). Construction-time only. `readOnly: true` still wins. */
   readonly enableDependencyDrag?: boolean;
 
   /** Fired once per `addTask`/`updateTask`/`moveTask`/`resizeTask`/`setProgress` call that

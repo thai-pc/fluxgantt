@@ -34,7 +34,7 @@
 // of, since exposing both would double-announce the same data to a screen reader. Click-select
 // (`hitTestRow()`, §7) and a `focusin`/`focusout`-driven on-canvas focus ring (§8) bring Canvas
 // mode to full keyboard+mouse+screen-reader parity with SVG mode. Drag-move/drag-resize/
-// drag-create-dep remain SVG-only (unrelated to accessibility, out of scope for both tickets).
+// drag-create-dep attach later via `attachDrag()` (see `canvas-drag.ts`).
 //
 // **ROW VIRTUALIZATION (fix #37, spec-canvas-row-virtualization.md).** The `<canvas>` backing
 // store is no longer sized to the FULL content (`totalWidth x totalHeight`) — it is sized to a
@@ -117,7 +117,17 @@ import {
   type TaskBarLayout,
   type TimeScale,
 } from './renderer-base.js';
-import type { InteractiveRendererHandle } from './interactive-renderer-handle.js';
+import type { PointerDragController } from '../interaction/pointer-drag.js';
+import type { BarHit, InteractiveRendererHandle } from './interactive-renderer-handle.js';
+import {
+  createCanvasDrag,
+  insideBar,
+  locateRow,
+  type CanvasDrag,
+  type CanvasDragHost,
+  type CanvasDragCallbacks,
+  type DragView,
+} from './canvas-drag.js';
 // Type-only (erased): the runtime isolation rule above still holds — the SVG renderer reaches
 // this file only through the injected `CanvasSvgFactory`, never an import.
 import type { SvgRendererHandle, SvgRendererInput, SvgRendererOptions } from './svg-renderer.js';
@@ -198,9 +208,8 @@ export interface CanvasRendererOptions {
    * see that spec's §4.1) — this is NOT applied in SVG mode, which has no such constraint.
    */
   readonly viewportHeight?: number;
-  // NOTE: no `showLinkHandles` — Canvas mode has no connector-handle affordance in v1 at all
-  // (drag-create-dep is excluded from Canvas mode entirely, not just deferred), so there is
-  // nothing for this flag to toggle. Do not add a no-op option.
+  // NOTE: no `showLinkHandles` — Canvas never paints connector handles on the main bitmap. When a
+  // drag is attached they are drawn on the interaction overlay only (hovered / selected bars).
 }
 
 export interface CanvasRendererHandle extends InteractiveRendererHandle {
@@ -268,7 +277,17 @@ export interface CanvasRendererHandle extends InteractiveRendererHandle {
   hitTestRow(
     clientX: number,
     clientY: number,
-  ): { taskId: TaskId; rowIndex: number; hitToggle: boolean } | undefined;
+  ): { taskId: TaskId; rowIndex: number; hitToggle: boolean; onBar: boolean } | undefined;
+  /** Always present on a Canvas handle (the pointer-drag coordinator's Canvas discriminator), but
+   *  returns `undefined` until `attachDrag()` has run and after its disposer. */
+  hitTestBar(clientX: number, clientY: number, pointerType?: string): BarHit | undefined;
+  /**
+   * Wires drag-move / drag-resize / drag-create-dependency onto the shared pointer-drag
+   * coordinator (`wiring.register`), with an overlay-canvas ghost preview. Called by
+   * `withInteraction()` for a non-`readOnly` chart. The disposer is idempotent. Calling it again
+   * replaces the previous attachment.
+   */
+  attachDrag(controller: PointerDragController, callbacks: CanvasDragCallbacks): () => void;
   /** Client-space anchor of the painted row `rowIndex` (see `InteractiveRendererHandle`). */
   getRowAnchor(rowIndex: number): { clientX: number; clientY: number };
   /** The input/options of the most recent SUCCESSFUL render (failed renders roll back), i.e.
@@ -727,7 +746,32 @@ export function createCanvasRenderer(
   // `getLabelColumnWidth()` never reports a width that was never painted.
   let currentLabelColumnWidth = LABEL_COLUMN_WIDTH;
   let destroyed = false;
-
+  let drag: CanvasDrag | undefined;
+  // One entry per `RenderState` object (replaced by `update()`/`setOptions()`, kept by scroll
+  // renders): O(rows) layout runs once per state, not once per hover/press. A failed render rolls
+  // `state` back to a previous object whose entry is still valid.
+  const layoutMemo = new WeakMap<RenderState, Pick<DragView, 'rows' | 'rowHeight' | 'selected' | 'critical'>>();
+  const dragView = (): DragView => {
+    let m = layoutMemo.get(state);
+    if (!m) {
+      const density = state.options.density ?? DEFAULT_DENSITY;
+      m = {
+        rows: layoutRows(state.input.tasks, density, state.input.collapsedIds),
+        rowHeight: ROW_HEIGHT[density],
+        selected: new Set(state.input.selectedTaskIds ?? []),
+        critical: new Set(state.input.criticalPath?.criticalTaskIds ?? []),
+      };
+      layoutMemo.set(state, m);
+    }
+    return {
+      ...m,
+      key: state,
+      timeScale: state.timeScale,
+      offsetX: currentLabelColumnWidth,
+      rollup: state.input.rollup,
+    };
+  };
+  let dragTokens: DesignTokens | undefined;
   // Tracks the resolved `focusedTaskId` (`state.input.focusedTaskId ?? rows[0]?.task.id`) as of
   // the END of the PREVIOUS `renderPixels()` call (fix #37 follow-up, spec §5.2). `render()` runs
   // on every scroll/resize event, not just on a `focusedTaskId`-changing `update()` — unconditionally
@@ -912,6 +956,8 @@ export function createCanvasRenderer(
         cancelAnimationFrame(pendingRenderRaf);
         pendingRenderRaf = undefined;
       }
+      drag?.dispose();
+      drag = undefined;
       canvas.remove();
       spacerEl.remove();
       a11yLayer.remove();
@@ -925,6 +971,27 @@ export function createCanvasRenderer(
       return currentLabelColumnWidth;
     },
     hitTestRow,
+    hitTestBar: (clientX, clientY, pointerType) => drag?.hitTestBar(clientX, clientY, pointerType),
+    attachDrag(controller: PointerDragController, callbacks: CanvasDragCallbacks): () => void {
+      drag?.dispose();
+      const host: CanvasDragHost = {
+        canvas,
+        container,
+        headerHeight: HEADER_HEIGHT,
+        view: dragView,
+        selectedCount: () => state.input.selectedTaskIds?.length ?? 0,
+        viewportHeight: () => resolveViewportHeightPx(state.options),
+        tokens: () => (dragTokens ??= resolveDesignTokens(container)),
+        paintBar: (c, task, bar, ox, oy, critical, selected, rolled) =>
+          paintTaskBar(c, task, bar, ox, oy, critical, selected, host.tokens() as DesignTokens, rolled),
+      };
+      const mine = createCanvasDrag(host, controller, callbacks);
+      drag = mine;
+      return () => {
+        mine.dispose();
+        if (drag === mine) drag = undefined;
+      };
+    },
     getRowAnchor(rowIndex: number): { clientX: number; clientY: number } {
       const rect = canvas.getBoundingClientRect();
       const rowHeight = ROW_HEIGHT[state.options.density ?? DEFAULT_DENSITY];
@@ -986,7 +1053,7 @@ export function createCanvasRenderer(
   function hitTestRow(
     clientX: number,
     clientY: number,
-  ): { taskId: TaskId; rowIndex: number; hitToggle: boolean } | undefined {
+  ): { taskId: TaskId; rowIndex: number; hitToggle: boolean; onBar: boolean } | undefined {
     const rect = canvas.getBoundingClientRect();
     const x = clientX - rect.left;
     const y = clientY - rect.top;
@@ -997,19 +1064,13 @@ export function createCanvasRenderer(
     if (x < 0 || x > rect.width || y < 0 || y > rect.height) return undefined; // outside canvas entirely
     if (y < HEADER_HEIGHT) return undefined; // header band — not a row
 
-    const density = state.options.density ?? DEFAULT_DENSITY;
-    // (spec-collapse-expand.md §6.3) — MUST thread `collapsedIds` here, same as `renderPixels()`'s
-    // call below: if only one call site is updated, hit-testing and the paint pass disagree
-    // about which rows exist (see the CanvasRendererInput.collapsedIds doc comment).
-    const rows = layoutRows(state.input.tasks, density, state.input.collapsedIds); // same call render() makes
-    const rowHeight = ROW_HEIGHT[density]; // uniform per density, independent of hierarchy depth
-    // `canvas` is `position: sticky` and only ever paints/hit-tests a WINDOW of rows local to
-    // its own bounded height (fix #37) — a click's y-within-canvas must be translated into
-    // content-space by adding back `container.scrollTop`, the same offset the paint pass's
-    // `ctx.translate(0, HEADER_HEIGHT - scrollTop)` subtracts when painting.
-    const rowIndex = Math.floor((y - HEADER_HEIGHT + container.scrollTop) / rowHeight);
-    const row = rows[rowIndex];
-    if (row === undefined) return undefined; // below the last row — empty space
+    // Memoized per RenderState (layout is O(rows)); `collapsedIds` is threaded by `dragView` exactly
+    // as `renderPixels()` does, so hit-testing and the paint pass cannot disagree about the rows.
+    // `canvas` is `position: sticky` and only paints a WINDOW of rows (fix #37): `locateRow` adds
+    // back `container.scrollTop`, the offset the paint pass subtracts.
+    const g = locateRow({ headerHeight: HEADER_HEIGHT, container }, dragView(), y);
+    if (g === undefined) return undefined; // below the last row — empty space
+    const row = g.row;
 
     // Toggle glyph's reserved gutter (spec §6.1/§6.3) — `[LABEL_PADDING_PX + depth *
     // LABEL_INDENT_PX, ... + TOGGLE_GLYPH_GUTTER_PX)`, same x-origin the paint pass draws the
@@ -1018,7 +1079,7 @@ export function createCanvasRenderer(
     const toggleEnd = toggleStart + TOGGLE_GLYPH_GUTTER_PX;
     const hitToggle = row.hasChildren && x >= toggleStart && x < toggleEnd;
 
-    return { taskId: row.task.id, rowIndex, hitToggle };
+    return { taskId: row.task.id, rowIndex: row.rowIndex, hitToggle, onBar: insideBar(g, x, y) };
   }
 
   /**
@@ -1455,6 +1516,8 @@ export function createCanvasRenderer(
     } finally {
       ctx.restore();
     }
+    dragTokens = tokens;
+    drag?.onRender();
   }
 }
 

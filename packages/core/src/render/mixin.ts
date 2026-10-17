@@ -67,9 +67,9 @@ export interface RenderCapability {
    * `mount()` call. Interaction hooks are consulted inside this method, so applying
    * `withInteraction` to an already-mounted instance has no effect until the next remount.
    *
-   * Drag-move/drag-resize/drag-create-dependency are SVG-only — a Canvas-rendered chart
-   * supports click-select and keyboard navigation, but not those. `exportSvg()`/`exportPng()`
-   * (from `withIo`) work in both modes.
+   * Drag-move/drag-resize/drag-create-dependency work in both modes (Canvas previews a drag with a
+   * ghost on an overlay canvas); Ctrl+wheel zoom is SVG-only. `exportSvg()`/`exportPng()` (from
+   * `withIo`) work in both modes.
    */
   mount(container: HTMLElement): void;
   unmount(): void;
@@ -508,7 +508,7 @@ function rendererOptions(internal: GanttInternal): SvgRendererOptions & CanvasRe
       : {}),
     // A readOnly chart must not render the connector handles — they are an interactive
     // affordance whose recognizer is NOT wired when readOnly, so rendering them would be a
-    // misleading dead control. (SVG-only; Canvas has no connector-handle affordance in v1.)
+    // misleading dead control. (SVG renders them on the chart; Canvas draws them on its interaction overlay and ignores this flag.)
     showLinkHandles: !config.readOnly && config.enableDependencyDrag !== false,
   };
   return internal.tasks.size === 0

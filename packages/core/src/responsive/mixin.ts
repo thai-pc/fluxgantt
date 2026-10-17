@@ -194,9 +194,12 @@ export function withResponsive<T extends GanttInstance>(
     // would break drag-move/resize/create-dependency, which is the whole point of NOT making
     // this a blanket gesture handler. `closest()` walks up through the bar/label/progress children
     // to the `<g class="fg-task">` group the recognizers key off.
+    // Canvas has no per-bar DOM (the target is always the <canvas>): `hitTestBar` answers the same
+    // question geometrically, and is `undefined` on an SVG handle.
     const target = pe.target;
+    const { container, hitTestBar } = mount.handle;
     if (target instanceof Element && target.closest('.fg-task[data-task-id]') !== null) return;
-    const { container } = mount.handle;
+    if (hitTestBar?.(pe.clientX, pe.clientY, pe.pointerType)) return;
     pan = {
       id: pe.pointerId,
       startX: pe.clientX,

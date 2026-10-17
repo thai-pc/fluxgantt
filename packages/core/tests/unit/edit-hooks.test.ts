@@ -753,3 +753,49 @@ describe('withEditHooks — Canvas keyboard path', () => {
     t.cleanup();
   });
 });
+
+describe('withEditHooks — Canvas long-press slop on a bar (spec-canvas-drag.md §8)', () => {
+  function canvasBarSetup(onBar: boolean) {
+    const gantt = withEditHooks(withRender(createGantt({ tasks: [taskInput('a', '2026-01-05', '2026-01-06')] })));
+    const internal = getInternal(gantt);
+    const canvas = document.createElement('div');
+    canvas.getBoundingClientRect = () => new DOMRect(0, 0, 500, 300);
+    const handle = {
+      interactionRoot: document.createElement('div'),
+      pointerEventTarget: canvas,
+      getLabelColumnWidth: () => 160,
+      hitTestRow: () => ({ taskId: toTaskId('a'), rowIndex: 0, hitToggle: false, onBar }),
+    };
+    internal.setMount({ renderer: 'canvas', handle } as unknown as MountState);
+    const context: TaskContextRequestedPayload[] = [];
+    gantt.on('task:context-requested', (p) => context.push(p));
+    internal.emit('renderer:selected', { renderer: 'canvas', taskCount: 1 });
+    return { canvas, context };
+  }
+  const touchAt = (target: EventTarget, type: string, x: number): MouseEvent => ptr(type, target, { pointerType: 'touch', x, y: 20 });
+
+  it('on a bar a 5 px drift cancels the long-press (a drag has started), but the reported part stays "row"', () => {
+    vi.useFakeTimers();
+    const bar = canvasBarSetup(true);
+    touchAt(bar.canvas, 'pointerdown', 300);
+    touchAt(bar.canvas, 'pointermove', 305);
+    vi.advanceTimersByTime(600);
+    expect(bar.context).toHaveLength(0);
+
+    const rest = canvasBarSetup(true);
+    touchAt(rest.canvas, 'pointerdown', 300);
+    touchAt(rest.canvas, 'pointermove', 302);
+    vi.advanceTimersByTime(600);
+    expect(rest.context).toHaveLength(1);
+    expect(rest.context[0]).toMatchObject({ taskId: 'a', part: 'row', source: 'long-press' });
+  });
+
+  it('off a bar the wider 8 px touch slop still applies', () => {
+    vi.useFakeTimers();
+    const off = canvasBarSetup(false);
+    touchAt(off.canvas, 'pointerdown', 300);
+    touchAt(off.canvas, 'pointermove', 305);
+    vi.advanceTimersByTime(600);
+    expect(off.context).toHaveLength(1);
+  });
+});
