@@ -196,7 +196,7 @@ const LINK_HANDLE_STYLE_TEXT =
 // unconditional (unlike LINK_HANDLE_STYLE_TEXT, which is gated behind `showLinkHandles`) —
 // selection must stay visible even in a `readOnly` chart.
 const SELECTION_STYLE_TEXT =
-  '.fg-timeline__row-label{opacity:0}.fg-task--selected .fg-task__bar{outline:var(--fg-task-selected-width,2px) solid var(--fg-task-selected,#4338ca);outline-offset:var(--fg-task-selected-offset,2px)}';
+  '.fg-timeline .fg-timeline__row-label{opacity:0}.fg-task--selected .fg-task__bar{outline:var(--fg-task-selected-width,2px) solid var(--fg-task-selected,#4338ca);outline-offset:var(--fg-task-selected-offset,2px)}';
 
 /** Geometry offset (px) between the task bar's own edge and the extra focus-ring `<rect>`'s
  *  edge — matches the `--fg-task-focus-offset` design token's default (spec §5.1). SVG
@@ -450,11 +450,11 @@ export function createSvgRenderer(
       offsetX,
       timeScale.totalWidth,
     );
-    svg.appendChild(header);
-    svg.appendChild(
+    svg.append(header);
+    svg.append(
       renderDependencies(currentInput.dependencies, barByTaskId, rowHeight, offsetX, offsetY),
     );
-    svg.appendChild(
+    svg.append(
       renderRows(
         rows,
         barByTaskId,
@@ -476,9 +476,9 @@ export function createSvgRenderer(
     // stay the topmost thing along the label column's own edge.
     const todayX = todayLineX(timeScale, now);
     const todayLine = todayX === null ? null : renderTodayLine(todayX, offsetX, totalHeight);
-    if (todayLine) svg.appendChild(todayLine);
+    if (todayLine) svg.append(todayLine);
     const divider = renderLabelDivider(offsetX, totalHeight);
-    svg.appendChild(divider);
+    svg.append(divider);
     // Pinned layers. The band replicates what crosses the header in the chart (the today rule, which
     // `overflow` trims to the band); the column replicates the divider and every label/toggle, tagged
     // with their row's dataset so a click on a clone resolves exactly like one on the original. Full
@@ -525,10 +525,10 @@ function createArrowheadMarker(): SVGDefsElement {
     markerHeight: 6,
     orient: 'auto-start-reverse',
   });
-  marker.appendChild(
+  marker.append(
     el('path', { d: 'M 0 0 L 8 4 L 0 8 z' }, { fill: 'var(--fg-dep-line, #64748b)' }),
   );
-  defs.appendChild(marker);
+  defs.append(marker);
   return defs;
 }
 
@@ -566,14 +566,14 @@ function renderGrid(columns: readonly GridColumn[], offsetX: number, totalHeight
         { class: 'fg-timeline__grid-cell', x, y: 0, width: col.width, height: totalHeight },
         { fill },
       );
-      g.appendChild(rect);
+      g.append(rect);
     }
     const line = el(
       'line',
       { class: 'fg-timeline__grid-line', x1: x, x2: x, y1: 0, y2: totalHeight },
       { stroke: 'var(--fg-grid-line, #e5e7eb)' },
     );
-    g.appendChild(line);
+    g.append(line);
   }
   return g;
 }
@@ -584,7 +584,7 @@ function renderHeader(tiers: HeaderTiers, offsetX: number, timelineWidth: number
   const bg = el('rect', { x: offsetX, y: 0, width: timelineWidth, height: HEADER_HEIGHT }, {
     fill: 'var(--fg-bg-subtle, #f3f4f6)',
   });
-  g.appendChild(bg);
+  g.append(bg);
 
   [tiers.upper, tiers.lower].forEach((tier, row) => {
     for (const l of tier) {
@@ -603,8 +603,8 @@ function renderHeader(tiers: HeaderTiers, offsetX: number, timelineWidth: number
           fill: 'var(--fg-fg-muted, #6b6b73)',
         },
       );
-      text.appendChild(document.createTextNode(l.text));
-      g.appendChild(text);
+      text.append(document.createTextNode(l.text));
+      g.append(text);
     }
   });
 
@@ -613,7 +613,7 @@ function renderHeader(tiers: HeaderTiers, offsetX: number, timelineWidth: number
     { x1: offsetX, x2: offsetX + timelineWidth, y1: HEADER_HEIGHT - 0.5, y2: HEADER_HEIGHT - 0.5 },
     { stroke: 'var(--fg-border-strong, #d4d4d8)' },
   );
-  g.appendChild(divider);
+  g.append(divider);
 
   return g;
 }
@@ -721,7 +721,7 @@ function renderRows(
     if (row.hasChildren) {
       const half = TOGGLE_GLYPH_SIZE_PX / 2;
       const cx = LABEL_PADDING_PX + row.depth * LABEL_INDENT_PX + half;
-      cell.appendChild(
+      cell.append(
         el(
           'path',
           {
@@ -746,16 +746,16 @@ function renderRows(
     );
     // SECURITY: `task.name` is untrusted host-app data — text node only, never innerHTML
     // or a template string assembled into markup (security.md §1, spec §8).
-    label.appendChild(document.createTextNode(row.task.name));
-    cell.appendChild(label);
+    label.append(document.createTextNode(row.task.name));
+    cell.append(label);
 
     const isCritical = criticalIds.has(row.task.id);
-    cell.appendChild(
+    cell.append(
       renderTaskBar(row.task, bar, offsetX, offsetY, isCritical, isSelected, calendar, locale, showLinkHandles, rollup?.get(row.task.id), messages),
     );
 
-    rowGroup.appendChild(cell);
-    g.appendChild(rowGroup);
+    rowGroup.append(cell);
+    g.append(rowGroup);
   }
 
   return g;
@@ -830,7 +830,7 @@ function renderTaskBar(
     },
   );
 
-  wrapper.appendChild(shape);
+  wrapper.append(shape);
 
   // Completed portion (`.fg-task__progress`), painted over the bar. Appended here — after the
   // bar, before the focus ring and link handles — because SVG paints in document order, so the
@@ -851,7 +851,7 @@ function renderTaskBar(
       { class: 'fg-task__progress', x, y, width: progressWidth, height: bar.height, rx: 3 },
       { fill: 'var(--fg-task-completed, #10b981)' },
     );
-    wrapper.appendChild(progressShape);
+    wrapper.append(progressShape);
   }
 
   // Keyboard-focus ring (spec-keyboard-nav.md §5.2, mechanism corrected — see
@@ -880,7 +880,7 @@ function renderTaskBar(
     },
     { fill: 'none' },
   );
-  wrapper.appendChild(focusRing);
+  wrapper.append(focusRing);
 
   // Connector handles for drag-create-dependency (spec-drag-create-dependency.md §4.1), at the exact
   // anchor a resulting FS/SS/FF/SF arrow would attach. Hidden by default, revealed on `.fg-task:hover`
@@ -888,7 +888,7 @@ function renderTaskBar(
   if (showLinkHandles) {
     for (const edge of ['start', 'end'] as const) {
       const anchor = anchorOf(bar, edge);
-      wrapper.appendChild(
+      wrapper.append(
         el(
           'circle',
           {
@@ -945,7 +945,7 @@ function renderDependencies(
       },
       { fill: 'none', stroke: 'var(--fg-dep-line, #64748b)' },
     );
-    g.appendChild(path);
+    g.append(path);
   }
 
   return g;

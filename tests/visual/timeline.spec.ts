@@ -276,3 +276,68 @@ test('a dark chart scrolled under the pinned band repaints the band from the dar
   const chart = page.locator('#gantt');
   await expect(chart).toHaveScreenshot('timeline-scrolled-dark-header-pinned.png');
 });
+
+// --- Pinned label column (spec-svg-sticky-label-column.md section 11.4) ---------------------
+
+async function scrolled(page: Page, top: number, left: number, width?: number): Promise<void> {
+  await page.evaluate(
+    ([t, l, w]) => {
+      const c = document.getElementById('gantt')!;
+      if (w) c.style.width = `${w}px`;
+      c.scrollTop = t as number;
+      c.scrollLeft = l as number;
+    },
+    [top, left, width ?? 0] as const,
+  );
+  await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => r(null))));
+}
+
+test('a horizontally scrolled chart keeps the label column pinned beside the bars', async ({ page }) => {
+  await pinToday(page, '2026-01-01T12:00:00Z');
+  await page.goto('/collapse.html?pad=60');
+  await expect(page.locator('svg.fg-timeline')).toBeVisible();
+  await scrolled(page, 0, 640);
+  await expect(page.locator('#gantt')).toHaveScreenshot('timeline-scrolled-right-column-pinned.png');
+});
+
+test('scrolled on both axes the corner, band and column are pinned together', async ({ page }) => {
+  await pinToday(page, '2026-01-01T12:00:00Z');
+  await page.goto('/collapse.html?pad=60');
+  await expect(page.locator('svg.fg-timeline')).toBeVisible();
+  await scrolled(page, 400, 640);
+  await expect(page.locator('#gantt')).toHaveScreenshot('timeline-scrolled-both-pinned.png');
+});
+
+test('a hierarchy keeps its toggles and indentation in the pinned column', async ({ page }) => {
+  await pinToday(page, '2026-01-01T12:00:00Z');
+  await page.goto('/collapse.html');
+  await expect(page.locator('svg.fg-timeline')).toBeVisible();
+  await scrolled(page, 0, 200, 420);
+  await expect(page.locator('#gantt')).toHaveScreenshot('timeline-hierarchy-column-pinned.png');
+});
+
+test('a long name is cut at the pinned column edge', async ({ page }) => {
+  await pinToday(page, '2026-01-01T12:00:00Z');
+  await page.goto('/collapse.html');
+  await expect(page.locator('svg.fg-timeline')).toBeVisible();
+  await callGantt(page, (g) =>
+    g.updateTask('standalone', { name: 'A very long task name that does not fit the label column at all' }),
+  );
+  await scrolled(page, 0, 60, 420);
+  await expect(page.locator('#gantt')).toHaveScreenshot('timeline-long-name-truncated.png');
+});
+
+test('a dark chart scrolled right repaints the pinned column from the dark tokens', async ({ page }) => {
+  await page.goto('/');
+  const button = page.locator('#theme-toggle');
+  await button.click();
+  await button.click();
+  await expect(button).toHaveText('Theme: dark');
+  await page.evaluate(() => {
+    const c = document.getElementById('gantt')!;
+    c.style.width = '300px';
+    c.scrollLeft = 120;
+  });
+  await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => r(null))));
+  await expect(page.locator('#gantt')).toHaveScreenshot('timeline-scrolled-dark-column-pinned.png');
+});

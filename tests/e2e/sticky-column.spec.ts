@@ -115,6 +115,8 @@ test.describe('pinned label column (collapse.html)', () => {
       return { opacity: getComputedStyle(l).opacity, text: l.textContent };
     });
     expect(real).toEqual({ opacity: '0', text: 'Phase 1' });
+    // ...and the pinned clone of the same label is the visible one.
+    expect(await page.locator(`${COLUMN} .fg-timeline__row-label`).first().evaluate((e) => getComputedStyle(e).opacity)).toBe('1');
 
     // A bar scrolled under the column must not show through: sample the column's own colour where a
     // real bar's rect overlaps it.

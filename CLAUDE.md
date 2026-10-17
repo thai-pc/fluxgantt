@@ -25,13 +25,13 @@ This file is the context entry point for AI. Details are split into rules under 
    | `createGantt()` only (hello world) | 7.41 KiB | 9 KiB |
    | `+ withIo` | 12.46 KiB | 14 KiB |
    | `+ withRender` | 14.53 KiB | 15 KiB |
-   | `+ withRender + withInteraction` | 18.96 KiB | 19.5 KiB |
+   | `+ withRender + withInteraction` | 19.01 KiB | 19.5 KiB |
    | `+ withRender + withTheme` | 15.18 KiB | 16 KiB |
-   | `+ withRender + withInteraction + withResponsive` | 20.36 KiB | 21 KiB |
+   | `+ withRender + withInteraction + withResponsive` | 20.40 KiB | 21 KiB |
    | `+ withRender + withViewport` | 15.41 KiB | 16 KiB |
    | `+ withConflicts` (headless) | 9.27 KiB | 10 KiB |
    | `+ withRender + withEditHooks` (not in the kitchen sink) | 15.85 KiB | 16 KiB |
-   | kitchen sink (everything = the pre-split facade) | 23.64 KiB | 24 KiB |
+   | kitchen sink (everything = the pre-split facade) | 23.68 KiB | 24 KiB |
 
    Hello world went 22.3 KiB → 7.41 KiB and the fully-composed instance 34.9 KiB → 23.54 KiB (the old "full core" check measured `dist/index.js` as a plain file, which code-splitting has since hollowed out; the kitchen-sink fixture replaces it). Non-core features are plugins.
 
@@ -155,13 +155,13 @@ This file is the context entry point for AI. Details are split into rules under 
 
 The 2026-10 sticky-label-column pass (the SVG label column pinned on horizontal scroll, plus the
 `div.fg-timeline__layer` wrapper that fixes flex/grid hosts) was paid for by levers, not a limit
-(gzip bytes, against master acaf680): `+ withRender` 14902 -> 14879 after levers, kitchen sink
-24109 -> 24204, `with-edit-hooks` 16115 -> 16233, hello world / `+ withIo` / `+ withConflicts`
+(gzip bytes, against master acaf680): `+ withRender` 14902 -> 14875 after levers, kitchen sink
+24109 -> 24245, `with-edit-hooks` 16115 -> 16229, hello world / `+ withIo` / `+ withConflicts`
 +0 B. Levers that won: the two ARIA/size `setAttrs` calls merged, `renderRowToggle` and
 `renderLinkHandle` folded into their one caller, the three `<style>` elements merged into one, the
-`DEFAULT_*` single-use constants inlined, a shared `pin()` builder for the three layers. A shared
-`line()` builder was measured and REJECTED (+30 B). Headroom is now kitchen sink 372 B,
-`+ withRender` 481 B and `with-edit-hooks` 151 B, the tightest and right at the 150 B warning line:
+`DEFAULT_*` single-use constants inlined, `appendChild` -> `append` (gzip likes the repeat), a shared `pin()` builder for the three layers. A shared
+`line()` builder was measured and REJECTED (+30 B). Headroom is now kitchen sink 331 B,
+`+ withRender` 485 B and `with-edit-hooks` 155 B, the tightest and right at the 150 B warning line:
 the next renderer feature has to find its own bytes.
 
 Run `pnpm size` from `packages/core` (or `pnpm size` at the root via turbo) to re-measure; the numbers above are its output, converted from its decimal-kB report to KiB. **It needs Node >= 22.19** — that is `size-limit` 14's own declared `engines.node` (`^22.19.0 || ^24.5.0 || >=26.0.0`), and the floor is enforced by the root `engines.node` so a permitted Node cannot be one the repo fails on. Before 14 the practical floor was 22.18, because `size-limit` calls `fs.glob` with `withFileTypes` (added in Node 22.2) and on an older 22.x it dies with an opaque `TypeError: i.isFile is not a function` that looks like a repo misconfiguration but is not. `.nvmrc` pins an exact version for this reason; CI reads it via `node-version-file`.

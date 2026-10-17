@@ -68,9 +68,10 @@ test.describe('SVG renderer', () => {
     const m = await page.evaluate(() => {
       const real = document.querySelector('svg.fg-timeline .fg-timeline__row-label')!;
       const clone = document.querySelector('.fg-timeline__sticky-column .fg-timeline__row-label')!;
-      return { opacity: getComputedStyle(real).opacity, a: getComputedStyle(real).fill, b: getComputedStyle(clone).fill };
+      return { opacity: getComputedStyle(real).opacity, cloneOpacity: getComputedStyle(clone).opacity, a: getComputedStyle(real).fill, b: getComputedStyle(clone).fill };
     });
     expect(m.opacity).toBe('0');
+    expect(m.cloneOpacity).toBe('1');
     expect(m.a).toBe(m.b);
   });
 });
