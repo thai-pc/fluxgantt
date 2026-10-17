@@ -494,7 +494,7 @@ type GanttConfig = {
   // Features
   enableDependencyDrag?:  boolean; // default true. false: no connector handles, no
                                   // drag-create-dependency; move/resize stay, linkTasks()
-                                  // unaffected. SVG only; readOnly wins. Construction-time only
+                                  // unaffected. Both renderers; readOnly wins. Construction-time only
   enableCriticalPath?:    boolean; // DROPPED, not in GanttConfig: the critical path is always
                                   // computed and painted (dashed outline + critical-path:computed).
                                   // The specified default (false) contradicted shipped,
@@ -1089,8 +1089,10 @@ Prefer:
 | Double click the bar | Emits `task:activated` — **host-driven**, see below |
 | Right click | Emits `task:context-requested` — **host-driven**, see below |
 
-Drag gestures are SVG-only and off under `readOnly`; a Canvas chart (≥2,000 tasks) supports
-click-select, collapse and the keyboard.
+Drag gestures (move, resize, create dependency) work in both renderers and are off under
+`readOnly`. A Canvas chart (≥2,000 tasks) draws a translucent ghost on an overlay while you drag
+(the original bar stays painted until you drop), shows hover cursors, and has no auto-scroll near
+the edges (same as SVG). Ctrl+wheel zoom is still SVG-only there.
 
 **Keyboard** (verified against `interaction/keyboard-nav.ts`; needs `withInteraction`):
 

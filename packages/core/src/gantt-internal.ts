@@ -72,7 +72,7 @@ export interface MountState {
   readonly handle: SvgRendererHandle | CanvasRendererHandle;
   readonly stopFx: () => void;
   /** Interaction teardown, if `withInteraction` was applied before this mount; a no-op
-   *  otherwise (and always a no-op in Canvas mode for the pointer-drag family). */
+   *  otherwise. */
   readonly stopUi: () => void;
   readonly focusedId: () => TaskId | undefined;
   /**

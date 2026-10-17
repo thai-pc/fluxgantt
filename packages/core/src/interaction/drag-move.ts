@@ -17,22 +17,16 @@
 // pointerdown-delegation/window-listener/threshold/B1-B2-B3 mechanics now live in the
 // coordinator; this file only builds ONE `PointerGestureRecognizer<MoveState>` and registers
 // it. BEHAVIOR-PRESERVING: `tests/unit/drag-move.test.ts` passes unedited.
-import { normalizeDate } from '../compute/working-calendar.js';
-import type { SvgRendererHandle, TimeScale } from '../render/index.js';
+import type { SvgRendererHandle } from '../render/index.js';
 import type { DateInput, Task, TaskId } from '../types.js';
 import type { Temporal } from '@js-temporal/polyfill';
-import {
-  getPointerDragController,
-  DEFAULT_DRAG_THRESHOLD_PX,
-  findGroupTask,
-  snapDeltaToDay,
-} from './pointer-drag.js';
+import { DEFAULT_DRAG_THRESHOLD_PX, computeDraggedDates, snapDeltaToDay } from '../internal/drag-math.js';
+import { getPointerDragController, findGroupTask } from './pointer-drag.js';
 import type { PointerGestureRecognizer } from './pointer-drag.js';
 
-// Canonical home is now `pointer-drag.ts` — re-exported here (pure re-export, zero behavior
-// change) so `tests/unit/drag-move.test.ts`'s existing
-// `import { ... snapDeltaToDay } from '../../src/interaction/drag-move.js'` keeps resolving.
-export { snapDeltaToDay } from './pointer-drag.js';
+// Canonical home is `internal/drag-math.ts` (shared with the Canvas recognizers) — re-exported here
+// so existing import paths keep resolving.
+export { snapDeltaToDay, computeDraggedDates } from '../internal/drag-math.js';
 
 export interface DragMoveOptions {
   /**
@@ -65,27 +59,6 @@ export interface DragMoveOptions {
 
 const MOVE_PRIORITY = 10;
 const DRAGGING_CLASS = 'fg-task--dragging';
-
-/**
- * Computes the new start/end with calendar arithmetic — decision Q4 (main session §10): add
- * `deltaDays` CALENDAR DAYS to `originalStart`/`originalEnd` normalized to the `timeScale`'s
- * timezone (`timeScale.range.start.timeZoneId` — the same timezone the renderer used to build
- * this scale, so no separate `WorkingCalendar` needs to be passed). Preserves the wall-clock
- * time-of-day + duration, DST-safe across a boundary — does NOT use
- * `timeScale.xToDate`/elapsed-nanoseconds (that drifts ~1h across DST, see spec §4.3 —
- * overridden by §10 Q4).
- */
-export function computeDraggedDates(
-  timeScale: TimeScale,
-  originalStart: DateInput,
-  originalEnd: DateInput,
-  deltaDays: number,
-): { newStart: Temporal.ZonedDateTime; newEnd: Temporal.ZonedDateTime } {
-  const timezone = timeScale.range.start.timeZoneId;
-  const newStart = normalizeDate(originalStart, timezone).add({ days: deltaDays });
-  const newEnd = normalizeDate(originalEnd, timezone).add({ days: deltaDays });
-  return { newStart, newEnd };
-}
 
 interface MoveState {
   readonly taskId: TaskId;

@@ -29,6 +29,23 @@ already-mounted instance takes effect only on the next mount.
 Gesture priority is resolved automatically: an edge-handle claim wins over a whole-bar claim,
 and a link-handle claim wins over an edge zone — so the three never fight over the same pointer.
 
+## Canvas mode (2,000+ tasks)
+
+All three gestures work in the Canvas renderer too, with the same snapping (whole calendar days),
+the same events and the same undo behaviour. A few things look different, because a Canvas chart
+is one bitmap rather than a tree of elements:
+
+- **Ghost preview.** While you drag, the original bar stays painted and a translucent copy
+  follows the pointer on an overlay layer; the chart itself is not repainted until you drop.
+  Escape cancels with nothing to undo.
+- **Link handles** are drawn on that overlay for the bar under the mouse and for selected bars.
+  On a touch screen, tap a bar first to select it: its handles appear and can then be dragged.
+- **Hover cursors**: `grab` over a bar, `ew-resize` over its right edge, `crosshair` over a handle.
+- **Touch** works under [`withResponsive`](/docs/api#responsive): a finger on a bar drags it,
+  a finger on empty chart area still pans.
+- There is no auto-scroll near the edges (SVG has none either), and Ctrl+wheel zoom is still
+  SVG-only.
+
 ## Keyboard shortcuts
 
 `withInteraction` also wires keyboard navigation and the shortcut set below. Nothing here needs

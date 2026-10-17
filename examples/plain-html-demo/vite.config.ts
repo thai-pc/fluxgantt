@@ -49,6 +49,7 @@ export default defineConfig({
         readOnly: fileURLToPath(new URL('./read-only.html', import.meta.url)),
         selection: fileURLToPath(new URL('./selection.html', import.meta.url)),
         collapse: fileURLToPath(new URL('./collapse.html', import.meta.url)),
+        canvasDrag: fileURLToPath(new URL('./canvas-drag.html', import.meta.url)),
         conflicts: fileURLToPath(new URL('./conflicts.html', import.meta.url)),
         i18n: fileURLToPath(new URL('./i18n.html', import.meta.url)),
         responsive: fileURLToPath(new URL('./responsive.html', import.meta.url)),

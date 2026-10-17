@@ -35,6 +35,8 @@ const TOUCH_SLOP_PX = 8;
 interface Hit {
   readonly id: TaskId;
   readonly part: TaskHitPart;
+  /** Canvas: the point is on the bar, where a drag (4 px) can start. */
+  readonly onBar?: boolean;
 }
 
 export function withEditHooks<T extends GanttInstance>(instance: T, options: EditHooksOptions = {}): T {
@@ -67,10 +69,12 @@ export function withEditHooks<T extends GanttInstance>(instance: T, options: Edi
       if (!Number.isFinite(x) || !Number.isFinite(y)) return undefined;
       let id: string | null;
       let part: TaskHitPart = 'row';
+      let onBar = false;
       if (handle.hitTestRow) {
         const hit = handle.hitTestRow(x, y);
         if (!hit || hit.hitToggle) return undefined;
         id = hit.taskId;
+        onBar = hit.onBar === true;
         if (x - pointerTarget.getBoundingClientRect().left < handle.getLabelColumnWidth()) part = 'label';
       } else {
         if (!(target instanceof Element) || target.closest('.fg-timeline__row-toggle')) return undefined;
@@ -88,7 +92,7 @@ export function withEditHooks<T extends GanttInstance>(instance: T, options: Edi
         else if (target.closest('.fg-timeline__row-label')) part = 'label';
       }
       // A forged or stale id never leaves the library.
-      return id !== null && internal.tasks.has(toTaskId(id)) ? { id: toTaskId(id), part } : undefined;
+      return id !== null && internal.tasks.has(toTaskId(id)) ? { id: toTaskId(id), part, onBar } : undefined;
     };
 
     /** Emits the context event; resolves to whether the host called `preventDefault()`. */
@@ -137,7 +141,7 @@ export function withEditHooks<T extends GanttInstance>(instance: T, options: Edi
         py: e.clientY,
         // On a bar, a drag (4 px) must win over the long-press; elsewhere nothing can drag, so
         // the wider touch slop applies.
-        slop: hit.part === 'bar' ? DRAG_THRESHOLD_PX : TOUCH_SLOP_PX,
+        slop: hit.part === 'bar' || hit.onBar ? DRAG_THRESHOLD_PX : TOUCH_SLOP_PX,
         pid: e.pointerId,
       };
       press = state;

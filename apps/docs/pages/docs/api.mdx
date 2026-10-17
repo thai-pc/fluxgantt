@@ -59,7 +59,7 @@ reactive. The one deliberate deviation from "unset means core default": the wrap
 | `ariaLabel` | `string` | `'Gantt chart'` | Accessible name of the chart as a whole, and the `<title>` of every exported SVG/PNG. Construction-time only. |
 | `messages` | `GanttMessages` | — | Accessible-name builders for a non-English host. See [i18n](/docs/i18n). Construction-time only. |
 | `readOnly` | `boolean` | `false` | When `true`, `mount()` wires no drag gestures (with `withInteraction` applied; click-select and keyboard nav stay live). |
-| `enableDependencyDrag` | `boolean` | `true` | `false` renders no connector handles and wires no drag-create-dependency; move and resize stay available, and `linkTasks()` / `dependencies` are unaffected. SVG only (Canvas has no drag). `readOnly: true` still wins. Construction-time only. |
+| `enableDependencyDrag` | `boolean` | `true` | `false` renders no connector handles and wires no drag-create-dependency; move and resize stay available, and `linkTasks()` / `dependencies` are unaffected. Works in both renderers: in Canvas mode the handles are drawn on a hover/selection overlay instead of the painted chart. `readOnly: true` still wins. Construction-time only. |
 | `schedulingMode` | `SchedulingMode` | `'manual'` | `'auto'` cascades dependents on move/resize. |
 | `initialCollapsed` | `readonly TaskId[]` | `[]` | Tasks to start collapsed. Unknown or leaf ids are dropped silently; fires no `collapse:changed`. |
 | `historyLimit` | `number` | `100` | Undo entries retained. Oldest is evicted past the limit (ring buffer). `0` opts out of undo/redo entirely without affecting anything else. Must be a non-negative integer — throws at construction otherwise. Construction-time only. |

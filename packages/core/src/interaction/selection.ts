@@ -13,7 +13,7 @@ import type { InteractiveRendererHandle } from '../render/index.js';
 import { layoutRows } from '../render/renderer-base.js';
 import type { Density, Task, TaskId } from '../types.js';
 import { toTaskId } from '../types.js';
-import { DEFAULT_DRAG_THRESHOLD_PX } from './pointer-drag.js';
+import { DEFAULT_DRAG_THRESHOLD_PX } from '../internal/drag-math.js';
 
 export interface SelectionOptions {
   /** Plain click (no modifier): replace the selection with this one task (facade expands
