@@ -236,14 +236,7 @@ const FOCUS_STYLE_TEXT =
   '.fg-task__focus-ring{fill:none;stroke:none;pointer-events:none}' +
   '.fg-timeline__row:focus-visible .fg-task__focus-ring{stroke:var(--fg-task-focus,#0ea5e9);stroke-width:var(--fg-task-focus-width,2px)}';
 
-/** Defensive string-length cap applied to any task field folded into an `aria-label`
- *  attribute value (security.md "limit string length"). */
-const MAX_ARIA_NAME_LENGTH = 200;
 
-const DEFAULT_VIEW_MODE: ViewMode = 'week';
-const DEFAULT_DENSITY: Density = 'default';
-const DEFAULT_LOCALE = 'en';
-const DEFAULT_ARIA_LABEL = 'Gantt chart';
 
 /**
  * Creates and mounts an SVG renderer into `container` — appends one
@@ -355,17 +348,14 @@ export function createSvgRenderer(
     const hadFocusInside = svg.contains(document.activeElement);
 
     const calendar = currentInput.calendar ?? DEFAULT_CALENDAR;
-    const viewMode = currentOptions.viewMode ?? DEFAULT_VIEW_MODE;
-    const density = currentOptions.density ?? DEFAULT_DENSITY;
-    const locale = currentOptions.locale ?? DEFAULT_LOCALE;
+    const viewMode = currentOptions.viewMode ?? 'week';
+    const density = currentOptions.density ?? 'default';
+    const locale = currentOptions.locale ?? 'en';
     const messages = currentOptions.messages;
     // `String()` because `??` only guards null/undefined: a loosely-typed JS host can hand us a
     // number or an object here, and a bare `.slice` would throw mid-render. Same coercion the
     // custom `messages.taskLabel` return value gets in `renderer-base.ts`.
-    const ariaLabel = String(currentOptions.ariaLabel ?? DEFAULT_ARIA_LABEL).slice(
-      0,
-      MAX_ARIA_NAME_LENGTH,
-    );
+    const ariaLabel = String(currentOptions.ariaLabel ?? 'Gantt chart').slice(0, 200); // security.md: cap the length of a string folded into an attribute
 
     const optionRange = currentOptions.timeRange;
     const range = optionRange

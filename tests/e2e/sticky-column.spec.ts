@@ -91,20 +91,23 @@ test.describe('pinned label column (collapse.html)', () => {
     // Every label clone is inside the column box and is what a pointer hits at its centre.
     const hits = await page.evaluate(
       ({ colRight, colLeft }) => {
-        const out: boolean[] = [];
+        const out: (boolean | string)[] = [];
         for (const l of document.querySelectorAll('#gantt .fg-timeline__sticky-column .fg-timeline__row-label')) {
           const r = l.getBoundingClientRect();
-          if (r.top < 40 || r.bottom > innerHeight) continue;
+          const cr = document.getElementById('gantt')!.getBoundingClientRect();
+          if (r.top < cr.top + 34 || r.bottom > cr.bottom - 2) continue;
           const inside = r.left >= colLeft - 0.5 && r.right <= colRight + 0.5;
           const top = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
-          out.push(inside && top?.closest('.fg-timeline__sticky-column') !== null);
+          const ok = inside && top?.closest('.fg-timeline__sticky-column') !== null;
+          out.push(ok || `${l.textContent} ${r.left}-${r.right} col ${colLeft}-${colRight} top=${top?.tagName}.${top?.getAttribute('class')}`);
+
         }
         return out;
       },
       { colLeft: col.x, colRight: col.x + col.width },
     );
     expect(hits.length).toBeGreaterThan(3);
-    expect(hits.every(Boolean)).toBe(true);
+    expect(hits.filter((h) => h !== true)).toEqual([]);
 
     // The real labels are in the DOM (accessible names) but painted invisible.
     const real = await page.evaluate(() => {
@@ -119,7 +122,7 @@ test.describe('pinned label column (collapse.html)', () => {
       ({ colRight }) => {
         for (const b of document.querySelectorAll('#gantt svg.fg-timeline .fg-task__bar')) {
           const r = b.getBoundingClientRect();
-          if (r.left < colRight - 8 && r.right > colRight - 8 && r.top > 80 && r.bottom < innerHeight) {
+          if (r.left < colRight - 8 && r.right > colRight - 8 && r.top > 80 && r.bottom < document.getElementById('gantt')!.getBoundingClientRect().bottom - 2) {
             return { x: colRight - 6, y: r.top + r.height / 2 };
           }
         }
@@ -151,7 +154,7 @@ test.describe('pinned label column (collapse.html)', () => {
     // The corner wins the hit test over the header and the column; the column wins below it.
     const hit = await page.evaluate(
       ([x, y]) => {
-        const at = (px: number, py: number) => document.elementFromPoint(px, py)?.closest('[class^="fg-timeline__sticky"]')?.className;
+        const at = (px: number, py: number) => document.elementFromPoint(px, py)?.closest('[class^="fg-timeline__sticky"]')?.getAttribute('class');
         return { corner: at(x! + 10, y! + 8), below: at(x! + 10, y! + 52), band: at(x! + 250, y! + 8) };
       },
       [c.x, c.y] as const,
@@ -252,9 +255,10 @@ test.describe('pinned label column (collapse.html)', () => {
     const after = Date.parse(await readTaskDate(page, 'filler-5', 'start'));
     expect(Math.round((after - before) / 86_400_000)).toBe(2);
 
-    // Scroll 12px further so the bar's left edge is under the column; pressing there starts nothing.
+    // Scroll further so the bar's left edge is under the column; pressing there starts nothing.
     const sl = await page.evaluate(() => document.getElementById('gantt')!.scrollLeft);
-    await setScroll(page, await page.evaluate(() => document.getElementById('gantt')!.scrollTop), sl + 12);
+    const cur = (await page.locator('.fg-task[data-task-id="filler-5"] .fg-task__bar').boundingBox())!;
+    await setScroll(page, await page.evaluate(() => document.getElementById('gantt')!.scrollTop), sl + (cur.x - (c.x + LABEL_W - 30)));
     const b2 = (await page.locator('.fg-task[data-task-id="filler-5"] .fg-task__bar').boundingBox())!;
     const probeX = c.x + LABEL_W - 4;
     expect(b2.x).toBeLessThan(probeX);
@@ -290,7 +294,7 @@ test.describe('pinned label column (collapse.html)', () => {
     expect(sl).toBeGreaterThan(0);
   });
 
-  test('long names are truncated at the column edge live, and the export keeps the full name', async ({ page }) => {
+  test('long names are truncated at the column edge live', async ({ page }) => {
     await page.evaluate(() => {
       (window as unknown as { __gantt: { updateTask(id: string, p: object): void } }).__gantt.updateTask('standalone', {
         name: 'An unreasonably long task name that would run far across the grid and the bars',
@@ -310,9 +314,20 @@ test.describe('pinned label column (collapse.html)', () => {
       expect(visible.wider).toBe(true);
       expect(visible.beyondIsClone).toBe(false);
     }
-    const xml = await page.evaluate(() => (window as unknown as { __gantt: { exportSvg(): string } }).__gantt.exportSvg());
-    expect(xml).toContain('An unreasonably long task name that would run far across the grid and the bars');
+  });
+
+  test('the export keeps the full long name and carries no opacity', async ({ page }) => {
+    await page.goto('/');
+    await expect(page.locator('svg.fg-timeline')).toBeVisible();
+    const long = 'An unreasonably long task name that would run far across the grid and the bars';
+    const xml = await page.evaluate((name) => {
+      const gantt = (window as unknown as { __gantt: { updateTask(id: string, p: object): void; exportSvg(): string } }).__gantt;
+      gantt.updateTask('design', { name });
+      return gantt.exportSvg();
+    }, long);
+    expect(xml).toContain(long);
     expect(xml).not.toContain('opacity');
+    expect(xml.match(/<svg/g)).toHaveLength(1);
   });
 
   test('one tab stop and no duplicate names: the clones are invisible to the accessibility tree', async ({ page }) => {
@@ -373,13 +388,17 @@ test.describe('host containers (the structural fix)', () => {
     await pins(page);
   });
 
-  test('container padding: no strip above the band and no gap beside the column once scrolled', async ({ page }) => {
+  // Measured, not assumed: browsers pin `position: sticky` at the scroller's CONTENT edge (inside
+  // the padding), so with `padding: P` the band and the column stay P px inside the container and
+  // scrolled rows show in the strip above/beside them. Padding stays a documented limit.
+  test('container padding: the layers pin at the content edge, inside the padding', async ({ page }) => {
     await HOST('width:420px;height:420px;overflow:auto;padding:24px')(page);
-    const c0 = await origin(page);
-    await setScroll(page, 0, 0);
-    const band0 = (await page.locator(HEADER_OVERLAY).boundingBox())!;
-    expect(Math.abs(band0.y - (c0.y + 24))).toBeLessThanOrEqual(1);
-    await pins(page);
+    await setScroll(page, 300, 300);
+    const c = await origin(page);
+    const band = (await page.locator(HEADER_OVERLAY).boundingBox())!;
+    const col = (await page.locator(COLUMN).boundingBox())!;
+    expect(Math.abs(band.y - (c.y + 24))).toBeLessThanOrEqual(1);
+    expect(Math.abs(col.x - (c.x + 24))).toBeLessThanOrEqual(1);
   });
 
   test('under dir="rtl" the layer sits at the inline-start edge and the column sticks to the right', async ({ page }) => {
