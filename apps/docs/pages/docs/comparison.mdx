@@ -27,10 +27,10 @@ less. That trade is laid out below rather than hidden.
 <tr><td><code>dhtmlx-gantt@10.0.3</code> (Community, MIT)</td><td>176.53 KiB</td><td>49.65 KiB</td><td><strong>226.18 KiB</strong></td></tr>
 <tr><td><code>frappe-gantt@1.2.2</code></td><td>13.15 KiB</td><td>1.74 KiB</td><td><strong>14.89 KiB</strong></td></tr>
 <tr><td>Bryntum Gantt</td><td colSpan={3}>Not independently measurable — see below</td></tr>
-<tr><td>FluxGantt — <code>createGantt()</code> only</td><td>{/*sz:hello.2*/}7.50{/*/sz*/} KiB</td><td>0</td><td><strong>{/*sz:hello.2*/}7.50{/*/sz*/} KiB</strong></td></tr>
-<tr><td>FluxGantt — <code>+ withRender</code></td><td>{/*sz:render.2*/}14.47{/*/sz*/} KiB</td><td>0</td><td><strong>{/*sz:render.2*/}14.47{/*/sz*/} KiB</strong></td></tr>
-<tr><td>FluxGantt — <code>+ withRender + withInteraction</code></td><td>{/*sz:editable.2*/}19.02{/*/sz*/} KiB</td><td>0</td><td><strong>{/*sz:editable.2*/}19.02{/*/sz*/} KiB</strong></td></tr>
-<tr><td>FluxGantt — every capability composed</td><td>{/*sz:kitchen.2*/}23.81{/*/sz*/} KiB</td><td>0</td><td><strong>{/*sz:kitchen.2*/}23.81{/*/sz*/} KiB</strong></td></tr>
+<tr><td>FluxGantt — <code>createGantt()</code> only</td><td>{/*sz:hello.2*/}7.41{/*/sz*/} KiB</td><td>0</td><td><strong>{/*sz:hello.2*/}7.41{/*/sz*/} KiB</strong></td></tr>
+<tr><td>FluxGantt — <code>+ withRender</code></td><td>{/*sz:render.2*/}14.53{/*/sz*/} KiB</td><td>0</td><td><strong>{/*sz:render.2*/}14.53{/*/sz*/} KiB</strong></td></tr>
+<tr><td>FluxGantt — <code>+ withRender + withInteraction</code></td><td>{/*sz:editable.2*/}19.05{/*/sz*/} KiB</td><td>0</td><td><strong>{/*sz:editable.2*/}19.05{/*/sz*/} KiB</strong></td></tr>
+<tr><td>FluxGantt — every capability composed</td><td>{/*sz:kitchen.2*/}23.71{/*/sz*/} KiB</td><td>0</td><td><strong>{/*sz:kitchen.2*/}23.71{/*/sz*/} KiB</strong></td></tr>
 </tbody>
 </table>
 
@@ -49,7 +49,7 @@ its own subpath export. The competitor numbers are their entry files measured wh
 `dhtmlx-gantt` declares no `sideEffects` and `frappe-gantt` declares `["*.css"]`: they are
 monoliths, so a bundler cannot drop anything and the entry file *is* what ships. Tree-shaking
 FluxGantt is not a favour to FluxGantt — it is what actually happens in your build, and it is the
-only reason a row can read {/*sz:hello.2*/}7.50{/*/sz*/} KiB.
+only reason a row can read {/*sz:hello.2*/}7.41{/*/sz*/} KiB.
 
 **FluxGantt rows are measured as ESM output.** `pnpm size` bundles each fixture with esbuild as
 `format: 'esm'`, because that is what a Vite, Rollup, webpack 5 or esbuild build of your app
@@ -60,13 +60,13 @@ IIFE, so ESM figures read about 12 B lower than the true bundle. The competitor 
 adjusted for any of this: they are whole published entry files gzipped at level 9, with no
 bundler and no calibration, so the two methods are comparable in spirit but not byte-identical.
 None of this changes any conclusion on this page (the nearest comparison, Frappe at 14.89 KiB
-against an editable FluxGantt chart at {/*sz:editable.2*/}19.02{/*/sz*/} KiB, is a gap of several KiB).
+against an editable FluxGantt chart at {/*sz:editable.2*/}19.05{/*/sz*/} KiB, is a gap of several KiB).
 
 **Frappe is smaller, and that is fine.** 14.89 KiB buys you finish-to-start dependencies drawn as
 arrows and drag-to-move. It does not buy you a critical path, other dependency types, lag/lead, a
-working calendar, or types. FluxGantt at {/*sz:editable.2*/}19.02{/*/sz*/} KiB buys all of those. The comparison worth making
+working calendar, or types. FluxGantt at {/*sz:editable.2*/}19.05{/*/sz*/} KiB buys all of those. The comparison worth making
 is not "who is smaller" but "what does each byte buy" — and the interesting row is the first one:
-FluxGantt's headless engine is **{/*sz:hello.2*/}7.50{/*/sz*/} KiB** with no renderer at all, which is the configuration a
+FluxGantt's headless engine is **{/*sz:hello.2*/}7.41{/*/sz*/} KiB** with no renderer at all, which is the configuration a
 server-side scheduler or a test suite actually imports.
 
 ### Why Bryntum has no number

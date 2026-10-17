@@ -114,13 +114,13 @@ subpath exports**, so you download what you compose and nothing else. Measured w
 
 | What you compose | gzip |
 |---|---|
-| `createGantt()` — headless engine only | **<!--sz:hello.2-->7.50<!--/sz--> KiB** |
-| `+ withIo` | <!--sz:io.2-->12.61<!--/sz--> KiB |
-| `+ withRender` — a painted chart | <!--sz:render.2-->14.47<!--/sz--> KiB |
-| `+ withRender + withInteraction` — a fully editable chart | **<!--sz:editable.2-->19.02<!--/sz--> KiB** |
-| `+ withRender + withTheme` | <!--sz:theme.2-->15.15<!--/sz--> KiB |
-| `+ withRender + withInteraction + withResponsive` | <!--sz:responsive.2-->19.81<!--/sz--> KiB |
-| Every capability composed | <!--sz:kitchen.2-->23.81<!--/sz--> KiB |
+| `createGantt()` — headless engine only | **<!--sz:hello.2-->7.41<!--/sz--> KiB** |
+| `+ withIo` | <!--sz:io.2-->12.46<!--/sz--> KiB |
+| `+ withRender` — a painted chart | <!--sz:render.2-->14.53<!--/sz--> KiB |
+| `+ withRender + withInteraction` — a fully editable chart | **<!--sz:editable.2-->19.05<!--/sz--> KiB** |
+| `+ withRender + withTheme` | <!--sz:theme.2-->15.18<!--/sz--> KiB |
+| `+ withRender + withInteraction + withResponsive` | <!--sz:responsive.2-->20.46<!--/sz--> KiB |
+| Every capability composed | <!--sz:kitchen.2-->23.71<!--/sz--> KiB |
 
 Required host CSS: **none** — every visual property is written inline with a `--fg-*` token
 fallback, so a stylesheet is only needed to *override* defaults.
