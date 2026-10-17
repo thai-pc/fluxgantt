@@ -103,10 +103,11 @@ describe('enableClickSelect — DOM interaction', () => {
     return { handle, dispose, onSelect, onToggle, onRangeSelect, onClear };
   }
 
-  it('handle.interactionRoot and handle.pointerEventTarget both alias handle.svg (Ticket 2 aliasing guarantee)', () => {
+  it('interactionRoot is the chart svg; pointerEventTarget is the layer wrapper that contains it', () => {
     const { handle } = setup();
     expect(handle.interactionRoot).toBe(handle.svg);
-    expect(handle.pointerEventTarget).toBe(handle.svg);
+    expect(handle.pointerEventTarget.classList.contains('fg-timeline__layer')).toBe(true);
+    expect(handle.pointerEventTarget.contains(handle.svg)).toBe(true);
   });
 
   describe('collapse toggle exclusion guard (spec-collapse-expand.md §7.2/§9.6)', () => {
@@ -333,13 +334,14 @@ describe('enableClickSelect — minimal InteractiveRendererHandle mock (SVG-deco
     const root = document.createElement('div');
     document.body.appendChild(root);
     root.innerHTML = `
-      <div class="fg-timeline__row" data-row-index="0">
+      <div class="fg-timeline__row" data-row-index="0" data-task-id="mock-1">
         <div class="fg-task" data-task-id="mock-1"></div>
       </div>
     `;
     const handle: InteractiveRendererHandle = {
       interactionRoot: root,
       pointerEventTarget: root,
+      container: document.body,
       // Required by the shared contract but irrelevant to this module (nothing here does
       // painted-space <-> content-space conversion) — the default width is enough.
       getLabelColumnWidth: () => 160,

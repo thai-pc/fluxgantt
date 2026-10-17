@@ -110,9 +110,9 @@ export interface SvgRendererHandle extends InteractiveRendererHandle {
   /** Same node as `svg` — `enableClickSelect`/`enableKeyboardNav` query `.fg-timeline__row`
    *  structure and attach their `keydown` listener here (spec-canvas-renderer-ticket2.md §3.3). */
   readonly interactionRoot: SVGSVGElement;
-  /** Same node as `svg` — SVG has no separate hit-testing layer, the visible `<svg>` receives
-   *  real pointer events directly (spec-canvas-renderer-ticket2.md §3.3). */
-  readonly pointerEventTarget: SVGSVGElement;
+  /** The `div.fg-timeline__layer` wrapper that holds the chart `<svg>` AND the pinned overlays, so a
+   *  pointer event on any of them bubbles to one listener target. */
+  readonly pointerEventTarget: HTMLElement;
   readonly container: HTMLElement;
   /** Full repaint (no diff — spec §5.5) with new input. The optional `options` are merged exactly
    *  like `setOptions()` BEFORE the single repaint, so changing input and options together costs
@@ -152,6 +152,8 @@ export const LABEL_COLUMN_WIDTH = 160;
 const HEADER_HEIGHT = 32;
 const LABEL_INDENT_PX = 16;
 const LABEL_PADDING_PX = 8;
+// Shared prefix of every pinned layer's inline style: one grid cell, logical start edge.
+const PIN = 'position:sticky;grid-area:1/1;align-self:start;justify-self:start;';
 
 /** Compile-time constant — never derived from task/user data (security §8). Exported so
  *  `interaction/drag-create-dep.ts`'s rubber-band preview can reference the SAME marker id
@@ -262,36 +264,39 @@ export function createSvgRenderer(
   // painted with, so `getLabelColumnWidth()` never has to re-derive the resolution below.
   let currentLabelColumnWidth = LABEL_COLUMN_WIDTH;
 
-  // `display:block`: no inline descender gap under the chart, and the overlay float below lands under it.
-  const svg = el('svg', { class: 'fg-timeline' }, { display: 'block' });
+  // `display:block`: no inline descender gap (kept for the export root). `grid-area:1/1` puts the chart in
+  // the layer's single grid cell; `exportSvg` strips it from the clone.
+  const svg = el('svg', { class: 'fg-timeline' });
+  svg.style.cssText = 'display:block;grid-area:1/1';
   // `role`/`aria-rowcount`/`aria-multiselectable` are set INSIDE render() (spec-keyboard-nav.md
   // §3.2 point 1) — `aria-rowcount` depends on the row count, which isn't known until the
   // first render(), so no static value is set here beyond the role/attribute EXISTING in the
   // DOM once render() runs synchronously below.
 
+  // One wrapper holds the chart and every pinned layer in a single grid cell, so a flex/grid host sees ONE
+  // in-flow child (no float, no negative margin) and the sticky containing block is the whole chart.
+  // `align-self:start` is load-bearing: without it a fixed-height flex/grid host stretches the wrapper to
+  // its own height and sticky stops pinning at the cell's bottom. `max-content`: the wrapper is exactly
+  // the chart's width, so blank container space beside a narrow chart is not part of the event target.
+  const layer = document.createElement('div');
+  layer.className = 'fg-timeline__layer';
+  layer.style.cssText = 'display:grid;width:max-content;align-self:start';
+
   // Pinned date axis: an aria-hidden presentation replica of the in-svg header, placed AFTER the
   // chart svg so `container.querySelector('svg')` stays the grid. `position:sticky` is
-  // compositor-native; `overflow:visible` keeps the 1px divider half below the box; the
-  // background also fills the label-column corner so scrolled row labels do not show through.
+  // compositor-native; the background also fills the label-column corner so scrolled row labels
+  // do not show through. Logical placement only (`justify-self:start`, never a physical `left`).
   const BAND_BG = 'var(--fg-bg-subtle, #f3f4f6)';
-  const overlay = el(
-    'svg',
-    { class: 'fg-timeline__sticky-header', 'aria-hidden': 'true', height: HEADER_HEIGHT },
-    {
-      position: 'sticky',
-      top: '0',
-      // Logical, not 'left': in an RTL host the chart svg sits at the inline-start (right) edge, and
-      // a physical left float would misalign the date labels with the day columns.
-      float: 'inline-start',
-      overflow: 'visible',
-      // -1px top: Firefox does not pixel-snap a sticky box, so at a fractional container y the
-      // opaque fill starts mid-pixel; the shadow adds an opaque row above (clipped at rest).
-      'clip-path': 'inset(-1px 0 -1px)',
-      background: BAND_BG,
-      'box-shadow': `0 -1px 0 ${BAND_BG}`,
-    },
-  );
-  container.append(svg, overlay);
+  const overlay = el('svg', {
+    class: 'fg-timeline__sticky-header',
+    'aria-hidden': 'true',
+    height: HEADER_HEIGHT,
+  });
+  // -1px top: Firefox does not pixel-snap a sticky box, so at a fractional container y the opaque fill
+  // starts mid-pixel; the shadow adds an opaque row above (clipped at rest).
+  overlay.style.cssText = `${PIN}top:0;clip-path:inset(-1px 0 0);background:${BAND_BG};box-shadow:0 -1px 0 ${BAND_BG}`;
+  layer.append(svg, overlay);
+  container.append(layer);
   // Keeps natively focus-scrolled rows out from under the band; restored on destroy().
   const priorScrollPaddingTop = container.style.scrollPaddingTop;
   container.style.scrollPaddingTop = `${HEADER_HEIGHT}px`;
@@ -301,7 +306,7 @@ export function createSvgRenderer(
   return {
     svg,
     interactionRoot: svg,
-    pointerEventTarget: svg,
+    pointerEventTarget: layer,
     container,
     update(nextInput: SvgRendererInput, nextOptions?: Partial<SvgRendererOptions>): void {
       if (destroyed) return;
@@ -317,8 +322,7 @@ export function createSvgRenderer(
     destroy(): void {
       if (destroyed) return;
       destroyed = true;
-      svg.remove();
-      overlay.remove();
+      layer.remove();
       container.style.scrollPaddingTop = priorScrollPaddingTop;
     },
     getLabelColumnWidth(): number {
@@ -456,12 +460,7 @@ export function createSvgRenderer(
       timeScale.totalWidth,
     );
     svg.appendChild(header);
-    // Negative top margin pulls the overlay's natural position to y=0 so sticky engages at once.
-    // It is a float so it takes no in-flow height (the scroll container, a BFC, still contains
-    // it) and its margin box ends at the 32px band: a sticky box may only travel while its margin
-    // box stays inside the container, so an in-flow `margin-bottom` would pin it in place.
     overlay.setAttribute('width', `${totalWidth}`);
-    overlay.style.marginTop = `-${totalHeight}px`;
     svg.appendChild(
       renderDependencies(currentInput.dependencies, barByTaskId, rowHeight, offsetX, offsetY),
     );
@@ -613,7 +612,7 @@ function renderHeader(tiers: HeaderTiers, offsetX: number, timelineWidth: number
 
   const divider = el(
     'line',
-    { x1: offsetX, x2: offsetX + timelineWidth, y1: HEADER_HEIGHT, y2: HEADER_HEIGHT },
+    { x1: offsetX, x2: offsetX + timelineWidth, y1: HEADER_HEIGHT - 0.5, y2: HEADER_HEIGHT - 0.5 },
     { stroke: 'var(--fg-border-strong, #d4d4d8)' },
   );
   g.appendChild(divider);
@@ -662,7 +661,7 @@ function renderTodayLine(x: number, offsetX: number, totalHeight: number): SVGLi
 function renderLabelDivider(offsetX: number, totalHeight: number): SVGLineElement {
   return el(
     'line',
-    { class: 'fg-timeline__label-divider', x1: offsetX, x2: offsetX, y1: 0, y2: totalHeight },
+    { class: 'fg-timeline__label-divider', x1: offsetX - 0.5, x2: offsetX - 0.5, y1: 0, y2: totalHeight },
     { stroke: 'var(--fg-border, #e5e7eb)' },
   );
 }

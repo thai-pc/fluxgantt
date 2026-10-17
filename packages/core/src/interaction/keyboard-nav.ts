@@ -139,9 +139,9 @@ export function enableKeyboardNav(
   }
 
   handle.interactionRoot.addEventListener('keydown', onKeyDown);
-  // Listened on the PARENT (an HTML element): Blink treats an SVG element that has a focus-event
+  // Listened on the host CONTAINER (an HTML element): Blink treats an SVG element that has a focus-event
   // listener as focusable, which would turn the `<svg>` itself into a stray Tab stop.
-  const focusRoot = handle.interactionRoot.parentElement!;
+  const focusRoot = handle.container;
   focusRoot.addEventListener('focusin', onFocusIn);
 
   return { dispose, getFocusedTaskId, syncFocusToRows, focusTask };

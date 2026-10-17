@@ -80,9 +80,9 @@ export function withEditHooks<T extends GanttInstance>(instance: T, options: Edi
         if (!(target instanceof Element) || target.closest('.fg-timeline__row-toggle')) return undefined;
         // The painted grid sits outside the row groups: fall back to the row spanning y.
         const row =
-          target.closest('.fg-timeline__row') ??
+          target.closest('[data-row-index]') ??
           (target.closest('.fg-timeline__grid') &&
-            Array.from(root.querySelectorAll('.fg-timeline__row')).find((r) => {
+            Array.from(root.querySelectorAll('[data-row-index]')).find((r) => {
               const b = r.getBoundingClientRect();
               return y >= b.top && y < b.bottom;
             }));
@@ -255,7 +255,7 @@ export function withEditHooks<T extends GanttInstance>(instance: T, options: Edi
     // is not inside the `<canvas>`; the same handler forwards the host's decision there too.
     for (const [type, fn] of ptr) pointerTarget.addEventListener(type, fn);
     root.addEventListener('keydown', onKeyDown);
-    if (root !== pointerTarget) root.addEventListener('contextmenu', onContextMenu);
+    if (!pointerTarget.contains(root)) root.addEventListener('contextmenu', onContextMenu);
     uninstall = (): void => {
       cancelPress();
       for (const [type, fn] of ptr) pointerTarget.removeEventListener(type, fn);

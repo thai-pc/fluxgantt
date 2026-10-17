@@ -711,10 +711,10 @@ describe('createSvgRenderer — today marker', () => {
 // labelColumnWidth (spec-responsive-mobile.md) — the painted offset is no longer the constant
 // ---------------------------------------------------------------------------------------
 describe('labelColumnWidth option', () => {
-  /** The label divider is painted AT the offset, so its `x1` is the offset, read back out of
-   *  the DOM rather than trusted from the option we passed in. */
+  /** The label divider is pixel-snapped half a pixel inside the column (`offset - 0.5`), so the
+   *  offset is its `x1` + 0.5, read back out of the DOM rather than trusted from the option. */
   function paintedOffset(h: ReturnType<typeof createSvgRenderer>): number {
-    return Number(h.svg.querySelector('.fg-timeline__label-divider')!.getAttribute('x1'));
+    return Number(h.svg.querySelector('.fg-timeline__label-divider')!.getAttribute('x1')) + 0.5;
   }
 
   it('defaults to 160 and reports it through getLabelColumnWidth()', () => {
@@ -777,6 +777,7 @@ describe('sticky header overlay (pinned date axis)', () => {
     expect(overlay.tagName.toLowerCase()).toBe('svg');
     expect(overlay.getAttribute('aria-hidden')).toBe('true');
     expect(h.svg.nextElementSibling).toBe(overlay);
+    expect(overlay.parentElement).toBe(h.pointerEventTarget);
     expect(container.querySelector('svg')).toBe(h.svg);
     expect(h.svg.style.display).toBe('block');
     expect(overlay.getAttribute('height')).toBe('32');
@@ -787,23 +788,22 @@ describe('sticky header overlay (pinned date axis)', () => {
     const overlay = overlayOf(container);
     expect(overlay.style.position).toBe('sticky');
     expect(overlay.style.top).toBe('0px');
-    // A float: it adds no in-flow height, and a sticky box can only travel while its margin box
-    // stays inside the container (an in-flow bottom margin would pin it in place).
-    expect(overlay.style.float).toBe('inline-start');
+    // No float and no negative margin: it shares the layer's single grid cell with the chart.
+    expect(overlay.style.float).toBe('');
+    expect(overlay.style.marginTop).toBe('');
     expect(overlay.querySelector('[tabindex]')).toBeNull();
     expect(overlay.querySelector('[role]')).toBeNull();
     expect(overlay.style.transition).toBe('');
     expect(overlay.style.animation).toBe('');
   });
 
-  it.each([5, 20, 61])('width equals the chart width and the top margin pulls it back by the chart height (%i rows)', (n) => {
+  it.each([5, 20, 61])('width equals the chart width and never writes a margin (%i rows)', (n) => {
     const h = createSvgRenderer(container, { tasks: manyTasks(n), dependencies: [] });
     const overlay = overlayOf(container);
     const H = Number(h.svg.getAttribute('height'));
     expect(H).toBeGreaterThan(32);
     expect(overlay.getAttribute('width')).toBe(h.svg.getAttribute('width'));
-    expect(overlay.style.marginTop).toBe(`-${H}px`);
-
+    expect(overlay.style.marginTop).toBe('');
   });
 
   it('holds one header clone whose labels match the chart header, never any row content', () => {
@@ -822,11 +822,12 @@ describe('sticky header overlay (pinned date axis)', () => {
     createSvgRenderer(container, { tasks: baseTasks, dependencies: baseDeps });
     const overlay = overlayOf(container);
     expect(overlay.querySelectorAll('.fg-timeline__label-divider')).toHaveLength(1);
-    expect(overlay.style.getPropertyValue('clip-path')).toBe('inset(-1px 0 -1px)');
+    // Only the top overhang: the divider lines are pixel-snapped INSIDE the band, nothing hangs below.
+    expect(overlay.style.getPropertyValue('clip-path')).toBe('inset(-1px 0 0)');
     // Opaque extra row above the band (Firefox fractional-y ghost): shadow in the same colour.
     expect(overlay.style.getPropertyValue('box-shadow')).toMatch(/-1px/);
     expect(overlay.style.getPropertyValue('box-shadow')).toContain('--fg-bg-subtle');
-    expect(overlay.style.overflow).toBe('visible');
+    expect(overlay.style.overflow).toBe('');
   });
 
   it('is refreshed on setOptions({ viewMode }) and update()', () => {
@@ -841,8 +842,6 @@ describe('sticky header overlay (pinned date axis)', () => {
     expect(overlay.querySelectorAll('.fg-timeline__header')).toHaveLength(1);
 
     h.update({ tasks: manyTasks(30), dependencies: [] });
-    const H = Number(h.svg.getAttribute('height'));
-    expect(overlay.style.marginTop).toBe(`-${H}px`);
     expect(overlayOf(container)).toBe(overlay);
   });
 

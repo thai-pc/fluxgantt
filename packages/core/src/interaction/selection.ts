@@ -50,13 +50,12 @@ export interface SelectionOptions {
  *  `handle.hitTestRow()` instead (spec-canvas-renderer-ticket2.md §7.2), since a real click on
  *  the visible `<canvas>` bitmap never lands on a DOM descendant of `.fg-timeline__row`. */
 function resolveRowHitDom(target: Element): { taskId: TaskId; rowIndex: number } | undefined {
-  const rowEl = target.closest('.fg-timeline__row');
-  if (!rowEl) return undefined;
-  const taskEl = rowEl.querySelector('.fg-task[data-task-id]');
-  const idAttr = taskEl?.getAttribute('data-task-id');
-  const rowIndexAttr = rowEl.getAttribute('data-row-index');
-  if (idAttr === null || idAttr === undefined || rowIndexAttr === null) return undefined;
-  return { taskId: toTaskId(idAttr), rowIndex: Number(rowIndexAttr) };
+  // `[data-row-index]` (+ `data-task-id` on the same node) is carried by the row group AND by the pinned
+  // label-column clones, so a click on a pinned label resolves exactly like one on the real label.
+  const rowEl = target.closest('[data-row-index]');
+  const idAttr = rowEl?.getAttribute('data-task-id');
+  if (!rowEl || idAttr === null || idAttr === undefined) return undefined;
+  return { taskId: toTaskId(idAttr), rowIndex: Number(rowEl.getAttribute('data-row-index')) };
 }
 
 interface DownState {
