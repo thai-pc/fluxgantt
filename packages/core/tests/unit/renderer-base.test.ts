@@ -585,6 +585,33 @@ describe('buildTaskAriaLabel — rollup (spec-summary-rollup.md Ticket B2)', () 
   });
 });
 
+describe('buildTaskAriaLabel — date label memo', () => {
+  const t = task('m', '2026-01-05T09:00', '2026-01-08T17:00');
+
+  it('returns identical strings on repeated calls and never bleeds across locales', () => {
+    const en1 = buildTaskAriaLabel(t, false, false, cal, 'en');
+    const de = buildTaskAriaLabel(t, false, false, cal, 'de');
+    const en2 = buildTaskAriaLabel(t, false, false, cal, 'en');
+    expect(en2).toBe(en1);
+    expect(de).not.toBe(en1);
+    expect(de).toBe(buildTaskAriaLabel(t, false, false, cal, 'de'));
+  });
+
+  it('stays correct (uncached) once the bounded memo is full', () => {
+    const labels: string[] = [];
+    // 600 distinct dates exceeds the 512-entry bound.
+    for (let i = 0; i < 600; i++) {
+      const day = normalizeDate('2026-01-01T09:00', cal.timezone).add({ days: i });
+      const iso = day.toPlainDate().toString();
+      labels.push(buildTaskAriaLabel(task('x', `${iso}T09:00`, `${iso}T17:00`), false, false, cal, 'fr'));
+    }
+    const first = normalizeDate('2026-01-01T09:00', cal.timezone).toPlainDate();
+    expect(labels[0]).toContain(first.toLocaleString('fr', { year: 'numeric', month: 'short', day: 'numeric' }));
+    const last = normalizeDate('2026-01-01T09:00', cal.timezone).add({ days: 599 }).toPlainDate();
+    expect(labels[599]).toContain(last.toLocaleString('fr', { year: 'numeric', month: 'short', day: 'numeric' }));
+  });
+});
+
 describe('buildTaskAriaLabel — i18n scaffold (spec §6.3)', () => {
   const t = task('a', '2026-01-05T09:00', '2026-01-08T17:00', { progress: 0.5 });
 
@@ -819,6 +846,28 @@ describe('computeGridColumns', () => {
     const cols = computeGridColumns(ts, 'week', holidayCal, 'en', now);
     expect(cols.filter((c) => c.isHoliday)).toHaveLength(1);
   });
+
+  it.each(['UTC', 'America/New_York', 'Asia/Ho_Chi_Minh'])(
+    'columns match the per-day working-calendar predicates across a DST boundary and many holidays (%s)',
+    (timezone) => {
+      const holidays = Array.from({ length: 20 }, (_, i) =>
+        `2026-03-${String(1 + i).padStart(2, '0')}`,
+      );
+      const tzCal: WorkingCalendar = { ...cal, timezone, holidays };
+      const range = {
+        start: normalizeDate('2026-03-01T00:00', timezone), // US DST starts 2026-03-08
+        end: normalizeDate('2026-03-20T00:00', timezone),
+      };
+      const ts = createTimeScale(range, 'day', tzCal);
+      const cols = computeGridColumns(ts, 'day', tzCal, 'en', now);
+      expect(cols.length).toBeGreaterThan(15);
+      for (const col of cols) {
+        const d = ts.xToDate(col.x).toPlainDate();
+        expect(col.isWeekend).toBe(!isWorkingDay(d, tzCal));
+        expect(col.isHoliday).toBe(isHoliday(d, tzCal));
+      }
+    },
+  );
 
   it('isToday on the column containing `now`', () => {
     const range = {

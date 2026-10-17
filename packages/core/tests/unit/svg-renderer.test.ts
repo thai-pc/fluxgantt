@@ -67,6 +67,33 @@ describe('createSvgRenderer — two-tier header', () => {
   });
 });
 
+describe('createSvgRenderer — update(input, options)', () => {
+  it('merges the options and repaints exactly once, equal to setOptions() then update()', () => {
+    const h = createSvgRenderer(container, { tasks: baseTasks, dependencies: baseDeps }, { viewMode: 'week' });
+    const append = vi.spyOn(Element.prototype, 'append');
+    const renders = (): number =>
+      append.mock.calls.filter((c, i) => (append.mock.contexts[i] as Element).classList.contains('fg-timeline') && (c[0] as Element)?.nodeName === 'defs').length;
+    h.update({ tasks: baseTasks.slice(0, 2), dependencies: [] }, { viewMode: 'month', density: 'compact' });
+    expect(renders()).toBe(1);
+    const merged = h.svg.outerHTML;
+    append.mockRestore();
+
+    const g = createSvgRenderer(container, { tasks: baseTasks, dependencies: baseDeps }, { viewMode: 'week' });
+    g.setOptions({ viewMode: 'month', density: 'compact' });
+    g.update({ tasks: baseTasks.slice(0, 2), dependencies: [] });
+    expect(g.svg.outerHTML).toBe(merged);
+  });
+
+  it('an explicit-undefined timeRange clears a previous one (the facade relies on this)', () => {
+    const h = createSvgRenderer(container, { tasks: baseTasks, dependencies: baseDeps });
+    const auto = h.svg.getAttribute('width');
+    h.setOptions({ timeRange: { start: '2026-01-01', end: '2026-06-01' } });
+    expect(h.svg.getAttribute('width')).not.toBe(auto);
+    h.update({ tasks: baseTasks, dependencies: baseDeps }, { timeRange: undefined } as never);
+    expect(h.svg.getAttribute('width')).toBe(auto);
+  });
+});
+
 describe('createSvgRenderer — structure', () => {
   it('mounts an <svg class="fg-timeline"> with role/aria-label', () => {
     const h = createSvgRenderer(container, { tasks: baseTasks, dependencies: baseDeps });
