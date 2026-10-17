@@ -197,7 +197,7 @@ describe('cyclic dependency graph', () => {
   it('warns once per data revision, not once per repaint', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const gantt = createGantt({ tasks });
-    const { dependencyStore } = getInternal(gantt);
+    const { deps: dependencyStore } = getInternal(gantt);
     dependencyStore.link(id('a'), id('b'), 'FS');
     dependencyStore.link(id('b'), id('a'), 'FS', { allowCycle: true });
     gantt.mount(container);
