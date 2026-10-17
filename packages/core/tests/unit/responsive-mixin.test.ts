@@ -255,10 +255,10 @@ describe('withResponsive — the pan recognizer (touch arbitration)', () => {
     target.dispatchEvent(ev);
   }
 
-  function mountWithScroll() {
+  function mountWithScroll(options?: ResponsiveOptions) {
     stubMatchMedia(true);
     stubResizeObserver();
-    const gantt = responsive();
+    const gantt = responsive(options);
     gantt.mount(container);
     // jsdom never scrolls anything; back scrollLeft/scrollTop with real storage so the pan's
     // writes are observable.
@@ -325,8 +325,8 @@ describe('withResponsive — the pan recognizer (touch arbitration)', () => {
     expect(container.scrollLeft).toBe(500);
   });
 
-  it('pointercancel ends the gesture like pointerup, and a second pointer cannot hijack a live pan', () => {
-    const { svg } = mountWithScroll();
+  it('pointercancel ends the gesture like pointerup, and a second pointer cannot hijack a live pan (pinchZoom: false; with pinch on, a second finger cancels the pan instead, see responsive-pinch.test.ts)', () => {
+    const { svg } = mountWithScroll({ pinchZoom: false });
     const grid = svg.querySelector('.fg-timeline__row') ?? svg;
 
     pointer('pointerdown', grid, 300, 400, 1);

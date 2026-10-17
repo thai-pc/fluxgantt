@@ -68,10 +68,46 @@ interference and no `pointercancel` race.
 Two consequences:
 
 - **Native pinch-zoom is suppressed while a finger is on the chart.** Page zoom elsewhere is
-  unaffected. This is the right trade for a chart surface, and it is what will let chart-level
-  pinch-to-zoom land in this same recognizer later.
+  unaffected. This is the right trade for a chart surface, and it is what lets the chart handle
+  pinch itself (next section).
 - **Momentum/inertial scrolling is gone** on the chart, because the pan is a direct
   `scrollLeft` write rather than a native fling.
+
+## Pinch to zoom
+
+Two touch fingers down on the chart are a pinch. Spreading them past 1.4x the span since the last
+step calls `zoomIn()` (toward `day`); squeezing past 0.7x calls `zoomOut()`. Each step
+re-baselines, so one continuous pinch can cross several view modes, at most one per move event,
+and jitter at a threshold cannot flip the level back and forth. The date under the midpoint of
+your fingers stays under it (near the start or end of the chart the browser clamps the scroll
+offset, so it cannot always). `viewport:changed` fires once per real step; it works for the SVG
+and Canvas renderers and with `readOnly: true` (zoom changes only the viewport).
+
+Landing the second finger **cancels** whatever the first finger started: a pan stops, a bar
+drag, resize or dependency link is reverted with nothing committed, and a pending long-press
+never fires.
+
+Things to know:
+
+- **Both fingers on the pinned header band is a browser gesture.** The band keeps
+  `touch-action: auto` so it scrolls natively, which means a pinch that starts entirely on it is
+  taken by the browser (page zoom or scroll) and the chart does not zoom. One finger on the band
+  and one on the chart is handled by the chart.
+- **`viewport:changed` and `scrollLeft`.** The zoom first writes a centre-anchored `scrollLeft`
+  and the pinch then overwrites it with the midpoint-anchored one in the same task. Nothing paints
+  in between, but a `viewport:changed` listener that reads `scrollLeft` synchronously sees the
+  intermediate value.
+- **Opt out** with `pinchZoom: false` if you ship your own zoom control. Single-finger pan is
+  unaffected.
+- **Accessibility: provide a single-pointer zoom control.** Pinch is a multipoint gesture, and
+  WCAG 2.5.1 (Pointer Gestures) requires a single-pointer alternative. FluxGantt does not ship a
+  zoom button, and the keyboard shortcuts (Ctrl/Cmd + `+`/`-`) and Ctrl+wheel are not single-pointer
+  alternatives for a touch user. A host that leaves pinch enabled on touch devices must offer its
+  own control, for example zoom in/out buttons that call `gantt.zoomIn()` / `gantt.zoomOut()`
+  (or `zoomTo()`). Nothing animates, so `prefers-reduced-motion` needs no handling.
+- **iOS Safari** is expected to behave (it honours `touch-action: none` and delivers multi-touch
+  Pointer Events since iOS 13) but is checked by hand, not in CI. See the manual checklist in
+  `RELEASING.md`.
 
 ## Options
 
@@ -80,6 +116,7 @@ withResponsive(instance, {
   touchDensity: 'comfortable', // default 'touch'
   labelColumnRatio: 0.3,       // default 0.4
   minLabelColumnWidth: 120,    // default 96
+  pinchZoom: false,            // default true
 });
 ```
 
@@ -124,7 +161,8 @@ gesture layer.
 
 ## Not included
 
-- **Pinch-to-zoom** — deferred to its own ticket; the pan recognizer is where it will live.
+- **Continuous (non-discrete) zoom** — a pinch steps the five view modes; it does not scale
+  continuously.
 - **A stacked mobile layout** (labels above bars, no label column) — a layout redesign, not a
   responsive pass.
 - **RTL geometry** — declared but not implemented, unchanged by this.

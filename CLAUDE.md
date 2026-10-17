@@ -27,7 +27,7 @@ This file is the context entry point for AI. Details are split into rules under 
    | `+ withRender` | 14.47 KiB | 15 KiB |
    | `+ withRender + withInteraction` | 19.02 KiB | 19.5 KiB |
    | `+ withRender + withTheme` | 15.15 KiB | 16 KiB |
-   | `+ withRender + withInteraction + withResponsive` | 19.81 KiB | 21 KiB |
+   | `+ withRender + withInteraction + withResponsive` | 20.39 KiB | 21 KiB |
    | `+ withRender + withViewport` | 15.35 KiB | 16 KiB |
    | `+ withConflicts` (headless) | 9.37 KiB | 10 KiB |
    | `+ withRender + withEditHooks` (not in the kitchen sink) | 15.80 KiB | 16 KiB |
@@ -99,6 +99,12 @@ This file is the context entry point for AI. Details are split into rules under 
    against the pre-#104/#106 numbers 14196 / 15549 / 23711 and wrongly called the pass a net spend;
    those "before" values predate two other changes that consumed bytes.) Do not read the headroom as
    free: the next renderer feature still has to find its bytes.
+
+   The 2026-10 pinch-zoom pass (`withResponsive()`'s two-finger recognizer) moved ONLY that row:
+   20290 -> 20875 B (+585 B, ceiling was +600 B), headroom 629 B; every other fixture is +0 B, and
+   it is inside `responsive/mixin.ts` precisely so they stay so. The `gesturestart` iOS fallback
+   (+60-80 B) was deliberately not added; it is applied only if the manual iOS check in
+   `RELEASING.md` shows page zoom leaking onto the chart.
 
    Run `pnpm size` from `packages/core` (or `pnpm size` at the root via turbo) to re-measure; the numbers above are its output, converted from its decimal-kB report to KiB. **It needs Node >= 22.19** — that is `size-limit` 14's own declared `engines.node` (`^22.19.0 || ^24.5.0 || >=26.0.0`), and the floor is enforced by the root `engines.node` so a permitted Node cannot be one the repo fails on. Before 14 the practical floor was 22.18, because `size-limit` calls `fs.glob` with `withFileTypes` (added in Node 22.2) and on an older 22.x it dies with an opaque `TypeError: i.isFile is not a function` that looks like a repo misconfiguration but is not. `.nvmrc` pins an exact version for this reason; CI reads it via `node-version-file`.
 6. **Tier-gate correctly** — Pro (resource/baseline/MSProject), Cloud (multiplayer/AI). Don't cram Pro/Cloud code into `core`.
