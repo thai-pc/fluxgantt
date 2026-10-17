@@ -32,10 +32,10 @@ const gantt = (page: Page) => ({
  *  `pointerdown` (what implicit capture does for a real touch). `cy` is the finger row. */
 async function syntheticPinch(
   page: Page,
-  o: { cx: number; cy: number; from: number; to: number; steps?: number },
+  o: { cx: number; cy: number; from: number; to: number; steps?: number; liftOutside?: boolean },
 ): Promise<void> {
   await page.evaluate(
-    async ({ cx, cy, from, to, steps = 6 }) => {
+    async ({ cx, cy, from, to, steps = 6, liftOutside = false }) => {
       const init = (id: number, x: number, y: number, buttons = 1): PointerEventInit => ({
         pointerId: id,
         pointerType: 'touch',
@@ -53,11 +53,16 @@ async function syntheticPinch(
         if (!el) throw new Error(`no element at (${x}, ${y})`);
         return el;
       };
-      // Targets are RE-RESOLVED per event: a zoom repaints the chart and detaches the old `<svg>`,
-      // and a real browser whose capture target vanished falls back to hit-testing, so a stale
-      // reference here would swallow the `pointerup` and leave the recognizer mid-gesture.
+      // Targets are RE-RESOLVED per event (what a browser does once a zoom repaint removed the
+      // element the finger first touched: capture is lost and events follow hit-testing). That
+      // is only the in-page half of the real routing: a finger that ends OUTSIDE the chart sends
+      // its `pointerup` to whatever is under it, which `liftOutside` reproduces for finger 1 by
+      // dispatching it on `document.body`. Tier A without that option cannot see a lost
+      // `pointerup`, so the regression test for it passes the option.
       const send = (type: string, id: number, x: number, y: number, buttons = 1): void => {
-        at(x, y).dispatchEvent(new PointerEvent(type, init(id, x, y, buttons)));
+        const target =
+          liftOutside && id === 1 && type === 'pointerup' ? document.body : at(x, y);
+        target.dispatchEvent(new PointerEvent(type, init(id, x, y, buttons)));
       };
       send('pointerdown', 1, cx - from / 2, cy);
       send('pointerdown', 2, cx + from / 2, cy);
@@ -192,6 +197,93 @@ test.describe('Tier A: synthetic pointer events (responsive.html)', () => {
   });
 });
 
+test.describe('Tier A: review regressions (responsive.html)', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.goto('/responsive.html');
+    await expect(page.locator('#gantt svg.fg-timeline')).toBeVisible();
+    await waitCoarse(page);
+  });
+
+  test('B1: a finger lifted OUTSIDE the chart after a zoom step leaves no ghost: single-finger pan works and one finger cannot zoom', async ({
+    page,
+  }) => {
+    const cy = await rowY(page);
+    await syntheticPinch(page, { cx: 200, cy, from: 100, to: 160, liftOutside: true });
+    expect(await gantt(page).mode()).toBe('day');
+    const container = page.locator('#gantt');
+    const before = await container.evaluate((el) => el.scrollLeft);
+    const svgBox = (await page.locator('#gantt svg.fg-timeline').boundingBox())!;
+    // One primary finger: drag toward where the ghost used to be (well past the 1.4x ratio).
+    await page.evaluate(
+      async ([x, y]) => {
+        const init = (cx: number, buttons = 1): PointerEventInit => ({
+          pointerId: 1,
+          pointerType: 'touch',
+          isPrimary: true,
+          bubbles: true,
+          cancelable: true,
+          buttons,
+          clientX: cx,
+          clientY: y!,
+        });
+        const t = document.elementFromPoint(x!, y!)!;
+        t.dispatchEvent(new PointerEvent('pointerdown', init(x!)));
+        for (let i = 1; i <= 6; i++) {
+          document.elementFromPoint(x! - i * 20, y!)!.dispatchEvent(new PointerEvent('pointermove', init(x! - i * 20)));
+        }
+        document.elementFromPoint(x! - 120, y!)!.dispatchEvent(new PointerEvent('pointerup', init(x! - 120, 0)));
+      },
+      [svgBox.x + 3, svgBox.y + 48] as const,
+    );
+    await expect.poll(() => container.evaluate((el) => el.scrollLeft)).not.toBe(before);
+    expect(await gantt(page).mode()).toBe('day');
+  });
+
+  test('B2: finger 2 on a bar does not start a drag: a sub-threshold pinch commits no task:moved', async ({
+    page,
+  }) => {
+    await page.evaluate(() => {
+      const w = window as never as { __moved: number; __gantt: Gantt };
+      w.__moved = 0;
+      w.__gantt.on('task:moved', () => (w.__moved += 1));
+    });
+    const startBefore = await gantt(page).start('build');
+    const bar = page.locator('.fg-task[data-task-id="build"]');
+    await bar.scrollIntoViewIfNeeded();
+    const b = (await bar.boundingBox())!;
+    const bx = b.x + b.width / 2;
+    const by = b.y + b.height / 2;
+    const cy = await rowY(page);
+    await page.evaluate(
+      async ([x, y, y1]) => {
+        const init = (id: number, cx: number, cyy: number, buttons = 1): PointerEventInit => ({
+          pointerId: id,
+          pointerType: 'touch',
+          isPrimary: id === 1,
+          bubbles: true,
+          cancelable: true,
+          buttons,
+          clientX: cx,
+          clientY: cyy,
+        });
+        // Finger 1 on empty grid, finger 2 on the bar; finger 2 slides 24 px (ratio < 1.4).
+        const f1 = document.elementFromPoint(x! - 150, y1!)!;
+        const f2 = document.elementFromPoint(x!, y!)!;
+        f1.dispatchEvent(new PointerEvent('pointerdown', init(1, x! - 150, y1!)));
+        f2.dispatchEvent(new PointerEvent('pointerdown', init(2, x!, y!)));
+        for (const dx of [8, 16, 24]) {
+          f2.dispatchEvent(new PointerEvent('pointermove', init(2, x! + dx, y!)));
+        }
+        f2.dispatchEvent(new PointerEvent('pointerup', init(2, x! + 24, y!, 0)));
+        f1.dispatchEvent(new PointerEvent('pointerup', init(1, x! - 150, y1!, 0)));
+      },
+      [bx, by, cy] as const,
+    );
+    expect(await page.evaluate(() => (window as never as { __moved: number }).__moved)).toBe(0);
+    expect(await gantt(page).start('build')).toBe(startBefore);
+  });
+});
+
 for (const [label, url] of [
   ['readOnly', '/edit-hooks.html?touch=1&readonly=1'],
   ['Canvas (>= 2000 tasks)', '/edit-hooks.html?touch=1&pad=2100'],
@@ -217,6 +309,35 @@ for (const [label, url] of [
     expect(after).not.toBe(before);
   });
 }
+
+test('Tier A: Canvas anchoring keeps the date under the midpoint', async ({ page }) => {
+  await page.goto('/edit-hooks.html?touch=1&pad=2100');
+  await waitCoarse(page);
+  await expect(page.locator('canvas.fg-timeline-canvas')).toBeVisible();
+  // Content-x of a date, read through the public `scrollToDate` (centre-aligned, so
+  // content-x = scrollLeft + clientWidth / 2); then place that date at a NON-centre offset `m`
+  // so the centre-anchored zoom alone would be wrong and only midpoint anchoring passes.
+  const m = await page.evaluate(() => {
+    const w = window as never as { __gantt: { scrollToDate(d: string, o: { align: string }): void } };
+    const c = document.querySelector('#gantt')!;
+    w.__gantt.scrollToDate('2026-08-24', { align: 'center' });
+    (window as never as { __xD0: number }).__xD0 = c.scrollLeft + c.clientWidth / 2;
+    const m = c.clientWidth / 2 - 80;
+    c.scrollLeft = (window as never as { __xD0: number }).__xD0 - m;
+    return m;
+  });
+  const rect = (await page.locator('#gantt').boundingBox())!;
+  await syntheticPinch(page, { cx: rect.x + m, cy: rect.y + 120, from: 100, to: 160 });
+  const drift = await page.evaluate((offset) => {
+    const w = window as never as { __gantt: { scrollToDate(d: string, o: { align: string }): void } };
+    const c = document.querySelector('#gantt')!;
+    const sl = c.scrollLeft;
+    w.__gantt.scrollToDate('2026-08-24', { align: 'center' });
+    const xD1 = c.scrollLeft + c.clientWidth / 2;
+    return xD1 - sl - offset;
+  }, m);
+  expect(Math.abs(drift)).toBeLessThan(4);
+});
 
 test.describe('Tier B: CDP two-point touch (browser pipeline)', () => {
   let cdp: CDPSession;
@@ -262,7 +383,7 @@ test.describe('Tier B: CDP two-point touch (browser pipeline)', () => {
     await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
   }
 
-  test('a real two-finger spread steps the zoom, keeps the page scale at 1, chart touch-action is none', async ({
+  test('a real two-finger spread steps the zoom and the chart's touch-action is none', async ({
     page,
   }, testInfo) => {
     const y = await rowY(page);
@@ -271,7 +392,9 @@ test.describe('Tier B: CDP two-point touch (browser pipeline)', () => {
     testInfo.annotations.push({ type: 'tier-b', description: `ran on ${process.platform}` });
 
     expect(await gantt(page).mode()).toBe('day');
-    expect(await page.evaluate(() => window.visualViewport?.scale ?? 1)).toBe(1);
+    // No `visualViewport.scale` assertion: this fixture sets `user-scalable=no`, so the page can
+    // never scale and the check would pass whatever the chart's `touch-action` is. The computed
+    // `touch-action: none` below is the real check that native pinch is suppressed on the chart.
     expect(
       await page.evaluate(() => getComputedStyle(document.querySelector('#gantt svg.fg-timeline')!).touchAction),
     ).toBe('none');
