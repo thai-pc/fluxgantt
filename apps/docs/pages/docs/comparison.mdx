@@ -151,7 +151,7 @@ consequence of how the code is laid out. `createGantt()` has no DOM dependency a
 scheduling engine runs in Node, in a Worker, or in a test with no jsdom:
 
 ```ts
-import { createGantt } from '@fluxgantt/core'; // 7.50 KiB, no renderer
+import { createGantt } from '@fluxgantt/core'; // headless engine, no renderer
 
 const gantt = createGantt({ tasks, dependencies });
 const { criticalTaskIds, projectEnd } = gantt.computeCriticalPath();
