@@ -754,9 +754,7 @@ class Gantt implements GanttInstance {
     for (const t of tasks) {
       if (t.id !== undefined) {
         if (seenIds.has(t.id)) {
-          throw new Error(
-            `${context}: duplicate task id "${t.id}" — TaskStore would silently drop the earlier one`,
-          );
+          throw new Error(`${context}: duplicate task id "${t.id}"`);
         }
         seenIds.add(t.id);
       }

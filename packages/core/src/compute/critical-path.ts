@@ -186,7 +186,7 @@ function latestFinishFromSucc(
   const succLs = ls.get(succId);
   const succLf = lf.get(succId);
   if (!succLs || !succLf) {
-    throw new Error(`computeCriticalPath: internal error — successor ${succId} was not scheduled yet`);
+    throw new Error(`computeCriticalPath: internal error — successor ${succId} not scheduled`);
   }
   switch (depType) {
     case 'FS':
