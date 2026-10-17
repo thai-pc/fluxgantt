@@ -174,17 +174,17 @@ test.describe('SVG renderer (60 tasks, 420px scroll container)', () => {
     // the painted bar of a task STARTING on that date (filler-9: 2026-09-10) instead.
     const bar = (await svgBar(page, 'filler-9').boundingBox())!;
     const c = await containerRect(page);
-    const mid = c.x + s.w / 2;
+    // The label column is pinned, so the free area is the container minus its 160px.
+    const mid = c.x + 160 + (s.w - 160) / 2;
     // bar starts at the date; day pitch tolerance generous (+-1 column, columns are >= 20px).
     const dayPx = bar.width / 1; // filler tasks last one day
     expect(Math.abs(bar.x - mid)).toBeLessThanOrEqual(dayPx + 1);
 
-    // align 'start' puts the date at the left edge of the scrolled content box (right of nothing:
-    // the label column scrolls away, so x == scrollLeft).
+    // align 'start' puts the date directly right of the pinned label column.
     // (an early date: a late one is clamped by the maximum scrollLeft)
     await g(page, (x) => x.scrollToDate('2026-09-02', { align: 'start' }));
     const b2 = (await svgBar(page, 'filler-1').boundingBox())!;
-    expect(Math.abs(b2.x - c.x)).toBeLessThanOrEqual(dayPx + 1);
+    expect(Math.abs(b2.x - (c.x + 160))).toBeLessThanOrEqual(dayPx + 1);
 
     // out-of-range date -> false, and does not throw.
     expect(await g(page, (x) => x.scrollToDate('2030-01-01'))).toBe(false);
