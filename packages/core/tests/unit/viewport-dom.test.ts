@@ -137,7 +137,7 @@ describe('scrollToTask (SVG)', () => {
       type: 'task',
     });
     const { g, geo } = mounted(tasks, { viewMode: 'day' });
-    const scale = getInternal(g).getMountState()!.rendererHandle.getTimeScale();
+    const scale = getInternal(g).mountOf()!.handle.getTimeScale();
     const x1 = LABEL_W + scale.dateToX('2026-06-03');
     g.scrollToTask(toTaskId('far'));
     expect(geo.left).toBe(x1 - 800);
@@ -168,7 +168,7 @@ describe('scrollToTask (SVG)', () => {
       type: 'milestone',
     });
     const { g, geo } = mounted(tasks, { viewMode: 'day' });
-    const scale = getInternal(g).getMountState()!.rendererHandle.getTimeScale();
+    const scale = getInternal(g).mountOf()!.handle.getTimeScale();
     const cx = LABEL_W + scale.dateToX('2026-06-03');
     const half = (32 * 0.6) / Math.SQRT2; // default density row height 32, glyph side 0.6 * row
     g.scrollToTask(toTaskId('ms'));
@@ -256,7 +256,7 @@ describe('scrollToTask (Canvas coordinate model)', () => {
       getTimeScale: () => ({ dateToX: () => 0, totalWidth: 5000 }),
       setOptions: vi.fn(),
     };
-    getInternal(g).setMountState({ renderer: 'canvas', rendererHandle: handle } as unknown as MountState);
+    getInternal(g).setMount({ renderer: 'canvas', rendererHandle: handle } as unknown as MountState);
     g.scrollToTask(toTaskId('t60'));
     // row band = 332 - 32 = 300 tall; row 60 bottom = 61 * 32
     expect(geo.top).toBe(61 * ROW_HEIGHT.default - 300);
@@ -266,7 +266,7 @@ describe('scrollToTask (Canvas coordinate model)', () => {
 describe('scrollToDate', () => {
   it('centres a date, and reports in-range', () => {
     const { g, geo } = mounted(manyTasks(2), { viewMode: 'day' });
-    const scale = getInternal(g).getMountState()!.rendererHandle.getTimeScale();
+    const scale = getInternal(g).mountOf()!.handle.getTimeScale();
     const x = LABEL_W + scale.dateToX('2026-01-07');
     expect(g.scrollToDate('2026-01-07')).toBe(true);
     expect(geo.left).toBe(Math.max(0, x - 400));
@@ -304,7 +304,7 @@ describe('scrollToDate', () => {
 describe('setDensity (mounted)', () => {
   it('repaints once at the new row height and keeps the top row anchored', () => {
     const { g, geo } = mounted(manyTasks(40));
-    const handle = getInternal(g).getMountState()!.rendererHandle;
+    const handle = getInternal(g).mountOf()!.handle;
     const spy = vi.spyOn(handle, 'setOptions');
     geo.top = 10 * 32; // row 10 at the top edge
     const seen: unknown[] = [];
@@ -335,7 +335,7 @@ describe('setDensity (mounted)', () => {
 
   it('rolls the slot back and emits nothing when setOptions throws', () => {
     const { g } = mounted(manyTasks(3));
-    const handle = getInternal(g).getMountState()!.rendererHandle;
+    const handle = getInternal(g).mountOf()!.handle;
     vi.spyOn(handle, 'setOptions').mockImplementation(() => {
       throw new Error('dimension guard');
     });
@@ -397,7 +397,7 @@ describe('nearest: item already covering the viewport', () => {
       type: 'task',
     });
     const { g, geo } = mounted(tasks, { viewMode: 'day' });
-    const scale = getInternal(g).getMountState()!.rendererHandle.getTimeScale();
+    const scale = getInternal(g).mountOf()!.handle.getTimeScale();
     const x0 = LABEL_W + scale.dateToX('2026-01-05');
     geo.left = x0 + 300; // bar starts left of the viewport and ends right of it
     expect(g.scrollToTask(toTaskId('long'))).toBe(true);
@@ -408,7 +408,7 @@ describe('nearest: item already covering the viewport', () => {
 describe('scrollToDate DateInput forms', () => {
   it('string, Date, ZonedDateTime and PlainDate give the same scroll, at an exact offset', () => {
     const { g, geo } = mounted(manyTasks(2), { viewMode: 'day', timezone: 'UTC' });
-    const scale = getInternal(g).getMountState()!.rendererHandle.getTimeScale();
+    const scale = getInternal(g).mountOf()!.handle.getTimeScale();
     const expected = Math.max(0, LABEL_W + scale.dateToX('2026-01-08T00:00:00Z') - 400);
     const inputs = [
       '2026-01-08T00:00:00Z',
@@ -430,8 +430,8 @@ describe('scrollToDate DateInput forms', () => {
       viewMode: 'day',
       calendar: { workingDays: ['MON', 'TUE', 'WED', 'THU', 'FRI'], workingHours: [{ start: '09:00', end: '17:00' }], holidays: [], timezone: 'America/New_York' },
     });
-    const ppd = getInternal(g).getMountState()!.rendererHandle.getTimeScale().dateToX('2026-03-09') -
-      getInternal(g).getMountState()!.rendererHandle.getTimeScale().dateToX('2026-03-08');
+    const ppd = getInternal(g).mountOf()!.handle.getTimeScale().dateToX('2026-03-09') -
+      getInternal(g).mountOf()!.handle.getTimeScale().dateToX('2026-03-08');
     g.scrollToDate('2026-03-07', { align: 'start' });
     const a = geo.left;
     g.scrollToDate('2026-03-08', { align: 'start' });
@@ -452,7 +452,7 @@ describe('setDensity (Canvas stub)', () => {
       getTimeScale: () => ({ dateToX: () => 0, totalWidth: 5000 }),
       setOptions,
     };
-    getInternal(g).setMountState({ renderer: 'canvas', rendererHandle: handle } as unknown as MountState);
+    getInternal(g).setMount({ renderer: 'canvas', rendererHandle: handle } as unknown as MountState);
     return { g, geo };
   }
 

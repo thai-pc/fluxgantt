@@ -119,9 +119,9 @@ export function withTheme<T extends GanttInstance>(instance: T): T & ThemeCapabi
     // The mount slot is the ONLY route to the container — reached as shared state rather than
     // by importing anything from `render/`, which would drag the renderer into this subpath's
     // graph and defeat the split (architecture.md principle 1).
-    const mount = internal.getMountState();
+    const mount = internal.mountOf();
     if (!mount) return; // headless or unmounted — the choice is remembered, applied at next mount
-    const { container } = mount.rendererHandle;
+    const { container } = mount.handle;
 
     // Light is the ABSENCE of OUR overrides: every renderer fallback is already the light value,
     // so undoing exactly what we wrote is correct and cheaper than a second full table. Applying
@@ -144,7 +144,7 @@ export function withTheme<T extends GanttInstance>(instance: T): T & ThemeCapabi
     // repainting it would be pure waste. Canvas resolved the OLD values into `fillStyle`
     // strings on its last paint, so it needs a real repaint; an empty option merge is the
     // handle's existing "re-render with what you already have" entry point.
-    if (mount.renderer === 'canvas') mount.rendererHandle.setOptions({});
+    if (mount.renderer === 'canvas') mount.handle.setOptions({});
   }
 
   // A container only exists after a successful mount, and `renderer:selected` is emitted exactly
@@ -153,13 +153,13 @@ export function withTheme<T extends GanttInstance>(instance: T): T & ThemeCapabi
   // mixin application order irrelevant and adds nothing to the shared interface.
   instance.on('renderer:selected', () => {
     // A listener registered BEFORE `withTheme` may already have unmounted during this same emit.
-    const m = internal.getMountState();
+    const m = internal.mountOf();
     if (disposed || !m) return;
-    // Every mount ends through `teardownMount()` -> `rendererHandle.destroy()` (unmount(), an
+    // Every mount ends through `unmount()` -> `handle.destroy()` (unmount(), an
     // implicit remount, base destroy()), and there is no unmount event, so wrap the handle's
     // destroy — the same pattern `interaction/pointer-drag.ts` uses. The listener reads the live
     // handle each mount, which keeps application order irrelevant.
-    const handle = m.rendererHandle;
+    const handle = m.handle;
     const inner = handle.destroy;
     handle.destroy = (): void => {
       restore(); // hand the host's prior inline values back; no-op when light
@@ -174,7 +174,7 @@ export function withTheme<T extends GanttInstance>(instance: T): T & ThemeCapabi
 
   const capability: ThemeCapability = {
     setTheme(next: ThemeName): void {
-      internal.assertAlive('setTheme');
+      internal.alive('setTheme');
       validate(next, 'gantt.setTheme');
       if (next === theme) return; // no-op: no repaint, no listener churn
       theme = next;

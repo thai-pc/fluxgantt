@@ -40,7 +40,7 @@ import type {
 } from './types.js';
 // TYPE-ONLY import back into `gantt.ts` — erased at compile time, so this creates NO runtime
 // module cycle (`gantt.ts` imports this file for real; this file imports nothing back).
-// Keeps `emitEvent` exactly as type-safe for a mixin as `#emit` is inside the class.
+// Keeps `emit` exactly as type-safe for a mixin as `#emit` is inside the class.
 import type {
   DependencyInput,
   GanttConfig,
@@ -69,12 +69,12 @@ export type RendererKind = 'svg' | 'canvas';
  *  (which must re-apply renderer options on a live chart). */
 export interface MountState {
   readonly renderer: RendererKind;
-  readonly rendererHandle: SvgRendererHandle | CanvasRendererHandle;
-  readonly disposeEffect: () => void;
+  readonly handle: SvgRendererHandle | CanvasRendererHandle;
+  readonly stopFx: () => void;
   /** Interaction teardown, if `withInteraction` was applied before this mount; a no-op
    *  otherwise (and always a no-op in Canvas mode for the pointer-drag family). */
-  readonly disposeInteractions: () => void;
-  readonly getFocusedTaskId: () => TaskId | undefined;
+  readonly stopUi: () => void;
+  readonly focusedId: () => TaskId | undefined;
   /**
    * Runs `mutate()` (a view-mode write, which synchronously repaints) between a capture and a
    * restore of the date currently centered in the viewport, so `zoomTo()` keeps the user's
@@ -86,13 +86,13 @@ export interface MountState {
    * which is exactly what this split exists to prevent. Base `zoomTo()` therefore degrades to
    * state-only whenever no mount state exists (always, without `withRender`).
    */
-  readonly withScrollAnchor: (mutate: () => void) => void;
+  readonly anchored: (mutate: () => void) => void;
 }
 
 /** Registered by `withInteraction`, consulted LAZILY by `withRender`'s `mount()` — this
  *  indirection is what makes mixin application order irrelevant (spec §3.3). */
 export interface InteractionHooks {
-  wireInto(
+  wire(
     handle: SvgRendererHandle | CanvasRendererHandle,
     renderer: RendererKind,
     internal: GanttInternal,
@@ -101,14 +101,23 @@ export interface InteractionHooks {
 
 export interface InteractionDisposers {
   readonly dispose: () => void;
-  readonly getFocusedTaskId: () => TaskId | undefined;
+  readonly focusedId: () => TaskId | undefined;
 }
 
+/**
+ * NAMING NOTE: the member names on `GanttInternal` / `MountState` / `InteractionDisposers` are
+ * deliberately terse (`tasks`, `fold`, `alive`, `mountOf`, ...). They are property names, so a
+ * minifier cannot shorten them, and each one is repeated across the base class and every mixin:
+ * the long spellings (`dependencyStore`, `getMountGeneration`, `expandWithDescendants`, ...)
+ * cost ~155 B gzip on the kitchen sink and ~90 B on hello world (2026-10 headroom pass 2). This
+ * surface is internal (never exported from a package entry), so the short names are free to
+ * change; keep new members short too.
+ */
 export interface GanttInternal {
-  readonly taskStore: TaskStore;
-  readonly dependencyStore: DependencyStore;
-  readonly selectionStore: SelectionStore;
-  readonly collapseStore: CollapseStore;
+  readonly tasks: TaskStore;
+  readonly deps: DependencyStore;
+  readonly sel: SelectionStore;
+  readonly fold: CollapseStore;
   readonly calendar: WorkingCalendar;
   readonly viewMode: Signal<ViewMode>;
 
@@ -117,9 +126,9 @@ export interface GanttInternal {
    *  `#config` field directly. */
   readonly config: GanttConfig;
 
-  emitEvent<E extends GanttEventName>(event: E, ...args: GanttEventMap[E]): void;
-  assertAlive(method: string): void;
-  requireTask(id: TaskId, method: string): Task;
+  emit<E extends GanttEventName>(event: E, ...args: GanttEventMap[E]): void;
+  alive(method: string): void;
+  need(id: TaskId, method: string): Task;
 
   // --- Density slots (writers: viewport/mixin.ts, responsive/mixin.ts; reader: render/mixin.ts) ---
   // Optional and non-readonly so `gantt.ts`'s constructor literal needs no initialiser (0 base
@@ -130,37 +139,37 @@ export interface GanttInternal {
   densityPinned?: boolean;
 
   // --- Mount slot (writer: render/mixin.ts) ---
-  getMountState(): MountState | undefined;
-  setMountState(state: MountState | undefined): void;
+  mountOf(): MountState | undefined;
+  setMount(state: MountState | undefined): void;
   /** Monotonic race-guard token (spec-canvas-auto-switch.md §5) — bumped by every
    *  mount/unmount/destroy so the async Canvas path can abandon a superseded mount. */
-  bumpMountGeneration(): number;
-  getMountGeneration(): number;
-  isDestroyed(): boolean;
-  /** Renderer-agnostic teardown of whatever `setMountState()` last stored: stop the reactive
+  bumpGen(): number;
+  gen(): number;
+  dead(): boolean;
+  /** Renderer-agnostic teardown of whatever `setMount()` last stored: stop the reactive
    *  effect, dispose interactions, destroy the renderer handle, clear the slot. Lives in
    *  `gantt.ts` (not `render/mixin.ts`) because base `destroy()` must be able to tear a mount
    *  down without pulling the render layer into its graph. No-op when unmounted. */
-  teardownMount(): void;
+  unmount(): void;
 
   // --- Interaction slot (writer: interaction/mixin.ts) ---
-  getInteractionHooks(): InteractionHooks | undefined;
-  setInteractionHooks(hooks: InteractionHooks): void;
+  hooks(): InteractionHooks | undefined;
+  setHooks(hooks: InteractionHooks): void;
 
   // --- Mutation commit primitives (shared with interaction's gesture commit points) ---
-  commitScheduleChange(id: TaskId, patch: TaskPatch, cascade: boolean): Task;
-  applyCascadeShift(id: TaskId, start: DateInput, end: DateInput): void;
-  beginTransaction(): void;
-  endTransaction(): void;
-  recordOp(op: HistoryOp): void;
-  recordOps(ops: readonly HistoryOp[]): void;
-  applySelection(ids: readonly TaskId[]): void;
-  expandWithDescendants(ids: readonly TaskId[]): TaskId[];
+  reschedule(id: TaskId, patch: TaskPatch, cascade: boolean): Task;
+  shift(id: TaskId, start: DateInput, end: DateInput): void;
+  begin(): void;
+  end(): void;
+  record(op: HistoryOp): void;
+  recordAll(ops: readonly HistoryOp[]): void;
+  applySel(ids: readonly TaskId[]): void;
+  withKids(ids: readonly TaskId[]): TaskId[];
 
   // --- IO commit primitives (shared with io/mixin.ts) ---
   /** Staging + atomic swap behind `importJson()`/`importCsv()` — validates the whole
    *  replacement dataset against throwaway stores before touching anything live. */
-  commitImport(
+  load(
     tasks: readonly TaskInput[],
     dependencies: readonly DependencyInput[],
     format: 'json' | 'csv',
@@ -168,14 +177,14 @@ export interface GanttInternal {
   /** Guard for `exportSvg()`/`exportPng()` — throws when not mounted (never mounted,
    *  unmounted, or destroyed); otherwise returns the live handle, SVG or Canvas. The caller
    *  discriminates with `'svg' in handle` (only `SvgRendererHandle` has `.svg`). */
-  assertMounted(method: string): SvgRendererHandle | CanvasRendererHandle;
+  mounted(method: string): SvgRendererHandle | CanvasRendererHandle;
 
   // --- Critical-path emit-on-change guard (shared with render/mixin.ts's render effect) ---
   /** Records `ids` as the last emitted critical set and reports whether it actually CHANGED —
    *  `true` means the caller should emit `critical-path:computed`. */
-  noteCriticalIds(ids: readonly TaskId[]): boolean;
+  noteCrit(ids: readonly TaskId[]): boolean;
   /** Forgets the last emitted critical set, so the next non-empty compute always re-emits. */
-  resetCriticalIds(): void;
+  resetCrit(): void;
 }
 
 export interface WithInternal {
@@ -184,7 +193,7 @@ export interface WithInternal {
 
 /**
  * The ONE narrow, documented cast in the whole split — every mixin funnels through this.
- * Throws an actionable error (rather than crashing three frames deeper on `undefined.taskStore`)
+ * Throws an actionable error (rather than crashing three frames deeper on `undefined.tasks`)
  * when handed anything that isn't a real `createGantt()` instance — e.g. a hand-rolled test mock.
  */
 export function getInternal(instance: object): GanttInternal {

@@ -603,7 +603,7 @@ class Gantt implements GanttInstance {
    *  every other mutation uses; read (untracked, `.peek()`) in `#rendererOptions()`, which
    *  runs once at `mount()` time outside any active effect. */
   readonly #viewMode: Signal<ViewMode>;
-  /** Written ONLY by `render/mixin.ts` (through `INTERNAL.setMountState`); `undefined` =
+  /** Written ONLY by `render/mixin.ts` (through `INTERNAL.setMount`); `undefined` =
    *  headless, which is ALWAYS the case when `withRender` was never applied. */
   #mount: MountState | undefined;
   /** Monotonic race-guard token (spec-canvas-auto-switch.md §5). Incremented by every
@@ -674,52 +674,52 @@ class Gantt implements GanttInstance {
     // bound methods) so `#private` access stays lexical — no `this` rebinding hazard for a
     // mixin that destructures off this object.
     this[INTERNAL] = {
-      taskStore: this.#taskStore,
-      dependencyStore: this.#dependencyStore,
-      selectionStore: this.#selectionStore,
-      collapseStore: this.#collapseStore,
+      tasks: this.#taskStore,
+      deps: this.#dependencyStore,
+      sel: this.#selectionStore,
+      fold: this.#collapseStore,
       calendar: this.#calendar,
       viewMode: this.#viewMode,
       config: this.#config,
-      emitEvent: (event, ...args) => {
+      emit: (event, ...args) => {
         this.#emit(event, ...args);
       },
-      assertAlive: (method) => this.#assertAlive(method),
-      requireTask: (id, method) => this.#requireTask(id, method),
-      getMountState: () => this.#mount,
-      setMountState: (state) => {
+      alive: (method) => this.#assertAlive(method),
+      need: (id, method) => this.#requireTask(id, method),
+      mountOf: () => this.#mount,
+      setMount: (state) => {
         this.#mount = state;
       },
-      bumpMountGeneration: () => ++this.#mountGeneration,
-      getMountGeneration: () => this.#mountGeneration,
-      isDestroyed: () => this.#destroyed,
-      teardownMount: () => {
+      bumpGen: () => ++this.#mountGeneration,
+      gen: () => this.#mountGeneration,
+      dead: () => this.#destroyed,
+      unmount: () => {
         this.#teardownMount();
       },
-      getInteractionHooks: () => this.#interactionHooks,
-      setInteractionHooks: (hooks) => {
+      hooks: () => this.#interactionHooks,
+      setHooks: (hooks) => {
         this.#interactionHooks = hooks;
       },
-      commitScheduleChange: (id, patch, cascade) => this.#commitScheduleChange(id, patch, cascade),
-      applyCascadeShift: (id, start, end) => {
+      reschedule: (id, patch, cascade) => this.#commitScheduleChange(id, patch, cascade),
+      shift: (id, start, end) => {
         this.#applyCascadeShift(id, start, end);
       },
-      beginTransaction: () => this.#beginTransaction(),
-      endTransaction: () => this.#endTransaction(),
-      recordOp: (op) => this.#recordOp(op),
-      recordOps: (ops) => this.#recordOps(ops),
-      applySelection: (ids) => {
+      begin: () => this.#beginTransaction(),
+      end: () => this.#endTransaction(),
+      record: (op) => this.#recordOp(op),
+      recordAll: (ops) => this.#recordOps(ops),
+      applySel: (ids) => {
         this.#applySelection(ids);
       },
-      expandWithDescendants: (ids) => this.#expandWithDescendants(ids),
-      commitImport: (tasks, dependencies, format) => this.#commitImport(tasks, dependencies, format),
-      assertMounted: (method) => this.#assertMounted(method),
-      noteCriticalIds: (ids) => {
+      withKids: (ids) => this.#expandWithDescendants(ids),
+      load: (tasks, dependencies, format) => this.#commitImport(tasks, dependencies, format),
+      mounted: (method) => this.#assertMounted(method),
+      noteCrit: (ids) => {
         if (this.#sameCriticalIds(ids)) return false;
         this.#lastCriticalIds = ids;
         return true;
       },
-      resetCriticalIds: () => {
+      resetCrit: () => {
         this.#lastCriticalIds = undefined;
       },
     };
@@ -1141,7 +1141,7 @@ class Gantt implements GanttInstance {
     // scroll-anchor wrapper (which needs the renderer's time scale — see `MountState`), so the
     // centered date is preserved across the zoom.
     if (this.#mount === undefined) applyViewMode();
-    else this.#mount.withScrollAnchor(applyViewMode);
+    else this.#mount.anchored(applyViewMode);
 
     this.#emit('viewport:changed', { viewMode: mode });
   }
@@ -1524,9 +1524,9 @@ class Gantt implements GanttInstance {
   #teardownMount(): void {
     const m = this.#mount;
     if (!m) return; // never mounted / already unmounted / headless
-    m.disposeEffect();
-    m.disposeInteractions();
-    m.rendererHandle.destroy();
+    m.stopFx();
+    m.stopUi();
+    m.handle.destroy();
     this.#mount = undefined;
   }
 
@@ -1556,7 +1556,7 @@ class Gantt implements GanttInstance {
         `@fluxgantt/core: cannot call ${method} — gantt instance is not mounted (call mount() first)`,
       );
     }
-    return this.#mount.rendererHandle;
+    return this.#mount.handle;
   }
 }
 

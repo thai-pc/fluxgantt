@@ -78,7 +78,7 @@ export function withConflicts<T extends GanttInstance>(
   }
 
   const internal = getInternal(instance);
-  const { taskStore, dependencyStore, calendar, config } = internal;
+  const { tasks: taskStore, deps: dependencyStore, calendar, config } = internal;
 
   const compute = (): Conflict[] => {
     const kinds = (options?.kinds ?? ['invalid-span', 'dependency-violation', 'outside-parent']).filter(
@@ -116,7 +116,7 @@ export function withConflicts<T extends GanttInstance>(
       scheduled = true;
       queueMicrotask(() => {
         scheduled = false;
-        if (stop !== stopThis || internal.isDestroyed()) return;
+        if (stop !== stopThis || internal.dead()) return;
         let conflicts: Conflict[];
         try {
           conflicts = compute();
@@ -127,7 +127,7 @@ export function withConflicts<T extends GanttInstance>(
         const sig = signatureOf(conflicts);
         if (sig === last) return;
         last = sig;
-        internal.emitEvent('conflict:detected', conflicts);
+        internal.emit('conflict:detected', conflicts);
       });
     });
     // Per-watcher token: a flush queued by a watcher that has since been stopped must not emit
@@ -139,7 +139,7 @@ export function withConflicts<T extends GanttInstance>(
     stop = stopThis;
   };
 
-  const detectConflicts = (): Conflict[] => (internal.isDestroyed() ? [] : compute());
+  const detectConflicts = (): Conflict[] => (internal.dead() ? [] : compute());
   (detectConflicts as { kindsKey?: string }).kindsKey = kindsKey;
   const capability: ConflictsCapability = { detectConflicts };
 
@@ -147,7 +147,7 @@ export function withConflicts<T extends GanttInstance>(
     on(event: string, callback: never) {
       const off = baseOn(event as 'task:added', callback);
       if (event !== 'conflict:detected') return off;
-      if (listeners++ === 0 && !internal.isDestroyed()) startWatcher();
+      if (listeners++ === 0 && !internal.dead()) startWatcher();
       let removed = false;
       return () => {
         if (removed) return;

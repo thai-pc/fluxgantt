@@ -740,7 +740,7 @@ describe('zoomTo() — mounted repaint + scroll-anchor preservation (spec-zoom-r
   });
 
   it('scroll-anchor preservation at a NON-default label-column width: the anchor follows the live painted width, not the 160px constant (spec-responsive-mobile.md)', () => {
-    // Regression guard for `render/mixin.ts`'s `withScrollAnchor`, which used to convert between
+    // Regression guard for `render/mixin.ts`'s `anchored`, which used to convert between
     // painted and content coordinate space using the imported `LABEL_COLUMN_WIDTH` constant.
     // `withResponsive()` narrows the painted column on a small viewport, so a stale 160 here
     // mis-anchors every zoom by `160 - actual` px. The width is pushed straight through
@@ -753,11 +753,11 @@ describe('zoomTo() — mounted repaint + scroll-anchor preservation (spec-zoom-r
     });
     gantt.mount(container);
 
-    const handle = getInternal(gantt).getMountState()?.rendererHandle;
+    const handle = getInternal(gantt).mountOf()?.handle;
     expect(handle).toBeDefined();
     handle!.setOptions({ labelColumnWidth: NARROW_LABEL_WIDTH });
     // Proves the premise of the assertion below: the renderer really did repaint at 80, so a
-    // failure downstream is `withScrollAnchor` reading the wrong width, not the option being
+    // failure downstream is `anchored` reading the wrong width, not the option being
     // ignored.
     expect(handle!.getLabelColumnWidth()).toBe(NARROW_LABEL_WIDTH);
 
