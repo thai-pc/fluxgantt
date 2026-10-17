@@ -99,10 +99,12 @@ Things to know:
   intermediate value.
 - **Opt out** with `pinchZoom: false` if you ship your own zoom control. Single-finger pan is
   unaffected.
-- **Accessibility.** Pinch is a pointer shortcut. The single-pointer alternatives that satisfy
-  WCAG 2.5.1 (Pointer Gestures) already exist: Ctrl/Cmd + `+`/`-`, Ctrl+wheel and
-  `zoomIn()`/`zoomOut()`/`zoomTo()`. Offer a zoom button in your own UI for touch users. Nothing
-  animates, so `prefers-reduced-motion` needs no handling.
+- **Accessibility: provide a single-pointer zoom control.** Pinch is a multipoint gesture, and
+  WCAG 2.5.1 (Pointer Gestures) requires a single-pointer alternative. FluxGantt does not ship a
+  zoom button, and the keyboard shortcuts (Ctrl/Cmd + `+`/`-`) and Ctrl+wheel are not single-pointer
+  alternatives for a touch user. A host that leaves pinch enabled on touch devices must offer its
+  own control, for example zoom in/out buttons that call `gantt.zoomIn()` / `gantt.zoomOut()`
+  (or `zoomTo()`). Nothing animates, so `prefers-reduced-motion` needs no handling.
 - **iOS Safari** is expected to behave (it honours `touch-action: none` and delivers multi-touch
   Pointer Events since iOS 13) but is checked by hand, not in CI. See the manual checklist in
   `RELEASING.md`.

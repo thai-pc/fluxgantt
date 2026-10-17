@@ -139,7 +139,10 @@ touch), so run it by hand before a release that touches `withResponsive()`:
    not zoom (`visualViewport.scale` stays 1 in Web Inspector); a pinch started with one finger on
    a bar moves nothing; single-finger pan still scrolls; a pinch with both fingers on the header
    band is a page/browser gesture (expected); rotate and re-check; Canvas fixture.
-4. Log whether `gesturestart` fires on the chart. Only if page zoom leaks onto the chart,
+4. Lift one finger OUTSIDE the chart right after a zoom step, then check that a single-finger
+   pan still scrolls and a single finger does not zoom (lost-`pointerup` ghost, WebKit may keep
+   dispatching to the detached original target).
+5. Log whether `gesturestart` fires on the chart. Only if page zoom leaks onto the chart,
    `preventDefault()` `gesturestart`/`gesturechange`/`gestureend` on the container while a pinch
    is active (about +60-80 B gzip) and re-measure `pnpm size`.
 

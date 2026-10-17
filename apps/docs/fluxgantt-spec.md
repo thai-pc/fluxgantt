@@ -1166,8 +1166,10 @@ pinch-to-zoom lands in this same recognizer: two touch pointers down on the char
 baseline steps one view mode through `zoomIn()`/`zoomOut()`, anchored so the date under the
 fingers' midpoint stays under it, and landing the second finger cancels any pan, bar drag,
 resize, dependency link or long-press the first finger started. A pinch with both fingers on the
-sticky header band is left to the browser (the band keeps `touch-action: auto`). Keyboard
-(Ctrl/Cmd +/-), Ctrl+wheel and `zoomTo()` remain the single-pointer alternative (WCAG 2.5.1).
+sticky header band is left to the browser (the band keeps `touch-action: auto`). WCAG 2.5.1
+(Pointer Gestures): the library ships no single-pointer zoom control (keyboard shortcuts and
+Ctrl+wheel are not one for a touch user), so a host that keeps pinch enabled on touch must provide
+one, e.g. buttons calling `zoomIn()` / `zoomOut()`.
 
 Coarse-pointer target sizes are **24x24 CSS px** — WCAG 2.2 SC 2.5.8 *Target Size (Minimum)*, at
 Level AA. SC 2.5.5's 44x44 is Level AAA and is deliberately not the bar here: a 44px circular link
