@@ -102,9 +102,10 @@ export interface SvgRendererOptions {
    *  Default `true`. The facade sets this to `false` for a `readOnly` Gantt so a
    *  non-editable chart shows no interactive link affordance. */
   readonly showLinkHandles?: boolean;
-  /** Called at the end of every full repaint, after the sticky-header overlay was filled from
-   *  clones and before focus restoration, with the chart svg and every overlay svg the renderer
-   *  owns (trailing args may be added). Synchronous, must not throw. For `withRtl`; do not rely
+  /** Called at the end of every full repaint, after every pinned layer was filled from clones and
+   *  before focus restoration, with the chart svg and every pinned svg the renderer owns: the date
+   *  axis, the label column and the corner (trailing args may be added). Each root carries its own
+   *  `width` attribute. Synchronous, must not throw. For `withRtl`; do not rely
    *  on it. */
   readonly onPaint?: (svg: SVGSVGElement, ...overlays: SVGSVGElement[]) => void;
 }
@@ -500,7 +501,7 @@ export function createSvgRenderer(
         return c;
       }),
     );
-    currentOptions.onPaint?.(svg, overlay);
+    currentOptions.onPaint?.(svg, overlay, column, corner);
 
     // Focus restoration (spec §4.5 point 4) — MUST run after every element above is already
     // appended to `svg`, since the target row element is freshly created by renderRows() in

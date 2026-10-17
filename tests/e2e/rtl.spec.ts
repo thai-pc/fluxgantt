@@ -211,6 +211,28 @@ test.describe('scroll model', () => {
   });
 });
 
+test.describe('pinned label column (L) under RTL', () => {
+  test('the column stays on the visual RIGHT at any scroll; its labels equal the chart labels at rest', async ({ page }) => {
+    await openRtl(page);
+    const col = () =>
+      page.evaluate(() => {
+        const c = document.querySelector('.fg-timeline__sticky-column')!.getBoundingClientRect();
+        const cont = document.getElementById('gantt')!;
+        const r = cont.getBoundingClientRect();
+        const lab = document.querySelector('.fg-timeline__sticky-column text.fg-timeline__row-label')!.getBoundingClientRect();
+        return { right: c.right, contRight: r.left + cont.clientLeft + cont.clientWidth, labRight: lab.right, colLeft: c.left };
+      });
+    const rest = await col();
+    expect(Math.abs(rest.right - rest.contRight)).toBeLessThanOrEqual(1);
+    await setScroll(page, -900);
+    const scrolled = await col();
+    expect(Math.abs(scrolled.right - scrolled.contRight)).toBeLessThanOrEqual(1);
+    expect(Math.abs(scrolled.labRight - rest.labRight)).toBeLessThanOrEqual(1);
+    expect(scrolled.labRight).toBeLessThanOrEqual(scrolled.right + 1);
+    expect(scrolled.labRight).toBeGreaterThan(scrolled.colLeft);
+  });
+});
+
 test.describe('pointer interaction (AC5)', () => {
   test.beforeEach(async ({ page }) => openRtl(page));
 

@@ -93,6 +93,19 @@ describe('withRtl mounts a mirrored chart (AC1-AC3)', () => {
     for (const t of chartSvg().querySelectorAll('text')) expect(t.getAttribute('transform')).toMatch(/^matrix\(-1 0 0 1 /);
   });
 
+  it('mirrors the pinned label column and corner about their OWN width', () => {
+    const g = chart({ rtl: true });
+    g.mount(container);
+    for (const cls of ['fg-timeline__sticky-column', 'fg-timeline__sticky-corner']) {
+      const root = container.querySelector<SVGSVGElement>(`.${cls}`)!;
+      expect(root.getAttribute('width')).toBe(String(LABEL_W));
+      expect(mirrorGroup(root)!.getAttribute('transform')).toBe(`matrix(-1 0 0 1 ${LABEL_W} 0)`);
+    }
+    // clone labels: counter-flipped about their own x, so they hug the column's right edge
+    const label = container.querySelector('.fg-timeline__sticky-column text.fg-timeline__row-label')!;
+    expect(label.getAttribute('transform')).toBe(`matrix(-1 0 0 1 ${2 * Number(label.getAttribute('x'))} 0)`);
+  });
+
   it('keeps the grid structure and ARIA semantics (the group is transparent to AT)', () => {
     const g = chart({ rtl: true });
     g.mount(container);
@@ -267,7 +280,8 @@ describe('scrollToTask / scrollToDate under a negative scrollLeft (AC4)', () => 
     const s = stub(container, 500, -200);
     g.scrollToDate('2026-03-01', { align: 'start' });
     const scale = getInternal(g).mountOf()!.handle.getTimeScale();
-    expect(s.get()).toBe(-Math.max(0, LABEL_W + scale.dateToX('2026-03-01')));
+    // the SVG column is pinned, so the scrolled window starts after it: the date's own offset
+    expect(s.get()).toBe(-Math.max(0, scale.dateToX('2026-03-01')));
   });
 });
 
