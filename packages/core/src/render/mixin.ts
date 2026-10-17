@@ -27,7 +27,7 @@ import type * as CanvasRendererModule from './canvas-renderer.js';
 // TYPE-ONLY import back into the base facade — erased at compile time, so no runtime cycle.
 import type { GanttInstance } from '../gantt.js';
 import type { CriticalPathResult, Task, TaskId } from '../types.js';
-import type { RolledUpRow } from './renderer-base.js';
+import { layoutRows, type RolledUpRow } from './renderer-base.js';
 
 /** Task count above which `mount()` lazily loads and uses the Canvas renderer instead of SVG
  *  (architecture.md: "Canvas fallback automatically when task count > 2000"). Decided once, at
@@ -150,7 +150,8 @@ async function mountCanvasAsync(
   generation: number,
   taskCount: number,
 ): Promise<void> {
-  const superseded = (): boolean => generation !== internal.gen() || internal.dead();
+  const superseded = (): boolean =>
+    generation !== internal.gen() || internal.dead();
 
   let canvasModule: typeof CanvasRendererModule;
   try {
@@ -208,7 +209,11 @@ function mountSvg(
   // Defensive, cheap even on the sync path.
   if (generation !== internal.gen() || internal.dead()) return;
   const memo = createMemo();
-  const handle = createSvgRenderer(container, renderInput(internal, memo, false), rendererOptions(internal));
+  const handle = createSvgRenderer(
+    container,
+    renderInput(internal, memo, false),
+    rendererOptions(internal),
+  );
   finishMount(internal, 'svg', handle, taskCount, memo, fallbackReason);
 }
 
@@ -319,16 +324,19 @@ interface RenderMemo {
   /** Critical ids waiting to be announced: the constructor paint derives before the renderer handle
    *  exists, and a `critical-path:computed` listener must not run until it does. */
   emit: readonly TaskId[] | undefined;
+  /** True from the constructor paint until the effect's first run, which would only repeat it. */
+  painted: boolean;
 }
 
 function createMemo(): RenderMemo {
-  return { rev: -1, criticalPath: undefined, rollup: undefined, emit: undefined };
+  return { rev: -1, criticalPath: undefined, rollup: undefined, emit: undefined, painted: true };
 }
 
 /** The paint input, recomputing the memoized parts only when the data revision moved. `track`
  *  is true inside the reactive effect, where reading `.value` registers the dependencies. */
 function renderInput(internal: GanttInternal, memo: RenderMemo, track: boolean): SvgRendererInput {
-  const read = (revision: ReadonlySignal<number>): number => (track ? revision.value : revision.peek());
+  const read = (revision: ReadonlySignal<number>): number =>
+    track ? revision.value : revision.peek();
   // Read unconditionally so the effect re-runs on ANY task, dependency, selection or collapse
   // mutation (coarse — no per-field granularity here). The collapse revision is
   // (spec-collapse-expand.md §9) the single most important integration assertion of that feature.
@@ -388,6 +396,18 @@ function renderNow(
     memo.emit = undefined;
     internal.emit('critical-path:computed', ids);
   }
+  // The constructor already painted exactly this state, apart from which row holds the roving
+  // tabindex: it painted the first row (the renderer's own default), so only a different focus
+  // (an initially selected row) needs the repaint.
+  const focusedTaskId = getFocusedTaskId();
+  if (memo.painted) {
+    memo.painted = false;
+    if (
+      focusedTaskId === undefined ||
+      focusedTaskId === layoutRows(input.tasks, 'default', input.collapsedIds)[0]?.task.id
+    )
+      return;
+  }
   // ONE repaint for input and options together. `timeRange` is the empty-state fallback for an
   // empty chart and explicitly cleared (back to "auto-derive") otherwise: the options merge
   // shallowly, so omitting the key would leave a stale fallback range in place. Both renderers
@@ -398,14 +418,15 @@ function renderNow(
     timeRange: input.tasks.length === 0 ? emptyStateTimeRange(internal) : undefined,
   };
   handle.update(
-    { ...input, focusedTaskId: getFocusedTaskId() },
+    { ...input, focusedTaskId },
     options as unknown as Partial<SvgRendererOptions & CanvasRendererOptions>,
   );
 }
 
-function emptyStateTimeRange(
-  internal: GanttInternal,
-): { start: Temporal.ZonedDateTime; end: Temporal.ZonedDateTime } {
+function emptyStateTimeRange(internal: GanttInternal): {
+  start: Temporal.ZonedDateTime;
+  end: Temporal.ZonedDateTime;
+} {
   const now = getTemporal().Now.zonedDateTimeISO(internal.calendar.timezone);
   return {
     start: now.subtract({ days: EMPTY_STATE_WINDOW_DAYS }),
@@ -492,5 +513,7 @@ function rendererOptions(internal: GanttInternal): SvgRendererOptions & CanvasRe
     // misleading dead control. (SVG-only; Canvas has no connector-handle affordance in v1.)
     showLinkHandles: !config.readOnly && config.enableDependencyDrag !== false,
   };
-  return internal.tasks.size === 0 ? { ...opts, timeRange: emptyStateTimeRange(internal) } : opts;
+  return internal.tasks.size === 0
+    ? { ...opts, timeRange: emptyStateTimeRange(internal) }
+    : opts;
 }
