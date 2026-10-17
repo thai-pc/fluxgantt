@@ -145,3 +145,11 @@ const gantt = withInteraction(
 
 Dragging out a dependency that would be a self-link, a duplicate, or a cycle is rejected — the
 gesture simply snaps back, with no error thrown into the page and no event emitted.
+
+## With the pinned label column
+
+In SVG mode the label column is pinned (`position: sticky`) over the chart. A bar scrolled under it
+is covered, so you can only grab its visible part, a press on the column never starts a drag, and a
+dependency drag released over the column creates nothing. `scrollToTask(id, { align: 'start' })`
+parks the bar directly right of the column. See the
+[`withViewport` notes](/docs/api) for the full pinning model.

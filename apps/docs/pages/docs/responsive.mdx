@@ -59,7 +59,7 @@ The naive fix for "my finger scrolls the page instead of dragging the bar" is
 And `touch-action: none` on the root `<svg>` would kill scrolling — which on a phone is the
 *primary* interaction, since the chart is far wider than the screen.
 
-So the mixin sets `touch-action: none` on the renderer's pointer target and **implements panning
+So the mixin sets `touch-action: none` on the renderer's pointer target (the `.fg-timeline__layer` wrapper, which also covers the pinned label column and date band) and **implements panning
 itself**: a `pointerdown` that lands outside any `.fg-task[data-task-id]` (grid, header, label
 column, empty space) pans by writing `scrollLeft`/`scrollTop`; a `pointerdown` on a task bar is
 left entirely alone, so the existing gesture coordinator claims it and drag works with no browser

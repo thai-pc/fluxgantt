@@ -137,7 +137,8 @@ The renderer uses BEM classes, all `fg-`-prefixed so they never clash with your 
 .fg-task  .fg-task__bar  .fg-task__progress
 .fg-task--critical  .fg-task--selected  .fg-task--milestone
 .fg-dependency  .fg-dependency--fs
-.fg-timeline__today-line  .fg-timeline__sticky-header
+.fg-timeline__today-line  .fg-timeline__layer
+.fg-timeline__sticky-header  .fg-timeline__sticky-column  .fg-timeline__sticky-corner
 ```
 
 `.fg-timeline__today-line` is `aria-hidden` — it is decoration, and the chart root is a
@@ -147,6 +148,22 @@ The renderer uses BEM classes, all `fg-`-prefixed so they never clash with your 
 replicates the header (and its `.fg-timeline__header-label` text) so it stays at the top while the
 rows scroll. It reads the same `--fg-*` tokens as the header, so theming needs nothing extra; host
 CSS that targets header labels applies to both copies.
+
+`.fg-timeline__sticky-column` is the pinned label column: `aria-hidden` clones of the row labels and
+toggles (they keep `fg-timeline__row-label` / `fg-timeline__row-toggle` and carry the row's
+`data-row-index` / `data-task-id`), and `.fg-timeline__sticky-corner` is the top-left box above both
+layers. The real labels stay in the chart for assistive tech and export and are hidden on screen
+with `opacity: 0`. The column's ground must be opaque, and the library paints no page ground, so it
+uses **`--fg-bg`** (fallback `#fff`):
+
+```css
+.my-gantt-host {
+  --fg-bg: #0b0b0f; /* match the surface behind the chart */
+}
+```
+
+`withTheme()` sets `--fg-bg` for you. Without one of the two, a non-white page shows a white slab
+behind the names.
 
 ## Critical path without color
 
