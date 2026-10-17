@@ -68,5 +68,12 @@
     "config": "size-limit/with-edit-hooks.esbuild-config.mjs",
     "limit": "16 KiB",
     "gzip": true
+  },
+  {
+    "name": "Base + withRender + withRtl (mirrored right-to-left chart, gzip)",
+    "path": "size-limit/with-rtl.js",
+    "config": "size-limit/with-rtl.esbuild-config.mjs",
+    "limit": "15.5 KiB",
+    "gzip": true
   }
 ]

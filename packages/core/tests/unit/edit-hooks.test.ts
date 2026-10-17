@@ -579,7 +579,8 @@ describe('withEditHooks — Canvas-style handle (row-wide hit test)', () => {
       interactionRoot: root,
       pointerEventTarget: canvas,
       getLabelColumnWidth: () => 160,
-      hitTestRow: () => (hit ? { ...hit, taskId: toTaskId(hit.taskId) } : undefined),
+      // onLabel is what the real Canvas handle computes (layout x < label column, mirror-aware)
+      hitTestRow: (x: number) => (hit ? { ...hit, taskId: toTaskId(hit.taskId), onLabel: x - 100 < 160 } : undefined),
     };
     internal.setMount({ renderer: 'canvas', handle } as unknown as MountState);
     const activated: TaskActivatedPayload[] = [];

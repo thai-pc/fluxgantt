@@ -85,8 +85,12 @@ export interface MountState {
    * importing those into `gantt.ts` would drag the SVG renderer back into the base bundle,
    * which is exactly what this split exists to prevent. Base `zoomTo()` therefore degrades to
    * state-only whenever no mount state exists (always, without `withRender`).
+   *
+   * Deliberately NOT readonly: `withRtl` replaces it with a logical-scroll variant (a RTL scroll
+   * container's `scrollLeft` is zero or negative), which keeps `render/mixin.ts` free of any RTL
+   * branch. Nothing else reassigns it.
    */
-  readonly anchored: (mutate: () => void) => void;
+  anchored: (mutate: () => void) => void;
   /** Repaints from scratch, dropping the render layer's derived-data cache first
    *  (`RenderCapability.refresh()`); provided by `render/mixin.ts`. */
   readonly refresh: () => void;

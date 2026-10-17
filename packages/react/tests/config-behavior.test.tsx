@@ -251,3 +251,31 @@ describe('<FluxGantt> theme', () => {
     expect(bad).toBeDefined();
   });
 });
+
+describe('<FluxGantt> rtl prop (withRtl composed unconditionally)', () => {
+  it('rtl mirrors the chart: dir="rtl" on the container and the .fg-rtl group', () => {
+    const { container } = mountChart({ tasks: TWO, rtl: true });
+    expect(container.getAttribute('dir')).toBe('rtl');
+    expect(container.querySelector('svg.fg-timeline > g.fg-rtl')).not.toBeNull();
+  });
+
+  it('rtl false or unset: neither dir nor the group (a pure no-op)', () => {
+    for (const props of [{ tasks: TWO }, { tasks: TWO, rtl: false }]) {
+      const { container, unmount } = mountChart(props);
+      expect(container.hasAttribute('dir')).toBe(false);
+      expect(container.querySelector('g.fg-rtl')).toBeNull();
+      unmount();
+    }
+  });
+
+  it('is construction-time: remounting with a new key applies the new value, unmount restores dir', () => {
+    const { container, rerender, unmount } = render(<FluxGantt key="a" tasks={TWO} />);
+    const host = container.firstElementChild as HTMLElement;
+    expect(host.hasAttribute('dir')).toBe(false);
+    rerender(<FluxGantt key="b" tasks={TWO} rtl />);
+    const next = container.firstElementChild as HTMLElement;
+    expect(next.getAttribute('dir')).toBe('rtl');
+    unmount();
+    expect(next.hasAttribute('dir')).toBe(false);
+  });
+});

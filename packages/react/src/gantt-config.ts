@@ -32,6 +32,9 @@ export const CONFIG_DISPOSITION = {
   historyLimit: 'forwarded',
   initialCollapsed: 'forwarded',
   rollup: 'forwarded',
+  // Construction-time only (like `locale`): changing it needs a remount (use `key`). Read by
+  // `withRtl`, which the wrapper composes unconditionally (inert unless `rtl === true`).
+  rtl: 'forwarded',
   theme: 'reactive',
   onTaskChange: 'reactive',
 } as const satisfies Record<keyof GanttConfig, Disposition>;

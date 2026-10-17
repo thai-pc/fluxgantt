@@ -118,6 +118,7 @@ import {
   type TimeScale,
 } from './renderer-base.js';
 import type { PointerDragController } from '../interaction/pointer-drag.js';
+import { applyMirror, fillTextAt, layoutX } from './canvas-mirror.js';
 import type { BarHit, InteractiveRendererHandle } from './interactive-renderer-handle.js';
 import {
   createCanvasDrag,
@@ -208,6 +209,9 @@ export interface CanvasRendererOptions {
    * see that spec's §4.1) — this is NOT applied in SVG mode, which has no such constraint.
    */
   readonly viewportHeight?: number;
+  /** Paint mirrored: earliest date at the right, label column at the right, upright glyphs. Set
+   *  only by `withRtl`; also read by `export-canvas-png.ts` through `getRenderState()`. */
+  readonly rtl?: boolean;
   // NOTE: no `showLinkHandles` — Canvas never paints connector handles on the main bitmap. When a
   // drag is attached they are drawn on the interaction overlay only (hovered / selected bars).
 }
@@ -277,7 +281,7 @@ export interface CanvasRendererHandle extends InteractiveRendererHandle {
   hitTestRow(
     clientX: number,
     clientY: number,
-  ): { taskId: TaskId; rowIndex: number; hitToggle: boolean; onBar: boolean } | undefined;
+  ): { taskId: TaskId; rowIndex: number; hitToggle: boolean; onBar: boolean; onLabel: boolean } | undefined;
   /** Always present on a Canvas handle (the pointer-drag coordinator's Canvas discriminator), but
    *  returns `undefined` until `attachDrag()` has run and after its disposer. */
   hitTestBar(clientX: number, clientY: number, pointerType?: string): BarHit | undefined;
@@ -769,6 +773,7 @@ export function createCanvasRenderer(
       timeScale: state.timeScale,
       offsetX: currentLabelColumnWidth,
       rollup: state.input.rollup,
+      rtl: state.options.rtl === true,
     };
   };
   let dragTokens: DesignTokens | undefined;
@@ -841,7 +846,10 @@ export function createCanvasRenderer(
   // fighting/jump), see `tests/a11y/canvas-renderer.spec.ts`.
   a11yLayer.style.position = 'sticky';
   a11yLayer.style.top = '0';
-  a11yLayer.style.left = '0';
+  // Logical, not 'left': a RTL scroll container puts the content's start at the RIGHT, and a physical
+  // `left: 0` sticky inset parks this layer at the far end, so Tab into a scrolled chart would scroll
+  // the container back to reveal it (identical to `left` in LTR).
+  a11yLayer.style.insetInlineStart = '0';
   a11yLayer.style.width = '1px';
   a11yLayer.style.height = '1px';
   a11yLayer.style.margin = '-1px';
@@ -997,7 +1005,9 @@ export function createCanvasRenderer(
       const rowHeight = ROW_HEIGHT[state.options.density ?? DEFAULT_DENSITY];
       const y = HEADER_HEIGHT + rowIndex * rowHeight - container.scrollTop + rowHeight / 2;
       return {
-        clientX: rect.left + currentLabelColumnWidth / 2,
+        clientX: state.options.rtl
+          ? rect.right - currentLabelColumnWidth / 2
+          : rect.left + currentLabelColumnWidth / 2,
         clientY: rect.top + Math.min(Math.max(y, HEADER_HEIGHT), rect.height),
       };
     },
@@ -1053,9 +1063,9 @@ export function createCanvasRenderer(
   function hitTestRow(
     clientX: number,
     clientY: number,
-  ): { taskId: TaskId; rowIndex: number; hitToggle: boolean; onBar: boolean } | undefined {
+  ): { taskId: TaskId; rowIndex: number; hitToggle: boolean; onBar: boolean; onLabel: boolean } | undefined {
     const rect = canvas.getBoundingClientRect();
-    const x = clientX - rect.left;
+    const x = layoutX(state.options.rtl === true, clientX - rect.left, rect.width);
     const y = clientY - rect.top;
 
     // Same logical/CSS-pixel coordinate space paintRows() already uses internally — no DPR
@@ -1079,7 +1089,7 @@ export function createCanvasRenderer(
     const toggleEnd = toggleStart + TOGGLE_GLYPH_GUTTER_PX;
     const hitToggle = row.hasChildren && x >= toggleStart && x < toggleEnd;
 
-    return { taskId: row.task.id, rowIndex: row.rowIndex, hitToggle, onBar: insideBar(g, x, y) };
+    return { taskId: row.task.id, rowIndex: row.rowIndex, hitToggle, onBar: insideBar(g, x, y), onLabel: x < currentLabelColumnWidth };
   }
 
   /**
@@ -1303,6 +1313,7 @@ export function createCanvasRenderer(
     // Defensive — stated explicitly rather than relying silently on width/height-
     // reassignment semantics.
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    if (state.options.rtl) applyMirror(ctx, totalWidth);
 
     // Fresh read, taken AFTER `ensureFocusedRowVisible()` may have just written it above —
     // this is the scroll position this frame actually paints/materializes (spec §4.3).
@@ -1572,9 +1583,9 @@ export function paintHeader(
     // Label is Temporal/Intl-formatted (never user input), but fillText is
     // injection-safe by construction regardless — consistent no-markup-sink policy.
     ctx.textAlign = 'left';
-    for (const l of tiers.upper) ctx.fillText(l.text, offsetX + l.x, 8);
+    for (const l of tiers.upper) fillTextAt(ctx, l.text, offsetX + l.x, 8);
     ctx.textAlign = 'center';
-    for (const l of tiers.lower) ctx.fillText(l.text, offsetX + l.x, 24);
+    for (const l of tiers.lower) fillTextAt(ctx, l.text, offsetX + l.x, 24);
     ctx.textAlign = 'start'; // restore default before the divider stroke below (defensive)
 
     ctx.strokeStyle = tokens.borderStrong;
@@ -1679,7 +1690,8 @@ export function paintRows(
       // (spec-collapse-expand.md §6.1) — uniform gutter reservation applied to EVERY row
       // (mirrors svg-renderer.ts's identical `TOGGLE_GLYPH_GUTTER_PX` shift), so label text
       // stays column-aligned across sibling leaf/summary rows at the same depth.
-      ctx.fillText(
+      fillTextAt(
+        ctx,
         row.task.name,
         LABEL_PADDING_PX + row.depth * LABEL_INDENT_PX + TOGGLE_GLYPH_GUTTER_PX,
         offsetY + row.y + rowHeight / 2,

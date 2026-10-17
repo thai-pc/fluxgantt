@@ -10,6 +10,12 @@ fallback, so **the chart renders correctly with zero required host CSS** — you
 Override any of these on a container (or `:root`) to retheme. Values below are the defaults
 (from the design system, spec §8.2).
 
+### Right-to-left
+
+None of the tokens below is direction-specific, so a theme works unchanged in a mirrored chart.
+[`withRtl`](/docs/rtl) sets `dir="rtl"` on the mount container itself; your own CSS for the
+container should use logical properties (`padding-inline-start`, not `padding-left`).
+
 ### Typography
 
 ```css

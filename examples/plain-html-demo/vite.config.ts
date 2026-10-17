@@ -52,6 +52,7 @@ export default defineConfig({
         canvasDrag: fileURLToPath(new URL('./canvas-drag.html', import.meta.url)),
         conflicts: fileURLToPath(new URL('./conflicts.html', import.meta.url)),
         i18n: fileURLToPath(new URL('./i18n.html', import.meta.url)),
+        rtl: fileURLToPath(new URL('./rtl.html', import.meta.url)),
         responsive: fileURLToPath(new URL('./responsive.html', import.meta.url)),
         editHooks: fileURLToPath(new URL('./edit-hooks.html', import.meta.url)),
         canvasHarness: fileURLToPath(new URL('./canvas-harness.html', import.meta.url)),

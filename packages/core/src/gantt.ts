@@ -119,6 +119,14 @@ export interface GanttConfig {
   readonly theme?: 'light' | 'dark' | 'auto';
 
   /**
+   * Mirror the chart for right-to-left locales (earliest date at the right, label column at the
+   * right edge). Read ONLY by the opt-in `withRtl()` mixin (`@fluxgantt/core/rtl`) and inert on an
+   * instance that never applies it, exactly like `theme`. Default `false`. Construction-time only
+   * (like `locale`): to switch, destroy and rebuild.
+   */
+  readonly rtl?: boolean;
+
+  /**
    * (fix #37, spec-canvas-row-virtualization.md §2). Passed straight through to
    * `CanvasRendererOptions.viewportHeight` — has NO effect in SVG mode (no equivalent
    * concept there). Bounds the Canvas `<canvas>` backing store's physical height and the

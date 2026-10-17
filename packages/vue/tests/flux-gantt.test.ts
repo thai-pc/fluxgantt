@@ -248,6 +248,7 @@ describe('<FluxGantt>', () => {
       'locale',
       'readOnly',
       'enableDependencyDrag',
+      'rtl',
       'onTaskChange',
       'ariaLabel',
       'messages',

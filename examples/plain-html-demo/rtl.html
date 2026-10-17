@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>FluxGantt · RTL demo</title>
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <main>
+      <h1>FluxGantt — <code>rtl: true</code></h1>
+      <p>
+        An Arabic project plan (<code>?lang=he</code> for Hebrew) mounted with
+        <code>withRtl()</code>: the earliest date is at the right, the label column sits at the
+        right edge, and bars, dependencies, drag and scrolling all follow the reading direction.
+        Drives the <code>rtl</code> Playwright specs. See <code>src/rtl.ts</code> for the query
+        params.
+      </p>
+      <div id="gantt"></div>
+    </main>
+    <script type="module" src="/src/rtl.ts"></script>
+  </body>
+</html>

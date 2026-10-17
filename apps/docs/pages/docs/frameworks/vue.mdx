@@ -43,7 +43,7 @@ function onTaskMoved(task: Task, prevStart: unknown) {
 
 `FluxGanttProps` mirrors the engine's `GanttConfig` one-to-one: `tasks`, `dependencies`,
 `calendar`, `viewMode`, `density`, `locale`, `ariaLabel`, `messages`, `theme`, `canvasViewportHeight`, `readOnly`,
-`enableDependencyDrag`, `schedulingMode`, `historyLimit`, `initialCollapsed`, `rollup`, and the `onTaskChange` catch-all. In a template you bind them kebab- or camelCase (`:tasks`,
+`enableDependencyDrag`, `schedulingMode`, `historyLimit`, `initialCollapsed`, `rollup`, `rtl`, and the `onTaskChange` catch-all. In a template you bind them kebab- or camelCase (`:tasks`,
 `:view-mode`).
 
 Like React, these are **construction-time only** (read once), except `theme`, which is reactive (applied via

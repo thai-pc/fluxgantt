@@ -11,6 +11,7 @@
 // `todayLineX` (Temporal); the clock is read once, here, at the DOM boundary.
 import { DEFAULT_CALENDAR } from '../compute/working-calendar.js';
 import { getTemporal } from '../internal/temporal.js';
+import { applyMirror } from '../render/canvas-mirror.js';
 import {
   HEADER_HEIGHT,
   MAX_CANVAS_AREA_PX_WEBKIT,
@@ -144,6 +145,7 @@ export async function exportCanvasPng(
       ctx.fillRect(0, 0, pxW, pxH);
     }
     ctx.setTransform(scale, 0, 0, scale, 0, 0);
+    if (o.rtl) applyMirror(ctx, cssW);
 
     const tokens = resolveDesignTokens(handle.container);
     const now = getTemporal().Now.zonedDateTimeISO(calendar.timezone);

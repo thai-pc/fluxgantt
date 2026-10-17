@@ -72,6 +72,11 @@
       "import": "./dist/edit-hooks/index.js",
       "require": "./dist/edit-hooks/index.cjs"
     },
+    "./rtl": {
+      "types": "./dist/rtl/index.d.ts",
+      "import": "./dist/rtl/index.js",
+      "require": "./dist/rtl/index.cjs"
+    },
     "./conflicts": {
       "types": "./dist/conflicts/index.d.ts",
       "import": "./dist/conflicts/index.js",

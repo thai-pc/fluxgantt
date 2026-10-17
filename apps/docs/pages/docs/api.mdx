@@ -34,6 +34,7 @@ const gantt = withIo(withInteraction(withRender(createGantt({ tasks: [/* … */]
 | `withViewport(instance)` | `@fluxgantt/core/viewport` | `scrollToTask()`, `scrollToDate()`, `setDensity()`. See [Scrolling and density](#scrolling-and-density) |
 | `withConflicts(instance, options?)` | `@fluxgantt/core/conflicts` | `detectConflicts()` and the `conflict:detected` event. Headless. See [Schedule conflicts](#schedule-conflicts) |
 | `withEditHooks(instance, options?)` | `@fluxgantt/core/edit-hooks` | No new methods — emits `task:activated` and `task:context-requested` so your app can build its own editor and menu. See [Edit hooks](#edit-hooks) |
+| `withRtl(instance)` | `@fluxgantt/core/rtl` | No new methods — mirrors the chart for right-to-left locales when `rtl: true`; inert otherwise. See [Right-to-left charts](/docs/rtl) |
 | `withResponsive(instance, options?)` | `@fluxgantt/core/responsive` | `isCoarsePointer()`, `getLabelColumnWidth()` — and adapts density, hit targets, the label column and touch panning under `(pointer: coarse)`. See [Responsive & touch](/docs/responsive) |
 
 Each mixin mutates and returns the SAME instance, so application order does not matter — but
@@ -41,7 +42,7 @@ all of them must be applied **before the first `mount()`**: `mount()` reads the 
 hooks at mount time, so composing `withInteraction` onto an already-mounted instance takes
 effect only on the next mount.
 
-The React and Vue wrappers compose `withRender` + `withInteraction` + `withEditHooks` + `withViewport` + `withTheme` for you,
+The React and Vue wrappers compose `withRender` + `withInteraction` + `withEditHooks` + `withViewport` + `withTheme` + `withRtl` for you,
 and forward every `GanttConfig` field. All of them are construction-time only except `onTaskChange` and `theme`, which are
 reactive. The one deliberate deviation from "unset means core default": the wrappers' `theme` defaults to `'light'`, not
 `'auto'` (wrapper charts have always been light); pass `theme="auto"` to follow the OS.
@@ -65,6 +66,7 @@ reactive. The one deliberate deviation from "unset means core default": the wrap
 | `historyLimit` | `number` | `100` | Undo entries retained. Oldest is evicted past the limit (ring buffer). `0` opts out of undo/redo entirely without affecting anything else. Must be a non-negative integer — throws at construction otherwise. Construction-time only. |
 | `canvasViewportHeight` | `number` | `600` | Visible scroll-viewport height, in px, of the mounted container **in Canvas mode only** (no SVG equivalent). Bounds the `<canvas>` backing store. |
 | `theme` | `'light' \| 'dark' \| 'auto'` | `'auto'` in core; `'light'` in the React/Vue wrappers | Initial theme. Applied by [`withTheme`](/docs/theming); the base bundle only carries the field. The wrappers compose `withTheme` and keep `theme` reactive. |
+| `rtl` | `boolean` | `false` | Mirror the chart for right-to-left locales: earliest date and label column at the right, upright glyphs, native RTL scrolling. Applied by [`withRtl`](/docs/rtl); the base bundle only carries the field. Construction-time only (rebuild, or change `key` in a wrapper, to switch). |
 | `rollup` | `RollupProvider` | — | Draw each parent at its rolled-up span (earliest descendant start to latest descendant end, duration-weighted progress) instead of its authored dates. Pass the core implementation: `rollup: computeRollup` (from `@fluxgantt/core`). Derived on read: `getTasks()`, export, undo and critical path still see authored dates. Mounted charts only. Construction-time only. See [Hierarchy](/docs/concepts/hierarchy). |
 | `onTaskChange` | `(task, prev) => void` | — | Catch-all fired whenever a task field changes. |
 
