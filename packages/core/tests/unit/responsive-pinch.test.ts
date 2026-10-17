@@ -314,6 +314,50 @@ describe('pinch — cancelling the first finger', () => {
 });
 
 describe('pinch — lifecycle of the pair', () => {
+  it('a pointerup that never reaches the chart (finger lifted outside) leaves no ghost: pan and fresh pinches still work', () => {
+    const s = setup();
+    ptr('pointerdown', s.svg, 1, 0, 100);
+    ptr('pointerdown', s.svg, 2, 100, 100);
+    // Window-level tracking: the lift lands on <body>, outside the container, and still ends it.
+    ptr('pointerup', document.body, 2, 100, 100);
+    ptr('pointerup', document.body, 1, 0, 100);
+    ptr('pointerdown', s.svg, 1, 300, 100);
+    ptr('pointermove', s.svg, 1, 280, 100);
+    expect(s.scroll.left).toBe(420); // a single finger pans: it did not pair with a ghost
+    expect(s.zoomed).toEqual([]);
+  });
+
+  it('a ghost left by a pointerup nobody saw is healed by the next PRIMARY touch', () => {
+    const s = setup();
+    ptr('pointerdown', s.svg, 1, 0, 100);
+    ptr('pointerdown', s.svg, 2, 100, 100);
+    // Simulate a lost pointerup: drop the window listeners' view of it by never sending it, and
+    // start over with a new primary finger.
+    ptr('pointerdown', s.svg, 1, 300, 100); // isPrimary: map cleared, no pair with the ghost
+    ptr('pointermove', s.svg, 1, 280, 100);
+    expect(s.scroll.left).toBe(420);
+    expect(s.zoomed).toEqual([]);
+  });
+
+  it('finger 2 landing on a bar does not start a drag: a sub-threshold pinch commits nothing', () => {
+    const s = setup();
+    const moved = vi.fn();
+    s.gantt.on('task:moved', moved);
+    const before = String(s.gantt.getTask(toTaskId('a'))!.start);
+    const bar = container.querySelector('.fg-task[data-task-id="a"] .fg-task__bar')!;
+    ptr('pointerdown', s.svg, 1, 300, 100);
+    ptr('pointerdown', bar, 2, 340, 100);
+    ptr('pointermove', bar, 2, 350, 100); // 40 -> 50: ratio 1.25, below the step threshold
+    // a 3rd finger on the bar is blocked too
+    ptr('pointerdown', bar, 3, 20, 40);
+    ptr('pointermove', bar, 3, 90, 40);
+    ptr('pointerup', bar, 3, 90, 40);
+    ptr('pointerup', bar, 2, 350, 100);
+    ptr('pointerup', s.svg, 1, 300, 100);
+    expect(moved).not.toHaveBeenCalled();
+    expect(String(s.gantt.getTask(toTaskId('a'))!.start)).toBe(before);
+  });
+
   it('lifting a pair member ends the pinch; the remaining finger is inert; a fresh pinch works', () => {
     const s = setup();
     ptr('pointerdown', s.svg, 1, 0, 100);
@@ -430,15 +474,18 @@ describe('pinch — options and listener lifecycle', () => {
   it('destroy removes every listener, a later event is a no-op, and destroy mid-pinch does not throw', () => {
     const s = setup();
     const removed = vi.spyOn(container, 'removeEventListener');
+    const removedWin = vi.spyOn(window, 'removeEventListener');
     ptr('pointerdown', s.svg, 1, 0, 100);
     ptr('pointerdown', s.svg, 2, 100, 100);
     s.gantt.destroy();
-    expect(removed.mock.calls.map((c) => c[0]).filter((t) => t.startsWith('pointer')).sort()).toEqual([
-      'pointercancel',
+    // pointerdown on the container; move/up/cancel on the window.
+    expect(removed.mock.calls.map((c) => c[0]).filter((t) => t.startsWith('pointer'))).toEqual([
       'pointerdown',
-      'pointermove',
-      'pointerup',
     ]);
+    // (`pointer-drag` also owns window listeners of the same names, so assert containment.)
+    expect(removedWin.mock.calls.map((c) => c[0])).toEqual(
+      expect.arrayContaining(['pointercancel', 'pointermove', 'pointerup']),
+    );
     expect(() => ptr('pointermove', s.svg, 2, 300, 100)).not.toThrow();
   });
 
