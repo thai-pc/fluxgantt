@@ -1055,9 +1055,7 @@ class Gantt implements GanttInstance {
     const current = new Set(this.#collapseStore.all());
     if (current.has(id)) current.delete(id);
     else current.add(id);
-    if (this.#collapseStore.replace([...current])) {
-      this.#emit('collapse:changed', this.#collapseStore.all());
-    }
+    this.#replaceCollapsed([...current]);
   }
 
   isCollapsed(id: TaskId): boolean {
@@ -1074,16 +1072,12 @@ class Gantt implements GanttInstance {
       .all()
       .filter((t) => this.#taskStore.children(t.id).length > 0)
       .map((t) => t.id);
-    if (this.#collapseStore.replace(withChildren)) {
-      this.#emit('collapse:changed', this.#collapseStore.all());
-    }
+    this.#replaceCollapsed(withChildren);
   }
 
   expandAll(): void {
     this.#assertAlive('expandAll');
-    if (this.#collapseStore.replace([])) {
-      this.#emit('collapse:changed', this.#collapseStore.all());
-    }
+    this.#replaceCollapsed([]);
   }
 
   // --- History (undo/redo) ---------------------------------------------------------------
@@ -1400,6 +1394,11 @@ class Gantt implements GanttInstance {
           this.#emit('dependency:removed', op.dependency.id, meta);
         }
     }
+  }
+
+  /** Replaces the collapsed set and emits `collapse:changed` iff it actually changed. */
+  #replaceCollapsed(ids: readonly TaskId[]): void {
+    if (this.#collapseStore.replace(ids)) this.#emit('collapse:changed', this.#collapseStore.all());
   }
 
   /** Selection hygiene: `undo()`/`redo()` can remove a task from the store (undoing an
