@@ -118,6 +118,7 @@ import {
   type TimeScale,
 } from './renderer-base.js';
 import type { PointerDragController } from '../interaction/pointer-drag.js';
+import { applyMirror, fillTextAt, layoutX } from './canvas-mirror.js';
 import type { BarHit, InteractiveRendererHandle } from './interactive-renderer-handle.js';
 import {
   createCanvasDrag,
@@ -208,6 +209,9 @@ export interface CanvasRendererOptions {
    * see that spec's §4.1) — this is NOT applied in SVG mode, which has no such constraint.
    */
   readonly viewportHeight?: number;
+  /** Paint mirrored: earliest date at the right, label column at the right, upright glyphs. Set
+   *  only by `withRtl`; also read by `export-canvas-png.ts` through `getRenderState()`. */
+  readonly rtl?: boolean;
   // NOTE: no `showLinkHandles` — Canvas never paints connector handles on the main bitmap. When a
   // drag is attached they are drawn on the interaction overlay only (hovered / selected bars).
 }
@@ -769,6 +773,7 @@ export function createCanvasRenderer(
       timeScale: state.timeScale,
       offsetX: currentLabelColumnWidth,
       rollup: state.input.rollup,
+      rtl: state.options.rtl === true,
     };
   };
   let dragTokens: DesignTokens | undefined;
@@ -997,7 +1002,9 @@ export function createCanvasRenderer(
       const rowHeight = ROW_HEIGHT[state.options.density ?? DEFAULT_DENSITY];
       const y = HEADER_HEIGHT + rowIndex * rowHeight - container.scrollTop + rowHeight / 2;
       return {
-        clientX: rect.left + currentLabelColumnWidth / 2,
+        clientX: state.options.rtl
+          ? rect.right - currentLabelColumnWidth / 2
+          : rect.left + currentLabelColumnWidth / 2,
         clientY: rect.top + Math.min(Math.max(y, HEADER_HEIGHT), rect.height),
       };
     },
@@ -1055,7 +1062,7 @@ export function createCanvasRenderer(
     clientY: number,
   ): { taskId: TaskId; rowIndex: number; hitToggle: boolean; onBar: boolean } | undefined {
     const rect = canvas.getBoundingClientRect();
-    const x = clientX - rect.left;
+    const x = layoutX(state.options.rtl === true, clientX - rect.left, rect.width);
     const y = clientY - rect.top;
 
     // Same logical/CSS-pixel coordinate space paintRows() already uses internally — no DPR
@@ -1303,6 +1310,7 @@ export function createCanvasRenderer(
     // Defensive — stated explicitly rather than relying silently on width/height-
     // reassignment semantics.
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    if (state.options.rtl) applyMirror(ctx, totalWidth);
 
     // Fresh read, taken AFTER `ensureFocusedRowVisible()` may have just written it above —
     // this is the scroll position this frame actually paints/materializes (spec §4.3).
@@ -1572,9 +1580,9 @@ export function paintHeader(
     // Label is Temporal/Intl-formatted (never user input), but fillText is
     // injection-safe by construction regardless — consistent no-markup-sink policy.
     ctx.textAlign = 'left';
-    for (const l of tiers.upper) ctx.fillText(l.text, offsetX + l.x, 8);
+    for (const l of tiers.upper) fillTextAt(ctx, l.text, offsetX + l.x, 8);
     ctx.textAlign = 'center';
-    for (const l of tiers.lower) ctx.fillText(l.text, offsetX + l.x, 24);
+    for (const l of tiers.lower) fillTextAt(ctx, l.text, offsetX + l.x, 24);
     ctx.textAlign = 'start'; // restore default before the divider stroke below (defensive)
 
     ctx.strokeStyle = tokens.borderStrong;
@@ -1679,7 +1687,8 @@ export function paintRows(
       // (spec-collapse-expand.md §6.1) — uniform gutter reservation applied to EVERY row
       // (mirrors svg-renderer.ts's identical `TOGGLE_GLYPH_GUTTER_PX` shift), so label text
       // stays column-aligned across sibling leaf/summary rows at the same depth.
-      ctx.fillText(
+      fillTextAt(
+        ctx,
         row.task.name,
         LABEL_PADDING_PX + row.depth * LABEL_INDENT_PX + TOGGLE_GLYPH_GUTTER_PX,
         offsetY + row.y + rowHeight / 2,

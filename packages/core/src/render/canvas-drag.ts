@@ -28,6 +28,7 @@ import {
   snapDeltaToDay,
 } from '../internal/drag-math.js';
 import type { Task, TaskId } from '../types.js';
+import { applyMirror, layoutX } from './canvas-mirror.js';
 import type { BarHit, BarZone } from './interactive-renderer-handle.js';
 import {
   anchorOf,
@@ -49,6 +50,9 @@ export interface DragView {
   readonly rollup: ReadonlyMap<TaskId, RolledUpRow> | undefined;
   readonly selected: ReadonlySet<TaskId>;
   readonly critical: ReadonlySet<TaskId>;
+  /** The chart is painted mirrored (`withRtl`): canvas-local x is converted to LAYOUT x on the way in
+   *  and the overlay is painted through the same mirror, so all geometry below stays layout-space. */
+  readonly rtl: boolean;
 }
 
 export interface DragTokens {
@@ -215,7 +219,7 @@ export function createCanvasDrag(
     ) {
       return undefined;
     }
-    const x = clientX - rect.left;
+    const x = layoutX(host.view().rtl, clientX - rect.left, rect.width);
     const y = clientY - rect.top;
     return x < 0 || x > rect.width || y < host.headerHeight || y > rect.height ? undefined : { x, y };
   };
@@ -251,7 +255,9 @@ export function createCanvasDrag(
       const s = overlay.style;
       s.position = 'sticky';
       s.top = '0';
-      s.left = '0';
+      // Logical, not 'left': a RTL scroll container grows content toward the left, so the viewport-wide
+      // overlay must pin to the inline-start (right) edge or it scrolls away with the content.
+      s.insetInlineStart = '0';
       s.pointerEvents = 'none';
       s.display = 'block';
       container.insertBefore(overlay, canvas.nextSibling);
@@ -313,6 +319,7 @@ export function createCanvasDrag(
     const cr = canvas.getBoundingClientRect();
     const or = overlay.getBoundingClientRect();
     ctx.setTransform(dpr, 0, 0, dpr, (cr.left - or.left) * dpr, (cr.top - or.top) * dpr);
+    if (view.rtl) applyMirror(ctx, cr.width);
     ctx.save();
     try {
       // Never paint over the pinned header band.
@@ -530,7 +537,7 @@ export function createCanvasDrag(
       preview = {
         kind: 'link',
         st: ctx.state,
-        x: event.clientX - rect.left,
+        x: layoutX(host.view().rtl, event.clientX - rect.left, rect.width),
         y: event.clientY - rect.top,
         target: t,
       };
