@@ -1092,7 +1092,7 @@ class Gantt implements GanttInstance {
     this.#assertAlive('undo');
     const entry = this.#undoStack.pop();
     if (!entry) return false;
-    for (let i = entry.ops.length - 1; i >= 0; i--) this.#undoOp(entry.ops[i]!);
+    for (let i = entry.ops.length - 1; i >= 0; i--) this.#applyOp(entry.ops[i]!, false);
     this.#redoStack.push(entry);
     if (this.#redoStack.length > this.#historyLimit) this.#redoStack.shift(); // defensive; see #commitEntry
     this.#pruneSelectionOfMissingTasks();
@@ -1104,7 +1104,7 @@ class Gantt implements GanttInstance {
     this.#assertAlive('redo');
     const entry = this.#redoStack.pop();
     if (!entry) return false;
-    for (const op of entry.ops) this.#redoOp(op);
+    for (const op of entry.ops) this.#applyOp(op, true);
     this.#undoStack.push(entry);
     if (this.#undoStack.length > this.#historyLimit) this.#undoStack.shift(); // defensive; see #commitEntry
     this.#pruneSelectionOfMissingTasks();
@@ -1368,55 +1368,37 @@ class Gantt implements GanttInstance {
     }
   }
 
-  #undoOp(op: HistoryOp): void {
+  /** Applies one history op in the undo (`redo` false) or redo direction. Undo and redo are
+   *  mirror images — an add/remove pair swaps roles, an update swaps prev/next — so one body
+   *  serves both; `undo()` walks the ops in reverse, `redo()` forward. */
+  #applyOp(op: HistoryOp, redo: boolean): void {
+    const meta = { source: redo ? 'redo' : 'undo' } as const;
     switch (op.kind) {
+      case 'task-update': {
+        const [from, to] = redo ? [op.prev, op.next] : [op.next, op.prev];
+        this.#taskStore.restore(to);
+        this.#diffAndEmit(from, to, meta.source); // "before" = from (current), "after" = to (target)
+        this.#config.onTaskChange?.(to, from);
+        break;
+      }
       case 'task-add':
-        this.#taskStore.remove(op.task.id);
-        this.#emit('task:removed', op.task.id, { source: 'undo' });
-        break;
-      case 'task-update':
-        this.#taskStore.restore(op.prev);
-        this.#diffAndEmit(op.next, op.prev, 'undo'); // "before" = current (op.next), "after" = target (op.prev)
-        this.#config.onTaskChange?.(op.prev, op.next);
-        break;
       case 'task-remove':
-        this.#taskStore.restore(op.task);
-        this.#emit('task:added', op.task, { source: 'undo' });
+        if ((op.kind === 'task-add') === redo) {
+          this.#taskStore.restore(op.task);
+          this.#emit('task:added', op.task, meta);
+        } else {
+          this.#taskStore.remove(op.task.id);
+          this.#emit('task:removed', op.task.id, meta);
+        }
         break;
-      case 'dependency-add':
-        this.#dependencyStore.remove(op.dependency.id);
-        this.#emit('dependency:removed', op.dependency.id, { source: 'undo' });
-        break;
-      case 'dependency-remove':
-        this.#dependencyStore.restore(op.dependency);
-        this.#emit('dependency:added', op.dependency, { source: 'undo' });
-        break;
-    }
-  }
-
-  #redoOp(op: HistoryOp): void {
-    switch (op.kind) {
-      case 'task-add':
-        this.#taskStore.restore(op.task);
-        this.#emit('task:added', op.task, { source: 'redo' });
-        break;
-      case 'task-update':
-        this.#taskStore.restore(op.next);
-        this.#diffAndEmit(op.prev, op.next, 'redo');
-        this.#config.onTaskChange?.(op.next, op.prev);
-        break;
-      case 'task-remove':
-        this.#taskStore.remove(op.task.id);
-        this.#emit('task:removed', op.task.id, { source: 'redo' });
-        break;
-      case 'dependency-add':
-        this.#dependencyStore.restore(op.dependency);
-        this.#emit('dependency:added', op.dependency, { source: 'redo' });
-        break;
-      case 'dependency-remove':
-        this.#dependencyStore.remove(op.dependency.id);
-        this.#emit('dependency:removed', op.dependency.id, { source: 'redo' });
-        break;
+      default:
+        if ((op.kind === 'dependency-add') === redo) {
+          this.#dependencyStore.restore(op.dependency);
+          this.#emit('dependency:added', op.dependency, meta);
+        } else {
+          this.#dependencyStore.remove(op.dependency.id);
+          this.#emit('dependency:removed', op.dependency.id, meta);
+        }
     }
   }
 
