@@ -184,6 +184,32 @@ offsets. The methods cannot detect that and still return `true`, because the ret
 that the target exists and a scroll was requested, not that the container moved. Canvas mode sets
 `overflow-y: auto` itself.
 
+The date axis stays pinned to the top of the scroll viewport in both modes. In SVG mode that is a
+`position: sticky`, `aria-hidden` replica of the header (`svg.fg-timeline__sticky-header`, placed
+after the chart `<svg>`, so `container.querySelector('svg')` is still the chart; the exported SVG
+never contains it). Consequences worth knowing:
+
+- Lay the container out as a **block** or grid, not a flex container (row or column). A float is
+  ignored on a flex item, so in a flex row the pinned header lands beside the chart, and in a flex
+  column with an auto height the container collapses to about 32px (the header's negative margin
+  cancels the chart's height). A flex column with a fixed height is fine. Wrap the mount point in a
+  plain block `<div>` if your layout needs flex.
+- Give the scroll container **no `padding-top`**. A sticky box pins at the padding edge, so with
+  padding the rows scroll visibly through the strip above the header. Put the spacing on a wrapper.
+- If the page itself scrolls (the container has no `overflow`), the header pins to the top of the
+  browser viewport while the page scrolls through the chart, and stops at the chart's bottom. A fixed
+  host navbar will cover it. Layout and following content are unaffected.
+- Right-to-left pages are supported: the header follows the chart's inline-start edge.
+- `scrollToTask`/`setDensity` use one coordinate system for both renderers: `align: 'start'` parks
+  the row directly **under** the 32px header, and the usable row band is `clientHeight - 32`.
+- The pinned header is opaque, including the label-column corner (`--fg-bg-subtle`), and it is not
+  part of the chart `<svg>`, so pointer events over it (selection clicks, drops of a dependency
+  drag) do not reach the rows scrolled beneath. Ctrl+wheel over it still zooms.
+- While mounted, the container's inline `scroll-padding-top` is `32px` so natively focus-scrolled
+  rows stop below the header; your previous inline value is restored on unmount. Firefox ignores
+  `scroll-padding` when it focuses an SVG row (it scrolls the container to the top); this predates
+  the pinned header and Chromium and WebKit honour it.
+
 | Method | Returns | Purpose |
 |---|---|---|
 | `scrollToTask(id, options?)` | `boolean` | Scrolls the task's row and bar into view. `options.align` (`'nearest'` default / `'start'` / `'center'` / `'end'`), `options.behavior` (`'auto'` default / `'smooth'`), `options.expand` (default `true`: expands collapsed ancestors, firing `collapse:changed`; `false` makes it a no-op). Returns `false` when unmounted or when the row is hidden and `expand: false`. Throws on an unknown id. Never moves focus or selection — use `select(id)` + `scrollToTask(id)` to go to and announce a task. |

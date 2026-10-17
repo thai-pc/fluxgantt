@@ -117,7 +117,7 @@ export async function recordEvent(page: Page, event: string): Promise<() => Prom
 /** Waits for the demo to be mounted and driveable. `#gantt svg` visible alone is not enough —
  *  the specs drive the instance through `window.__gantt`, which `main.ts` assigns after mount. */
 export async function waitForMountedDemo(page: Page): Promise<void> {
-  await expect(page.locator('#gantt svg')).toBeVisible();
+  await expect(page.locator('#gantt svg.fg-timeline')).toBeVisible();
   await expect
     .poll(() =>
       page.evaluate(() => Boolean((window as unknown as { __gantt?: unknown }).__gantt)),

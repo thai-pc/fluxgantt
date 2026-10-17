@@ -23,7 +23,7 @@ async function paintedLabelColumnWidth(page: import('@playwright/test').Page): P
 
 test.beforeEach(async ({ page }) => {
   await page.goto('/responsive.html');
-  await expect(page.locator('#gantt svg')).toBeVisible();
+  await expect(page.locator('#gantt svg.fg-timeline')).toBeVisible();
 });
 
 test('the label column narrows below the 160px default but stays at or above its 96px floor', async ({
@@ -112,7 +112,7 @@ test.describe('explicit density pinned over the coarse-pointer default', () => {
     page,
   }) => {
     await page.goto('/responsive.html?density=compact');
-    await expect(page.locator('#gantt svg')).toBeVisible();
+    await expect(page.locator('#gantt svg.fg-timeline')).toBeVisible();
     expect(await page.evaluate(() => window.matchMedia('(pointer: coarse)').matches)).toBe(true);
     expect(await rowPitch(page)).toBe(24);
 
@@ -131,7 +131,7 @@ test.describe('explicit density pinned over the coarse-pointer default', () => {
     page,
   }) => {
     await page.goto('/responsive.html');
-    await expect(page.locator('#gantt svg')).toBeVisible();
+    await expect(page.locator('#gantt svg.fg-timeline')).toBeVisible();
     expect(await rowPitch(page)).toBe(48); // 'touch' default under a coarse pointer
     await page.evaluate(() => (window as unknown as { __gantt: ViewportGantt }).__gantt.setDensity('comfortable'));
     expect(await rowPitch(page)).toBe(40);
@@ -147,7 +147,7 @@ test.describe('scroll methods honour the narrowed label column', () => {
     page,
   }) => {
     await page.goto('/responsive.html');
-    await expect(page.locator('#gantt svg')).toBeVisible();
+    await expect(page.locator('#gantt svg.fg-timeline')).toBeVisible();
     const labelW = await paintedLabelColumnWidth(page);
     expect(labelW).toBeLessThan(DEFAULT_LABEL_COLUMN_WIDTH);
 
@@ -167,7 +167,7 @@ test.describe('scroll methods honour the narrowed label column', () => {
     page,
   }) => {
     await page.goto('/responsive.html');
-    await expect(page.locator('#gantt svg')).toBeVisible();
+    await expect(page.locator('#gantt svg.fg-timeline')).toBeVisible();
     expect(
       await page.evaluate(() =>
         (window as unknown as { __gantt: ViewportGantt }).__gantt.scrollToTask('launch'),
@@ -185,7 +185,7 @@ test.describe('scroll methods honour the narrowed label column', () => {
     page,
   }) => {
     await page.goto('/responsive.html');
-    await expect(page.locator('#gantt svg')).toBeVisible();
+    await expect(page.locator('#gantt svg.fg-timeline')).toBeVisible();
     await page.evaluate(() =>
       (window as unknown as { __gantt: ViewportGantt }).__gantt.scrollToTask('launch'),
     );

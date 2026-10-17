@@ -736,3 +736,122 @@ describe('labelColumnWidth option', () => {
     expect(h.svg.outerHTML).not.toContain('NaN');
   });
 });
+
+describe('sticky header overlay (pinned date axis)', () => {
+  const STICKY = '.fg-timeline__sticky-header';
+  const overlayOf = (c: HTMLElement): SVGSVGElement => c.querySelector(STICKY) as SVGSVGElement;
+  const manyTasks = (n: number): Task[] =>
+    Array.from({ length: n }, (_, i) => task(`t${i}`, '2026-01-05T09:00', '2026-01-07T17:00'));
+
+  it('is an aria-hidden svg placed AFTER the chart svg, and the chart stays the first svg', () => {
+    const h = createSvgRenderer(container, { tasks: baseTasks, dependencies: baseDeps });
+    const overlay = overlayOf(container);
+    expect(overlay).not.toBeNull();
+    expect(overlay.tagName.toLowerCase()).toBe('svg');
+    expect(overlay.getAttribute('aria-hidden')).toBe('true');
+    expect(h.svg.nextElementSibling).toBe(overlay);
+    expect(container.querySelector('svg')).toBe(h.svg);
+    expect(h.svg.style.display).toBe('block');
+    expect(overlay.getAttribute('height')).toBe('32');
+  });
+
+  it('sticks to the top, with no focusable or tabindex nodes and no animation', () => {
+    createSvgRenderer(container, { tasks: baseTasks, dependencies: baseDeps });
+    const overlay = overlayOf(container);
+    expect(overlay.style.position).toBe('sticky');
+    expect(overlay.style.top).toBe('0px');
+    // A float: it adds no in-flow height, and a sticky box can only travel while its margin box
+    // stays inside the container (an in-flow bottom margin would pin it in place).
+    expect(overlay.style.float).toBe('inline-start');
+    expect(overlay.querySelector('[tabindex]')).toBeNull();
+    expect(overlay.querySelector('[role]')).toBeNull();
+    expect(overlay.style.transition).toBe('');
+    expect(overlay.style.animation).toBe('');
+  });
+
+  it.each([5, 20, 61])('width equals the chart width and the top margin pulls it back by the chart height (%i rows)', (n) => {
+    const h = createSvgRenderer(container, { tasks: manyTasks(n), dependencies: [] });
+    const overlay = overlayOf(container);
+    const H = Number(h.svg.getAttribute('height'));
+    expect(H).toBeGreaterThan(32);
+    expect(overlay.getAttribute('width')).toBe(h.svg.getAttribute('width'));
+    expect(overlay.style.marginTop).toBe(`-${H}px`);
+
+  });
+
+  it('holds one header clone whose labels match the chart header, never any row content', () => {
+    const h = createSvgRenderer(container, { tasks: baseTasks, dependencies: baseDeps });
+    const overlay = overlayOf(container);
+    expect(overlay.querySelectorAll('.fg-timeline__header')).toHaveLength(1);
+    const labels = (root: Element): (string | null)[] =>
+      Array.from(root.querySelectorAll('.fg-timeline__header-label')).map((t) => t.textContent);
+    expect(labels(overlay)).toEqual(labels(h.svg));
+    expect(labels(overlay).length).toBeGreaterThan(0);
+    expect(overlay.querySelector('.fg-task')).toBeNull();
+    expect(overlay.querySelector('.fg-timeline__row')).toBeNull();
+  });
+
+  it('replicates the full-height rules that cross the header (label divider) and clips them to the band', () => {
+    createSvgRenderer(container, { tasks: baseTasks, dependencies: baseDeps });
+    const overlay = overlayOf(container);
+    expect(overlay.querySelectorAll('.fg-timeline__label-divider')).toHaveLength(1);
+    expect(overlay.style.getPropertyValue('clip-path')).toBe('inset(-1px 0 -1px)');
+    // Opaque extra row above the band (Firefox fractional-y ghost): shadow in the same colour.
+    expect(overlay.style.getPropertyValue('box-shadow')).toMatch(/-1px/);
+    expect(overlay.style.getPropertyValue('box-shadow')).toContain('--fg-bg-subtle');
+    expect(overlay.style.overflow).toBe('visible');
+  });
+
+  it('is refreshed on setOptions({ viewMode }) and update()', () => {
+    const h = createSvgRenderer(container, { tasks: manyTasks(5), dependencies: [] });
+    const overlay = overlayOf(container);
+    const widthBefore = overlay.getAttribute('width');
+    const textBefore = overlay.textContent;
+    h.setOptions({ viewMode: 'day' });
+    expect(overlay.getAttribute('width')).toBe(h.svg.getAttribute('width'));
+    expect(overlay.getAttribute('width')).not.toBe(widthBefore);
+    expect(overlay.textContent).not.toBe(textBefore);
+    expect(overlay.querySelectorAll('.fg-timeline__header')).toHaveLength(1);
+
+    h.update({ tasks: manyTasks(30), dependencies: [] });
+    const H = Number(h.svg.getAttribute('height'));
+    expect(overlay.style.marginTop).toBe(`-${H}px`);
+    expect(overlayOf(container)).toBe(overlay);
+  });
+
+  it('destroy() removes the overlay; a second renderer in the same container leaves exactly one', () => {
+    const h1 = createSvgRenderer(container, { tasks: baseTasks, dependencies: baseDeps });
+    h1.destroy();
+    expect(container.querySelector(STICKY)).toBeNull();
+    createSvgRenderer(container, { tasks: baseTasks, dependencies: baseDeps });
+    expect(container.querySelectorAll(STICKY)).toHaveLength(1);
+  });
+
+  it('sets scroll-padding-top while mounted and restores an empty prior value on destroy', () => {
+    const h = createSvgRenderer(container, { tasks: baseTasks, dependencies: baseDeps });
+    expect(container.style.scrollPaddingTop).toBe('32px');
+    h.destroy();
+    expect(container.style.scrollPaddingTop).toBe('');
+  });
+
+  it('restores a non-empty host scroll-padding-top on destroy', () => {
+    container.style.scrollPaddingTop = '10px';
+    const h = createSvgRenderer(container, { tasks: baseTasks, dependencies: baseDeps });
+    expect(container.style.scrollPaddingTop).toBe('32px');
+    h.destroy();
+    expect(container.style.scrollPaddingTop).toBe('10px');
+  });
+
+  it('never writes a style ATTRIBUTE as markup (CSP-safe: CSSOM only)', () => {
+    const spy = vi.spyOn(Element.prototype, 'setAttribute');
+    createSvgRenderer(container, { tasks: baseTasks, dependencies: baseDeps });
+    expect(spy.mock.calls.filter(([name]) => name === 'style')).toEqual([]);
+  });
+
+  it('the injected <style> text still contains no CSS comment', () => {
+    const h = createSvgRenderer(container, { tasks: baseTasks, dependencies: baseDeps });
+    for (const s of Array.from(h.svg.querySelectorAll('style'))) {
+      expect(s.textContent ?? '').not.toContain('/*');
+    }
+  });
+});

@@ -21,7 +21,7 @@ import { getInternal } from '../gantt-internal.js';
 import { layoutRows, ROW_HEIGHT } from '../render/renderer-base.js';
 import type { DateInput, Density, TaskId } from '../types.js';
 
-/** Both renderers paint a 32px header band. Duplicated on purpose (module isolation — each
+/** Both renderers pin a 32px header band. Duplicated on purpose (module isolation — each
  *  renderer keeps its own copy and this module must not import either); a unit test pins it to
  *  the rendered geometry. */
 const HEADER_HEIGHT = 32;
@@ -56,8 +56,10 @@ export interface ScrollToDateOptions {
  * Scroll and density capability.
  *
  * **Precondition (SVG mode):** the mount container IS the scroll viewport. Give it a bounded
- * height and `overflow: auto` (e.g. `style="height: 420px; overflow: auto"`). The SVG renderer
- * does not make its container scrollable (Canvas mode sets `overflow-y: auto` itself); on a
+ * height and `overflow: auto` (e.g. `style="height: 420px; overflow: auto"`) and lay it out as a
+ * block or grid, not flex (the pinned header is a floated `position: sticky` sibling: a flex row
+ * places it beside the chart and an auto-height flex column collapses to ~32px) with no
+ * `padding-top` (sticky pins at the padding edge). The SVG renderer does not make its container scrollable (Canvas mode sets `overflow-y: auto` itself); on a
  * non-scrollable container the browser ignores the offsets, yet the methods still return `true`
  * because the return value reports that the target exists and an offset was written, not that the
  * container moved.
@@ -162,12 +164,10 @@ export function withViewport<T extends GanttInstance>(instance: T): T & Viewport
       const { container } = handle;
       const labelW = handle.getLabelColumnWidth();
       const scale = handle.getTimeScale();
-      // SVG scrolls its header with the content; Canvas keeps it sticky and scrolls the row band.
-      const bodyTop = mount.renderer === 'svg' ? HEADER_HEIGHT : 0;
-      const itemTop = bodyTop + row.y;
-      // Visible height in that same coordinate space: the whole container for SVG, the row band
-      // (below the sticky header) for Canvas.
-      const viewH = container.clientHeight - (HEADER_HEIGHT - bodyTop);
+      // Both renderers pin the header, so `scrollTop = row.y` parks that row directly under it
+      // and the visible row band is the container minus the header.
+      const itemTop = row.y;
+      const viewH = container.clientHeight - HEADER_HEIGHT;
       let x0 = labelW + scale.dateToX(task.start);
       let x1 = Math.max(x0, labelW + scale.dateToX(task.end));
       if (task.type === 'milestone') {
@@ -225,9 +225,8 @@ export function withViewport<T extends GanttInstance>(instance: T): T & Viewport
         internal.density = density; // picked up by render/mixin.ts at mount
       } else {
         const { container } = mount.rendererHandle;
-        const bodyTop = mount.renderer === 'svg' ? HEADER_HEIGHT : 0;
         const oldTop = container.scrollTop;
-        const firstRow = Math.max(0, oldTop - bodyTop) / ROW_HEIGHT[prev];
+        const firstRow = oldTop / ROW_HEIGHT[prev];
         const before = internal.density;
         internal.density = density;
         try {
@@ -238,8 +237,8 @@ export function withViewport<T extends GanttInstance>(instance: T): T & Viewport
           else internal.density = before;
           throw e;
         }
-        if (oldTop > bodyTop && Number.isFinite(firstRow)) {
-          container.scrollTop = bodyTop + firstRow * ROW_HEIGHT[density];
+        if (oldTop > 0 && Number.isFinite(firstRow)) {
+          container.scrollTop = firstRow * ROW_HEIGHT[density];
         }
       }
       internal.emitEvent('viewport:changed', { viewMode: internal.viewMode.peek(), density });

@@ -175,7 +175,7 @@ test('the today marker draws a full-height red rule over the today column wash',
 
   // DOM state first, screenshot second — these baselines are darwin-only (CI runs the e2e
   // project, not visual), so the assertions below are the portable half of this test.
-  const line = page.locator('#gantt .fg-timeline__today-line');
+  const line = page.locator('#gantt svg.fg-timeline .fg-timeline__today-line');
   await expect(line).toHaveCount(1);
 
   // Spans the whole chart, header band included.
@@ -229,4 +229,50 @@ test('a dark-themed chart repaints ground, grid, header and text', async ({ page
   // visual). `rgb(10, 10, 10)` === the `--fg-bg` dark value, resolved through the cascade.
   await expect(chart).toHaveCSS('background-color', 'rgb(10, 10, 10)');
   await expect(chart).toHaveScreenshot('timeline-dark.png');
+});
+
+// --- Pinned date axis (spec-svg-sticky-header.md section 7) ---------------------------------
+//
+// The same chart scrolled well past its first screenful: the header band must stay at the top
+// of the container, painted over the rows scrolled beneath it (opaque, label-column corner
+// included). Darwin baselines only, like every other test in this file.
+
+test('a vertically scrolled chart keeps the date axis pinned over the scrolled rows', async ({
+  page,
+}) => {
+  await pinToday(page, '2026-01-01T12:00:00Z'); // far outside the data: no today rule in frame
+  await page.goto('/collapse.html?pad=60');
+  await expect(page.locator('svg.fg-timeline')).toBeVisible();
+  await page.evaluate(() => {
+    const c = document.getElementById('gantt')!;
+    c.scrollTop = 400;
+    c.scrollLeft = 640; // the filler bars live in September, right of the first screenful
+  });
+  // One frame so the sticky band has been composited at its pinned position.
+  await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => r(null))));
+
+  const chart = page.locator('#gantt');
+  const band = await page.locator('#gantt svg.fg-timeline__sticky-header').boundingBox();
+  const box = await chart.boundingBox();
+  expect(Math.abs(band!.y - box!.y - 1)).toBeLessThanOrEqual(1); // 1px container border
+  await expect(chart).toHaveScreenshot('timeline-scrolled-header-pinned.png');
+});
+
+test('a dark chart scrolled under the pinned band repaints the band from the dark tokens', async ({
+  page,
+}) => {
+  await page.goto('/');
+  const button = page.locator('#theme-toggle');
+  await button.click(); // auto -> light
+  await button.click(); // light -> dark
+  await expect(button).toHaveText('Theme: dark');
+  await page.evaluate(() => {
+    const c = document.getElementById('gantt')!;
+    c.style.height = '110px'; // shorter than the 5-row chart, so it scrolls
+    c.scrollTop = 50;
+  });
+  await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => r(null))));
+
+  const chart = page.locator('#gantt');
+  await expect(chart).toHaveScreenshot('timeline-scrolled-dark-header-pinned.png');
 });

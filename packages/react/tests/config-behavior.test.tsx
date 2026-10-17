@@ -115,6 +115,12 @@ describe('<FluxGantt> forwarded config fields', () => {
   });
 });
 
+// The SVG renderer owns one inline property on the container (`scroll-padding-top`), so theme
+// assertions count only the `--fg-*` custom properties the theme layer writes.
+function fgTokenCount(el: HTMLElement): number {
+  return Array.from({ length: el.style.length }, (_, i) => el.style.item(i)).filter((p) => p.startsWith('--fg-')).length;
+}
+
 describe('<FluxGantt> theme', () => {
   const DARK_PROP = '--fg-bg';
 
@@ -129,11 +135,11 @@ describe('<FluxGantt> theme', () => {
     const ref = createRef<FluxGanttRef>();
     const { container, rerender } = render(<FluxGantt ref={ref} tasks={TWO} theme="dark" />);
     const host = container.firstElementChild as HTMLElement;
-    expect(host.style.length).toBeGreaterThan(0);
+    expect(fgTokenCount(host)).toBeGreaterThan(0);
     expect(ref.current!.getResolvedTheme()).toBe('dark');
 
     rerender(<FluxGantt ref={ref} tasks={TWO} theme="light" />);
-    expect(host.style.length).toBe(0);
+    expect(fgTokenCount(host)).toBe(0);
     expect(ref.current!.getTheme()).toBe('light');
   });
 
@@ -157,7 +163,7 @@ describe('<FluxGantt> theme', () => {
       </StrictMode>,
     );
     expect(ref.current!.getResolvedTheme()).toBe('light');
-    expect((container.firstElementChild as HTMLElement).style.length).toBe(0);
+    expect(fgTokenCount(container.firstElementChild as HTMLElement)).toBe(0);
   });
 
   it('unmount removes the host-visible theme state it armed: no leaked matchMedia listener', () => {
@@ -197,7 +203,7 @@ describe('<FluxGantt> theme', () => {
     rerender(<FluxGantt ref={ref} tasks={TWO} theme="dark" />);
     rerender(<FluxGantt ref={ref} tasks={TWO} />);
     expect(ref.current!.getTheme()).toBe('light');
-    expect((container.firstElementChild as HTMLElement).style.length).toBe(0);
+    expect(fgTokenCount(container.firstElementChild as HTMLElement)).toBe(0);
   });
 
   it('host inline --fg-* overrides survive mount in light, a dark/light toggle and a re-render', () => {

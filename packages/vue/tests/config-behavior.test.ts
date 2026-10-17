@@ -114,21 +114,27 @@ describe('<FluxGantt> forwarded config fields', () => {
   });
 });
 
+// The SVG renderer owns one inline property on the container (`scroll-padding-top`), so theme
+// assertions count only the `--fg-*` custom properties the theme layer writes.
+function fgTokenCount(el: HTMLElement): number {
+  return Array.from({ length: el.style.length }, (_, i) => el.style.item(i)).filter((p) => p.startsWith('--fg-')).length;
+}
+
 describe('<FluxGantt> theme', () => {
   it('defaults to light even when the OS prefers dark', () => {
     stubDarkPreference(true);
     const { ref, root } = mountChart({ tasks: TWO });
     expect(ref.getResolvedTheme()).toBe('light');
-    expect(root.style.length).toBe(0);
+    expect(fgTokenCount(root)).toBe(0);
   });
 
   it("theme 'dark' sets --fg-* on the container; setProps to 'light' removes them", async () => {
     const { wrapper, ref, root } = mountChart({ tasks: TWO, theme: 'dark' });
-    expect(root.style.length).toBeGreaterThan(0);
+    expect(fgTokenCount(root)).toBeGreaterThan(0);
     expect(ref.getResolvedTheme()).toBe('dark');
 
     await wrapper.setProps({ theme: 'light' });
-    expect(root.style.length).toBe(0);
+    expect(fgTokenCount(root)).toBe(0);
     expect(ref.getTheme()).toBe('light');
   });
 
@@ -156,7 +162,7 @@ describe('<FluxGantt> theme', () => {
     await wrapper.setProps({ theme: 'dark' });
     await wrapper.setProps({ theme: undefined } as never);
     expect(ref.getTheme()).toBe('light');
-    expect(root.style.length).toBe(0);
+    expect(fgTokenCount(root)).toBe(0);
   });
 
   it('host inline --fg-* overrides survive mount in light and a dark/light toggle', async () => {

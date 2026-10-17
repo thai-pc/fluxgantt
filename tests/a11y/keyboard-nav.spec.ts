@@ -73,7 +73,7 @@ test('the today marker introduces no axe violation under the grid role', async (
   await pinToday(page, '2026-08-07T12:00:00Z');
   await page.goto('/selection.html');
 
-  const marker = page.locator('#gantt .fg-timeline__today-line');
+  const marker = page.locator('#gantt svg.fg-timeline .fg-timeline__today-line');
   await expect(marker).toHaveCount(1);
   await expect(marker).toHaveAttribute('aria-hidden', 'true');
 

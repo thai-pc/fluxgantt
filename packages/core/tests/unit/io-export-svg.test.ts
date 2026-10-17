@@ -94,6 +94,17 @@ describe('exportSvg — structure', () => {
     for (const l of labels) expect(l.getAttribute('style')).toMatch(/font:\s*12px system-ui/);
   });
 
+  it('scrolled export (scrollTop 400) equals the unscrolled one: one <svg, no sticky overlay', () => {
+    const h = createSvgRenderer(container, { tasks: baseTasks, dependencies: baseDeps });
+    expect(container.querySelector('.fg-timeline__sticky-header')).not.toBeNull();
+    const before = exportSvg(h.svg);
+    Object.defineProperty(container, 'scrollTop', { value: 400, configurable: true });
+    const after = exportSvg(h.svg);
+    expect(after).toBe(before);
+    expect(after.match(/<svg/g)).toHaveLength(1);
+    expect(after).not.toContain('sticky');
+  });
+
   it('emits an XML declaration + explicit xmlns and parses cleanly', () => {
     const h = createSvgRenderer(container, { tasks: baseTasks, dependencies: baseDeps });
     const out = exportSvg(h.svg);

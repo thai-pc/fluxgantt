@@ -41,7 +41,7 @@ test('header label text clears WCAG AA contrast against the dark ground', async 
 
   // Measured off the LIVE nodes rather than asserted against the DARK_TOKENS table: what a
   // reader actually sees is the resolved cascade, which is the thing WCAG is about.
-  const label = page.locator('#gantt .fg-timeline__header-label').first();
+  const label = page.locator('#gantt svg.fg-timeline .fg-timeline__header-label').first();
   const { fg, bg } = await label.evaluate((el) => ({
     fg: getComputedStyle(el).fill,
     bg: getComputedStyle(el.ownerDocument.getElementById('gantt')!).backgroundColor,

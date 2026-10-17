@@ -230,8 +230,7 @@ const FOCUS_RING_OFFSET_PX = 5;
 const FOCUS_STYLE_TEXT =
   '.fg-timeline__row:focus-visible{outline:none}' +
   '.fg-task__focus-ring{fill:none;stroke:none;pointer-events:none}' +
-  '.fg-timeline__row:focus-visible .fg-task__focus-ring{stroke:var(--fg-task-focus,#0ea5e9);stroke-width:var(--fg-task-focus-width,2px)}' +
-  '@media (prefers-reduced-motion:reduce){.fg-task__focus-ring{transition:none}}';
+  '.fg-timeline__row:focus-visible .fg-task__focus-ring{stroke:var(--fg-task-focus,#0ea5e9);stroke-width:var(--fg-task-focus-width,2px)}';
 
 /** Defensive string-length cap applied to any task field folded into an `aria-label`
  *  attribute value (security.md "limit string length"). */
@@ -261,13 +260,39 @@ export function createSvgRenderer(
   // painted with, so `getLabelColumnWidth()` never has to re-derive the resolution below.
   let currentLabelColumnWidth = LABEL_COLUMN_WIDTH;
 
-  const svg = document.createElementNS(SVG_NS, 'svg') as SVGSVGElement;
-  svg.setAttribute('class', 'fg-timeline');
+  // `display:block`: no inline descender gap under the chart, and the overlay float below lands under it.
+  const svg = el('svg', { class: 'fg-timeline' }, { display: 'block' });
   // `role`/`aria-rowcount`/`aria-multiselectable` are set INSIDE render() (spec-keyboard-nav.md
   // §3.2 point 1) — `aria-rowcount` depends on the row count, which isn't known until the
   // first render(), so no static value is set here beyond the role/attribute EXISTING in the
   // DOM once render() runs synchronously below.
-  container.appendChild(svg);
+
+  // Pinned date axis: an aria-hidden presentation replica of the in-svg header, placed AFTER the
+  // chart svg so `container.querySelector('svg')` stays the grid. `position:sticky` is
+  // compositor-native; `overflow:visible` keeps the 1px divider half below the box; the
+  // background also fills the label-column corner so scrolled row labels do not show through.
+  const BAND_BG = 'var(--fg-bg-subtle, #f3f4f6)';
+  const overlay = el(
+    'svg',
+    { class: 'fg-timeline__sticky-header', 'aria-hidden': 'true', height: HEADER_HEIGHT },
+    {
+      position: 'sticky',
+      top: '0',
+      // Logical, not 'left': in an RTL host the chart svg sits at the inline-start (right) edge, and
+      // a physical left float would misalign the date labels with the day columns.
+      float: 'inline-start',
+      overflow: 'visible',
+      // -1px top: Firefox does not pixel-snap a sticky box, so at a fractional container y the
+      // opaque fill starts mid-pixel; the shadow adds an opaque row above (clipped at rest).
+      'clip-path': 'inset(-1px 0 -1px)',
+      background: BAND_BG,
+      'box-shadow': `0 -1px 0 ${BAND_BG}`,
+    },
+  );
+  container.append(svg, overlay);
+  // Keeps natively focus-scrolled rows out from under the band; restored on destroy().
+  const priorScrollPaddingTop = container.style.scrollPaddingTop;
+  container.style.scrollPaddingTop = `${HEADER_HEIGHT}px`;
 
   render();
 
@@ -290,6 +315,8 @@ export function createSvgRenderer(
       if (destroyed) return;
       destroyed = true;
       svg.remove();
+      overlay.remove();
+      container.style.scrollPaddingTop = priorScrollPaddingTop;
     },
     getLabelColumnWidth(): number {
       // No `destroyed` guard, matching `getTimeScale()` below — pure data from the last render.
@@ -381,10 +408,12 @@ export function createSvgRenderer(
     // Full repaint — no diff in v1 (spec §5.5 / handle doc).
     while (svg.firstChild) svg.removeChild(svg.firstChild);
 
-    svg.setAttribute('width', String(totalWidth));
-    svg.setAttribute('height', String(totalHeight));
-    svg.setAttribute('viewBox', `0 0 ${totalWidth} ${totalHeight}`);
-    svg.setAttribute('aria-label', ariaLabel);
+    setAttrs(svg, {
+      width: totalWidth,
+      height: totalHeight,
+      viewBox: `0 0 ${totalWidth} ${totalHeight}`,
+      'aria-label': ariaLabel,
+    });
     // ARIA grid structure (spec-keyboard-nav.md §3.2 point 1) — replaces the old placeholder
     // `role="img"`. `aria-multiselectable` is always "true": Core's selection model always
     // supports multi-select (Ctrl/Shift-click, Shift+Arrow), not gated by any config flag.
@@ -400,27 +429,36 @@ export function createSvgRenderer(
     // charts without hierarchy. Both roles take `aria-rowcount`/`aria-multiselectable`
     // identically, and the keyboard contract (roving tabindex, arrow navigation) is unchanged.
     const isTree = isTreeLayout(rows);
-    svg.setAttribute('role', isTree ? 'treegrid' : 'grid');
-    svg.setAttribute('aria-rowcount', String(rows.length));
-    svg.setAttribute('aria-multiselectable', 'true');
+    setAttrs(svg, {
+      role: isTree ? 'treegrid' : 'grid',
+      'aria-rowcount': rows.length,
+      'aria-multiselectable': 'true',
+    });
 
     const showLinkHandles = currentOptions.showLinkHandles ?? true;
     // `focusedTaskId` falls back to the FIRST row when unset (spec §4.5 point 3) — before any
     // keyboard interaction has happened, the grid must still be exactly one native Tab stop.
     const focusedTaskId = currentInput.focusedTaskId ?? rows[0]?.task.id;
 
-    svg.appendChild(createArrowheadMarker());
-    svg.appendChild(createStyle(SELECTION_STYLE_TEXT));
-    svg.appendChild(createStyle(FOCUS_STYLE_TEXT));
-    if (showLinkHandles) svg.appendChild(createStyle(LINK_HANDLE_STYLE_TEXT));
-    svg.appendChild(renderGrid(gridColumns, offsetX, totalHeight));
-    svg.appendChild(
-      renderHeader(
-        computeHeaderTiers(timeScale, viewMode, locale, gridColumns),
-        offsetX,
-        timeScale.totalWidth,
-      ),
+    svg.append(
+      createArrowheadMarker(),
+      createStyle(SELECTION_STYLE_TEXT),
+      createStyle(FOCUS_STYLE_TEXT),
+      ...(showLinkHandles ? [createStyle(LINK_HANDLE_STYLE_TEXT)] : []),
+      renderGrid(gridColumns, offsetX, totalHeight),
     );
+    const header = renderHeader(
+      computeHeaderTiers(timeScale, viewMode, locale, gridColumns),
+      offsetX,
+      timeScale.totalWidth,
+    );
+    svg.appendChild(header);
+    // Negative top margin pulls the overlay's natural position to y=0 so sticky engages at once.
+    // It is a float so it takes no in-flow height (the scroll container, a BFC, still contains
+    // it) and its margin box ends at the 32px band: a sticky box may only travel while its margin
+    // box stays inside the container, so an in-flow `margin-bottom` would pin it in place.
+    overlay.setAttribute('width', `${totalWidth}`);
+    overlay.style.marginTop = `-${totalHeight}px`;
     svg.appendChild(
       renderDependencies(currentInput.dependencies, barByTaskId, rowHeight, offsetX, offsetY),
     );
@@ -445,10 +483,15 @@ export function createSvgRenderer(
     // dependency arrows — document order is z-order — but before the label divider, which must
     // stay the topmost thing along the label column's own edge.
     const todayX = todayLineX(timeScale, now);
-    if (todayX !== null) {
-      svg.appendChild(renderTodayLine(todayX, offsetX, totalHeight));
-    }
-    svg.appendChild(renderLabelDivider(offsetX, totalHeight));
+    const todayLine = todayX === null ? null : renderTodayLine(todayX, offsetX, totalHeight);
+    if (todayLine) svg.appendChild(todayLine);
+    const divider = renderLabelDivider(offsetX, totalHeight);
+    svg.appendChild(divider);
+    // The band replicates everything that crosses the header in the chart (the full-height rules
+    // included; `clip-path` trims them to the band), or the band would hide them there.
+    overlay.replaceChildren(
+      ...(todayLine ? [header, todayLine, divider] : [header, divider]).map((n) => n.cloneNode(true)),
+    );
 
     // Focus restoration (spec §4.5 point 4) — MUST run after every element above is already
     // appended to `svg`, since the target row element is freshly created by renderRows() in
@@ -478,100 +521,107 @@ function cssEscapeAttr(value: string): string {
 // --- DOM builders (drawing only — no layout math) ------------------------------------
 
 function createArrowheadMarker(): SVGDefsElement {
-  const defs = document.createElementNS(SVG_NS, 'defs') as SVGDefsElement;
-  const marker = document.createElementNS(SVG_NS, 'marker');
-  marker.setAttribute('id', ARROWHEAD_MARKER_ID);
-  marker.setAttribute('viewBox', '0 0 8 8');
-  marker.setAttribute('refX', '7');
-  marker.setAttribute('refY', '4');
-  marker.setAttribute('markerWidth', '6');
-  marker.setAttribute('markerHeight', '6');
-  marker.setAttribute('orient', 'auto-start-reverse');
-  const arrow = document.createElementNS(SVG_NS, 'path');
-  arrow.setAttribute('d', 'M 0 0 L 8 4 L 0 8 z');
-  arrow.style.setProperty('fill', 'var(--fg-dep-line, #64748b)');
-  marker.appendChild(arrow);
+  const defs = el('defs', {});
+  const marker = el('marker', {
+    id: ARROWHEAD_MARKER_ID,
+    viewBox: '0 0 8 8',
+    refX: 7,
+    refY: 4,
+    markerWidth: 6,
+    markerHeight: 6,
+    orient: 'auto-start-reverse',
+  });
+  marker.appendChild(
+    el('path', { d: 'M 0 0 L 8 4 L 0 8 z' }, { fill: 'var(--fg-dep-line, #64748b)' }),
+  );
   defs.appendChild(marker);
   return defs;
 }
 
 function createStyle(text: string): SVGStyleElement {
-  const style = document.createElementNS(SVG_NS, 'style') as SVGStyleElement;
-  style.textContent = text;
-  return style;
+  return Object.assign(el('style', {}), { textContent: text });
+}
+
+function setAttrs<E extends Element>(e: E, attrs: Record<string, string | number>): E {
+  for (const k in attrs) e.setAttribute(k, String(attrs[k]));
+  return e;
+}
+
+/** Creates an SVG element with `attrs` set in insertion order (so serialized attribute order is
+ *  stable) and inline `style` properties. Values are only ever numbers, constants or the
+ *  already-validated task fields the callers passed before this helper existed. */
+function el<K extends keyof SVGElementTagNameMap>(
+  tag: K,
+  attrs: Record<string, string | number>,
+  style?: Record<string, string>,
+): SVGElementTagNameMap[K] {
+  const e = setAttrs(document.createElementNS(SVG_NS, tag), attrs);
+  for (const k in style) e.style.setProperty(k, style[k]!);
+  return e;
 }
 
 function renderGrid(columns: readonly GridColumn[], offsetX: number, totalHeight: number): SVGGElement {
-  const g = document.createElementNS(SVG_NS, 'g') as SVGGElement;
-  g.setAttribute('class', 'fg-timeline__grid');
+  const g = el('g', { class: 'fg-timeline__grid' });
   for (const col of columns) {
     const x = col.x + offsetX;
     if (col.isToday || col.isHoliday || col.isWeekend) {
-      const rect = document.createElementNS(SVG_NS, 'rect');
-      rect.setAttribute('class', 'fg-timeline__grid-cell');
-      rect.setAttribute('x', String(x));
-      rect.setAttribute('y', '0');
-      rect.setAttribute('width', String(col.width));
-      rect.setAttribute('height', String(totalHeight));
       const fill = col.isToday
         ? 'var(--fg-grid-today, #fef3c7)'
         : col.isHoliday
           ? 'var(--fg-grid-holiday, #fee2e2)'
           : 'var(--fg-grid-weekend, #f9fafb)';
-      rect.style.setProperty('fill', fill);
+      const rect = el(
+        'rect',
+        { class: 'fg-timeline__grid-cell', x, y: 0, width: col.width, height: totalHeight },
+        { fill },
+      );
       g.appendChild(rect);
     }
-    const line = document.createElementNS(SVG_NS, 'line');
-    line.setAttribute('class', 'fg-timeline__grid-line');
-    line.setAttribute('x1', String(x));
-    line.setAttribute('x2', String(x));
-    line.setAttribute('y1', '0');
-    line.setAttribute('y2', String(totalHeight));
-    line.style.setProperty('stroke', 'var(--fg-grid-line, #e5e7eb)');
+    const line = el(
+      'line',
+      { class: 'fg-timeline__grid-line', x1: x, x2: x, y1: 0, y2: totalHeight },
+      { stroke: 'var(--fg-grid-line, #e5e7eb)' },
+    );
     g.appendChild(line);
   }
   return g;
 }
 
 function renderHeader(tiers: HeaderTiers, offsetX: number, timelineWidth: number): SVGGElement {
-  const g = document.createElementNS(SVG_NS, 'g') as SVGGElement;
-  g.setAttribute('class', 'fg-timeline__header');
+  const g = el('g', { class: 'fg-timeline__header' });
 
-  const bg = document.createElementNS(SVG_NS, 'rect');
-  bg.setAttribute('x', String(offsetX));
-  bg.setAttribute('y', '0');
-  bg.setAttribute('width', String(timelineWidth));
-  bg.setAttribute('height', String(HEADER_HEIGHT));
-  bg.style.setProperty('fill', 'var(--fg-bg-subtle, #f3f4f6)');
+  const bg = el('rect', { x: offsetX, y: 0, width: timelineWidth, height: HEADER_HEIGHT }, {
+    fill: 'var(--fg-bg-subtle, #f3f4f6)',
+  });
   g.appendChild(bg);
 
   [tiers.upper, tiers.lower].forEach((tier, row) => {
     for (const l of tier) {
-      const text = document.createElementNS(SVG_NS, 'text');
-      text.setAttribute('class', 'fg-timeline__header-label');
-      text.setAttribute('x', String(offsetX + l.x));
-      text.setAttribute('y', String(row ? 24 : 8));
       // Inline style (not presentation attributes): a host `text { font-size }` rule beats an
       // attribute but never an inline style, and `exportSvg` clones keep it. Family is pinned
       // too (unlike row labels, which inherit the host font) because the label-fit estimator
-      // is only conservative for system-ui metrics.
-      text.style.setProperty('font', `${HEADER_FONT_PX}px system-ui, sans-serif`);
-      text.style.setProperty('text-anchor', row ? 'middle' : 'start');
-      text.style.setProperty('dominant-baseline', 'middle');
-      text.style.setProperty('fill', 'var(--fg-fg-muted, #6b6b73)');
-      // Label is Temporal/Intl-formatted (never user input), but always via createTextNode
-      // regardless — consistent no-innerHTML policy applies everywhere in render/.
+      // is only conservative for system-ui metrics. The label is Temporal/Intl-formatted (never
+      // user input) but still goes through createTextNode: no innerHTML policy applies everywhere.
+      const text = el(
+        'text',
+        { class: 'fg-timeline__header-label', x: offsetX + l.x, y: row ? 24 : 8 },
+        {
+          font: `${HEADER_FONT_PX}px system-ui, sans-serif`,
+          'text-anchor': row ? 'middle' : 'start',
+          'dominant-baseline': 'middle',
+          fill: 'var(--fg-fg-muted, #6b6b73)',
+        },
+      );
       text.appendChild(document.createTextNode(l.text));
       g.appendChild(text);
     }
   });
 
-  const divider = document.createElementNS(SVG_NS, 'line');
-  divider.setAttribute('x1', String(offsetX));
-  divider.setAttribute('x2', String(offsetX + timelineWidth));
-  divider.setAttribute('y1', String(HEADER_HEIGHT));
-  divider.setAttribute('y2', String(HEADER_HEIGHT));
-  divider.style.setProperty('stroke', 'var(--fg-border-strong, #d4d4d8)');
+  const divider = el(
+    'line',
+    { x1: offsetX, x2: offsetX + timelineWidth, y1: HEADER_HEIGHT, y2: HEADER_HEIGHT },
+    { stroke: 'var(--fg-border-strong, #d4d4d8)' },
+  );
   g.appendChild(divider);
 
   return g;
@@ -600,27 +650,27 @@ function renderHeader(tiers: HeaderTiers, offsetX: number, timelineWidth: number
  */
 function renderTodayLine(x: number, offsetX: number, totalHeight: number): SVGLineElement {
   const lineX = x + offsetX;
-  const line = document.createElementNS(SVG_NS, 'line') as SVGLineElement;
-  line.setAttribute('class', 'fg-timeline__today-line');
-  line.setAttribute('aria-hidden', 'true');
-  line.setAttribute('x1', String(lineX));
-  line.setAttribute('x2', String(lineX));
-  line.setAttribute('y1', '0');
-  line.setAttribute('y2', String(totalHeight));
-  line.style.setProperty('stroke', 'var(--fg-task-critical, #ef4444)');
-  line.style.setProperty('stroke-width', '2');
+  const line = el(
+    'line',
+    {
+      class: 'fg-timeline__today-line',
+      'aria-hidden': 'true',
+      x1: lineX,
+      x2: lineX,
+      y1: 0,
+      y2: totalHeight,
+    },
+    { stroke: 'var(--fg-task-critical, #ef4444)', 'stroke-width': '2' },
+  );
   return line;
 }
 
 function renderLabelDivider(offsetX: number, totalHeight: number): SVGLineElement {
-  const line = document.createElementNS(SVG_NS, 'line') as SVGLineElement;
-  line.setAttribute('class', 'fg-timeline__label-divider');
-  line.setAttribute('x1', String(offsetX));
-  line.setAttribute('x2', String(offsetX));
-  line.setAttribute('y1', '0');
-  line.setAttribute('y2', String(totalHeight));
-  line.style.setProperty('stroke', 'var(--fg-border, #e5e7eb)');
-  return line;
+  return el(
+    'line',
+    { class: 'fg-timeline__label-divider', x1: offsetX, x2: offsetX, y1: 0, y2: totalHeight },
+    { stroke: 'var(--fg-border, #e5e7eb)' },
+  );
 }
 
 function renderRows(
@@ -638,8 +688,7 @@ function renderRows(
   rollup: ReadonlyMap<TaskId, RolledUpRow> | undefined,
   messages: GanttMessages | undefined,
 ): SVGGElement {
-  const g = document.createElementNS(SVG_NS, 'g') as SVGGElement;
-  g.setAttribute('class', 'fg-timeline__rows');
+  const g = el('g', { class: 'fg-timeline__rows' });
 
   // Same predicate the root `role` is chosen from — see `isTreeLayout`.
   const isTree = isTreeLayout(rows);
@@ -655,53 +704,39 @@ function renderRows(
     // implementation detail), `data-task-id` (promoted up from the nested `.fg-task` `<g>`
     // — see §3.3), `aria-selected`, and roving `tabindex` (exactly one row is `0`, the rest
     // `-1`).
-    const rowGroup = document.createElementNS(SVG_NS, 'g');
-    rowGroup.setAttribute('class', 'fg-timeline__row');
-    rowGroup.setAttribute('role', 'row');
-    rowGroup.setAttribute('data-row-index', String(row.rowIndex));
-    rowGroup.setAttribute('data-task-id', row.task.id);
-    rowGroup.setAttribute('aria-rowindex', String(row.rowIndex + 1));
-    rowGroup.setAttribute('aria-selected', isSelected ? 'true' : 'false');
-    rowGroup.setAttribute('tabindex', row.task.id === focusedTaskId ? '0' : '-1');
-    // (spec-collapse-expand.md §6.2) — omit entirely on a leaf row, per WAI-ARIA (a
-    // non-expandable node must not carry `aria-expanded="false"`, which would incorrectly
-    // imply it IS an expandable container).
-    if (row.hasChildren) {
-      rowGroup.setAttribute('aria-expanded', String(!row.isCollapsed));
-    }
-    // `aria-level` — 1-based nesting depth, so a root row is level 1. Gated on `isTree` for
-    // exactly the same reason as `aria-expanded` above: axe's `invalidTableRowAttrs` list puts
-    // `aria-level` alongside `aria-expanded`/`aria-posinset`/`aria-setsize` as attributes a row
-    // may carry only when its owner is a `treegrid`, so emitting it under a plain `grid` would
-    // be the same serious-impact violation. Unlike `aria-expanded` it goes on EVERY row of a
-    // tree, leaves included — a leaf still has a real depth, and an assistive technology needs
-    // it to announce nesting. In a flat project `isTree` is false and no row carries it, which
-    // is correct rather than a gap: with no hierarchy every row is trivially level 1, and ATs
-    // already default to that.
-    if (isTree) {
-      rowGroup.setAttribute('aria-level', String(row.depth + 1));
-    }
-
+    const rowGroup = el('g', {
+      class: 'fg-timeline__row',
+      role: 'row',
+      'data-row-index': row.rowIndex,
+      'data-task-id': row.task.id,
+      'aria-rowindex': row.rowIndex + 1,
+      'aria-selected': isSelected ? 'true' : 'false',
+      tabindex: row.task.id === focusedTaskId ? '0' : '-1',
+      // Omitted entirely on a leaf row, per WAI-ARIA (a non-expandable node must not carry
+      // `aria-expanded="false"`). `aria-level` goes on EVERY row of a `treegrid` (leaves
+      // included: a leaf still has a real depth) and on none of a plain `grid`, where axe's
+      // `invalidTableRowAttrs` would flag it (same gating as `aria-expanded`).
+      ...(row.hasChildren ? { 'aria-expanded': String(!row.isCollapsed) } : {}),
+      ...(isTree ? { 'aria-level': row.depth + 1 } : {}),
+    });
     // Single-column v1 (spec §3.2 point 3): exactly one `role="gridcell"` wrapper per row,
     // a pure ARIA/structural `<g>` with no `transform` of its own — zero rendering diff
     // versus the pre-keyboard-nav DOM shape.
-    const cell = document.createElementNS(SVG_NS, 'g');
-    cell.setAttribute('class', 'fg-timeline__row-cell');
-    cell.setAttribute('role', 'gridcell');
+    const cell = el('g', { class: 'fg-timeline__row-cell', role: 'gridcell' });
 
     if (row.hasChildren) {
       cell.appendChild(renderRowToggle(row, offsetY, rowHeight));
     }
 
-    const label = document.createElementNS(SVG_NS, 'text');
-    label.setAttribute('class', 'fg-timeline__row-label');
-    // (spec-collapse-expand.md §6.1) — uniform gutter reservation applied to EVERY row
-    // (whether or not it has a visible toggle glyph), so label text stays column-aligned
-    // across sibling leaf/summary rows at the same depth.
-    label.setAttribute('x', String(LABEL_PADDING_PX + row.depth * LABEL_INDENT_PX + TOGGLE_GLYPH_GUTTER_PX));
-    label.setAttribute('y', String(offsetY + row.y + rowHeight / 2));
-    label.style.setProperty('dominant-baseline', 'middle');
-    label.style.setProperty('fill', 'var(--fg-fg, #18181b)');
+    const label = el(
+      'text',
+      {
+        class: 'fg-timeline__row-label',
+        x: LABEL_PADDING_PX + row.depth * LABEL_INDENT_PX + TOGGLE_GLYPH_GUTTER_PX,
+        y: offsetY + row.y + rowHeight / 2,
+      },
+      { 'dominant-baseline': 'middle', fill: 'var(--fg-fg, #18181b)' },
+    );
     // SECURITY: `task.name` is untrusted host-app data — text node only, never innerHTML
     // or a template string assembled into markup (security.md §1, spec §8).
     label.appendChild(document.createTextNode(row.task.name));
@@ -733,15 +768,16 @@ function renderRowToggle(row: RowLayout, offsetY: number, rowHeight: number): SV
   const half = size / 2;
   // Right-pointing triangle in local space, rotated to point down when expanded.
   const d = `M ${cx - half} ${cy - half} L ${cx + half} ${cy} L ${cx - half} ${cy + half} Z`;
-  const path = document.createElementNS(SVG_NS, 'path') as SVGPathElement;
-  path.setAttribute('class', 'fg-timeline__row-toggle');
-  path.setAttribute('d', d);
-  path.setAttribute('aria-hidden', 'true');
-  path.style.setProperty('fill', 'var(--fg-fg-muted, #6b6b73)');
-  if (!row.isCollapsed) {
-    path.setAttribute('transform', `rotate(90 ${cx} ${cy})`);
-  }
-  return path;
+  return el(
+    'path',
+    {
+      class: 'fg-timeline__row-toggle',
+      d,
+      'aria-hidden': 'true',
+      ...(row.isCollapsed ? {} : { transform: `rotate(90 ${cx} ${cy})` }),
+    },
+    { fill: 'var(--fg-fg-muted, #6b6b73)' },
+  );
 }
 
 function renderTaskBar(
@@ -757,7 +793,6 @@ function renderTaskBar(
   rolled: RolledUpRow | undefined,
   messages: GanttMessages | undefined,
 ): SVGGElement {
-  const wrapper = document.createElementNS(SVG_NS, 'g') as SVGGElement;
   // Whitelist `task.type` before folding it into a class token (review N3): fall back to
   // the `task` modifier for any value that isn't a known TaskKind, so untrusted data can't
   // inject an arbitrary extra class (CSS-token spoofing).
@@ -765,28 +800,18 @@ function renderTaskBar(
   const classNames = ['fg-task', `fg-task--${kindClass}`];
   if (isCritical) classNames.push('fg-task--critical');
   if (isSelected) classNames.push('fg-task--selected');
-  wrapper.setAttribute('class', classNames.join(' '));
-  // `task.id` is a branded TaskId (developer-controlled, not free-text host input) —
-  // safe as an attribute value via setAttribute regardless.
-  wrapper.setAttribute('data-task-id', task.id);
-  // Marks a bar whose geometry came from `computeRollup` rather than from `task.start`/`end`
-  // (spec-summary-rollup.md Ticket B2). This is the ONLY channel by which the interaction
-  // layer can learn that fact: `interaction/` receives an `SvgRendererHandle`, never the
-  // rollup map, and it may not call `computeRollup` itself. Drag-move and drag-resize both
-  // decline such a bar — a rolled-up span is DERIVED ON READ, so there is no authored value
-  // under the cursor to edit; grabbing one would snap the bar to the task's own (unpainted)
-  // dates and then commit a move the user never saw the start of.
-  //
-  // Gated exactly like `layoutTaskBar`'s own rollup branch: a milestone is drawn at its
-  // authored `start` even when `computeRollup` emitted an entry for it, so its bar is NOT
-  // rolled up and must stay draggable.
-  if (rolled !== undefined && task.type !== 'milestone') {
-    wrapper.setAttribute('data-rolled-up', 'true');
-  }
-  wrapper.setAttribute(
-    'aria-label',
-    buildTaskAriaLabel(task, isCritical, isSelected, calendar, locale, rolled, messages),
-  );
+  // `data-rolled-up` marks a bar whose geometry came from `computeRollup` (spec-summary-rollup.md
+  // Ticket B2): the ONLY channel by which the interaction layer learns that, and it makes
+  // drag-move/drag-resize decline such a bar (a rolled-up span is derived on read, so there is
+  // no authored value under the cursor). Gated like `layoutTaskBar`'s rollup branch: a
+  // milestone is drawn at its authored `start`, so it is NOT rolled up and stays draggable.
+  // `task.id` is a branded TaskId (developer-controlled), safe as an attribute value.
+  const wrapper = el('g', {
+    class: classNames.join(' '),
+    'data-task-id': task.id,
+    ...(rolled !== undefined && task.type !== 'milestone' ? { 'data-rolled-up': 'true' } : {}),
+    'aria-label': buildTaskAriaLabel(task, isCritical, isSelected, calendar, locale, rolled, messages),
+  });
 
   const x = bar.x + offsetX;
   const y = bar.y + offsetY;
@@ -797,29 +822,32 @@ function renderTaskBar(
   // reaches `style.setProperty` — never the raw `task.color` string (security.md, spec §8).
   const fill = validateTaskColor(task.color) ?? defaultFill;
 
-  const shape = document.createElementNS(SVG_NS, 'rect');
-  shape.setAttribute('class', 'fg-task__bar');
-  shape.setAttribute('x', String(x));
-  shape.setAttribute('y', String(y));
-  shape.setAttribute('width', String(bar.width));
-  shape.setAttribute('height', String(bar.height));
-  shape.style.setProperty('fill', fill);
-
-  if (task.type === 'milestone') {
-    const cx = x + bar.width / 2;
-    const cy = y + bar.height / 2;
-    shape.setAttribute('transform', `rotate(45 ${cx} ${cy})`);
-  } else {
-    shape.setAttribute('rx', '3');
-  }
-
-  if (isCritical) {
-    // A11y (spec §7): critical path is distinguished WITHOUT relying on color alone —
-    // dashed stroke, set via CSSOM property (never a string-interpolated style attribute).
-    shape.style.setProperty('stroke', 'var(--fg-task-critical, #ef4444)');
-    shape.style.setProperty('stroke-dasharray', 'var(--fg-task-critical-dash, 4 2)');
-    shape.style.setProperty('stroke-width', 'var(--fg-task-critical-stroke-width, 2px)');
-  }
+  const isMilestone = task.type === 'milestone';
+  const shape = el(
+    'rect',
+    {
+      class: 'fg-task__bar',
+      x,
+      y,
+      width: bar.width,
+      height: bar.height,
+      ...(isMilestone
+        ? { transform: `rotate(45 ${x + bar.width / 2} ${y + bar.height / 2})` }
+        : { rx: 3 }),
+    },
+    {
+      fill,
+      // A11y (spec §7): critical path is distinguished WITHOUT relying on color alone —
+      // dashed stroke, set via CSSOM property (never a string-interpolated style attribute).
+      ...(isCritical
+        ? {
+            stroke: 'var(--fg-task-critical, #ef4444)',
+            'stroke-dasharray': 'var(--fg-task-critical-dash, 4 2)',
+            'stroke-width': 'var(--fg-task-critical-stroke-width, 2px)',
+          }
+        : {}),
+    },
+  );
 
   wrapper.appendChild(shape);
 
@@ -837,14 +865,11 @@ function renderTaskBar(
   // by that exact selector and must keep matching the bar itself.
   const progressWidth = progressFillWidth(task, bar, rolled);
   if (progressWidth > 0) {
-    const progressShape = document.createElementNS(SVG_NS, 'rect');
-    progressShape.setAttribute('class', 'fg-task__progress');
-    progressShape.setAttribute('x', String(x));
-    progressShape.setAttribute('y', String(y));
-    progressShape.setAttribute('width', String(progressWidth));
-    progressShape.setAttribute('height', String(bar.height));
-    progressShape.setAttribute('rx', '3');
-    progressShape.style.setProperty('fill', 'var(--fg-task-completed, #10b981)');
+    const progressShape = el(
+      'rect',
+      { class: 'fg-task__progress', x, y, width: progressWidth, height: bar.height, rx: 3 },
+      { fill: 'var(--fg-task-completed, #10b981)' },
+    );
     wrapper.appendChild(progressShape);
   }
 
@@ -857,23 +882,23 @@ function renderTaskBar(
   // copy that rotation — an axis-aligned ring around a diamond still unambiguously indicates
   // "this row", and matching the diamond's rotated bounding box exactly is unnecessary
   // precision for a focus indicator.
-  const focusRing = document.createElementNS(SVG_NS, 'rect');
-  focusRing.setAttribute('class', 'fg-task__focus-ring');
-  focusRing.setAttribute('x', String(x - FOCUS_RING_OFFSET_PX));
-  focusRing.setAttribute('y', String(y - FOCUS_RING_OFFSET_PX));
-  focusRing.setAttribute('width', String(bar.width + FOCUS_RING_OFFSET_PX * 2));
-  focusRing.setAttribute('height', String(bar.height + FOCUS_RING_OFFSET_PX * 2));
-  focusRing.setAttribute('rx', '3');
-  focusRing.setAttribute('aria-hidden', 'true');
-  // `fill` MUST be set inline (not left to the `<style>` block's `.fg-task__focus-ring`
-  // rule) — an SVG `<rect>`'s initial/default `fill` is BLACK (unlike `stroke`, whose
-  // default is already `none`), so if the `<style>` block is ever stripped without this
-  // element also being removed (e.g. `exportSvg()`'s blanket `<style>`-removal step, which
-  // deliberately does NOT special-case this new element the way it explicitly removes
-  // `.fg-task__link-handle` circles), the ring would otherwise render as a solid black box
-  // over the task bar. `stroke` itself is safely left to the CSS rule (default is already
-  // "none", matching the intended hidden-by-default state).
-  focusRing.style.setProperty('fill', 'none');
+  // `fill` MUST be set inline (not left to the `<style>` block's `.fg-task__focus-ring` rule):
+  // an SVG `<rect>`'s default `fill` is BLACK (unlike `stroke`, already `none`), so when
+  // `exportSvg()` strips every `<style>` element the ring would otherwise export as a solid
+  // black box over the bar. `stroke` is safely left to the CSS rule.
+  const focusRing = el(
+    'rect',
+    {
+      class: 'fg-task__focus-ring',
+      x: x - FOCUS_RING_OFFSET_PX,
+      y: y - FOCUS_RING_OFFSET_PX,
+      width: bar.width + FOCUS_RING_OFFSET_PX * 2,
+      height: bar.height + FOCUS_RING_OFFSET_PX * 2,
+      rx: 3,
+      'aria-hidden': 'true',
+    },
+    { fill: 'none' },
+  );
   wrapper.appendChild(focusRing);
 
   if (showLinkHandles) {
@@ -894,19 +919,25 @@ function renderLinkHandle(
   edge: 'start' | 'end',
 ): SVGCircleElement {
   const anchor = anchorOf(bar, edge); // same anchor math committed dependency arrows use
-  const circle = document.createElementNS(SVG_NS, 'circle') as SVGCircleElement;
-  circle.setAttribute('class', 'fg-task__link-handle');
-  circle.setAttribute('data-handle-end', edge);
-  circle.setAttribute('cx', String(anchor.x + offsetX));
-  circle.setAttribute('cy', String(anchor.y + offsetY));
-  // A11y: no keyboard-reachable equivalent exists yet in v1 (same posture as drag-move/
-  // drag-resize, which are also pointer-only today) — hide from AT rather than expose an
-  // affordance that can't actually be operated without a pointer.
-  circle.setAttribute('aria-hidden', 'true');
-  circle.style.setProperty('r', 'var(--fg-link-handle-radius, 4px)');
-  circle.style.setProperty('fill', 'var(--fg-link-handle-fill, #ffffff)');
-  circle.style.setProperty('stroke', 'var(--fg-link-handle-stroke, #6366f1)');
-  circle.style.setProperty('stroke-width', 'var(--fg-link-handle-stroke-width, 1.5px)');
+  // A11y: `aria-hidden` — no keyboard-reachable equivalent exists yet (same posture as
+  // drag-move/drag-resize, which are pointer-only today): hide from AT rather than expose an
+  // affordance that cannot be operated without a pointer.
+  const circle = el(
+    'circle',
+    {
+      class: 'fg-task__link-handle',
+      'data-handle-end': edge,
+      cx: anchor.x + offsetX,
+      cy: anchor.y + offsetY,
+      'aria-hidden': 'true',
+    },
+    {
+      r: 'var(--fg-link-handle-radius, 4px)',
+      fill: 'var(--fg-link-handle-fill, #ffffff)',
+      stroke: 'var(--fg-link-handle-stroke, #6366f1)',
+      'stroke-width': 'var(--fg-link-handle-stroke-width, 1.5px)',
+    },
+  );
   return circle;
 }
 
@@ -917,8 +948,7 @@ function renderDependencies(
   offsetX: number,
   offsetY: number,
 ): SVGGElement {
-  const g = document.createElementNS(SVG_NS, 'g') as SVGGElement;
-  g.setAttribute('class', 'fg-timeline__dependencies');
+  const g = el('g', { class: 'fg-timeline__dependencies' });
 
   for (const dep of dependencies) {
     // Unknown dependency type from untrusted data (review N3/N5) — skip, same resilience
@@ -936,12 +966,15 @@ function renderDependencies(
       .map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x + offsetX} ${p.y + offsetY}`)
       .join(' ');
 
-    const path = document.createElementNS(SVG_NS, 'path');
-    path.setAttribute('class', `fg-dependency fg-dependency--${dep.type.toLowerCase()}`);
-    path.setAttribute('d', d);
-    path.setAttribute('marker-end', `url(#${ARROWHEAD_MARKER_ID})`);
-    path.style.setProperty('fill', 'none');
-    path.style.setProperty('stroke', 'var(--fg-dep-line, #64748b)');
+    const path = el(
+      'path',
+      {
+        class: `fg-dependency fg-dependency--${dep.type.toLowerCase()}`,
+        d,
+        'marker-end': `url(#${ARROWHEAD_MARKER_ID})`,
+      },
+      { fill: 'none', stroke: 'var(--fg-dep-line, #64748b)' },
+    );
     g.appendChild(path);
   }
 

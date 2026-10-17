@@ -27,7 +27,7 @@ test.describe('boundary: taskCount=2000 stays on SVG, taskCount=2001 switches to
 
     await expect(page.locator('body')).toHaveAttribute('data-renderer', 'svg');
     await expect(page.locator('body')).not.toHaveAttribute('data-canvas-fallback-reason');
-    await expect(page.locator('#gantt svg')).toBeVisible();
+    await expect(page.locator('#gantt svg.fg-timeline')).toBeVisible();
     await expect(page.locator('#gantt .fg-timeline-canvas')).toHaveCount(0);
   });
 
@@ -38,7 +38,7 @@ test.describe('boundary: taskCount=2000 stays on SVG, taskCount=2001 switches to
     await expect(page.locator('body')).toHaveAttribute('data-renderer', 'canvas');
     await expect(page.locator('body')).not.toHaveAttribute('data-canvas-fallback-reason');
     await expect(page.locator('#gantt .fg-timeline-canvas')).toBeVisible();
-    await expect(page.locator('#gantt svg')).toHaveCount(0);
+    await expect(page.locator('#gantt svg.fg-timeline')).toHaveCount(0);
   });
 });
 
@@ -103,7 +103,7 @@ test.describe('oversized canvasViewportHeight: falls back to SVG via the dimensi
       'data-canvas-fallback-reason',
       'dimension-exceeded',
     );
-    await expect(page.locator('#gantt svg')).toBeVisible();
+    await expect(page.locator('#gantt svg.fg-timeline')).toBeVisible();
     await expect(page.locator('#gantt .fg-timeline-canvas')).toHaveCount(0);
   });
 });

@@ -80,7 +80,7 @@ async function centreOf(locator: Locator): Promise<{ x: number; y: number }> {
 
 test.beforeEach(async ({ page }) => {
   await page.goto('/responsive.html');
-  await expect(page.locator('#gantt svg')).toBeVisible();
+  await expect(page.locator('#gantt svg.fg-timeline')).toBeVisible();
 });
 
 test('the mixin reports a coarse pointer on a real touch device', async ({ page }) => {
@@ -126,20 +126,20 @@ test('a touch drag on the chart background pans the chart instead of moving anyt
   page,
 }) => {
   const container = page.locator('#gantt');
-  const svgBox = (await page.locator('#gantt svg').boundingBox())!;
+  const svgBox = (await page.locator('#gantt svg.fg-timeline').boundingBox())!;
   const tasksBefore = await page.evaluate(() =>
     JSON.stringify(
       (window as never as { __gantt: { getTasks(): unknown[] } }).__gantt.getTasks(),
     ),
   );
 
-  // The timeline HEADER is the pan target here, not the row grid below it. Two reasons: it is
-  // unambiguously not inside any `.fg-task[data-task-id]` at any scroll position, and it is
-  // guaranteed to be inside the `<svg>` — the renderer is content-SIZED, so the area below the
-  // last row belongs to the container, not to the `<svg>` the pan listener is attached to, and a
-  // point there would reach no listener at all.
+  // The pan target is the left gutter of the first ROW band, not the header: the header is now
+  // the pinned `aria-hidden` overlay, a sibling of the chart `<svg>` that carries no pan listener
+  // (it relies on native touch scrolling, asserted separately in sticky-header.spec.ts). The
+  // gutter is inside the `<svg>`, left of every row label (they start at x = 22) and of every
+  // `.fg-task[data-task-id]`, so the pointerdown targets the `<svg>` itself at any scroll position.
   const scrollBefore = await container.evaluate((el) => el.scrollLeft);
-  await touchDrag(page, svgBox.x + 250, svgBox.y + 16, -120, 0);
+  await touchDrag(page, svgBox.x + 3, svgBox.y + 32 + 16, -120, 0);
 
   // Dragging LEFT scrolls the content right — the pan is inverted, like dragging paper.
   await expect.poll(() => container.evaluate((el) => el.scrollLeft)).toBeGreaterThan(scrollBefore);
