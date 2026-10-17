@@ -25,11 +25,11 @@ launch pointing at an uninstallable package converts nothing.
 
 **Tagline** (60 characters max — this is the hard one):
 
-> `The MIT Gantt library with a 7.7 KB headless core` — 48 chars
+> The MIT Gantt library with a <!--sz:hello.1-->7.5<!--/sz--> KiB headless core — 50 chars
 
-> `TypeScript-first Gantt charts. MIT. 7.7 KB headless core.` — 56 chars
+> TypeScript-first Gantt charts. MIT. <!--sz:hello.1-->7.5<!--/sz--> KiB headless core. — 58 chars
 
-> `Open-source Gantt charts for developers who count bytes` — 54 chars
+> Open-source Gantt charts for developers who count bytes — 55 chars
 
 Recommend the first.
 
@@ -41,7 +41,7 @@ Recommend the first.
 
 ## Description (260 characters max)
 
-> An MIT-licensed Gantt chart library for TypeScript apps. The scheduling engine is headless — 7.7 KB
+> An MIT-licensed Gantt chart library for TypeScript apps. The scheduling engine is headless — <!--sz:hello.1-->7.5<!--/sz--> KiB
 > gzip, runs in Node — and rendering, drag, theming and export are opt-in. FS/SS/FF/SF dependencies,
 > critical path, DST-correct dates. No per-seat license.
 
@@ -56,15 +56,15 @@ Post this yourself in the first minutes; it is the thing people actually read.
 > Hi Product Hunt 👋
 >
 > I built FluxGantt because every time I needed a Gantt chart in a product, the options were: pay
-> $600–1,600 per developer per year for dhtmlx or Bryntum, pull in a 226 KB MIT monolith, use
+> $600–1,600 per developer per year for dhtmlx or Bryntum, pull in a 226 KiB MIT monolith, use
 > something with no TypeScript types and no critical path, or spend two months building one. None of
 > those felt like they should be the whole menu in 2026.
 >
 > The decision the whole library hangs on is that the **engine is headless**. `createGantt()` imports
 > no DOM API — it's the task store, the dependency graph, the working-calendar math and the
-> critical-path solver, and nothing else. That's 7.7 KB gzip and it runs on your server. Rendering,
+> critical-path solver, and nothing else. That's <!--sz:hello.1-->7.5<!--/sz--> KiB gzip and it runs on your server. Rendering,
 > drag interactions, theming, touch adaptation and import/export are separate opt-in imports, so you
-> download what you compose. An editable chart is 19.2 KB; everything composed is 23.8 KB. Those are
+> download what you compose. An editable chart is <!--sz:editable.1-->19.0<!--/sz--> KiB; everything composed is <!--sz:kitchen.1-->23.8<!--/sz--> KiB. Those are
 > CI-enforced budgets, not aspirations.
 >
 > Two details I'm oddly proud of:
@@ -104,7 +104,7 @@ size it is actually shown at in the feed.
    populated project with visible hierarchy, dependency arrows and a dashed-red critical path. No
    browser chrome, no devtools.
 2. **The bundle-size table.** The comparison page's size table as a clean screenshot, or a rendered
-   bar chart of 7.7 / 19.2 / 23.8 KB against 226 KB (dhtmlx) and 14.9 KB (Frappe). **Include the
+   bar chart of <!--sz:hello.1-->7.5<!--/sz--> / <!--sz:editable.1-->19.0<!--/sz--> / <!--sz:kitchen.1-->23.8<!--/sz--> KiB against 226 KiB (dhtmlx) and 14.9 KiB (Frappe). **Include the
    Frappe bar.** Omitting the one competitor that beats a FluxGantt row is the kind of thing a
    developer audience catches and punishes.
 3. **TypeScript DX.** An editor screenshot of the branded-ID compile error from the comparison page —
@@ -130,7 +130,7 @@ Wave 3 and does not exist; a GIF of it would be a fabrication.
 
 ### Video — optional, 60–90 seconds
 
-Screen recording, voiceover, no music. Beat sheet: the problem (the price and the 226 KB) → the
+Screen recording, voiceover, no music. Beat sheet: the problem (the price and the 226 KiB) → the
 headless snippet running in a terminal with no browser → `mount()` and the chart appears → one drag
 with the cascade → the CI size-budget check going green. End on the install command.
 
@@ -140,7 +140,7 @@ with the cascade → the CI size-budget check going green. End on the install co
 
 **"How is this different from Frappe Gantt?"** — Critical path, all four dependency types, working
 calendar, TypeScript types, React/Vue wrappers, Canvas at scale. And say the other half: Frappe is
-smaller, 14.9 KB against 19.2 KB. Link the comparison page.
+smaller, 14.9 KiB against <!--sz:editable.1-->19.0<!--/sz--> KiB. Link the comparison page.
 
 **"Why should I trust a pre-1.0 library?"** — Point at CI: unit, e2e, visual-regression, a11y, mobile
 and performance suites plus enforced size budgets, all public.

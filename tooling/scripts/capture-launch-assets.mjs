@@ -54,6 +54,7 @@ const COMPETITORS = { dhtmlx: 226.18, frappe: 14.89 };
 const SYNC_FILES = [
   'apps/docs/pages/docs/comparison.mdx',
   'apps/docs/pages/index.mdx',
+  'apps/docs/pages/docs/examples.mdx',
   'apps/docs/launch/product-hunt.md',
   'apps/docs/launch/show-hn.md',
   'README.md',

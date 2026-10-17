@@ -114,13 +114,13 @@ subpath exports**, so you download what you compose and nothing else. Measured w
 
 | What you compose | gzip |
 |---|---|
-| `createGantt()` — headless engine only | **7.50 KiB** |
-| `+ withIo` | 12.60 KiB |
-| `+ withRender` — a painted chart | 13.86 KiB |
-| `+ withRender + withInteraction` — a fully editable chart | **18.40 KiB** |
-| `+ withRender + withTheme` | 14.38 KiB |
-| `+ withRender + withInteraction + withResponsive` | 19.18 KiB |
-| Every capability composed | 23.16 KiB |
+| `createGantt()` — headless engine only | **<!--sz:hello.2-->7.50<!--/sz--> KiB** |
+| `+ withIo` | <!--sz:io.2-->12.61<!--/sz--> KiB |
+| `+ withRender` — a painted chart | <!--sz:render.2-->14.47<!--/sz--> KiB |
+| `+ withRender + withInteraction` — a fully editable chart | **<!--sz:editable.2-->19.02<!--/sz--> KiB** |
+| `+ withRender + withTheme` | <!--sz:theme.2-->15.15<!--/sz--> KiB |
+| `+ withRender + withInteraction + withResponsive` | <!--sz:responsive.2-->19.81<!--/sz--> KiB |
+| Every capability composed | <!--sz:kitchen.2-->23.81<!--/sz--> KiB |
 
 Required host CSS: **none** — every visual property is written inline with a `--fg-*` token
 fallback, so a stylesheet is only needed to *override* defaults.
