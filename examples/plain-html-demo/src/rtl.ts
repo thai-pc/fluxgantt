@@ -101,6 +101,9 @@ const themeParam = params.get('theme');
 const responsive = params.get('responsive') === '1' ? withResponsive(base) : base;
 const themed = withTheme(responsive);
 if (themeParam === 'dark' || themeParam === 'light') themed.setTheme(themeParam);
+// The page around the chart is the host's job (a Canvas chart has a transparent ground): mirror the
+// resolved theme onto <html data-theme> exactly as main.ts does, so style.css re-themes the panel.
+if (themeParam) document.documentElement.dataset['theme'] = themed.getResolvedTheme();
 const gantt = withRtl(themeParam ? themed : responsive);
 
 interface LogEntry {
