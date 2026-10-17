@@ -597,7 +597,7 @@ describe('buildTaskAriaLabel — date label memo', () => {
     expect(de).toBe(buildTaskAriaLabel(t, false, false, cal, 'de'));
   });
 
-  it('stays correct (uncached) once the bounded memo is full', () => {
+  it('stays correct across the bounded memo clearing, and keeps working afterwards', () => {
     const labels: string[] = [];
     // 600 distinct dates exceeds the 512-entry bound.
     for (let i = 0; i < 600; i++) {
@@ -609,6 +609,15 @@ describe('buildTaskAriaLabel — date label memo', () => {
     expect(labels[0]).toContain(first.toLocaleString('fr', { year: 'numeric', month: 'short', day: 'numeric' }));
     const last = normalizeDate('2026-01-01T09:00', cal.timezone).add({ days: 599 }).toPlainDate();
     expect(labels[599]).toContain(last.toLocaleString('fr', { year: 'numeric', month: 'short', day: 'numeric' }));
+
+    // Caching resumed after the clear: a repeat of the latest dates formats nothing new.
+    const proto = Object.getPrototypeOf(first) as { toLocaleString: (...a: unknown[]) => string };
+    const spy = vi.spyOn(proto, 'toLocaleString');
+    const iso = last.toString();
+    const again = task('x', `${iso}T09:00`, `${iso}T17:00`);
+    expect(buildTaskAriaLabel(again, false, false, cal, 'fr')).toBe(labels[599]);
+    expect(spy).not.toHaveBeenCalled();
+    spy.mockRestore();
   });
 });
 
