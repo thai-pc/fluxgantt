@@ -67,8 +67,9 @@ export interface KeyboardNavOptions {
    *  `hasChildren === true`; no-op otherwise (mirrors `toggleCollapse()`'s own leaf no-op
    *  contract). */
   onToggleCollapse: (id: TaskId) => void;
-  /** Density, forwarded to `layoutRows` for row-order resolution (matches the renderer's
-   *  own density). */
+  /** Density, forwarded to `layoutRows` for row geometry (matches the renderer's own density).
+   *  Re-read on every keydown, so a standalone consumer must keep it LIVE (a getter) when the
+   *  density can change after mount: the arrow-key scroll reveal depends on exact row positions. */
   density: Density;
   /** True while `gantt.readOnly` — gates the destructive Delete action AND the undo/redo
    *  keybindings (both are mutating keyboard gestures; see plan decision #3 for why undo/redo
@@ -386,7 +387,7 @@ export function enableKeyboardNav(
       setFocus(next);
       options.onSelect(next);
     }
-    revealFocusedRow(rows[nextIndex]!);
+    if (!disposed) revealFocusedRow(rows[nextIndex]!);
   }
 
   /**

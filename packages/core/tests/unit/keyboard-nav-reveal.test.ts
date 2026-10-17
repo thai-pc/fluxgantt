@@ -34,13 +34,19 @@ function setup(opts: {
   scrollTop: number;
   tag?: 'svg' | 'div';
 }) {
-  const density = opts.density ?? 'default';
+  let density = opts.density ?? 'default';
   const tasks = makeTasks(opts.n);
   const container = document.createElement('div');
   let scrollTop = opts.scrollTop;
   const writes: number[] = [];
   Object.defineProperty(container, 'clientHeight', { value: opts.clientHeight });
-  Object.defineProperty(container, 'scrollLeft', { value: 0, writable: true });
+  const leftWrites: number[] = [];
+  Object.defineProperty(container, 'scrollLeft', {
+    get: () => 0,
+    set: (v: number) => {
+      leftWrites.push(v);
+    },
+  });
   Object.defineProperty(container, 'scrollTop', {
     get: () => scrollTop,
     set: (v: number) => {
@@ -75,13 +81,16 @@ function setup(opts: {
     onZoomIn: vi.fn(),
     onZoomOut: vi.fn(),
     getTasks: () => tasks,
-    density,
+    get density() {
+      return density;
+    },
     isReadOnly: () => false,
     getSelection: () => [],
     getCollapsedIds: () => new Set<TaskId>(),
     onToggleCollapse: vi.fn(),
   });
-  const rowY = layoutRows(tasks, density, new Set<TaskId>()).map((r) => r.y);
+  const rowYFor = (d: Density) => layoutRows(tasks, d, new Set<TaskId>()).map((r) => r.y);
+  const rowY = rowYFor(density);
   /** Focus row `index` (pointer-style, no scroll) and press `key` on it. */
   function press(index: number, key: string, shiftKey = false): void {
     nav.focusTask(tasks[index]!.id);
@@ -96,6 +105,12 @@ function setup(opts: {
     writes,
     rowY,
     h: ROW_HEIGHT[density],
+    leftWrites,
+    /** Simulates `setDensity()`/`withResponsive` changing the painted density after mount. */
+    changeDensity: (d: Density) => {
+      density = d;
+      return { rowY: rowYFor(d), h: ROW_HEIGHT[d] };
+    },
     onSelect,
     onRangeSelect,
     press,
@@ -197,6 +212,24 @@ describe('keyboard reveal — SVG vertical scroll', () => {
     }
   });
 
+  it('uses the LIVE density: row geometry after a post-mount density change', () => {
+    for (const next of ['touch', 'compact'] as const) {
+      const t = setup({ n: 60, clientHeight: 232, scrollTop: 0 });
+      const { rowY, h } = t.changeDensity(next);
+      t.press(8, 'ArrowDown'); // row 9 at the NEW geometry
+      expect(t.getScrollTop()).toBe(Math.max(0, rowY[9]! + h - 200));
+      t.dispose();
+    }
+  });
+
+  it('does not write scrollTop after dispose() from inside the selection callback', () => {
+    const t = setup({ n: 40, clientHeight: 232, scrollTop: 0 });
+    t.onSelect.mockImplementation(() => t.nav.dispose());
+    t.press(30, 'ArrowDown');
+    expect(t.writes).toEqual([]);
+    t.container.remove();
+  });
+
   it('property: result is visible-or-pinned-top, minimal, and never touches scrollLeft', () => {
     fc.assert(
       fc.property(
@@ -218,11 +251,8 @@ describe('keyboard reveal — SVG vertical scroll', () => {
           const wasVisible = y >= scrollTop && y + t.h <= scrollTop + band;
           if (wasVisible) expect(after).toBe(scrollTop);
           else if (t.h > band) expect(after).toBe(y);
-          else {
-            expect(y).toBeGreaterThanOrEqual(after);
-            expect(y + t.h).toBeLessThanOrEqual(after + band);
-          }
-          expect((t.container as unknown as { scrollLeft: number }).scrollLeft).toBe(0);
+          else expect(after).toBe(y < scrollTop ? y : y + t.h - band);
+          expect(t.leftWrites).toEqual([]);
           t.dispose();
         },
       ),
