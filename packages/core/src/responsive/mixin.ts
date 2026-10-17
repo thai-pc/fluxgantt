@@ -36,8 +36,11 @@
 // `interaction/pointer-drag.ts`'s existing coordinator claims it. Consequences, both intended:
 // drag-move/resize/create-dependency work with zero browser interference and no `pointercancel`
 // race, `interaction/pointer-drag.ts` needs no change at all, and native page pinch-zoom is
-// suppressed while the finger is on the chart — the right trade for a chart surface, and where
-// the deferred chart-level pinch-to-zoom ticket will land.
+// suppressed while the finger is on the chart — the right trade for a chart surface. That
+// suppression is what lets a two-finger PINCH on the chart be recognised here too (see
+// `PINCH_*` below): it steps the discrete view mode through `zoomIn()`/`zoomOut()`. A pinch with
+// BOTH fingers on the sticky header band is left to the browser (the band is `touch-action: auto`
+// by the sticky-header decision), so the chart does not zoom there.
 import type { GanttInstance } from '../gantt.js';
 import { getInternal } from '../gantt-internal.js';
 import type { Density } from '../types.js';
@@ -90,6 +93,14 @@ const COARSE_STYLE_TEXT = `
 }
 `;
 
+/** Pinch thresholds, deliberately constants and not options (bytes; every knob is a
+ *  compatibility commitment). `span / baseline` at or above `PINCH_IN` steps `zoomIn()`, at or
+ *  below `PINCH_OUT` steps `zoomOut()`; each step re-baselines, which is also the hysteresis. A
+ *  baseline under `PINCH_MIN_SPAN` CSS px is noise, so it keeps re-baselining instead. */
+const PINCH_IN = 1.4;
+const PINCH_OUT = 0.7;
+const PINCH_MIN_SPAN = 30;
+
 /** Marks the `<style>` this mixin owns, so `destroy()` removes exactly its own node and never a
  *  host's. */
 const STYLE_MARKER = 'data-fg-responsive';
@@ -107,6 +118,9 @@ export interface ResponsiveOptions {
   /** Floor (px) for the computed label column — below this the column stops being readable and
    *  a narrower one buys nothing. Default `96`. */
   readonly minLabelColumnWidth?: number;
+  /** Two-finger pinch steps the zoom level while a coarse pointer is active. Default `true`;
+   *  `false` keeps single-finger pan only (a host with its own zoom UI). */
+  readonly pinchZoom?: boolean;
 }
 
 /** The methods `withResponsive()` adds to a `GanttInstance`. Kept deliberately tiny — this
@@ -141,6 +155,8 @@ export function withResponsive<T extends GanttInstance>(
       : 96;
 
   // Queried ONCE, mirroring `theme/mixin.ts`: `undefined` where the host has no `matchMedia`.
+  const pinchEnabled = options.pinchZoom !== false;
+
   const mql = typeof matchMedia === 'function' ? matchMedia(COARSE_QUERY) : undefined;
 
   let disposed = false;
@@ -155,6 +171,13 @@ export function withResponsive<T extends GanttInstance>(
   // started at. Absolute-delta arithmetic (not incremental accumulation) — a dropped `pointermove`
   // then costs nothing, where accumulating would drift.
   let pan: { id: number; startX: number; startY: number; left: number; top: number } | undefined;
+  // Pinch recognizer state. `touches` tracks EVERY live touch pointer (the pan handler only knows
+  // its own); `pinch` holds the ids of the pinching pair and the span the next step is measured
+  // against; `cancelling` stops our own synthetic `pointercancel` from deleting the pair.
+  const touches = new Map<number, { x: number; y: number }>();
+  let pinch: { a: number; b: number; ref: number } | undefined;
+  let cancelling = false;
+  let pinchTarget: Element | undefined;
 
   const isCoarse = (): boolean => mql?.matches === true;
 
@@ -166,7 +189,7 @@ export function withResponsive<T extends GanttInstance>(
   const onPointerDown = (event: Event): void => {
     const pe = event as PointerEvent;
     const mount = internal.getMountState();
-    if (disposed || !mount || pan !== undefined) return;
+    if (disposed || !mount || pan !== undefined || pinch) return;
     // A pointerdown ON a task bar belongs to `interaction/pointer-drag.ts` — claiming it here
     // would break drag-move/resize/create-dependency, which is the whole point of NOT making
     // this a blanket gesture handler. `closest()` walks up through the bar/label/progress children
@@ -202,6 +225,100 @@ export function withResponsive<T extends GanttInstance>(
     if (pan && pe.pointerId === pan.id) pan = undefined;
   };
 
+  /** One pinch step. Zooms through the public facade (so `viewport:changed` fires once per real
+   *  step) and then moves `scrollLeft` so the date under the fingers' midpoint stays under it.
+   *  Known, accepted: `zoomTo()` first writes a centre-anchored `scrollLeft` and this overwrites it
+   *  in the same task, so a synchronous `viewport:changed` listener sees the intermediate value. */
+  const stepZoom = (zoomIn: boolean, midX: number): void => {
+    const mount = internal.getMountState();
+    if (disposed || !mount) return;
+    const handle = mount.rendererHandle;
+    const c = handle.container;
+    const before = instance.getViewMode();
+    const offX = midX - c.getBoundingClientRect().left - c.clientLeft;
+    const lw = handle.getLabelColumnWidth(); // never the 160 constant: this mixin narrows it
+    const date = handle.getTimeScale().xToDate(c.scrollLeft + offX - lw);
+    if (zoomIn) instance.zoomIn();
+    else instance.zoomOut();
+    if (instance.getViewMode() === before) return; // boundary no-op: nothing to correct
+    c.scrollLeft = handle.getTimeScale().dateToX(date) + lw - offX; // the browser self-clamps
+  };
+
+  /** `touch` pointers only, with finite coordinates (untrusted numerics, security.md). */
+  const asTouch = (event: Event): PointerEvent | undefined => {
+    const pe = event as PointerEvent;
+    return pe.pointerType === 'touch' ? pe : undefined;
+  };
+
+  const onPinchDown = (event: Event): void => {
+    const pe = asTouch(event);
+    if (!pe || !Number.isFinite(pe.clientX + pe.clientY)) return;
+    touches.set(pe.pointerId, { x: pe.clientX, y: pe.clientY });
+    if (pinch || touches.size !== 2) return; // a 3rd finger never joins or replaces the pair
+    const [a, b] = [...touches.keys()] as [number, number];
+    // The first finger's gesture ends here: drop the pan, and cancel whatever `pointer-drag` /
+    // click-select / edit-hooks' long-press started via the synthetic bubbling `pointercancel`
+    // (pointerId only) that `edit-hooks` already uses, so this mixin imports nothing from
+    // `interaction/`. A drag already past its threshold is reverted by its own `onCancel`.
+    pan = undefined;
+    cancelling = true;
+    for (const id of [a, b]) {
+      panTarget?.dispatchEvent(
+        Object.assign(new Event('pointercancel', { bubbles: true }), { pointerId: id }),
+      );
+    }
+    cancelling = false;
+    pinch = { a, b, ref: spanOf(a, b) };
+  };
+
+  const spanOf = (a: number, b: number): number => {
+    const p = touches.get(a)!;
+    const q = touches.get(b)!;
+    return Math.hypot(p.x - q.x, p.y - q.y);
+  };
+
+  const onPinchMove = (event: Event): void => {
+    const pe = asTouch(event);
+    const t = pe && touches.get(pe.pointerId);
+    if (!pe || !t || !Number.isFinite(pe.clientX + pe.clientY)) return;
+    t.x = pe.clientX;
+    t.y = pe.clientY;
+    if (!pinch || (pe.pointerId !== pinch.a && pe.pointerId !== pinch.b)) return;
+    const span = spanOf(pinch.a, pinch.b);
+    if (pinch.ref < PINCH_MIN_SPAN) {
+      pinch.ref = span;
+      return;
+    }
+    const r = span / pinch.ref;
+    if (r < PINCH_IN && r > PINCH_OUT) return;
+    stepZoom(r >= PINCH_IN, (touches.get(pinch.a)!.x + touches.get(pinch.b)!.x) / 2);
+    // A `viewport:changed` listener may have torn the pinch down (e.g. `destroy()`).
+    if (pinch) pinch.ref = span;
+  };
+
+  const onPinchEnd = (event: Event): void => {
+    const pe = asTouch(event);
+    if (!pe || cancelling) return;
+    touches.delete(pe.pointerId);
+    // The remaining finger stays inert until it lifts: no pan jump, no re-pair.
+    if (pinch && (pe.pointerId === pinch.a || pe.pointerId === pinch.b)) pinch = undefined;
+  };
+
+  const panListeners: readonly (readonly [string, (e: Event) => void])[] = [
+    ['pointerdown', onPointerDown],
+    ['pointermove', onPointerMove],
+    ['pointerup', onPointerEnd],
+    ['pointercancel', onPointerEnd],
+  ];
+  // The pinch `pointerdown` is CAPTURE-phase on the container so it sees every touch (the sticky
+  // band, Canvas, a bar) before the pan handler and `pointer-drag` do; the rest bubble.
+  const pinchListeners: readonly (readonly [string, (e: Event) => void, boolean])[] = [
+    ['pointerdown', onPinchDown, true],
+    ['pointermove', onPinchMove, false],
+    ['pointerup', onPinchEnd, false],
+    ['pointercancel', onPinchEnd, false],
+  ];
+
   /** Installs or removes everything that is conditional on the pointer being coarse. Idempotent
    *  in both directions — re-entered on every mount and on every `matchMedia` change. */
   function applyCoarse(): void {
@@ -219,10 +336,13 @@ export function withResponsive<T extends GanttInstance>(
       if (panTarget !== pointerEventTarget) {
         detachPan();
         panTarget = pointerEventTarget;
-        panTarget.addEventListener('pointerdown', onPointerDown);
-        panTarget.addEventListener('pointermove', onPointerMove);
-        panTarget.addEventListener('pointerup', onPointerEnd);
-        panTarget.addEventListener('pointercancel', onPointerEnd);
+        for (const [type, fn] of panListeners) panTarget.addEventListener(type, fn);
+        if (pinchEnabled) {
+          pinchTarget = container;
+          for (const [type, fn, capture] of pinchListeners) {
+            container.addEventListener(type, fn, capture);
+          }
+        }
       }
       if (!internal.densityPinned) {
         internal.density = touchDensity;
@@ -274,12 +394,15 @@ export function withResponsive<T extends GanttInstance>(
 
   function detachPan(): void {
     if (!panTarget) return;
-    panTarget.removeEventListener('pointerdown', onPointerDown);
-    panTarget.removeEventListener('pointermove', onPointerMove);
-    panTarget.removeEventListener('pointerup', onPointerEnd);
-    panTarget.removeEventListener('pointercancel', onPointerEnd);
+    for (const [type, fn] of panListeners) panTarget.removeEventListener(type, fn);
+    for (const [type, fn, capture] of pinchListeners) {
+      pinchTarget?.removeEventListener(type, fn, capture);
+    }
     panTarget = undefined;
+    pinchTarget = undefined;
     pan = undefined;
+    pinch = undefined;
+    touches.clear();
   }
 
   function teardownCoarse(): void {

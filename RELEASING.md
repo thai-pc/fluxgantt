@@ -126,6 +126,23 @@ git fetch --tags && git tag | tail
 Then read the rendered README on npmjs.com — relative links in it resolve against the registry,
 not the repo, so a link that works on GitHub can still be broken there.
 
+## Manual check: pinch zoom on iOS Safari
+
+Not automatable (`simctl` has no multi-touch, Playwright WebKit cannot synthesize a two-finger
+touch), so run it by hand before a release that touches `withResponsive()`:
+
+1. `xcrun simctl boot` an iPhone simulator, serve `examples/plain-html-demo` and
+   `xcrun simctl openurl booted http://<host-ip>:<port>/responsive.html` (also
+   `edit-hooks.html?touch=1&pad=2100` for Canvas).
+2. In the Simulator window hold **Option** for a two-finger pinch (Option+Shift moves the pair).
+3. Checklist: the chart steps one view mode and the date under the midpoint holds; the page does
+   not zoom (`visualViewport.scale` stays 1 in Web Inspector); a pinch started with one finger on
+   a bar moves nothing; single-finger pan still scrolls; a pinch with both fingers on the header
+   band is a page/browser gesture (expected); rotate and re-check; Canvas fixture.
+4. Log whether `gesturestart` fires on the chart. Only if page zoom leaks onto the chart,
+   `preventDefault()` `gesturestart`/`gesturechange`/`gestureend` on the container while a pinch
+   is active (about +60-80 B gzip) and re-measure `pnpm size`.
+
 ## StackBlitz examples
 
 The docs' examples page and the README link four StackBlitz projects (vanilla, React, Vue,

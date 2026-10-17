@@ -1137,7 +1137,7 @@ for most hosts, and every byte of it would be billed to the ones that replace it
 | Action | Result |
 |---|---|
 | Mouse wheel + Ctrl | Zoom in/out |
-| Pinch gesture | Zoom on a touch device — **deferred**, not implemented (see below) |
+| Pinch gesture | Zoom on a touch device, with `withResponsive()` (see below) |
 
 **Touch gesture arbitration** (implemented by `withResponsive()` from `@fluxgantt/core/responsive`):
 
@@ -1161,7 +1161,13 @@ The contract is therefore:
 
 Consequences, both documented for hosts: native pinch-zoom is suppressed while a finger is on the
 chart, and momentum/inertial scrolling is replaced by a direct scroll write. Chart-level
-pinch-to-zoom is deferred to its own ticket and will land in this same recognizer.
+pinch-to-zoom lands in this same recognizer: two touch pointers down on the chart are a pinch
+(`pinchZoom: false` opts out). Each pinch past 1.4x (spread) or 0.7x (squeeze) of the last
+baseline steps one view mode through `zoomIn()`/`zoomOut()`, anchored so the date under the
+fingers' midpoint stays under it, and landing the second finger cancels any pan, bar drag,
+resize, dependency link or long-press the first finger started. A pinch with both fingers on the
+sticky header band is left to the browser (the band keeps `touch-action: auto`). Keyboard
+(Ctrl/Cmd +/-), Ctrl+wheel and `zoomTo()` remain the single-pointer alternative (WCAG 2.5.1).
 
 Coarse-pointer target sizes are **24x24 CSS px** — WCAG 2.2 SC 2.5.8 *Target Size (Minimum)*, at
 Level AA. SC 2.5.5's 44x44 is Level AAA and is deliberately not the bar here: a 44px circular link
