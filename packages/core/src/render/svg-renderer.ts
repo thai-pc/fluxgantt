@@ -114,8 +114,10 @@ export interface SvgRendererHandle extends InteractiveRendererHandle {
    *  real pointer events directly (spec-canvas-renderer-ticket2.md §3.3). */
   readonly pointerEventTarget: SVGSVGElement;
   readonly container: HTMLElement;
-  /** Full repaint (no diff — spec §5.5) with new input. */
-  update(input: SvgRendererInput): void;
+  /** Full repaint (no diff — spec §5.5) with new input. The optional `options` are merged exactly
+   *  like `setOptions()` BEFORE the single repaint, so changing input and options together costs
+   *  one render instead of two. */
+  update(input: SvgRendererInput, options?: Partial<SvgRendererOptions>): void;
   /** Change viewMode/density/timeRange/locale/ariaLabel/labelColumnWidth and repaint with the
    *  last input. */
   setOptions(options: Partial<SvgRendererOptions>): void;
@@ -301,9 +303,10 @@ export function createSvgRenderer(
     interactionRoot: svg,
     pointerEventTarget: svg,
     container,
-    update(nextInput: SvgRendererInput): void {
+    update(nextInput: SvgRendererInput, nextOptions?: Partial<SvgRendererOptions>): void {
       if (destroyed) return;
       currentInput = nextInput;
+      currentOptions = { ...currentOptions, ...nextOptions };
       render();
     },
     setOptions(nextOptions: Partial<SvgRendererOptions>): void {

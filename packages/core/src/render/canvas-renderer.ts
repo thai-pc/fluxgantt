@@ -215,8 +215,10 @@ export interface CanvasRendererHandle extends InteractiveRendererHandle {
    *  other error `render()` raises (e.g. `renderer-base.ts`'s `MAX_GRID_COLUMNS` guard) — on
    *  ANY such throw, every piece of state this handle exposes (the canvas bitmap, the input/
    *  options this call would have applied, and `getTimeScale()`) is rolled back atomically
-   *  to the last successful render, as if the call never happened. */
-  update(input: CanvasRendererInput): void;
+   *  to the last successful render, as if the call never happened. The optional `options` are
+   *  merged exactly like `setOptions()` BEFORE the single repaint, so a caller changing input
+   *  and options together pays one render, and the rollback above covers both. */
+  update(input: CanvasRendererInput, options?: Partial<CanvasRendererOptions>): void;
   /** Change viewMode/density/timeRange/locale/ariaLabel and repaint with the last input.
    *  Throws `CanvasDimensionExceededError` if the resulting canvas would exceed the
    *  browser's real backing-store limit (see `MAX_CANVAS_DIMENSION_PX`), or propagates any
@@ -873,10 +875,10 @@ export function createCanvasRenderer(
     container,
     interactionRoot: a11yLayer,
     pointerEventTarget: canvas,
-    update(nextInput: CanvasRendererInput): void {
+    update(nextInput: CanvasRendererInput, nextOptions?: Partial<CanvasRendererOptions>): void {
       if (destroyed) return;
       const previousState = state;
-      state = { ...state, input: nextInput };
+      state = { ...state, input: nextInput, options: { ...state.options, ...nextOptions } };
       try {
         render();
       } catch (err) {

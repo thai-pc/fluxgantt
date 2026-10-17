@@ -26,7 +26,7 @@ import type { CanvasRendererHandle, CanvasRendererOptions } from './canvas-rende
 import type * as CanvasRendererModule from './canvas-renderer.js';
 // TYPE-ONLY import back into the base facade — erased at compile time, so no runtime cycle.
 import type { GanttInstance } from '../gantt.js';
-import type { CriticalPathResult, Task, TaskId, ViewMode } from '../types.js';
+import type { CriticalPathResult, Task, TaskId } from '../types.js';
 import type { RolledUpRow } from './renderer-base.js';
 
 /** Task count above which `mount()` lazily loads and uses the Canvas renderer instead of SVG
@@ -351,61 +351,28 @@ function renderNow(
     rollup = rollupFor(internal, tasks);
   }
 
-  // `SvgRendererHandle.setOptions` merges shallowly over the previous options object, so once
-  // real tasks exist we must explicitly overwrite a previously-set empty-state `timeRange` back
-  // to "unset" (auto-derive) — a merge that simply omitted the key would leave the stale
-  // fallback range in place. That goes through `applyViewportOptions`, which also carries
-  // `viewMode` in the SAME `setOptions()` call (spec-zoom-runtime.md §8).
-  //
-  // ORDER MATTERS (bugfix): `handle.update()` and `handle.setOptions()` each trigger a full
-  // synchronous `render()` independently — one using the freshly-passed argument, the other
-  // still reading the renderer's OTHER, not-yet-updated internal field (`currentInput.tasks` vs
-  // `currentOptions.timeRange`). `render()` throws (`deriveTimeRange: tasks must not be empty`)
-  // iff BOTH `timeRange` is unset AND `tasks` is empty at the same instant — so the two calls
-  // below are ordered to never expose that combination, in either transition direction:
-  //  - Going TO empty (`tasks.length === 0`): set the fallback `timeRange` FIRST.
-  //  - Going TO non-empty (`tasks.length > 0`): push the new `tasks` FIRST.
-  // Reordering unconditionally (either direction, always) reintroduces the crash for the
-  // opposite transition — this must stay tasks.length-conditional.
-  const focusedTaskId = getFocusedTaskId();
-  if (tasks.length === 0) {
-    applyViewportOptions(handle, viewMode, emptyStateTimeRange(internal));
-    handle.update({
+  // ONE repaint for input and options together. `timeRange` is the empty-state fallback for an
+  // empty chart and explicitly cleared (back to "auto-derive") otherwise: the options merge
+  // shallowly, so omitting the key would leave a stale fallback range in place. Both renderers
+  // take the same `{ viewMode, timeRange }` merge, and `timeRange` is optional but not typed
+  // `X | undefined`, so `exactOptionalPropertyTypes` forbids the literal without this cast.
+  const options = {
+    viewMode,
+    timeRange: tasks.length === 0 ? emptyStateTimeRange(internal) : undefined,
+  };
+  handle.update(
+    {
       tasks,
       dependencies,
       calendar: internal.calendar,
       selectedTaskIds,
-      focusedTaskId,
-      collapsedIds,
-    });
-  } else {
-    handle.update({
-      tasks,
-      dependencies,
-      calendar: internal.calendar,
-      selectedTaskIds,
-      focusedTaskId,
+      focusedTaskId: getFocusedTaskId(),
       collapsedIds,
       ...(criticalPath !== undefined ? { criticalPath } : {}),
       ...(rollup !== undefined ? { rollup } : {}),
-    });
-    applyViewportOptions(handle, viewMode, undefined);
-  }
-}
-
-/**
- * Sets `viewMode` and — or explicitly clears — `timeRange` in a SINGLE `setOptions()` call, for
- * either renderer (both take the same `{ viewMode, timeRange }` merge at runtime).
- * `timeRange` is optional but not typed `X | undefined`, so `exactOptionalPropertyTypes` forbids
- * writing `undefined` into a `Partial<...Options>` literal — this isolates the one narrow cast.
- */
-function applyViewportOptions(
-  handle: SvgRendererHandle | CanvasRendererHandle,
-  viewMode: ViewMode,
-  timeRange: { start: Temporal.ZonedDateTime; end: Temporal.ZonedDateTime } | undefined,
-): void {
-  const next = { viewMode, timeRange };
-  handle.setOptions(next as unknown as Partial<SvgRendererOptions & CanvasRendererOptions>);
+    },
+    options as unknown as Partial<SvgRendererOptions & CanvasRendererOptions>,
+  );
 }
 
 function emptyStateTimeRange(
