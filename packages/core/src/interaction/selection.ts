@@ -152,6 +152,15 @@ export function enableClickSelect(
   }
 
   function handleClick(s: DownState, event: PointerEvent): void {
+    // A pinned label/toggle clone is not focusable, so a click on it would drop focus to <body> (the real
+    // label it stands for sits inside a focusable row). Hand focus to that row before anything repaints.
+    const t = event.target;
+    if (t instanceof Element && !handle.interactionRoot.contains(t)) {
+      const row = t.closest('[data-row-index]');
+      handle.interactionRoot
+        .querySelector<SVGElement>(`g[data-row-index="${row?.getAttribute('data-row-index')}"]`)
+        ?.focus({ preventScroll: true });
+    }
     // (spec-collapse-expand.md §7.2) — a click on the collapse/expand toggle glyph must NOT
     // also fire row selection; `enableCollapseToggle` owns that click exclusively.
     if (event.target instanceof Element && event.target.closest('.fg-timeline__row-toggle')) return;

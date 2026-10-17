@@ -400,16 +400,17 @@ test.describe('Tier B: CDP two-point touch (browser pipeline)', () => {
     ).toBe('none');
   });
 
-  test('both fingers on the sticky header band: JS does not zoom (band is touch-action auto, the browser owns it)', async ({
+  test('both fingers on the pinned header band: the chart zooms (the layer wrapper owns touch-action: none)', async ({
     page,
   }) => {
-    // Documents the open-question-1 decision against the real pipeline; delete if the band's
-    // touch-action ever changes.
+    // The band sits inside `.fg-timeline__layer`, which carries `touch-action: none` (so a finger on
+    // the pinned layers pans with the JS recognizer). It is therefore no longer a browser-owned
+    // gesture area: a pinch there is recognised like one on the chart.
     const header = page.locator('#gantt svg.fg-timeline__sticky-header').first();
     await expect(header).toBeVisible();
     const hb = (await header.boundingBox())!;
     await startTwoFingers(page, hb.y + 8);
     await spread(hb.y + 8);
-    expect(await gantt(page).mode()).toBe('week');
+    expect(await gantt(page).mode()).toBe('day');
   });
 });

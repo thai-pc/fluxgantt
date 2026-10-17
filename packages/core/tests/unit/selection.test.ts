@@ -167,6 +167,25 @@ describe('enableClickSelect — DOM interaction', () => {
       expect(onSelect).toHaveBeenCalledWith(toTaskId('not-in-the-store'));
     });
 
+    it('a click on a pinned clone hands focus to the real row it stands for (before onSelect runs)', () => {
+      const { handle, onSelect } = setup();
+      const order: string[] = [];
+      const row = handle.svg.querySelector('.fg-timeline__row[data-task-id="t2"]') as SVGElement;
+      row.addEventListener('focus', () => order.push('focus'));
+      onSelect.mockImplementation(() => order.push('select'));
+      click(clone(handle, 't2'));
+      expect(document.activeElement).toBe(row);
+      expect(order).toEqual(['focus', 'select']);
+    });
+
+    it('a click on a real label does not re-focus anything itself', () => {
+      const { handle } = setup();
+      const row = handle.svg.querySelector('.fg-timeline__row[data-task-id="t1"]') as SVGElement;
+      const spy = vi.spyOn(row, 'focus');
+      click(handle.svg.querySelector('.fg-timeline__row-label')!);
+      expect(spy).not.toHaveBeenCalled();
+    });
+
     it('a click on a pinned toggle clone selects nothing (collapse-toggle owns it)', () => {
       tasks = [
         task('root', '2026-01-05T09:00', '2026-01-07T09:00', { type: 'summary' }),

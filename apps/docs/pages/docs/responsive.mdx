@@ -89,10 +89,9 @@ never fires.
 
 Things to know:
 
-- **Both fingers on the pinned header band is a browser gesture.** The band keeps
-  `touch-action: auto` so it scrolls natively, which means a pinch that starts entirely on it is
-  taken by the browser (page zoom or scroll) and the chart does not zoom. One finger on the band
-  and one on the chart is handled by the chart.
+- **The pinned layers are part of the chart.** The date band, label column and corner sit inside
+  the `.fg-timeline__layer` wrapper, which carries `touch-action: none`, so a pinch that starts on
+  them zooms like one on the chart and a one-finger drag on them pans with the JS recognizer.
 - **`viewport:changed` and `scrollLeft`.** The zoom first writes a centre-anchored `scrollLeft`
   and the pinch then overwrites it with the midpoint-anchored one in the same task. Nothing paints
   in between, but a `viewport:changed` listener that reads `scrollLeft` synchronously sees the
