@@ -238,13 +238,17 @@ export function withResponsive<T extends GanttInstance>(
     const handle = mount.handle;
     const c = handle.container;
     const before = instance.getViewMode();
-    const offX = midX - c.getBoundingClientRect().left - c.clientLeft;
+    // Mirrored (`withRtl`): scrollLeft runs 0 down to negative and layout x grows from the right edge,
+    // so work in the logical offset `m * scrollLeft` and measure the midpoint from the right edge.
+    const m = handle.mirrorX ? -1 : 1;
+    const fromLeft = midX - c.getBoundingClientRect().left - c.clientLeft;
+    const offX = handle.mirrorX ? c.clientWidth - fromLeft : fromLeft;
     const lw = handle.getLabelColumnWidth(); // never the 160 constant: this mixin narrows it
-    const date = handle.getTimeScale().xToDate(c.scrollLeft + offX - lw);
+    const date = handle.getTimeScale().xToDate(m * c.scrollLeft + offX - lw);
     if (zoomIn) instance.zoomIn();
     else instance.zoomOut();
     if (instance.getViewMode() === before) return; // boundary no-op: nothing to correct
-    c.scrollLeft = handle.getTimeScale().dateToX(date) + lw - offX; // the browser self-clamps
+    c.scrollLeft = m * (handle.getTimeScale().dateToX(date) + lw - offX); // the browser self-clamps
   };
 
   /** `touch` pointers only. Callers that read coordinates also reject non-finite ones

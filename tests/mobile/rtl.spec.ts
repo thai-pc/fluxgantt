@@ -106,3 +106,44 @@ test('a touch drag on a bar moves it (visually left = later) and does not scroll
   expect(Date.parse(await read())).toBeGreaterThan(Date.parse(startBefore));
   expect(await scrollLeft(page)).toBe(scrollBefore);
 });
+
+test('pinch zoom keeps the date under the fingers midpoint in place (RTL scroll model)', async ({ page }) => {
+  const edge = (): Promise<number> =>
+    // the START edge of `dev` is its visually-right edge
+    page.evaluate(() => document.querySelector('.fg-task[data-task-id="dev"] .fg-task__bar')!.getBoundingClientRect().right);
+  // park the START edge of `dev` about 170 px in from the left of the screen
+  await setScrollLeft(page, 0);
+  await setScrollLeft(page, -Math.max(0, 170 - (await edge())));
+  const e0 = await edge();
+  const vw = await page.evaluate(() => document.documentElement.clientWidth);
+  expect(e0).toBeGreaterThan(60);
+  expect(e0).toBeLessThan(vw - 60);
+  const mode0 = await page.evaluate(() => (window as never as { __gantt: { getViewMode(): string } }).__gantt.getViewMode());
+  await page.evaluate(
+    async ([cx, cy]) => {
+      const init = (id: number, x: number, y: number, buttons = 1): PointerEventInit => ({
+        pointerId: id, pointerType: 'touch', isPrimary: id === 1, bubbles: true, cancelable: true, composed: true, button: 0, buttons, clientX: x, clientY: y,
+      });
+      const send = (type: string, id: number, x: number, y: number, buttons = 1): void =>
+        void (document.elementFromPoint(x, y) ?? document.body).dispatchEvent(new PointerEvent(type, init(id, x, y, buttons)));
+      const from = 40;
+      const to = 140; // fingers spread => zoom in one step
+      send('pointerdown', 1, cx! - from / 2, cy!);
+      send('pointerdown', 2, cx! + from / 2, cy!);
+      for (let i = 1; i <= 6; i++) {
+        const span = from + ((to - from) * i) / 6;
+        send('pointermove', 1, cx! - span / 2, cy!);
+        send('pointermove', 2, cx! + span / 2, cy!);
+        await new Promise((r) => requestAnimationFrame(() => r(undefined)));
+      }
+      send('pointerup', 1, cx! - to / 2, cy!, 0);
+      send('pointerup', 2, cx! + to / 2, cy!, 0);
+    },
+    [e0, await page.evaluate(() => document.getElementById('gantt')!.getBoundingClientRect().top + 32 + 60)] as const,
+  );
+  await frames(page);
+  const mode1 = await page.evaluate(() => (window as never as { __gantt: { getViewMode(): string } }).__gantt.getViewMode());
+  expect(mode1).not.toBe(mode0);
+  expect(await scrollLeft(page)).toBeLessThanOrEqual(0);
+  expect(Math.abs((await edge()) - e0)).toBeLessThanOrEqual(3);
+});
