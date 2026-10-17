@@ -383,7 +383,7 @@ test.describe('Tier B: CDP two-point touch (browser pipeline)', () => {
     await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
   }
 
-  test('a real two-finger spread steps the zoom and the chart's touch-action is none', async ({
+  test('a real two-finger spread steps the zoom and the chart touch-action is none', async ({
     page,
   }, testInfo) => {
     const y = await rowY(page);
