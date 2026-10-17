@@ -8,6 +8,7 @@ import {
   clientBox,
   dependencyCount,
   events,
+  frames,
   gantt,
   isGreenish,
   mouseDragTo,
@@ -584,5 +585,21 @@ test.describe('Canvas renderer (>= 2000 tasks)', () => {
     });
     expect(Math.abs(out.width - out.liveWidth)).toBeLessThanOrEqual(8);
     expect(isGreenish(out.pixel) || out.pixel[2]! > 150).toBe(true);
+  });
+});
+
+test.describe('Canvas hidden a11y layer (risk 6.6)', () => {
+  test('Tab into a scrolled RTL Canvas chart keeps scrollLeft (the layer is pinned at the inline start)', async ({ page }) => {
+    await openRtl(page, 'pad=2100');
+    await setScroll(page, -1500);
+    expect(await scrollLeft(page)).toBe(-1500);
+    // Firefox makes the scroll container itself a tab stop: Tab until the focus is inside the chart.
+    for (let i = 0; i < 3; i++) {
+      await page.keyboard.press('Tab');
+      if (await page.evaluate(() => String(document.activeElement?.className ?? '').includes('fg-timeline-canvas__row'))) break;
+    }
+    expect(await page.evaluate(() => String(document.activeElement?.className ?? ''))).toContain('fg-timeline-canvas__row');
+    await frames(page);
+    expect(await scrollLeft(page)).toBe(-1500);
   });
 });

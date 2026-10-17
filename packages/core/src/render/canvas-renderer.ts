@@ -846,7 +846,10 @@ export function createCanvasRenderer(
   // fighting/jump), see `tests/a11y/canvas-renderer.spec.ts`.
   a11yLayer.style.position = 'sticky';
   a11yLayer.style.top = '0';
-  a11yLayer.style.left = '0';
+  // Logical, not 'left': a RTL scroll container puts the content's start at the RIGHT, and a physical
+  // `left: 0` sticky inset parks this layer at the far end, so Tab into a scrolled chart would scroll
+  // the container back to reveal it (identical to `left` in LTR).
+  a11yLayer.style.insetInlineStart = '0';
   a11yLayer.style.width = '1px';
   a11yLayer.style.height = '1px';
   a11yLayer.style.margin = '-1px';

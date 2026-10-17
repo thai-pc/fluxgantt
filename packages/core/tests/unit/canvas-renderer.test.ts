@@ -320,7 +320,7 @@ describe('hidden ARIA layer', () => {
     // "row virtualization — a11y DOM windowing (fix #37)" describe block below).
     expect(h.interactionRoot.style.position).toBe('sticky');
     expect(h.interactionRoot.style.top).toBe('0px');
-    expect(h.interactionRoot.style.left).toBe('0px');
+    expect(h.interactionRoot.style.insetInlineStart).toBe("0px");
     expect(h.interactionRoot.style.width).toBe('1px');
     expect(h.interactionRoot.style.height).toBe('1px');
     expect(h.interactionRoot.style.overflow).toBe('hidden');
