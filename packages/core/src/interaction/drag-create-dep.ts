@@ -176,7 +176,7 @@ export function enableDragCreateDep(
 
     move(ctx, _dxPixels, event) {
       const path = ctx.state.line;
-      if (!path || !ctx.state.xf) return; // defensive; onDragStart always runs first
+      if (!path || !ctx.state.xf) return; // defensive; `start` always runs first
       const { x, y } = applyTransform(ctx.state.xf, event.clientX, event.clientY);
       path.setAttribute('d', `M ${ctx.state.ox} ${ctx.state.oy} L ${x} ${y}`);
       if (options.onLinking) {

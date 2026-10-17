@@ -256,7 +256,7 @@ describe('scrollToTask (Canvas coordinate model)', () => {
       getTimeScale: () => ({ dateToX: () => 0, totalWidth: 5000 }),
       setOptions: vi.fn(),
     };
-    getInternal(g).setMount({ renderer: 'canvas', rendererHandle: handle } as unknown as MountState);
+    getInternal(g).setMount({ renderer: 'canvas', handle } as unknown as MountState);
     g.scrollToTask(toTaskId('t60'));
     // row band = 332 - 32 = 300 tall; row 60 bottom = 61 * 32
     expect(geo.top).toBe(61 * ROW_HEIGHT.default - 300);
@@ -452,7 +452,7 @@ describe('setDensity (Canvas stub)', () => {
       getTimeScale: () => ({ dateToX: () => 0, totalWidth: 5000 }),
       setOptions,
     };
-    getInternal(g).setMount({ renderer: 'canvas', rendererHandle: handle } as unknown as MountState);
+    getInternal(g).setMount({ renderer: 'canvas', handle } as unknown as MountState);
     return { g, geo };
   }
 

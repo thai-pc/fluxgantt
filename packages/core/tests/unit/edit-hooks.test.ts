@@ -527,7 +527,7 @@ describe('withEditHooks — Canvas-style handle (row-wide hit test)', () => {
       getLabelColumnWidth: () => 160,
       hitTestRow: () => (hit ? { ...hit, taskId: toTaskId(hit.taskId) } : undefined),
     };
-    internal.setMount({ renderer: 'canvas', rendererHandle: handle } as unknown as MountState);
+    internal.setMount({ renderer: 'canvas', handle } as unknown as MountState);
     const activated: TaskActivatedPayload[] = [];
     gantt.on('task:activated', (p) => activated.push(p));
     internal.emit('renderer:selected', { renderer: 'canvas', taskCount: 1 });
@@ -695,9 +695,9 @@ describe('withEditHooks — Canvas keyboard path', () => {
     };
     internal.setMount({
       renderer: 'canvas',
-      rendererHandle: handle,
-      disposeEffect: () => undefined,
-      disposeInteractions: () => undefined,
+      handle,
+      stopFx: () => undefined,
+      stopUi: () => undefined,
     } as unknown as MountState);
     const activated: TaskActivatedPayload[] = [];
     const context: TaskContextRequestedPayload[] = [];
