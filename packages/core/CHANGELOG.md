@@ -1,5 +1,47 @@
 # @fluxgantt/core
 
+## 0.5.0
+
+### Minor Changes
+
+- acaf680: Drag-move, drag-resize and drag-create-dependency now work in Canvas mode (>= 2,000 tasks). A drag is previewed with a ghost bar on a viewport-sized overlay canvas, so the main canvas is never repainted mid-gesture; hover cursors and link handles (hovered and selected bars) are drawn on the same overlay. Touch pan no longer steals a bar drag in Canvas under `withResponsive`, and a long-press under `withEditHooks` keeps the drag's 4 px slop on a Canvas bar. `InteractiveRendererHandle` gains the optional `hitTestBar` (returning the new `BarHit` / `BarZone` types, exported from `@fluxgantt/core/render`), and `hitTestRow` results gain an optional `onBar`.
+- 128700d: `withResponsive()` now supports two-finger pinch to zoom on the chart (SVG and Canvas): each pinch past 1.4x / 0.7x steps one view mode, anchored at the fingers' midpoint, and cancels any pan, drag or long-press in progress. Opt out with `withResponsive(g, { pinchZoom: false })`. A pinch with both fingers on the sticky header band stays a browser gesture.
+- 630bc02: Right-to-left charts. New subpath `@fluxgantt/core/rtl` exports `withRtl()` (no new methods) and `GanttConfig` gains `rtl?: boolean` (default `false`, read only by `withRtl`, inert without it, construction-time only). With `rtl: true` the whole chart is mirrored in both renderers: the earliest date and the label column sit at the right, text stays upright and gets an RTL base direction, the container gets `dir="rtl"` (restored on unmount), and `exportSvg()` / `exportPng()` (SVG and Canvas mode) export the mirrored chart. Zoom anchoring, `scrollToTask()` and `scrollToDate()` use the logical scroll offset of a RTL scroll container (`scrollLeft` runs from 0 down to negative). Dragging a bar visually left moves it later; resize grabs the visually-left (end) edge; the link rubber band starts at the mirrored handle; Canvas hit-testing, the drag overlay and edit-hook label classification follow the mirror. Not included: translated built-in strings (use `messages`), a runtime toggle, left-edge resize. See the new "Right-to-left charts" docs page.
+  
+  Additions to published types (all optional, marked for `withRtl`; do not rely on them): `SvgRendererOptions.onPaint`, `CanvasRendererOptions.rtl` and `InteractiveRendererHandle.mirrorX` (the single "is mirrored" predicate); `hitTestRow` results gain an optional `onLabel`. The new `with-rtl` size fixture is `withRender + withRtl`; every existing fixture grew by at most 61 B (hello world, `+ withIo` and `+ withConflicts` by 0 B) and no existing limit moved.
+  
+  `@fluxgantt/react` and `@fluxgantt/vue`: new `rtl` prop (construction-time; change `key` to switch). Both compose `withRtl` unconditionally, which is a no-op unless `rtl` is true; the cost is about 400 B gzip in every wrapper bundle, including left-to-right ones (a deliberate choice: one composition, no dynamic import).
+- 9702f98: The SVG chart now pins its label column to the inline-start edge on horizontal scroll (Canvas still scrolls it), together with the date axis and a top-left corner, all inside one new wrapper `div.fg-timeline__layer` between the container and the chart `<svg>`. Visible and structural changes:
+  
+  - Hosts that select `container > svg` break (the wrapper is in between); `container.querySelector('svg')` is still the chart. `SvgRendererHandle.pointerEventTarget` is now that wrapper (`HTMLElement`), and `InteractiveRendererHandle` gains `container`. New classes: `fg-timeline__layer`, `fg-timeline__sticky-column`, `fg-timeline__sticky-corner`.
+  - Any container `display` now works (flex and grid hosts, auto height); the old float and negative margin are gone. Container `padding` still shifts the pinned layers and `scrollToTask`/`scrollToDate` by its size.
+  - The pinned column is drawn by `aria-hidden` clones of each label and toggle; the real labels stay in the chart for assistive tech and export and are hidden on screen. A name wider than `labelColumnWidth` is cut at the column edge on screen (exports keep the full name). The column ground is `var(--fg-bg, #fff)`: set `--fg-bg` on a non-white page.
+  - Clicking a pinned label or toggle behaves like clicking the real one; clicking the blank column or the date band now clears the selection (the band used to swallow clicks). Tests that count `[data-task-id]`/`.fg-timeline__row-label` over the whole container also see the clones: scope to `svg.fg-timeline`.
+  - Dividers are pixel-snapped (header line at y 31.5, label line at x offset - 0.5): one crisp line instead of two half-covered rows, which also fixes the darker line at scrollTop 0. Exported SVG reflects the new coordinates.
+  - Horizontal `scrollToTask`/`scrollToDate` numerics for SVG shift by the label width: the bar now parks right of the column, not under it.
+  - `withResponsive()` also sets `touch-action: none` on the wrapper so a finger on the pinned layers pans.
+
+### Patch Changes
+
+- 1669969: Recover bundle headroom: the internal `GanttInternal` / `MountState` / pointer-drag member names are shorter (property names survive minification and repeat across every mixin), undo and redo share one `applyOp`, the CPM and cascade passes share one `indexGraph`, the pointer-drag coordinator owns the drag chrome (class + cursor) the three recognizers each used to repeat, CSV and JSON import share their optional-field and array-limit helpers, and four explanatory diagnostic tails nothing asserts on are shorter (duplicate task id in `createGantt`/imports, the `computeGridColumns` guard, the working-calendar iteration guard, a CPM internal error). The retained phrases are `duplicate task id`, `exceeded max column guard`, `exceeded max iteration guard`. No public API or behavior change; exported SVG output is byte-identical.
+- 92f5958: Arrow-key navigation now scrolls the SVG chart so the focused row stays visible below the pinned header (also in Firefox, without relying on `scroll-padding`). ArrowUp/ArrowDown and Shift+Arrow move `scrollTop` by the minimum needed and never touch `scrollLeft`; pointer focus still does not scroll.
+- d7d27db: SVG charts at 2000 tasks repaint 2-5x faster, and mount 4x faster. A zoom, collapse, selection change or `updateTask` used to recompute the critical path and paint the whole chart **twice**; a cold `mount()` painted three times. Now:
+  
+  - the critical path and rollup are memoized per mount by the task + dependency store revisions (a zoom, collapse or selection change reuses them; `refresh()` still recomputes);
+  - each reactive run paints once: `SvgRendererHandle.update()` and `CanvasRendererHandle.update()` take an optional second argument `options` (additive, merged exactly like `setOptions()` before the single repaint; Canvas rolls both back if the render throws);
+  - the constructor paint is the complete one (critical path and rollup included), and the effect's first run no longer repeats it unless an initially selected row owns the focus; `critical-path:computed` still fires once on mount, before `renderer:selected` (also when a Canvas construction failure falls back to SVG, which now reuses the already-derived critical path instead of recomputing it);
+  - `computeGridColumns` parses the holiday list once instead of once per column;
+  - `aria-label` date formatting is memoized (bounded: cleared at 512 entries), removing one `Intl.DateTimeFormat` construction per date per task per repaint, the largest remaining per-render cost;
+  - two diagnostic warnings lost their second sentence, and the focus restore scans for the row by attribute instead of building a `CSS.escape`d selector (bytes).
+  
+  Exported SVG is byte-identical. A cyclic dependency graph now warns once per data revision instead of once per repaint.
+  
+  Measured on a quiet Mac, Chromium, 2000 SVG tasks, median ms to two animation frames (before -> after, full renders per operation): mount 3500 -> 830 (3 -> 1), zoom 2350 -> 500 (2 -> 1), setDensity 940 -> 450 (1 -> 1), collapse 2100 -> 850 (2 -> 1), select 2100 -> 550 (2 -> 1), select all 2100 -> 600 (2 -> 1), `updateTask` 2100 -> 860 (2 -> 1). Raw after-samples (20 fresh pages, ms): zoom 506,578,555,491,495,496,565,561,494,518,503,500,492,470,530,500,486,485,479,459; select 2403,2027,2005,1753,860,666,627,684,620,596,590,570,575,621,574,560,542,546,532,556 (the first five ran under heavy machine load); density 547,499,601,549,536,514,501,499,500,501,510,507; collapse 1187,1149,1245,1385,790,806,648,727,663,653,663,699 and selectAll 677,719,666,1353,1376,1400,1427,1587,1295,793,759,835 (both with a loaded stretch at the start or middle); updateTask 989,967,963,948,935,873,1053,878,896,855,842,863,946,871,909,854,865,824,860,839; mount 836,809,826,904,898,846,797,814,806,800,825,810,810,822,825,838,885,873,866,863. Bundle (measured on master as of #113): `+ withRender` 14755 B, kitchen sink 24069 B (507 B headroom left), hello world 7584 B.
+  
+  Also: the parsed holiday set is cached per `holidays` array (revalidated by timezone and length), worth ~10% on long-range mounts and ~8% on `updateTask` (long range, 20 holidays: mount ~7.0 s, updateTask ~7.2 s versus 7.6-8.1 s without), +60 B.
+  
+  Not done, deliberately: row-level patching for selection/focus (selection is still ~550 ms against the 50 ms target).
+
 ## 0.4.0
 
 ### Minor Changes

@@ -1,6 +1,6 @@
 {
   "name": "@fluxgantt/react",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "description": "FluxGantt React wrapper \u2014 <FluxGantt> component + useFluxGantt hook.",
   "license": "MIT",
   "keywords": [
