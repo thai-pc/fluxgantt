@@ -129,3 +129,37 @@ describe('DST (America/New_York, spring-forward 2026-03-08)', () => {
     expect(differenceInWorkingHours('2026-03-06T09:00', '2026-03-09T17:00', ny)).toBe(16);
   });
 });
+
+describe('holiday set cache', () => {
+  const base: WorkingCalendar = { ...DEFAULT_CALENDAR, holidays: ['2026-01-07'] };
+
+  it('results are identical to an uncached calendar (copy of the same data)', () => {
+    const copy: WorkingCalendar = { ...base, holidays: [...base.holidays] };
+    for (const d of ['2026-01-06', '2026-01-07', '2026-01-08']) {
+      expect(isHoliday(d, base)).toBe(isHoliday(d, copy));
+      expect(isHoliday(d, base)).toBe(isHoliday(d, base)); // second call hits the cache
+    }
+    expect(addWorkingHours('2026-01-06T09:00', 24, base).toString()).toBe(
+      addWorkingHours('2026-01-06T09:00', 24, copy).toString(),
+    );
+  });
+
+  it('replacing the holidays array, growing it, or changing the timezone re-parses', () => {
+    const cal: WorkingCalendar = { ...base, holidays: ['2026-01-07'] };
+    expect(isHoliday('2026-01-07', cal)).toBe(true);
+    expect(isHoliday('2026-01-08', cal)).toBe(false);
+    cal.holidays.push('2026-01-08'); // grown in place: length differs
+    expect(isHoliday('2026-01-08', cal)).toBe(true);
+    const replaced: WorkingCalendar = { ...cal, holidays: ['2026-01-09'] }; // new array, same length class
+    expect(isHoliday('2026-01-09', replaced)).toBe(true);
+    expect(isHoliday('2026-01-07', replaced)).toBe(false);
+    // Same array object, different zone: the wall-clock day of a UTC instant moves.
+    const shared = ['2026-01-07T23:30:00Z'];
+    const utc: WorkingCalendar = { ...base, holidays: shared, timezone: 'UTC' };
+    const hcm: WorkingCalendar = { ...base, holidays: shared, timezone: 'Asia/Ho_Chi_Minh' };
+    expect(isHoliday('2026-01-07', utc)).toBe(true);
+    expect(isHoliday('2026-01-08', hcm)).toBe(true);
+    expect(isHoliday('2026-01-07', hcm)).toBe(false);
+    expect(isHoliday('2026-01-07', utc)).toBe(true); // flipping back still correct
+  });
+});
