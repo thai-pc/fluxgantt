@@ -70,6 +70,7 @@ import {
 // `createSvgRenderer` moved off the main barrel in the facade split (it is render-layer code,
 // and re-exporting it from `.` pinned the SVG renderer into every consumer's graph).
 import { createSvgRenderer, withRender, type RenderCapability } from '@fluxgantt/core/render';
+import { withViewport, type ViewportCapability } from '@fluxgantt/core/viewport';
 
 // `@fluxgantt/core` treats Temporal as an optional peerDependency and reads `globalThis.Temporal`
 // — it is the HOST APP's job to install it (`packages/core/src/internal/temporal.ts`). Guarded
@@ -81,6 +82,7 @@ import { createSvgRenderer, withRender, type RenderCapability } from '@fluxgantt
 (globalThis as { Temporal?: typeof Temporal }).Temporal ??= Temporal;
 
 const WORKING_DAY_WINDOW_SIZE = 30;
+const GROUP_SIZE = 20;
 
 /** `size` consecutive Mon-Fri dates (ISO strings), starting from a fixed Monday. A bounded
  *  "rolling window" — many tasks land on the same date once `taskCount > size` — keeps the
@@ -112,24 +114,32 @@ function buildWorkingDayWindow(size: number): string[] {
  *  measure a genuine, successful Canvas mount — the rolling working-day window here also keeps the
  *  derived WIDTH axis small and constant regardless of `taskCount`, so neither dimension axis is
  *  hit by this dataset shape at any of the sizes this harness is driven at. */
-function generateDataset(taskCount: number): { tasks: Task[]; dependencies: Dependency[] } {
-  const workingDayWindow = buildWorkingDayWindow(WORKING_DAY_WINDOW_SIZE);
+function generateDataset(
+  taskCount: number,
+  windowSize: number,
+  grouped: boolean,
+): { tasks: Task[]; dependencies: Dependency[] } {
+  const workingDayWindow = buildWorkingDayWindow(windowSize);
   const now = new Date('2026-01-01T00:00:00Z');
   const tasks: Task[] = [];
   const dependencies: Dependency[] = [];
   for (let i = 0; i < taskCount; i++) {
-    const date = workingDayWindow[i % WORKING_DAY_WINDOW_SIZE]!;
+    const date = workingDayWindow[i % windowSize]!;
+    // `grouped`: every 20th task is a summary row whose 19 followers are its children, so a
+    // collapse has something to hide. Dependencies then only link siblings.
+    const isGroupHead = grouped && i % GROUP_SIZE === 0;
     tasks.push({
       id: toTaskId(`perf-task-${i}`),
       name: `Task ${i + 1}`,
       start: date,
       end: date,
       progress: 0,
-      type: 'task',
+      type: isGroupHead ? 'summary' : 'task',
+      ...(grouped && !isGroupHead ? { parent: toTaskId(`perf-task-${i - (i % GROUP_SIZE)}`) } : {}),
       createdAt: now,
       updatedAt: now,
     });
-    if (i > 0 && i % 10 < 3) {
+    if (i > 0 && i % 10 < 3 && !(grouped && (i % GROUP_SIZE === 0 || i % GROUP_SIZE === 1))) {
       dependencies.push({
         id: toDependencyId(`perf-dep-${i}`),
         from: toTaskId(`perf-task-${i - 1}`),
@@ -143,7 +153,22 @@ function generateDataset(taskCount: number): { tasks: Task[]; dependencies: Depe
 
 const params = new URLSearchParams(window.location.search);
 const taskCount = Number(params.get('taskCount') ?? '100');
-const { tasks, dependencies } = generateDataset(taskCount);
+// `?span=N` widens the rolling window from 30 to N working days (a long date range, so
+// `computeGridColumns` has many columns); `?holidays=N` gives the calendar N holidays;
+// `?grouped=1` adds summary rows (needed for the collapse op); `?mounted=1` mounts on load and
+// exposes `__repaintAndTime` (svg-repaint.spec.ts). All default to the original shape.
+const spanParam = Number(params.get('span') ?? WORKING_DAY_WINDOW_SIZE);
+const holidayCount = Number(params.get('holidays') ?? '0');
+const grouped = params.get('grouped') === '1';
+const { tasks, dependencies } = generateDataset(taskCount, spanParam, grouped);
+const calendar = {
+  ...DEFAULT_CALENDAR,
+  holidays: Array.from({ length: holidayCount }, (_, i) =>
+    Temporal.PlainDate.from('2026-01-05')
+      .add({ days: 7 * (i + 1) + 2 })
+      .toString(),
+  ),
+};
 const canvasViewportHeightParam = params.get('canvasViewportHeight');
 const canvasViewportHeight =
   canvasViewportHeightParam !== null ? Number(canvasViewportHeightParam) : undefined;
@@ -152,12 +177,15 @@ const container = document.getElementById('gantt')!;
 // `mount()` lives on the opt-in `withRender` mixin since the facade split — this harness times
 // that exact path, so it composes it. `withInteraction` is deliberately NOT composed: gesture
 // wiring is not part of what §9.4 measures.
-const gantt: GanttInstance & RenderCapability = withRender(
-  createGantt({
-    tasks,
-    dependencies,
-    ...(canvasViewportHeight !== undefined ? { canvasViewportHeight } : {}),
-  }),
+const gantt: GanttInstance & RenderCapability & ViewportCapability = withViewport(
+  withRender(
+    createGantt({
+      tasks,
+      dependencies,
+      ...(holidayCount > 0 ? { calendar } : {}),
+      ...(canvasViewportHeight !== undefined ? { canvasViewportHeight } : {}),
+    }),
+  ),
 );
 
 /** Times one `gantt.mount(container)` call via `renderer:selected` — resolves after the chosen
@@ -199,11 +227,75 @@ const rawContainer = document.getElementById('gantt-raw')!;
 function mountSvgDirectAndTime(): Promise<{ ms: number }> {
   rawContainer.replaceChildren();
   const start = performance.now();
-  const handle = createSvgRenderer(rawContainer, { tasks, dependencies, calendar: DEFAULT_CALENDAR });
+  const handle = createSvgRenderer(rawContainer, {
+    tasks,
+    dependencies,
+    calendar: DEFAULT_CALENDAR,
+  });
   const criticalPath = computeCriticalPath(tasks, dependencies, DEFAULT_CALENDAR);
-  handle.update({ tasks, dependencies, calendar: DEFAULT_CALENDAR, selectedTaskIds: [], criticalPath });
+  handle.update({
+    tasks,
+    dependencies,
+    calendar: DEFAULT_CALENDAR,
+    selectedTaskIds: [],
+    criticalPath,
+  });
   const ms = performance.now() - start;
   return Promise.resolve({ ms });
+}
+
+type RepaintOp = 'zoom' | 'density' | 'collapse' | 'select' | 'selectAll' | 'updateTask';
+const viewModes = ['month', 'week', 'day'] as const;
+let zoomStep = 0;
+let densityStep = 0;
+let selectStep = 0;
+
+/** Counts full SVG renders by watching for the `<defs>` arrowhead marker each `render()` appends
+ *  (one per render) — a wall-clock-independent tripwire for redundant repaints. */
+function countRenders(svg: Element, run: () => void): number {
+  const observer = new MutationObserver(() => {});
+  observer.observe(svg, { childList: true });
+  run();
+  const records = observer.takeRecords();
+  observer.disconnect();
+  let renders = 0;
+  for (const r of records) for (const n of r.addedNodes) if (n.nodeName === 'defs') renders++;
+  return renders;
+}
+
+/** Runs one mutation against the MOUNTED chart, then waits two animation frames (style + layout +
+ *  paint). `jsMs` = the synchronous call, `paintMs` = until the second frame, `renders` = full SVG
+ *  renders the call caused. */
+async function repaintAndTime(
+  op: RepaintOp,
+): Promise<{ jsMs: number; paintMs: number; renders: number }> {
+  const svg = container.querySelector('svg.fg-timeline')!;
+  const t0 = performance.now();
+  const renders = countRenders(svg, () => {
+    switch (op) {
+      case 'zoom':
+        gantt.zoomTo(viewModes[++zoomStep % viewModes.length]!);
+        break;
+      case 'density':
+        gantt.setDensity(densityStep++ % 2 === 0 ? 'compact' : 'default');
+        break;
+      case 'collapse':
+        gantt.toggleCollapse(toTaskId('perf-task-0'));
+        break;
+      case 'select':
+        gantt.select(toTaskId(`perf-task-${10 + (selectStep++ % 5)}`));
+        break;
+      case 'selectAll':
+        gantt.selectAll();
+        break;
+      case 'updateTask':
+        gantt.updateTask(toTaskId('perf-task-10'), { name: `renamed ${performance.now()}` });
+        break;
+    }
+  });
+  const jsMs = performance.now() - t0;
+  await new Promise<void>((res) => requestAnimationFrame(() => requestAnimationFrame(() => res())));
+  return { jsMs, paintMs: performance.now() - t0, renders };
 }
 
 // Deliberately NO auto-mount-on-load here: `__mountAndTime()` must measure a genuine COLD first
@@ -216,5 +308,8 @@ if (import.meta.env.DEV) {
     __gantt: gantt,
     __mountAndTime: mountAndTime,
     __mountSvgDirectAndTime: mountSvgDirectAndTime,
+    __repaintAndTime: repaintAndTime,
   });
+  // Opt-in only (`?mounted=1`): the default contract above stays "never auto-mount".
+  if (params.get('mounted') === '1') gantt.mount(container);
 }
