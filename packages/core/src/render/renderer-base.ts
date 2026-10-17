@@ -64,6 +64,18 @@ const DATE_OPTIONS: Intl.DateTimeFormatOptions = {
   day: 'numeric',
 };
 
+/** Formatted date labels keyed by locale + ISO date. `PlainDate.toLocaleString` builds an
+ *  `Intl.DateTimeFormat` internally on every call, which dominated a 2000-task repaint; a project
+ *  has a few dozen distinct dates, so the hit rate is ~100%. Bounded: once 512 entries are held,
+ *  further dates are formatted uncached, so a host cycling locales cannot grow it without limit. */
+const dateLabels = new Map<string, string>();
+function dateLabel(date: Temporal.PlainDate, locale: string): string {
+  const key = `${locale}|${date.toString()}`;
+  const label = dateLabels.get(key) ?? date.toLocaleString(locale, DATE_OPTIONS);
+  if (dateLabels.size < 512) dateLabels.set(key, label);
+  return label;
+}
+
 /**
  * `rolled` — optional rollup entry for this task (Ticket B2). When present, the dates and
  * percentage announced are the AGGREGATE ones, matching what the bar is actually drawn at.
@@ -89,8 +101,8 @@ export function buildTaskAriaLabel(
   const start = normalizeDate(effective?.start ?? task.start, calendar.timezone).toPlainDate();
   const end = normalizeDate(effective?.end ?? task.end, calendar.timezone).toPlainDate();
   const name = task.name.slice(0, MAX_ARIA_TASK_NAME_LENGTH);
-  const startLabel = start.toLocaleString(locale, DATE_OPTIONS);
-  const endLabel = end.toLocaleString(locale, DATE_OPTIONS);
+  const startLabel = dateLabel(start, locale);
+  const endLabel = dateLabel(end, locale);
   // `Number.prototype.toLocaleString`, NOT `new Intl.NumberFormat(...)` — identical digits, but
   // no Intl constructor (the expensive half) per task per paint and no format cache to key or
   // invalidate. Localized because an `ar-EG` host was otherwise getting Western Arabic digits

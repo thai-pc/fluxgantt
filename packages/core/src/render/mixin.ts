@@ -27,7 +27,7 @@ import type * as CanvasRendererModule from './canvas-renderer.js';
 // TYPE-ONLY import back into the base facade — erased at compile time, so no runtime cycle.
 import type { GanttInstance } from '../gantt.js';
 import type { CriticalPathResult, Task, TaskId } from '../types.js';
-import { layoutRows, type RolledUpRow } from './renderer-base.js';
+import type { RolledUpRow } from './renderer-base.js';
 
 /** Task count above which `mount()` lazily loads and uses the Canvas renderer instead of SVG
  *  (architecture.md: "Canvas fallback automatically when task count > 2000"). Decided once, at
@@ -363,7 +363,7 @@ function renderInput(internal: GanttInternal, memo: RenderMemo, track: boolean):
         // directly, bypassing linkTasks) — the reactive render effect must NEVER throw. Swallow,
         // render without a critical path, warn once per revision.
         console.warn(
-          '@fluxgantt/core: computeCriticalPath failed during reactive render — rendering without a critical path.',
+          '@fluxgantt/core: computeCriticalPath failed during reactive render.',
           err,
         );
       }
@@ -397,16 +397,12 @@ function renderNow(
     internal.emit('critical-path:computed', ids);
   }
   // The constructor already painted exactly this state, apart from which row holds the roving
-  // tabindex: it painted the first row (the renderer's own default), so only a different focus
-  // (an initially selected row) needs the repaint.
+  // tabindex. It painted the first row (the renderer's own default), which is also where keyboard
+  // navigation starts unless something is selected — so only a selected start needs the repaint.
   const focusedTaskId = getFocusedTaskId();
   if (memo.painted) {
     memo.painted = false;
-    if (
-      focusedTaskId === undefined ||
-      focusedTaskId === layoutRows(input.tasks, 'default', input.collapsedIds)[0]?.task.id
-    )
-      return;
+    if (focusedTaskId === undefined || input.selectedTaskIds?.length === 0) return;
   }
   // ONE repaint for input and options together. `timeRange` is the empty-state fallback for an
   // empty chart and explicitly cleared (back to "auto-derive") otherwise: the options merge
@@ -471,7 +467,7 @@ function rollupFor(
     return provider(tasks, internal.calendar);
   } catch (err) {
     console.warn(
-      '@fluxgantt/core: the config.rollup provider threw during reactive render — rendering authored dates instead.',
+      '@fluxgantt/core: the config.rollup provider threw during reactive render.',
       err,
     );
     return undefined;
