@@ -22,18 +22,18 @@ This file is the context entry point for AI. Details are split into rules under 
 
    | Fixture | Measured | Budget |
    |---|---|---|
-   | `createGantt()` only (hello world) | 7.32 KiB | 9 KiB |
-   | `+ withIo` | 12.36 KiB | 14 KiB |
-   | `+ withRender` | 14.27 KiB | 15 KiB |
-   | `+ withRender + withInteraction` | 18.60 KiB | 19.5 KiB |
-   | `+ withRender + withTheme` | 14.94 KiB | 16 KiB |
-   | `+ withRender + withInteraction + withResponsive` | 19.38 KiB | 21 KiB |
-   | `+ withRender + withViewport` | 15.13 KiB | 16 KiB |
-   | `+ withConflicts` (headless) | 9.19 KiB | 10 KiB |
-   | `+ withRender + withEditHooks` (not in the kitchen sink) | 15.60 KiB | 16 KiB |
-   | kitchen sink (everything = the pre-split facade) | 23.27 KiB | 24 KiB |
+   | `createGantt()` only (hello world) | 7.35 KiB | 9 KiB |
+   | `+ withIo` | 12.38 KiB | 14 KiB |
+   | `+ withRender` | 14.30 KiB | 15 KiB |
+   | `+ withRender + withInteraction` | 18.62 KiB | 19.5 KiB |
+   | `+ withRender + withTheme` | 14.97 KiB | 16 KiB |
+   | `+ withRender + withInteraction + withResponsive` | 19.98 KiB | 21 KiB |
+   | `+ withRender + withViewport` | 15.16 KiB | 16 KiB |
+   | `+ withConflicts` (headless) | 9.21 KiB | 10 KiB |
+   | `+ withRender + withEditHooks` (not in the kitchen sink) | 15.62 KiB | 16 KiB |
+   | kitchen sink (everything = the pre-split facade) | 23.30 KiB | 24 KiB |
 
-   Hello world went 22.3 KiB → 7.32 KiB and the fully-composed instance 34.9 KiB → 23.27 KiB (the old "full core" check measured `dist/index.js` as a plain file, which code-splitting has since hollowed out; the kitchen-sink fixture replaces it). Non-core features are plugins.
+   Hello world went 22.3 KiB → 7.35 KiB and the fully-composed instance 34.9 KiB → 23.30 KiB (the old "full core" check measured `dist/index.js` as a plain file, which code-splitting has since hollowed out; the kitchen-sink fixture replaces it). Non-core features are plugins.
 
    The `withRender + withInteraction` budget was raised 19 → 19.5 KiB once, for the i18n scaffold (`GanttConfig.messages`), after the levers this rule prefers were measured and came up ~67 B short: merging the two renderer-option builders recovered only 13 B, and ~68 B of the cost is the irreducible price of threading host messages through both renderers. Justified as WCAG-adjacent — the strings in question are accessible names. Treat that as the exception it was, not a precedent: the rule is still change the shape, not the budget.
 
@@ -111,9 +111,10 @@ This file is the context entry point for AI. Details are split into rules under 
    headroom. Nothing was raised; bytes were stripped, again with zero behavior change (exported SVG
    byte-identical, zero visual diffs, every test-asserted message substring kept). Gzip bytes, measured
    with `pnpm size`, kitchen sink / `+ withRender + withInteraction` / `+ withRender + withEditHooks`:
-   24386 -> 23831 (-555), 19479 -> 19050 (-429), 16177 -> 15971 (-206); hello world 7679 -> 7500 (-179);
-   every fixture lost 179-450 B. Headroom is now 745 B (kitchen sink), 918 B (`+ withInteraction`) and 413 B
-   (`+ withEditHooks`, the tightest; `+ withConflicts` has 834 B). The levers, and what each taught:
+   24386 -> 23854 (-532), 19479 -> 19068 (-411), 16177 -> 15994 (-183); hello world 7679 -> 7523 (-156);
+   the other fixtures lost 171-235 B, and `+ withResponsive` is 20875 -> 20458 (-417) against master with
+   pinch zoom (it was 20290 before pinch). Headroom is now 722 B (kitchen sink), 900 B (`+ withInteraction`)
+   and 390 B (`+ withEditHooks`, the tightest; `+ withConflicts` has 814 B). The levers, and what each taught:
    (1) **Long property names that cross module boundaries were the biggest single lever, ~-230 B on the
    kitchen sink.** A minifier cannot rename a property, and gzip charges a name's full length at its first
    occurrence plus ~3 B per reference, so `dependencyStore`, `getMountGeneration` or `expandWithDescendants`
