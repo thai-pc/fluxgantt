@@ -230,9 +230,9 @@ export function withResponsive<T extends GanttInstance>(
    *  Known, accepted: `zoomTo()` first writes a centre-anchored `scrollLeft` and this overwrites it
    *  in the same task, so a synchronous `viewport:changed` listener sees the intermediate value. */
   const stepZoom = (zoomIn: boolean, midX: number): void => {
-    const mount = internal.getMountState();
+    const mount = internal.mountOf();
     if (disposed || !mount) return;
-    const handle = mount.rendererHandle;
+    const handle = mount.handle;
     const c = handle.container;
     const before = instance.getViewMode();
     const offX = midX - c.getBoundingClientRect().left - c.clientLeft;

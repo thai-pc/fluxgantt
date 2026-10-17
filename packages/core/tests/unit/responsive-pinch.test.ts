@@ -233,15 +233,15 @@ describe('pinch — midpoint anchoring', () => {
       const s = setup({ minLabelColumnWidth: labelWidth, labelColumnRatio: labelWidth === 96 ? 0.1 : 1 });
       Object.defineProperty(container, 'clientWidth', { value: 393, configurable: true });
       s.gantt.zoomTo('week'); // re-measure is not needed; the label width is whatever was pushed
-      const mount = getInternal(s.gantt).getMountState()!;
-      const h = mount.rendererHandle;
+      const mount = getInternal(s.gantt).mountOf()!;
+      const h = mount.handle;
       const lw = h.getLabelColumnWidth();
       const mid = 230;
       const dateBefore = h.getTimeScale().xToDate(s.scroll.left + mid - lw);
       const top = s.scroll.top;
       twoFingers(s, 100, mid).spread(150);
       expect(s.zoomed).toEqual(['day']);
-      const after = getInternal(s.gantt).getMountState()!.rendererHandle;
+      const after = getInternal(s.gantt).mountOf()!.handle;
       const xAfter = after.getTimeScale().dateToX(dateBefore) + lw - s.scroll.left;
       expect(Math.abs(xAfter - mid)).toBeLessThan(1);
       expect(s.scroll.top).toBe(top);
@@ -502,7 +502,7 @@ describe('pinch — options and listener lifecycle', () => {
     ptr('pointerdown', s.svg, 1, 0, 100);
     ptr('pointerdown', s.svg, 2, 100, 100);
     const internal = getInternal(s.gantt);
-    vi.spyOn(internal, 'getMountState').mockReturnValue(undefined);
+    vi.spyOn(internal, 'mountOf').mockReturnValue(undefined);
     expect(() => ptr('pointermove', s.svg, 2, 140, 100)).not.toThrow();
     expect(s.zoomed).toEqual([]);
   });
