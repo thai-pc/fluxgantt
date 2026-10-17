@@ -495,7 +495,11 @@ export function createSvgRenderer(
 
     // Focus restoration (spec §4.5 point 4) — MUST run after every element above is already
     // appended to `svg`, since the target row element is freshly created by renderRows() in
-    // this same synchronous pass.
+    // this same synchronous pass. `preventScroll`: a native focus() on a row scrolls the
+    // container itself (measured: Firefox resets BOTH scroll offsets to 0, even for a visible
+    // row; Chromium scrolls vertically only, and only when the row is off screen; WebKit does not
+    // scroll). The keyboard path reveals the row explicitly instead (interaction/keyboard-nav.ts
+    // revealFocusedRow), so pointer focus never scrolls.
     if (hadFocusInside && focusedTaskId !== undefined) {
       const rowEl = svg.querySelector<SVGElement>(
         `.fg-timeline__row[data-task-id="${cssEscapeAttr(focusedTaskId)}"]`,

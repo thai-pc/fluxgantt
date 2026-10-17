@@ -16,7 +16,7 @@
 // the interaction layer, explicitly permitted per architecture.md. Still imports nothing
 // outside `@fluxgantt/core`'s own tree (no react/vue/svelte).
 import type { InteractiveRendererHandle } from '../render/index.js';
-import { layoutRows, type RowLayout } from '../render/renderer-base.js';
+import { layoutRows, ROW_HEIGHT, type RowLayout } from '../render/renderer-base.js';
 import { toTaskId, type Density, type Task, type TaskId } from '../types.js';
 
 export interface KeyboardNavOptions {
@@ -67,8 +67,9 @@ export interface KeyboardNavOptions {
    *  `hasChildren === true`; no-op otherwise (mirrors `toggleCollapse()`'s own leaf no-op
    *  contract). */
   onToggleCollapse: (id: TaskId) => void;
-  /** Density, forwarded to `layoutRows` for row-order resolution (matches the renderer's
-   *  own density). */
+  /** Density, forwarded to `layoutRows` for row geometry (matches the renderer's own density).
+   *  Re-read on every keydown, so a standalone consumer must keep it LIVE (a getter) when the
+   *  density can change after mount: the arrow-key scroll reveal depends on exact row positions. */
   density: Density;
   /** True while `gantt.readOnly` — gates the destructive Delete action AND the undo/redo
    *  keybindings (both are mutating keyboard gestures; see plan decision #3 for why undo/redo
@@ -385,6 +386,23 @@ export function enableKeyboardNav(
     } else {
       setFocus(next);
       options.onSelect(next);
+    }
+    if (!disposed) revealFocusedRow(rows[nextIndex]!);
+  }
+
+  /**
+   * Scrolls the SVG chart vertically, by the minimum, so the keyboard-focused row sits fully
+   * below the pinned 32px header band and inside the viewport. Writes `scrollTop` only (never
+   * `scrollLeft`). Canvas reveals its own focused row, so it is skipped here. A row taller than
+   * the band pins to its top; an unlaid-out container (clientHeight <= 32) is left untouched.
+   */
+  function revealFocusedRow(row: RowLayout): void {
+    const viewH = focusRoot.clientHeight - 32; // HEADER_HEIGHT, duplicated as in viewport/mixin.ts
+    if (viewH > 0 && handle.interactionRoot.localName === 'svg') {
+      focusRoot.scrollTop = Math.min(
+        row.y,
+        Math.max(focusRoot.scrollTop, row.y + ROW_HEIGHT[options.density] - viewH),
+      );
     }
   }
 

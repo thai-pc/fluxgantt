@@ -122,7 +122,11 @@ function wireInto(
     onZoomIn: () => instance.zoomIn(),
     onZoomOut: () => instance.zoomOut(),
     getTasks: () => internal.tasks.all(),
-    density,
+    // Live, not the construction-time constant: `setDensity()` and `withResponsive` change the
+    // painted density after mount, and the keyboard reveal scrolls by row geometry.
+    get density() {
+      return internal.density ?? config.density ?? 'default';
+    },
     isReadOnly: () => config.readOnly === true,
     getSelection: () => internal.sel.all(),
     getCollapsedIds: () => new Set(internal.fold.all()),
