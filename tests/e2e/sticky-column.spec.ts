@@ -332,6 +332,30 @@ test.describe('pinned label column (collapse.html)', () => {
     expect(xml.match(/<svg/g)).toHaveLength(1);
   });
 
+  test('an exportSvg() string inlined next to the live chart keeps its labels visible', async ({ page }) => {
+    await page.goto('/');
+    await expect(page.locator('svg.fg-timeline')).toBeVisible();
+    const m = await page.evaluate(() => {
+      const gantt = (window as unknown as { __gantt: { exportSvg(): string } }).__gantt;
+      const host = document.createElement('div');
+      host.id = 'preview';
+      host.innerHTML = gantt.exportSvg();
+      document.body.append(host);
+      const labels = [...host.querySelectorAll('.fg-timeline__row-label')];
+      const live = document.querySelector('#gantt svg.fg-timeline .fg-timeline__row-label')!;
+      return {
+        count: labels.length,
+        opacities: labels.map((l) => getComputedStyle(l).opacity),
+        width: labels[0]!.getBoundingClientRect().width,
+        liveOpacity: getComputedStyle(live).opacity,
+      };
+    });
+    expect(m.count).toBeGreaterThan(0);
+    expect(new Set(m.opacities)).toEqual(new Set(['1']));
+    expect(m.width).toBeGreaterThan(10);
+    expect(m.liveOpacity).toBe('0'); // the live chart still hides its real labels
+  });
+
   test('one tab stop and no duplicate names: the clones are invisible to the accessibility tree', async ({ page }) => {
     const names = await page.evaluate(() => {
       const hidden = document.querySelectorAll('#gantt [aria-hidden="true"] .fg-timeline__row-label').length;

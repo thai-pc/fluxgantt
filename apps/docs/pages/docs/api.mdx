@@ -189,7 +189,7 @@ The date axis stays pinned to the top of the scroll viewport in both modes, and 
 scrolls its label column away). Everything lives in one wrapper, `div.fg-timeline__layer`, that
 holds the chart `<svg>` and three `aria-hidden`, `position: sticky` layers: the label column
 (`svg.fg-timeline__sticky-column`, clones of each row label and toggle), the date axis
-(`svg.fg-timeline__sticky-header`) and the top corner (`div.fg-timeline__sticky-corner`).
+(`svg.fg-timeline__sticky-header`) and the top corner (`svg.fg-timeline__sticky-corner`).
 `container.querySelector('svg')` is still the chart (a `container > svg` child selector is not: the
 wrapper is in between), and the exported SVG never contains any layer. Consequences worth knowing:
 
@@ -380,7 +380,7 @@ gantt.on('task:context-requested', (p) => {
   (core ships none):
 
   ```css
-  .fg-timeline__row { -webkit-touch-callout: none; user-select: none; }
+  .fg-timeline__row, .fg-timeline__sticky-column { -webkit-touch-callout: none; user-select: none; }
   ```
 - **macOS <kbd>Ctrl</kbd>+click** is reported by browsers as a right-click, so it fires
   `task:context-requested` and also toggles the selection.

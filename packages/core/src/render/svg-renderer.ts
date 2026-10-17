@@ -196,7 +196,7 @@ const LINK_HANDLE_STYLE_TEXT =
 // unconditional (unlike LINK_HANDLE_STYLE_TEXT, which is gated behind `showLinkHandles`) —
 // selection must stay visible even in a `readOnly` chart.
 const SELECTION_STYLE_TEXT =
-  '.fg-timeline .fg-timeline__row-label{opacity:0}.fg-task--selected .fg-task__bar{outline:var(--fg-task-selected-width,2px) solid var(--fg-task-selected,#4338ca);outline-offset:var(--fg-task-selected-offset,2px)}';
+  '.fg-timeline__layer>.fg-timeline .fg-timeline__row-label{opacity:0}.fg-task--selected .fg-task__bar{outline:var(--fg-task-selected-width,2px) solid var(--fg-task-selected,#4338ca);outline-offset:var(--fg-task-selected-offset,2px)}';
 
 /** Geometry offset (px) between the task bar's own edge and the extra focus-ring `<rect>`'s
  *  edge — matches the `--fg-task-focus-offset` design token's default (spec §5.1). SVG
@@ -412,7 +412,7 @@ export function createSvgRenderer(
     const totalHeight = offsetY + bodyHeight;
 
     // Full repaint — no diff in v1 (spec §5.5 / handle doc).
-    while (svg.firstChild) svg.removeChild(svg.firstChild);
+    svg.replaceChildren();
 
     // ARIA grid structure (spec-keyboard-nav.md §3.2 point 1) — replaces the old placeholder
     // `role="img"`. `aria-multiselectable` is always "true": Core's selection model always

@@ -224,7 +224,7 @@ describe('pinned label column', () => {
     const css = [...h.svg.querySelectorAll('style')].map((s) => s.textContent).join('');
     // Scoped to the chart root: a bare `.fg-timeline__row-label` would also hide the pinned clones (the
     // injected <style> is document-global).
-    expect(css).toContain('.fg-timeline .fg-timeline__row-label{opacity:0}');
+    expect(css).toContain('.fg-timeline__layer>.fg-timeline .fg-timeline__row-label{opacity:0}');
     expect(css).not.toMatch(/(^|[},])\.fg-timeline__row-label\{opacity/);
     expect(css).not.toContain('/*');
     // Never an inline opacity: that would survive into exports.
