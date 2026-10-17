@@ -9,7 +9,7 @@
 // The Canvas renderer stays reachable ONLY through the dynamic `import()` below — it is never
 // statically imported by anything and never named in the package `exports` map.
 import type { Temporal } from '@js-temporal/polyfill';
-import { effect } from '../signals.js';
+import { effect, type ReadonlySignal } from '../signals.js';
 import {
   getInternal,
   type GanttInternal,
@@ -127,9 +127,8 @@ export function withRender<T extends GanttInstance>(instance: T): T & RenderCapa
     },
 
     refresh(): void {
-      const mount = internal.mountOf();
-      if (internal.dead() || !mount) return; // nothing to refresh headless or post-destroy
-      renderNow(internal, mount.handle, mount.focusedId);
+      // Nothing to refresh headless or post-destroy.
+      if (!internal.dead()) internal.mountOf()?.refresh();
     },
   };
 
@@ -169,10 +168,11 @@ async function mountCanvasAsync(
   if (superseded()) return; // superseded while awaiting the import
 
   let handle: CanvasRendererHandle;
+  const memo = createMemo();
   try {
     handle = canvasModule.createCanvasRenderer(
       container,
-      renderInput(internal),
+      renderInput(internal, memo, false),
       rendererOptions(internal),
       createSvgRenderer,
     );
@@ -193,7 +193,7 @@ async function mountCanvasAsync(
   // Not re-checked a second time here: `createCanvasRenderer()` above is synchronous (no
   // `await` between the check above and this call), and JS is single-threaded, so no new race
   // window can have opened (spec §5's own reasoning).
-  finishMount(internal, 'canvas', handle, taskCount);
+  finishMount(internal, 'canvas', handle, taskCount, memo);
 }
 
 /** Synchronous SVG mount, reachable both directly from `mount()` (sub-threshold path) and as
@@ -207,8 +207,9 @@ function mountSvg(
 ): void {
   // Defensive, cheap even on the sync path.
   if (generation !== internal.gen() || internal.dead()) return;
-  const handle = createSvgRenderer(container, renderInput(internal), rendererOptions(internal));
-  finishMount(internal, 'svg', handle, taskCount, fallbackReason);
+  const memo = createMemo();
+  const handle = createSvgRenderer(container, renderInput(internal, memo, false), rendererOptions(internal));
+  finishMount(internal, 'svg', handle, taskCount, memo, fallbackReason);
 }
 
 /**
@@ -225,6 +226,7 @@ function finishMount(
   renderer: RendererKind,
   handle: SvgRendererHandle | CanvasRendererHandle,
   taskCount: number,
+  memo: RenderMemo,
   fallbackReason?: FallbackReason,
 ): void {
   const interactions = internal.hooks()?.wire(handle, renderer, internal);
@@ -234,9 +236,10 @@ function finishMount(
   // `getFocusedTaskId` is captured directly from this closure (NOT read back off the mount
   // state) because `effect()` runs its callback synchronously, immediately, on this very call —
   // BEFORE the mount state is stored below.
-  const disposeEffect = effect(() => {
-    renderNow(internal, handle, getFocusedTaskId);
-  });
+  const paint = (): void => {
+    renderNow(internal, handle, getFocusedTaskId, memo);
+  };
+  const disposeEffect = effect(paint);
 
   const state: MountState = {
     renderer,
@@ -246,6 +249,10 @@ function finishMount(
     focusedId: getFocusedTaskId,
     anchored: (mutate) => {
       withScrollAnchor(handle, mutate);
+    },
+    refresh: () => {
+      memo.rev = -1; // refresh() is the "recompute everything" escape hatch
+      paint();
     },
   };
   internal.setMount(state);
@@ -298,59 +305,89 @@ function withScrollAnchor(
   container.scrollLeft = newAnchorContentX + labelColumnWidth - container.clientWidth / 2;
 }
 
-/** The reactive render effect's body — re-runs on ANY task/dependency/selection mutation or a
- *  `zoomTo()` view-mode write. */
+/**
+ * Per-mount cache of the two expensive derivations (closure state created per mount, never module
+ * state: two charts must not share it). `renderNow` re-runs on ANY store revision or the view mode,
+ * but the critical path and the rollup can only change when a task or dependency did, so a zoom, a
+ * collapse or a selection change reuses them instead of paying `computeCriticalPath()` again.
+ */
+interface RenderMemo {
+  /** Task + dependency revisions summed (both only ever increase, so the sum moves iff either did). */
+  rev: number;
+  criticalPath: CriticalPathResult | undefined;
+  rollup: ReadonlyMap<TaskId, RolledUpRow> | undefined;
+  /** Critical ids waiting to be announced: the constructor paint derives before the renderer handle
+   *  exists, and a `critical-path:computed` listener must not run until it does. */
+  emit: readonly TaskId[] | undefined;
+}
+
+function createMemo(): RenderMemo {
+  return { rev: -1, criticalPath: undefined, rollup: undefined, emit: undefined };
+}
+
+/** The paint input, recomputing the memoized parts only when the data revision moved. `track`
+ *  is true inside the reactive effect, where reading `.value` registers the dependencies. */
+function renderInput(internal: GanttInternal, memo: RenderMemo, track: boolean): SvgRendererInput {
+  const read = (revision: ReadonlySignal<number>): number => (track ? revision.value : revision.peek());
+  // Read unconditionally so the effect re-runs on ANY task, dependency, selection or collapse
+  // mutation (coarse — no per-field granularity here). The collapse revision is
+  // (spec-collapse-expand.md §9) the single most important integration assertion of that feature.
+  read(internal.sel.revision);
+  read(internal.fold.revision);
+  const rev = read(internal.tasks.revision) + read(internal.deps.revision);
+  const tasks = internal.tasks.all();
+  const dependencies = internal.deps.all();
+  if (rev !== memo.rev) {
+    memo.rev = rev;
+    memo.criticalPath = undefined;
+    if (tasks.length === 0) {
+      // No tasks → no critical path; reset so the next non-empty compute always re-emits.
+      internal.resetCrit();
+    } else {
+      try {
+        memo.criticalPath = computeCriticalPathFn(tasks, dependencies, internal.calendar);
+        // Emit only when the critical set actually changed (not on every mutation / render).
+        if (internal.noteCrit(memo.criticalPath.criticalTaskIds)) {
+          memo.emit = memo.criticalPath.criticalTaskIds;
+        }
+      } catch (err) {
+        // Cyclic graph (possible if a caller used DependencyStore.link(..., {allowCycle: true})
+        // directly, bypassing linkTasks) — the reactive render effect must NEVER throw. Swallow,
+        // render without a critical path, warn once per revision.
+        console.warn(
+          '@fluxgantt/core: computeCriticalPath failed during reactive render — rendering without a critical path.',
+          err,
+        );
+      }
+    }
+    memo.rollup = rollupFor(internal, tasks);
+  }
+  return {
+    tasks,
+    dependencies,
+    calendar: internal.calendar,
+    selectedTaskIds: internal.sel.all(),
+    collapsedIds: new Set(internal.fold.all()),
+    ...(memo.criticalPath !== undefined ? { criticalPath: memo.criticalPath } : {}),
+    ...(memo.rollup !== undefined ? { rollup: memo.rollup } : {}),
+  };
+}
+
+/** The reactive render effect's body — re-runs on ANY task/dependency/selection/collapse
+ *  mutation or a `zoomTo()` view-mode write. */
 function renderNow(
   internal: GanttInternal,
   handle: SvgRendererHandle | CanvasRendererHandle,
   getFocusedTaskId: () => TaskId | undefined,
+  memo: RenderMemo,
 ): void {
-  // Track all three stores' revisions — read .value unconditionally so this effect re-runs on
-  // ANY task, dependency or selection mutation (coarse — no per-field granularity here).
-  void internal.tasks.revision.value;
-  void internal.deps.revision.value;
-  void internal.sel.revision.value;
-  // (spec-collapse-expand.md §9) — the single most important integration assertion in this
-  // whole feature: a collapse/expand must trigger a repaint, exactly like any other store
-  // mutation this effect already tracks.
-  void internal.fold.revision.value;
+  const input = renderInput(internal, memo, true);
   const viewMode = internal.viewMode.value; // tracked — re-runs this effect on zoomTo()
-
-  const tasks = internal.tasks.all();
-  const dependencies = internal.deps.all();
-  const selectedTaskIds = internal.sel.all();
-  const collapsedIds = new Set(internal.fold.all());
-
-  let criticalPath: CriticalPathResult | undefined;
-  // `undefined` (not an empty map) when no `config.rollup` provider is supplied, so the
-  // renderer's own `rollup?.get(...)` fast-path short-circuits instead of probing an
-  // always-empty map on every bar of every repaint.
-  let rollup: ReadonlyMap<TaskId, RolledUpRow> | undefined;
-  if (tasks.length === 0) {
-    // No tasks → no critical path; reset so the next non-empty compute always re-emits.
-    internal.resetCrit();
+  if (memo.emit) {
+    const ids = memo.emit;
+    memo.emit = undefined;
+    internal.emit('critical-path:computed', ids);
   }
-  if (tasks.length > 0) {
-    try {
-      criticalPath = computeCriticalPathFn(tasks, dependencies, internal.calendar);
-      // Emit only when the critical set actually changed (not on every mutation / render).
-      if (internal.noteCrit(criticalPath.criticalTaskIds)) {
-        internal.emit('critical-path:computed', criticalPath.criticalTaskIds);
-      }
-    } catch (err) {
-      // Cyclic graph (possible if a caller used DependencyStore.link(..., {allowCycle: true})
-      // directly, bypassing linkTasks) — the reactive render effect must NEVER throw. Swallow,
-      // render without a critical path, warn once per occurrence.
-      criticalPath = undefined;
-      console.warn(
-        '@fluxgantt/core: computeCriticalPath failed during reactive render — rendering without a critical path.',
-        err,
-      );
-    }
-
-    rollup = rollupFor(internal, tasks);
-  }
-
   // ONE repaint for input and options together. `timeRange` is the empty-state fallback for an
   // empty chart and explicitly cleared (back to "auto-derive") otherwise: the options merge
   // shallowly, so omitting the key would leave a stale fallback range in place. Both renderers
@@ -358,19 +395,10 @@ function renderNow(
   // `X | undefined`, so `exactOptionalPropertyTypes` forbids the literal without this cast.
   const options = {
     viewMode,
-    timeRange: tasks.length === 0 ? emptyStateTimeRange(internal) : undefined,
+    timeRange: input.tasks.length === 0 ? emptyStateTimeRange(internal) : undefined,
   };
   handle.update(
-    {
-      tasks,
-      dependencies,
-      calendar: internal.calendar,
-      selectedTaskIds,
-      focusedTaskId: getFocusedTaskId(),
-      collapsedIds,
-      ...(criticalPath !== undefined ? { criticalPath } : {}),
-      ...(rollup !== undefined ? { rollup } : {}),
-    },
+    { ...input, focusedTaskId: getFocusedTaskId() },
     options as unknown as Partial<SvgRendererOptions & CanvasRendererOptions>,
   );
 }
@@ -427,22 +455,6 @@ function rollupFor(
     );
     return undefined;
   }
-}
-
-function renderInput(internal: GanttInternal): SvgRendererInput {
-  const tasks = internal.tasks.all();
-  // Seeded on the FIRST paint too, not only from the reactive effect's first run — otherwise a
-  // hierarchical chart with a `rollup` provider would paint one frame of authored geometry and
-  // then visibly jump to the aggregate spans.
-  const rollup = rollupFor(internal, tasks);
-  return {
-    tasks,
-    dependencies: internal.deps.all(),
-    calendar: internal.calendar,
-    selectedTaskIds: internal.sel.all(),
-    collapsedIds: new Set(internal.fold.all()),
-    ...(rollup !== undefined ? { rollup } : {}),
-  };
 }
 
 /**
