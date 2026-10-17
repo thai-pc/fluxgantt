@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>FluxGantt · launch capture page</title>
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <main>
+      <h1>FluxGantt — vanilla <code>@fluxgantt/core</code></h1>
+      <p>Drag a task bar to move it, drag an edge to resize, drag a link handle to connect two tasks. The critical path is outlined in dashed red.</p>
+      <div id="gantt"></div>
+      <!-- Below the chart on purpose: an element above #gantt shifts it down, which re-rasterises
+           the chart at a different subpixel offset and invalidates every visual baseline. -->
+      <p><button id="theme-toggle" type="button">Theme: auto</button></p>
+    </main>
+    <script type="module" src="/src/launch.ts"></script>
+  </body>
+</html>

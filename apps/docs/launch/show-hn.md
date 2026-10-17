@@ -8,7 +8,7 @@ repo so it can be reviewed and edited like anything else.
 1. ~~`@fluxgantt/core` is published to npm.~~ **Done** — `0.2.0` on npm since 2026-09-24.
 2. The docs site is deployed at a public URL. Still open: Pages is not enabled, so every docs link
    in this draft resolves to nothing.
-3. The three demo GIFs exist. A Gantt library submitted without a moving picture of a bar being
+3. ~~The three demo GIFs exist.~~ **Done** — `apps/docs/launch/assets/*.gif`. A Gantt library submitted without a moving picture of a bar being
    dragged will be ignored.
 
 Timing per §15.2: Tuesday, ~08:00 PT.
@@ -19,11 +19,11 @@ Timing per §15.2: Tuesday, ~08:00 PT.
 
 The 80-character limit is the real constraint. Candidates, all measured:
 
-> `Show HN: FluxGantt – MIT Gantt chart library, 7.7 KB headless core, TypeScript` — 78 chars
+> Show HN: FluxGantt – MIT Gantt chart library, <!--sz:hello.1-->7.4<!--/sz--> KiB headless core, TypeScript — 79 chars
 
-> `Show HN: FluxGantt – a TypeScript-first, MIT-licensed Gantt chart library` — 72 chars
+> Show HN: FluxGantt – a TypeScript-first, MIT-licensed Gantt chart library — 73 chars
 
-> `Show HN: FluxGantt – an MIT Gantt library with a headless 7.7 KB core` — 68 chars
+> Show HN: FluxGantt – an MIT Gantt library with a headless <!--sz:hello.1-->7.4<!--/sz--> KiB core — 70 chars
 
 Recommend the first. The number is the differentiator and putting it in the title makes the
 comparison argument before anyone clicks.
@@ -45,8 +45,8 @@ Hi HN — I'm the author.
 Every project-management app eventually needs a Gantt chart, and the existing options are all
 uncomfortable. dhtmlx PRO and Bryntum are mature and good, at $599–1,599 and $850+ per developer
 per year. The MIT options are lighter on your wallet and heavier on your bundle: dhtmlx's new
-Community edition is 226 KB gzip once you include its required stylesheet. Frappe Gantt is a
-genuinely small 15 KB, but it has no critical path, only finish-to-start dependencies, and no
+Community edition is 226 KiB gzip once you include its required stylesheet. Frappe Gantt is a
+genuinely small 15 KiB, but it has no critical path, only finish-to-start dependencies, and no
 TypeScript types at all. So the third option is what a lot of teams actually do: spend two months
 building one.
 
@@ -55,7 +55,7 @@ architecture rather than the feature list:
 
 **The engine is headless.** `createGantt()` imports no DOM API. It holds the task store, the
 dependency graph, the working-calendar math and the critical-path solver, and it runs in Node, in a
-Worker, or in a test with no jsdom. That configuration is 7.7 KB gzip. Rendering is something you
+Worker, or in a test with no jsdom. That configuration is <!--sz:hello.1-->7.4<!--/sz--> KiB gzip. Rendering is something you
 opt into.
 
 **Capabilities are separate subpath exports, not methods on a class.** This was the single most
@@ -63,8 +63,8 @@ useful thing I learned building it: class prototype methods can never be tree-sh
 monolithic `Gantt` facade bills every consumer for the renderer, the drag handlers and the CSV
 exporter whether they call them or not. Splitting the facade into a base plus opt-in mixins
 (`withRender`, `withInteraction`, `withIo`, `withTheme`, `withResponsive`) took hello-world from
-22.3 KB to 7.7 KB without deleting a single feature. An editable chart is 19.2 KB. Everything
-composed is 23.8 KB. Those budgets fail CI if exceeded.
+22.3 KiB to <!--sz:hello.1-->7.4<!--/sz--> KiB without deleting a single feature. An editable chart is <!--sz:editable.1-->19.1<!--/sz--> KiB. Everything
+composed is <!--sz:kitchen.1-->23.7<!--/sz--> KiB. Those budgets fail CI if exceeded.
 
 **All date math goes through the Temporal API**, never native `Date`. A Gantt chart is date
 arithmetic wearing a UI, and native `Date` gets DST transitions and timezones wrong in ways that
@@ -103,13 +103,13 @@ re-measurable from the repo.
 **"Another Gantt library?"** — Yes, and the differentiator is deliberately not the feature list,
 which dhtmlx wins. It's that the engine is separable from the DOM and the bytes are budgeted in CI.
 
-**"How does it compare to Frappe?"** — Frappe is smaller (14.9 KB vs 19.2 KB for an editable chart)
+**"How does it compare to Frappe?"** — Frappe is smaller (14.9 KiB vs <!--sz:editable.1-->19.1<!--/sz--> KiB for an editable chart)
 and simpler. Link the comparison page and *lead with Frappe winning that row*. Anyone who checks
 will find it out in thirty seconds; saying it first is the only position that survives scrutiny.
 
-**"Is the 7.7 KB number real?"** — It's `pnpm size` output on a bundled, tree-shaken, gzipped
+**"Is the <!--sz:hello.1-->7.4<!--/sz--> KiB number real?"** — It's `pnpm size` output on a bundled, tree-shaken, gzipped
 fixture that mounts nothing, and it's enforced on every PR. It is genuinely the headless
-configuration and genuinely not a chart. An editable chart is 19.2 KB; that's the number to quote if
+configuration and genuinely not a chart. An editable chart is <!--sz:editable.1-->19.1<!--/sz--> KiB; that's the number to quote if
 someone accuses the small one of being cherry-picked — because it is a fair accusation about a
 library people want for its UI.
 

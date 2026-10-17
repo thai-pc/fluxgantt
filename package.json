@@ -22,6 +22,7 @@
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
     "size": "turbo run size",
+    "capture:launch-assets": "node tooling/scripts/capture-launch-assets.mjs",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "clean": "turbo run clean && rimraf node_modules",
