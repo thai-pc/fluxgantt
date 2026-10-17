@@ -18,6 +18,7 @@ import { withInteraction } from '@fluxgantt/core/interaction';
 import { withEditHooks } from '@fluxgantt/core/edit-hooks';
 import { withViewport, type ViewportCapability } from '@fluxgantt/core/viewport';
 import { withTheme, type ThemeCapability } from '@fluxgantt/core/theme';
+import { withRtl } from '@fluxgantt/core/rtl';
 import type { GanttInstance } from '@fluxgantt/core';
 import { pickConstructionConfig, syncTheme } from './gantt-config.js';
 import type { UseFluxGanttConfig, UseFluxGanttResult } from './types.js';
@@ -63,8 +64,9 @@ export function useFluxGantt(config: UseFluxGanttConfig): UseFluxGanttResult {
       // component is by definition a rendering, interactive consumer, so it composes both
       // unconditionally, plus `/viewport` (scrollToTask/scrollToDate/setDensity — a chart UI always
       // wants them) and `/theme` (setTheme/getTheme/getResolvedTheme; the `theme` prop needs it). IO (`/io`) is deliberately NOT composed: the wrapper exposes no
-      // import/export surface, so a consumer who never calls it never downloads it.
-      instanceRef.current = withTheme(
+      // import/export surface, so a consumer who never calls it never downloads it. `/rtl` (the `rtl`
+      // prop) is composed unconditionally too: `withRtl` returns at once unless `rtl === true`.
+      instanceRef.current = withRtl(withTheme(
         withViewport(
           withEditHooks(
             withInteraction(
@@ -84,7 +86,7 @@ export function useFluxGantt(config: UseFluxGanttConfig): UseFluxGanttResult {
             ),
           ),
         ),
-      );
+      ));
     } catch (err) {
       // `createGantt` constructs the stores synchronously and throws on invalid INITIAL data
       // (a duplicate task id, or a self/duplicate/cyclic initial dependency). Because this

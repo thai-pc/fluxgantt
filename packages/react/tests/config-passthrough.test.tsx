@@ -37,6 +37,7 @@ const FULL: Required<GanttConfig> = {
   locale: 'fr',
   ariaLabel: 'My plan',
   messages: { taskLabel: () => 'x' },
+  rtl: true,
   theme: 'dark',
   canvasViewportHeight: 321,
   readOnly: true,

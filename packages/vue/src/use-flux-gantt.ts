@@ -33,6 +33,7 @@ import { withInteraction } from '@fluxgantt/core/interaction';
 import { withEditHooks } from '@fluxgantt/core/edit-hooks';
 import { withViewport, type ViewportCapability } from '@fluxgantt/core/viewport';
 import { withTheme, type ThemeCapability } from '@fluxgantt/core/theme';
+import { withRtl } from '@fluxgantt/core/rtl';
 import type { GanttInstance } from '@fluxgantt/core';
 import { pickConstructionConfig, syncTheme } from './gantt-config.js';
 import type { UseFluxGanttConfig, UseFluxGanttResult } from './types.js';
@@ -55,7 +56,8 @@ export function useFluxGantt(config: UseFluxGanttConfig): UseFluxGanttResult {
     // plus `/viewport` (scrollToTask/scrollToDate/setDensity) and `/theme` (the `theme` prop needs it).
     // IO (`/io`) is deliberately NOT composed: the wrapper exposes no import/export surface, so
     // a consumer who never calls it never downloads it.
-    instance = withTheme(
+    // `/rtl` (the `rtl` prop) is composed unconditionally: `withRtl` returns at once unless `rtl === true`.
+    instance = withRtl(withTheme(
       withViewport(
         withEditHooks(
           withInteraction(
@@ -73,7 +75,7 @@ export function useFluxGantt(config: UseFluxGanttConfig): UseFluxGanttResult {
           ),
         ),
       ),
-    );
+    ));
   } catch (err) {
     // Same re-throw-with-context contract as react (invalid INITIAL tasks/dependencies —
     // duplicate id, self/duplicate/cyclic link — throws synchronously from `createGantt`).

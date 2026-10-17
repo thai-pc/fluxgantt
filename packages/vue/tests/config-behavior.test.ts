@@ -209,3 +209,29 @@ describe('<FluxGantt> theme', () => {
     expect(typeof ref.getTheme).toBe('function');
   });
 });
+
+describe('<FluxGantt> rtl prop (withRtl composed unconditionally)', () => {
+  it('rtl mirrors the chart: dir="rtl" on the container and the .fg-rtl group', () => {
+    const { root } = mountChart({ tasks: TWO, rtl: true });
+    expect(root.getAttribute('dir')).toBe('rtl');
+    expect(root.querySelector('svg.fg-timeline > g.fg-rtl')).not.toBeNull();
+  });
+
+  it('rtl false or unset: neither dir nor the group (a pure no-op)', () => {
+    for (const props of [{ tasks: TWO }, { tasks: TWO, rtl: false }]) {
+      const { root, wrapper } = mountChart(props);
+      expect(root.hasAttribute('dir')).toBe(false);
+      expect(root.querySelector('g.fg-rtl')).toBeNull();
+      wrapper.unmount();
+    }
+  });
+
+  it('is construction-time: a new component instance (key) applies the new value, unmount restores dir', async () => {
+    const { wrapper, root } = mountChart({ tasks: TWO, rtl: true });
+    expect(root.getAttribute('dir')).toBe('rtl');
+    wrapper.unmount();
+    expect(root.hasAttribute('dir')).toBe(false);
+    const again = mountChart({ tasks: TWO });
+    expect(again.root.hasAttribute('dir')).toBe(false);
+  });
+});

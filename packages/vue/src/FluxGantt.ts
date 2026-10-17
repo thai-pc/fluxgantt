@@ -81,7 +81,7 @@ function exposableInstance(instance: GanttInstance): GanttInstance {
  * Note on construction-only props: every `GanttConfig` prop except `theme` and `onTaskChange`
  * (`tasks`, `dependencies`, `calendar`, `viewMode`, `density`, `locale`, `ariaLabel`, `messages`,
  * `canvasViewportHeight`, `readOnly`, `enableDependencyDrag`, `schedulingMode`, `historyLimit`,
- * `initialCollapsed`, `rollup`) is read only once, when the underlying `GanttInstance` is
+ * `initialCollapsed`, `rollup`, `rtl`) is read only once, when the underlying `GanttInstance` is
  * created (`GanttInstance` has no `setViewMode`/`setDensity`/`setLocale`/`setReadOnly`/`setCalendar` — same facade gap react
  * documented). Changing these props after mount is a no-op. A consumer who needs a
  * prop-driven `viewMode` change can force a full remount via Vue's `:key`
@@ -124,6 +124,7 @@ export const FluxGantt = defineComponent({
     // an explicit `false`).
     readOnly: { type: Boolean, required: false, default: undefined },
     enableDependencyDrag: { type: Boolean, required: false, default: undefined },
+    rtl: { type: Boolean, required: false, default: undefined },
     onTaskChange: {
       type: Function as PropType<(task: Task, prev: Task) => void>,
       required: false,
