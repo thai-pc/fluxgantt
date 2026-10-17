@@ -14,6 +14,17 @@ import { withInteraction } from '@fluxgantt/core/interaction';
 import { withResponsive } from '@fluxgantt/core/responsive';
 import { withViewport } from '@fluxgantt/core/viewport';
 
+// `?pad=N` appends N flat filler rows (mobile keyboard-reveal spec: the chart must overflow).
+const pad = Number(new URLSearchParams(window.location.search).get('pad') ?? '0');
+const filler = Array.from({ length: Math.max(0, pad) }, (_, i) => ({
+  id: toTaskId(`filler-${i}`),
+  name: `Filler ${i}`,
+  start: `2026-09-${String((i % 14) + 1).padStart(2, '0')}`,
+  end: `2026-09-${String((i % 14) + 2).padStart(2, '0')}`,
+  progress: 0,
+  type: 'task' as const,
+}));
+
 const gantt = withViewport(withResponsive(
   withInteraction(
     withRender(
@@ -51,6 +62,7 @@ const gantt = withViewport(withResponsive(
             progress: 0,
             type: 'milestone',
           },
+          ...filler,
         ],
         dependencies: [
           { from: toTaskId('design'), to: toTaskId('build'), type: 'FS' },

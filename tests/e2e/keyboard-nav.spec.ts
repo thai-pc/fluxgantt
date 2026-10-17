@@ -294,12 +294,13 @@ const scrollOf = (page: Page) =>
     return { top: c.scrollTop, left: c.scrollLeft };
   });
 
-async function expectFocusedRowInBand(page: Page): Promise<void> {
+// `tol`: a row's painted box can poke ~1px past its slot (bar outline / focus ring), more at 24px rows.
+async function expectFocusedRowInBand(page: Page, tol = 1): Promise<void> {
   const c = await containerBox(page);
   const id = await page.evaluate(() => document.activeElement?.getAttribute('data-task-id'));
   const box = (await row(page, id!).boundingBox())!;
-  expect(box.y).toBeGreaterThanOrEqual(c.top + HEADER - 0.5);
-  expect(box.y + box.height).toBeLessThanOrEqual(c.top + c.h + 0.5);
+  expect(box.y).toBeGreaterThanOrEqual(c.top + HEADER - tol);
+  expect(box.y + box.height).toBeLessThanOrEqual(c.top + c.h + tol);
 }
 
 test.describe('keeps the focused row visible (SVG)', () => {
@@ -327,8 +328,13 @@ test.describe('keeps the focused row visible (SVG)', () => {
 
   test('ArrowUp onto a row above the fold lands it below the header band', async ({ page }) => {
     for (let i = 0; i < 30; i++) await page.keyboard.press('ArrowDown');
+    // Focus is row 30 (y = 960). Scroll BELOW it so the predecessor sits above the view, then
+    // ArrowUp must pin that row to the top of the band.
+    await setScroll(page, 1200);
+    await page.keyboard.press('ArrowUp');
+    await expectFocusedRowInBand(page);
+    // And one case where the predecessor is BELOW the view (bottom-flush branch).
     await setScroll(page, 400);
-    // Focus is on a row far above the scrolled view; ArrowUp must bring its predecessor into the band.
     await page.keyboard.press('ArrowUp');
     await expectFocusedRowInBand(page);
     for (let i = 0; i < 40; i++) {
@@ -360,6 +366,26 @@ test.describe('keeps the focused row visible (SVG)', () => {
   });
 });
 
+// setDensity() after mount changes the painted row height; the reveal must follow it. `compact`
+// needs many rows: the browser's scroll clamp hides an overshoot on a short list.
+for (const [density, pad, presses] of [
+  ['touch', 40, 15],
+  ['compact', 120, 60],
+] as const) {
+  test(`setDensity('${density}') after mount: the focused row stays in the band`, async ({ page }) => {
+    await page.goto(`/collapse.html?pad=${pad}`);
+    await expect(page.locator('svg.fg-timeline')).toBeVisible();
+    await focusFirstRow(page);
+    await page.evaluate((d) => (window as unknown as { __gantt: { setDensity(d: string): void } }).__gantt.setDensity(d), density);
+    await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => r(null))));
+    await focusFirstRow(page);
+    for (let i = 0; i < presses; i++) {
+      await page.keyboard.press('ArrowDown');
+      await expectFocusedRowInBand(page, 3); // un-fixed overshoot is tens of px
+    }
+  });
+}
+
 test('Canvas mode: ArrowDown past the bottom and back stays in the row band, no double scroll', async ({
   page,
 }) => {
@@ -372,3 +398,22 @@ test('Canvas mode: ArrowDown past the bottom and back stays in the row band, no 
   for (let i = 0; i < 25; i++) await page.keyboard.press('ArrowUp');
   expect(await container.evaluate((el) => el.scrollTop)).toBe(0);
 });
+
+// Canvas-mode regression guard without the old hard-coded geometry: a >2000-row `createGantt()`
+// chart under two container heights (the Canvas viewport follows the container). The SVG helper
+// is gated off, so the final offset must equal Canvas's own expectation, never double-scrolled.
+for (const height of [420, 250]) {
+  test(`Canvas (createGantt, ${height}px container): no double scroll`, async ({ page }) => {
+    await page.goto('/collapse.html?pad=2100');
+    await page.evaluate((h) => (document.getElementById('gantt')!.style.height = `${h}px`), height);
+    await page.locator('.fg-timeline-a11y-layer [tabindex="0"]').first().focus();
+    const n = 30;
+    for (let i = 0; i < n; i++) await page.keyboard.press('ArrowDown');
+    const { top, ch } = await page.evaluate(() => {
+      const c = document.getElementById('gantt')!;
+      return { top: c.scrollTop, ch: c.clientHeight };
+    });
+    // Row index n sits at y = 32 * n (default density); minimal bottom-flush scroll.
+    expect(top).toBe(Math.max(0, 32 * n + 32 - (ch - HEADER)));
+  });
+}
