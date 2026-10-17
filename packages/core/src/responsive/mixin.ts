@@ -178,7 +178,6 @@ export function withResponsive<T extends GanttInstance>(
   let pinch: { a: number; b: number; ref: number } | undefined;
   let cancelling = false;
   let pinchTarget: Element | undefined;
-  let pinchWindow: Window | undefined;
 
   const isCoarse = (): boolean => mql?.matches === true;
 
@@ -361,9 +360,8 @@ export function withResponsive<T extends GanttInstance>(
         for (const [type, fn] of panListeners) panTarget.addEventListener(type, fn);
         if (pinchEnabled) {
           pinchTarget = container;
-          pinchWindow = container.ownerDocument.defaultView ?? undefined;
           for (const [type, fn, onWindow] of pinchListeners) {
-            (onWindow ? pinchWindow : container)?.addEventListener(type, fn, true);
+            (onWindow ? window : container).addEventListener(type, fn, true);
           }
         }
       }
@@ -419,11 +417,10 @@ export function withResponsive<T extends GanttInstance>(
     if (!panTarget) return;
     for (const [type, fn] of panListeners) panTarget.removeEventListener(type, fn);
     for (const [type, fn, onWindow] of pinchListeners) {
-      (onWindow ? pinchWindow : pinchTarget)?.removeEventListener(type, fn, true);
+      (onWindow ? window : pinchTarget)?.removeEventListener(type, fn, true);
     }
     panTarget = undefined;
     pinchTarget = undefined;
-    pinchWindow = undefined;
     pan = undefined;
     pinch = undefined;
     touches.clear();

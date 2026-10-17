@@ -27,7 +27,7 @@ This file is the context entry point for AI. Details are split into rules under 
    | `+ withRender` | 14.47 KiB | 15 KiB |
    | `+ withRender + withInteraction` | 19.02 KiB | 19.5 KiB |
    | `+ withRender + withTheme` | 15.15 KiB | 16 KiB |
-   | `+ withRender + withInteraction + withResponsive` | 20.34 KiB | 21 KiB |
+   | `+ withRender + withInteraction + withResponsive` | 20.39 KiB | 21 KiB |
    | `+ withRender + withViewport` | 15.35 KiB | 16 KiB |
    | `+ withConflicts` (headless) | 9.37 KiB | 10 KiB |
    | `+ withRender + withEditHooks` (not in the kitchen sink) | 15.80 KiB | 16 KiB |
@@ -101,7 +101,7 @@ This file is the context entry point for AI. Details are split into rules under 
    free: the next renderer feature still has to find its bytes.
 
    The 2026-10 pinch-zoom pass (`withResponsive()`'s two-finger recognizer) moved ONLY that row:
-   20290 -> 20829 B (+539 B, ceiling was +600 B), headroom 675 B; every other fixture is +0 B, and
+   20290 -> 20875 B (+585 B, ceiling was +600 B), headroom 629 B; every other fixture is +0 B, and
    it is inside `responsive/mixin.ts` precisely so they stay so. The `gesturestart` iOS fallback
    (+60-80 B) was deliberately not added; it is applied only if the manual iOS check in
    `RELEASING.md` shows page zoom leaking onto the chart.
