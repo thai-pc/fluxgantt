@@ -131,13 +131,8 @@ export function enableKeyboardNav(
   {
     const rows = layoutRows(options.getTasks(), options.density, options.getCollapsedIds());
     const selection = new Set(options.getSelection());
-    if (selection.size > 0) {
-      const firstSelectedRow = rows.find((r) => selection.has(r.task.id));
-      focusedTaskId = firstSelectedRow?.task.id ?? rows[0]?.task.id;
-    } else {
-      focusedTaskId = rows[0]?.task.id;
-    }
-    anchorTaskId = focusedTaskId;
+    // First selected row, else (also for an empty selection) the first row.
+    setFocus((rows.find((r) => selection.has(r.task.id)) ?? rows[0])?.task.id);
   }
 
   handle.interactionRoot.addEventListener('keydown', onKeyDown);
@@ -149,7 +144,11 @@ export function enableKeyboardNav(
   return { dispose, getFocusedTaskId, syncFocusToRows, focusTask };
 
   function focusTask(id: TaskId): void {
-    if (disposed) return;
+    if (!disposed) setFocus(id);
+  }
+
+  /** Moves focus AND resets the Shift-range anchor to the same row. */
+  function setFocus(id: TaskId | undefined): void {
     focusedTaskId = id;
     anchorTaskId = id;
   }
@@ -179,8 +178,7 @@ export function enableKeyboardNav(
       let cursor = taskMap.get(focusedTaskId)?.parent;
       while (cursor !== undefined) {
         if (rows.some((r) => r.task.id === cursor)) {
-          focusedTaskId = cursor;
-          anchorTaskId = cursor;
+          setFocus(cursor);
           return;
         }
         cursor = taskMap.get(cursor)?.parent;
@@ -226,6 +224,7 @@ export function enableKeyboardNav(
     // any other code path between the last render and this keydown.
     const rows = layoutRows(options.getTasks(), options.density, options.getCollapsedIds());
     const currentIndex = rows.findIndex((r) => r.task.id === focusedTaskId);
+    const mod = event.ctrlKey || event.metaKey;
 
     switch (event.key) {
       case 'ArrowDown':
@@ -258,14 +257,11 @@ export function enableKeyboardNav(
         // (a switch cannot match on modifier state as a case label). Cross-platform modifier
         // check reuses the exact pattern already established at selection.ts:150
         // (`event.ctrlKey || event.metaKey`, no separate Mac/Windows branching).
-        if (!(event.ctrlKey || event.metaKey)) return; // plain 'z'/'Z', no modifier — not this binding's concern, not prevented
+        if (!mod) return; // plain 'z'/'Z', no modifier — not this binding's concern, not prevented
         if (options.isReadOnly()) return; // no-op, event not prevented (mirrors Delete/Backspace's gate exactly)
         event.preventDefault();
-        if (event.shiftKey) {
-          options.onRedo();
-        } else {
-          options.onUndo();
-        }
+        if (event.shiftKey) options.onRedo();
+        else options.onUndo();
         return;
       case 'd':
       case 'D':
@@ -282,7 +278,7 @@ export function enableKeyboardNav(
         // suppress this specific reserved shortcut — an accepted, unfixable-from-userland v1
         // gap, not a bug (spec-duplicate-keybinding.md §1). Do not swap this key combo to dodge
         // the collision — apps/docs/fluxgantt-spec.md §8.4 mandates exactly Ctrl/Cmd+D.
-        if (!(event.ctrlKey || event.metaKey)) return; // plain 'd'/'D', no modifier — not this binding's concern
+        if (!mod) return; // plain 'd'/'D', no modifier — not this binding's concern
         if (options.isReadOnly()) return; // no-op, event not prevented (mirrors Delete/z-Z's gate exactly)
         event.preventDefault();
         options.onDuplicateSelected();
@@ -300,7 +296,7 @@ export function enableKeyboardNav(
         // is load-bearing here: Ctrl/Cmd+Plus/Minus are native browser page-zoom shortcuts in
         // every major browser — without it, the chart's zoom and the page's zoom would both
         // fire on the same keystroke.
-        if (!(event.ctrlKey || event.metaKey)) return;
+        if (!mod) return;
         event.preventDefault();
         options.onZoomIn();
         return;
@@ -311,7 +307,7 @@ export function enableKeyboardNav(
         // "Ctrl+Minus" keystroke pattern produces it, and adding it would widen the match
         // surface for no observed benefit (bundle-budget-conscious — see spec §1.5). Same
         // readOnly/preventDefault posture as the zoom-in arm above.
-        if (!(event.ctrlKey || event.metaKey)) return;
+        if (!mod) return;
         event.preventDefault();
         options.onZoomOut();
         return;
@@ -320,9 +316,8 @@ export function enableKeyboardNav(
         // no-op on a leaf. Not bound to ArrowLeft/ArrowRight (reserved above for future
         // horizontal/cell nav) and not Space (already bound to selection toggle) — see the
         // spec's own reasoning for why Enter is the conflict-free choice.
-        if (currentIndex === -1) return;
-        const row = rows[currentIndex];
-        if (!row || !row.hasChildren) return; // no-op on a leaf
+        const row = rows[currentIndex]; // `undefined` for -1 (focus not in the grid)
+        if (!row?.hasChildren) return; // no-op on a leaf
         event.preventDefault();
         options.onToggleCollapse(row.task.id);
         return;
@@ -344,8 +339,7 @@ export function enableKeyboardNav(
       const remaining = rows.filter((r) => !selection.has(r.task.id));
       const removedIndex = rows.findIndex((r) => r.task.id === focusedTaskId);
       if (remaining.length === 0) {
-        focusedTaskId = undefined;
-        anchorTaskId = undefined;
+        setFocus(undefined);
       } else {
         // Count how many remaining rows sit before the removed row's original position, to
         // clamp to "the row now at the same position, or the new last row" (spec §4.6).
@@ -354,8 +348,7 @@ export function enableKeyboardNav(
           .filter((r) => !selection.has(r.task.id)).length;
         const clampedIndex = Math.min(removedBefore, remaining.length - 1);
         const next = remaining[clampedIndex]!.task.id;
-        focusedTaskId = next;
-        anchorTaskId = next;
+        setFocus(next);
       }
     }
     options.onDeleteSelected();
@@ -390,8 +383,7 @@ export function enableKeyboardNav(
       const anchor = anchorTaskId ?? next;
       options.onRangeSelect(anchor, next);
     } else {
-      focusedTaskId = next;
-      anchorTaskId = next;
+      setFocus(next);
       options.onSelect(next);
     }
   }
@@ -401,8 +393,7 @@ export function enableKeyboardNav(
    *  both become `undefined`. */
   function clampFocus(rows: readonly RowLayout[]): void {
     if (rows.length === 0) {
-      focusedTaskId = undefined;
-      anchorTaskId = undefined;
+      setFocus(undefined);
       return;
     }
     // No stable "previous row index" is available once the id itself no longer resolves —
@@ -410,8 +401,7 @@ export function enableKeyboardNav(
     // the removed row was last" case, applied generally since we don't know the previous
     // position once the id is gone).
     const last = rows[rows.length - 1]!.task.id;
-    focusedTaskId = last;
-    anchorTaskId = last;
+    setFocus(last);
   }
 
   function dispose(): void {
