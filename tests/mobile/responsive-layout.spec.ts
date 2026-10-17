@@ -16,8 +16,9 @@ const MIN_LABEL_COLUMN_WIDTH = 96; // `ResponsiveOptions.minLabelColumnWidth` de
  *  than from the mixin's own accessor — so this cannot pass on a value that was computed and
  *  then never reached the SVG. */
 async function paintedLabelColumnWidth(page: import('@playwright/test').Page): Promise<number> {
-  return Number(
-    await page.locator('.fg-timeline__label-divider').first().getAttribute('x1'),
+  // The divider is pixel-snapped half a pixel inside the column (offset - 0.5).
+  return (
+    Number(await page.locator('#gantt svg.fg-timeline .fg-timeline__label-divider').getAttribute('x1')) + 0.5
   );
 }
 
@@ -158,7 +159,8 @@ test.describe('scroll methods honour the narrowed label column', () => {
     const c = (await page.locator('#gantt').boundingBox())!;
     const bar = (await page.locator('.fg-task[data-task-id="test"] .fg-task__bar').boundingBox())!;
     // With the stale 160px constant the bar would sit (160 - labelW) px off centre.
-    const drift = Math.abs(bar.x - (c.x + c.width / 2));
+    // The column is pinned, so the free area (and its middle) starts right of it.
+    const drift = Math.abs(bar.x - (c.x + labelW + (c.width - labelW) / 2));
     expect(drift).toBeLessThanOrEqual(2);
     expect(160 - labelW).toBeGreaterThan(2); // the assertion above is able to detect the stale constant
   });

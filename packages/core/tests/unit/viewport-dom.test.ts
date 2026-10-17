@@ -261,15 +261,115 @@ describe('scrollToTask (Canvas coordinate model)', () => {
     // row band = 332 - 32 = 300 tall; row 60 bottom = 61 * 32
     expect(geo.top).toBe(61 * ROW_HEIGHT.default - 300);
   });
+
+  it('keeps the label column in the horizontal coordinates: Canvas does not pin it', () => {
+    const g = withViewport(createGantt({ tasks: manyTasks(3) }));
+    const geo = stubGeometry(container, 800, 332);
+    const handle = {
+      container,
+      getLabelColumnWidth: () => LABEL_W,
+      getTimeScale: () => ({ dateToX: (d: unknown) => (d === '2026-01-05' ? 1000 : 1100), totalWidth: 5000 }),
+      setOptions: vi.fn(),
+    };
+    getInternal(g).setMount({ renderer: 'canvas', handle } as unknown as MountState);
+    g.scrollToTask(toTaskId('t1'), { align: 'start' });
+    expect(geo.left).toBe(LABEL_W + 1000); // content x = labelW + d, full viewport width
+    g.scrollToTask(toTaskId('t1'), { align: 'end' });
+    expect(geo.left).toBe(LABEL_W + 1100 - 800);
+    g.scrollToDate('2026-01-05', { align: 'start' });
+    expect(geo.left).toBe(LABEL_W + 1000);
+  });
+});
+
+describe('scrollToTask horizontal (SVG pinned label column)', () => {
+  const far = (id: string, start: string, end: string, type: 'task' | 'milestone' = 'task'): TaskInput => ({
+    id: toTaskId(id),
+    name: id,
+    start,
+    end,
+    progress: 0,
+    type,
+  });
+  const chart = (width = 800) => {
+    const g = withViewport(
+      withRender(createGantt({ tasks: [...manyTasks(2), far('far', '2026-06-01', '2026-06-03')], viewMode: 'day' })),
+    );
+    g.mount(container);
+    const geo = stubGeometry(container, width, 300);
+    const scale = getInternal(g).mountOf()!.handle.getTimeScale();
+    return { g, geo, d0: scale.dateToX('2026-06-01'), d1: scale.dateToX('2026-06-03') };
+  };
+
+  it('start parks the bar directly right of the pinned column (scrollLeft = d, not labelW + d)', () => {
+    const { g, geo, d0 } = chart();
+    g.scrollToTask(toTaskId('far'), { align: 'start' });
+    expect(geo.left).toBe(d0);
+    // On screen the bar is at labelW + d0 - scrollLeft = labelW: the column's edge, never under it.
+    expect(LABEL_W + d0 - geo.left).toBe(LABEL_W);
+  });
+
+  it('end puts the bar right edge at the container right edge', () => {
+    const { g, geo, d1 } = chart();
+    g.scrollToTask(toTaskId('far'), { align: 'end' });
+    expect(LABEL_W + d1 - geo.left).toBe(800);
+  });
+
+  it('center centres the bar in the area right of the column', () => {
+    const { g, geo, d0, d1 } = chart();
+    g.scrollToTask(toTaskId('far'), { align: 'center' });
+    const free = 800 - LABEL_W;
+    expect(geo.left).toBeCloseTo((d0 + d1) / 2 - free / 2, 6);
+  });
+
+  it('nearest from the left of the view scrolls just enough to clear the column', () => {
+    const { g, geo, d0 } = chart();
+    geo.left = d0 + 100; // the bar is behind the column
+    g.scrollToTask(toTaskId('far'), { align: 'nearest' });
+    expect(geo.left).toBe(d0);
+  });
+
+  it('nearest is a no-op when the bar is already inside the free area', () => {
+    const { g, geo, d0 } = chart();
+    geo.left = d0 - 100; // bar starts 100px into the free area
+    g.scrollToTask(toTaskId('far'), { align: 'nearest' });
+    expect(geo.left).toBe(d0 - 100);
+  });
+
+  it('a bar wider than the free area aligns its start to the column edge', () => {
+    const { g, geo, d0, d1 } = chart(LABEL_W + 20); // a 20px free area
+    expect(d1 - d0).toBeGreaterThan(20);
+    g.scrollToTask(toTaskId('far'), { align: 'nearest' });
+    expect(geo.left).toBe(d0);
+  });
+
+  it('writes no horizontal offset when the column covers the whole viewport', () => {
+    const { g, geo } = chart(LABEL_W);
+    geo.left = 77;
+    g.scrollToTask(toTaskId('far'), { align: 'start' });
+    expect(geo.left).toBe(77);
+  });
+
+  it('pads a milestone by its half-diagonal on the side that faces the column', () => {
+    const g = withViewport(
+      withRender(createGantt({ tasks: [...manyTasks(2), far('ms', '2026-06-03', '2026-06-03', 'milestone')], viewMode: 'day' })),
+    );
+    g.mount(container);
+    const geo = stubGeometry(container, 800, 300);
+    const d = getInternal(g).mountOf()!.handle.getTimeScale().dateToX('2026-06-03');
+    const half = (32 * 0.6) / Math.SQRT2;
+    g.scrollToTask(toTaskId('ms'), { align: 'start' });
+    expect(geo.left).toBeCloseTo(d - half, 6);
+  });
 });
 
 describe('scrollToDate', () => {
   it('centres a date, and reports in-range', () => {
     const { g, geo } = mounted(manyTasks(2), { viewMode: 'day' });
     const scale = getInternal(g).mountOf()!.handle.getTimeScale();
-    const x = LABEL_W + scale.dateToX('2026-01-07');
+    const d = scale.dateToX('2026-01-07');
     expect(g.scrollToDate('2026-01-07')).toBe(true);
-    expect(geo.left).toBe(Math.max(0, x - 400));
+    // The label column is pinned: the free area is 800 - 160 wide and `d` is measured inside it.
+    expect(geo.left).toBe(Math.max(0, d - (800 - LABEL_W) / 2));
   });
 
   it('accepts string, Date, ZonedDateTime-free inputs equivalently, and honours align', () => {
@@ -409,7 +509,7 @@ describe('scrollToDate DateInput forms', () => {
   it('string, Date, ZonedDateTime and PlainDate give the same scroll, at an exact offset', () => {
     const { g, geo } = mounted(manyTasks(2), { viewMode: 'day', timezone: 'UTC' });
     const scale = getInternal(g).mountOf()!.handle.getTimeScale();
-    const expected = Math.max(0, LABEL_W + scale.dateToX('2026-01-08T00:00:00Z') - 400);
+    const expected = Math.max(0, scale.dateToX('2026-01-08T00:00:00Z') - (800 - LABEL_W) / 2);
     const inputs = [
       '2026-01-08T00:00:00Z',
       new Date('2026-01-08T00:00:00Z'),

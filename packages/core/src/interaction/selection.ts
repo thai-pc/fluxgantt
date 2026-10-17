@@ -50,13 +50,12 @@ export interface SelectionOptions {
  *  `handle.hitTestRow()` instead (spec-canvas-renderer-ticket2.md §7.2), since a real click on
  *  the visible `<canvas>` bitmap never lands on a DOM descendant of `.fg-timeline__row`. */
 function resolveRowHitDom(target: Element): { taskId: TaskId; rowIndex: number } | undefined {
-  const rowEl = target.closest('.fg-timeline__row');
-  if (!rowEl) return undefined;
-  const taskEl = rowEl.querySelector('.fg-task[data-task-id]');
-  const idAttr = taskEl?.getAttribute('data-task-id');
-  const rowIndexAttr = rowEl.getAttribute('data-row-index');
-  if (idAttr === null || idAttr === undefined || rowIndexAttr === null) return undefined;
-  return { taskId: toTaskId(idAttr), rowIndex: Number(rowIndexAttr) };
+  // `[data-row-index]` (+ `data-task-id` on the same node) is carried by the row group AND by the pinned
+  // label-column clones, so a click on a pinned label resolves exactly like one on the real label.
+  const rowEl = target.closest('[data-row-index]');
+  const idAttr = rowEl?.getAttribute('data-task-id');
+  if (!rowEl || idAttr === null || idAttr === undefined) return undefined;
+  return { taskId: toTaskId(idAttr), rowIndex: Number(rowEl.getAttribute('data-row-index')) };
 }
 
 interface DownState {
@@ -153,9 +152,18 @@ export function enableClickSelect(
   }
 
   function handleClick(s: DownState, event: PointerEvent): void {
+    // A pinned label/toggle clone is not focusable, so a click on it would drop focus to <body> (the real
+    // label it stands for sits inside a focusable row). Hand focus to that row before anything repaints.
+    const t = s.downTarget; // the press target: the same node `resolveHit` uses below
+    if (!handle.interactionRoot.contains(t)) {
+      const row = t.closest('[data-row-index]');
+      handle.interactionRoot
+        .querySelector<SVGElement>(`g[data-row-index="${row?.getAttribute('data-row-index')}"]`)
+        ?.focus({ preventScroll: true });
+    }
     // (spec-collapse-expand.md §7.2) — a click on the collapse/expand toggle glyph must NOT
     // also fire row selection; `enableCollapseToggle` owns that click exclusively.
-    if (event.target instanceof Element && event.target.closest('.fg-timeline__row-toggle')) return;
+    if (t.closest('.fg-timeline__row-toggle')) return;
 
     const hit = resolveHit(event, s.downTarget);
 

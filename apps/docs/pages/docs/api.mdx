@@ -184,27 +184,38 @@ offsets. The methods cannot detect that and still return `true`, because the ret
 that the target exists and a scroll was requested, not that the container moved. Canvas mode sets
 `overflow-y: auto` itself.
 
-The date axis stays pinned to the top of the scroll viewport in both modes. In SVG mode that is a
-`position: sticky`, `aria-hidden` replica of the header (`svg.fg-timeline__sticky-header`, placed
-after the chart `<svg>`, so `container.querySelector('svg')` is still the chart; the exported SVG
-never contains it). Consequences worth knowing:
+The date axis stays pinned to the top of the scroll viewport in both modes, and in SVG mode the
+**label column is pinned to the inline-start edge** on horizontal scroll as well (Canvas still
+scrolls its label column away). Everything lives in one wrapper, `div.fg-timeline__layer`, that
+holds the chart `<svg>` and three `aria-hidden`, `position: sticky` layers: the label column
+(`svg.fg-timeline__sticky-column`, clones of each row label and toggle), the date axis
+(`svg.fg-timeline__sticky-header`) and the top corner (`svg.fg-timeline__sticky-corner`).
+`container.querySelector('svg')` is still the chart (a `container > svg` child selector is not: the
+wrapper is in between), and the exported SVG never contains any layer. Consequences worth knowing:
 
-- Lay the container out as a **block** or grid, not a flex container (row or column). A float is
-  ignored on a flex item, so in a flex row the pinned header lands beside the chart, and in a flex
-  column with an auto height the container collapses to about 32px (the header's negative margin
-  cancels the chart's height). A flex column with a fixed height is fine. Wrap the mount point in a
-  plain block `<div>` if your layout needs flex.
-- Give the scroll container **no `padding-top`**. A sticky box pins at the padding edge, so with
-  padding the rows scroll visibly through the strip above the header. Put the spacing on a wrapper.
-- If the page itself scrolls (the container has no `overflow`), the header pins to the top of the
-  browser viewport while the page scrolls through the chart, and stops at the chart's bottom. A fixed
-  host navbar will cover it. Layout and following content are unaffected.
-- Right-to-left pages are supported: the header follows the chart's inline-start edge.
-- `scrollToTask`/`setDensity` use one coordinate system for both renderers: `align: 'start'` parks
-  the row directly **under** the 32px header, and the usable row band is `clientHeight - 32`.
-- The pinned header is opaque, including the label-column corner (`--fg-bg-subtle`), and it is not
-  part of the chart `<svg>`, so pointer events over it (selection clicks, drops of a dependency
-  drag) do not reach the rows scrolled beneath. Ctrl+wheel over it still zooms.
+- The container can be **any `display`** (block, flex, grid): the wrapper is a single in-flow child
+  and aligns to `start`, so a flex column with an auto height has the chart's height and a flex row
+  with a fixed height still pins.
+- **Container `padding` is a limit.** A sticky box pins at the scroller's content edge, so with
+  `padding: P` the band and the column stay `P` px inside the container and scrolled rows show in the
+  strip. `scrollToTask`/`scrollToDate` are also off by `P`. Put the spacing on a wrapper.
+- The pinned column's ground is opaque and is `var(--fg-bg, #fff)`: set `--fg-bg` on the container
+  (or an ancestor) to your page background, or a non-white page shows a white slab behind the names.
+- The names are drawn by the clones; the real labels stay in the chart (accessible names, export)
+  but are painted invisible live. A name wider than `labelColumnWidth` is therefore **cut at the
+  column edge** on screen (the export keeps the full name); widen `labelColumnWidth` for long names.
+- If the page itself scrolls (the container has no `overflow`), the layers pin to the browser
+  viewport while the page scrolls through the chart. A fixed host navbar will cover the header.
+- Right-to-left pages are supported: the layers follow the chart's inline-start edge.
+- `scrollToTask`/`scrollToDate` use one model: `align: 'start'` parks the row directly **under** the
+  32px header, and (SVG) the bar directly **right of** the pinned column; the usable area is
+  `clientHeight - 32` by `clientWidth - labelColumnWidth`. Canvas keeps scrolling its label column,
+  so there the horizontal numbers include it.
+- Pointer events: a click on a pinned label or toggle behaves exactly like one on the real label
+  (select, Shift/Ctrl, collapse, `task:activated`, `task:context-requested`, touch pan). A click on
+  the blank column or the date band clears the selection, like any blank chart space.
+- Tests and host code that count `[data-task-id]`, `[data-row-index]` or `.fg-timeline__row-label`
+  over the whole container now also see the clones: scope them to `svg.fg-timeline`.
 - While mounted, the container's inline `scroll-padding-top` is `32px` so natively focus-scrolled
   rows stop below the header; your previous inline value is restored on unmount. Firefox ignores
   `scroll-padding` when it focuses an SVG row (it scrolls the container to the top); this predates
@@ -369,7 +380,7 @@ gantt.on('task:context-requested', (p) => {
   (core ships none):
 
   ```css
-  .fg-timeline__row { -webkit-touch-callout: none; user-select: none; }
+  .fg-timeline__row, .fg-timeline__sticky-column { -webkit-touch-callout: none; user-select: none; }
   ```
 - **macOS <kbd>Ctrl</kbd>+click** is reported by browsers as a right-click, so it fires
   `task:context-requested` and also toggles the selection.

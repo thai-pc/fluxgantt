@@ -56,10 +56,11 @@ export interface ScrollToDateOptions {
  * Scroll and density capability.
  *
  * **Precondition (SVG mode):** the mount container IS the scroll viewport. Give it a bounded
- * height and `overflow: auto` (e.g. `style="height: 420px; overflow: auto"`) and lay it out as a
- * block or grid, not flex (the pinned header is a floated `position: sticky` sibling: a flex row
- * places it beside the chart and an auto-height flex column collapses to ~32px) with no
- * `padding-top` (sticky pins at the padding edge). The SVG renderer does not make its container scrollable (Canvas mode sets `overflow-y: auto` itself); on a
+ * height and `overflow: auto` (e.g. `style="height: 420px; overflow: auto"`). The SVG chart pins its
+ * date axis and its label column with `position: sticky` inside a `div.fg-timeline__layer` wrapper, so
+ * any container `display` works (block, flex, grid). Container `padding` shifts the offsets written here
+ * by its own size, because the chart origin is assumed to be the scroller's content origin. The SVG
+ * renderer does not make its container scrollable (Canvas mode sets `overflow-y: auto` itself); on a
  * non-scrollable container the browser ignores the offsets, yet the methods still return `true`
  * because the return value reports that the target exists and an offset was written, not that the
  * container moved.
@@ -168,8 +169,11 @@ export function withViewport<T extends GanttInstance>(instance: T): T & Viewport
       // and the visible row band is the container minus the header.
       const itemTop = row.y;
       const viewH = container.clientHeight - HEADER_HEIGHT;
-      let x0 = labelW + scale.dateToX(task.start);
-      let x1 = Math.max(x0, labelW + scale.dateToX(task.end));
+      // SVG pins the label column, so the horizontal window is the container minus the column and a bar
+      // sits at `d` (dateToX) in that window; Canvas still scrolls the column away (`pinned` 0).
+      const pinned = mount.renderer === 'svg' ? labelW : 0;
+      let x0 = labelW - pinned + scale.dateToX(task.start);
+      let x1 = Math.max(x0, labelW - pinned + scale.dateToX(task.end));
       if (task.type === 'milestone') {
         // A milestone is a point in time but is painted as a rotated square (side = rowHeight *
         // 0.6, see layoutTaskBar), so its visible half-extent is the half-diagonal. Using the
@@ -183,10 +187,8 @@ export function withViewport<T extends GanttInstance>(instance: T): T & Viewport
         viewH > 0
           ? resolveAxis(itemTop, itemTop + ROW_HEIGHT[density], container.scrollTop, viewH, align)
           : undefined;
-      const left =
-        container.clientWidth > 0
-          ? resolveAxis(x0, x1, container.scrollLeft, container.clientWidth, align)
-          : undefined;
+      const viewW = container.clientWidth - pinned;
+      const left = viewW > 0 ? resolveAxis(x0, x1, container.scrollLeft, viewW, align) : undefined;
       applyScroll(container, left, top, options.behavior);
       return true;
     },
@@ -200,11 +202,12 @@ export function withViewport<T extends GanttInstance>(instance: T): T & Viewport
       const scale = handle.getTimeScale();
       const rel = scale.dateToX(date); // throws on an unparseable date
       if (!Number.isFinite(rel)) throw new Error('gantt.scrollToDate: invalid date');
-      const x = handle.getLabelColumnWidth() + rel;
+      const labelW = handle.getLabelColumnWidth();
+      const pinned = mount.renderer === 'svg' ? labelW : 0;
+      const x = labelW - pinned + rel;
+      const viewW = container.clientWidth - pinned;
       const left =
-        container.clientWidth > 0
-          ? resolveAxis(x, x, container.scrollLeft, container.clientWidth, options.align ?? 'center')
-          : undefined;
+        viewW > 0 ? resolveAxis(x, x, container.scrollLeft, viewW, options.align ?? 'center') : undefined;
       applyScroll(container, left, undefined, options.behavior);
       return rel >= 0 && rel <= scale.totalWidth;
     },

@@ -27,9 +27,10 @@ function svgRow(page: Page, taskId: string): Locator {
   return page.locator(`${SVG_ROW}[data-task-id="${taskId}"]`);
 }
 
-/** The collapse/expand chevron inside a given SVG row. */
+/** The collapse/expand chevron of a given row: the pinned clone in the sticky label column, which
+ *  is what a pointer can reach (the real glyph sits underneath it). */
 function svgToggle(page: Page, taskId: string): Locator {
-  return page.locator(`${SVG_ROW}[data-task-id="${taskId}"] .fg-timeline__row-toggle`);
+  return page.locator(`.fg-timeline__sticky-column .fg-timeline__row-toggle[data-task-id="${taskId}"]`);
 }
 
 async function isCollapsed(page: Page, taskId: string): Promise<boolean> {

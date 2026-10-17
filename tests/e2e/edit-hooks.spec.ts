@@ -79,7 +79,7 @@ test.describe('SVG renderer', () => {
   });
 
   test('dblclick on the label reports part label', async ({ page }) => {
-    await row(page, 'c').locator('.fg-timeline__row-label').dblclick();
+    await page.locator('.fg-timeline__sticky-column .fg-timeline__row-label[data-task-id="c"]').dblclick();
     await page.keyboard.press('Escape');
     const label = await events(page, 'task:activated');
     expect(label).toHaveLength(1);
@@ -102,7 +102,7 @@ test.describe('SVG renderer', () => {
   });
 
   test('dblclick on the collapse toggle emits nothing', async ({ page }) => {
-    await row(page, 'sum').locator('.fg-timeline__row-toggle').dblclick();
+    await page.locator('.fg-timeline__sticky-column .fg-timeline__row-toggle[data-task-id="sum"]').dblclick();
     expect(await events(page, 'task:activated')).toHaveLength(0);
     await expect(page.getByRole('dialog')).toHaveCount(0);
   });
@@ -122,7 +122,7 @@ test.describe('SVG renderer', () => {
     await page.goto('/edit-hooks.html?prevent=0');
     await expect(page.locator('svg.fg-timeline')).toBeVisible();
     await clearEvents(page);
-    await row(page, 'c').locator('.fg-timeline__row-label').click({ button: 'right' });
+    await page.locator('.fg-timeline__sticky-column .fg-timeline__row-label[data-task-id="c"]').click({ button: 'right' });
     expect(await events(page, 'task:context-requested')).toHaveLength(1);
     const native = await events(page, 'native:contextmenu');
     expect(native).toHaveLength(1);

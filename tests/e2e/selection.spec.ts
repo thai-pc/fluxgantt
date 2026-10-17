@@ -72,9 +72,9 @@ test('clicking empty canvas area clears the selection', async ({ page }) => {
   await taskBar(page, 'sibling-a').click();
   await expect(taskBar(page, 'sibling-a')).toHaveClass(/fg-task--selected/);
 
-  // Click on the SVG root itself (outside any task row) — the left margin of a row band. Not the
-  // header: that band is the pinned sticky overlay and no longer reaches the chart.
-  await page.locator('svg.fg-timeline').click({ position: { x: 5, y: 40 } });
+  // Click on the SVG root itself (outside any task row) — the blank label column.
+  // The blank part of the pinned label column is chart space too (listener target is the layer).
+  await page.locator('.fg-timeline__sticky-column').click({ position: { x: 5, y: 120 } });
 
   await expect(page.locator('.fg-task--selected')).toHaveCount(0);
   expect(await getSelection(page)).toEqual([]);

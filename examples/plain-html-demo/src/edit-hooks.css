@@ -4,6 +4,7 @@
 /* iOS has no `contextmenu` event on long-press: the callout and the text-selection loupe can only
    be stopped with CSS (the documented host recipe). */
 #gantt .fg-timeline__row,
+#gantt .fg-timeline__sticky-column,
 #gantt canvas {
   -webkit-touch-callout: none;
   user-select: none;

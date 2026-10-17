@@ -161,7 +161,7 @@ test('drag-create-dependency after scrolling links the right rows; releasing ove
   await expect.poll(async () => await added()).toContain('filler-30->filler-31');
 });
 
-test('clicking the pinned band does nothing; clicking a visible row selects it', async ({ page }) => {
+test('clicking the pinned band clears the selection like any blank chart space; a visible row selects', async ({ page }) => {
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(e.message));
   await g(page, (x) => x.scrollToTask('filler-30', { align: 'start' }));
@@ -170,7 +170,9 @@ test('clicking the pinned band does nothing; clicking a visible row selects it',
 
   const c = await clientOrigin(page);
   await page.mouse.click(c.x + 300, c.y + 10);
-  expect(await g(page, (x) => x.getSelection())).toEqual(['filler-30']);
+  // The band lives inside the layer wrapper, which is the listener target, so a click on it is
+  // blank chart space (it used to be swallowed by the overlay sibling).
+  await expect.poll(() => g(page, (x) => x.getSelection())).toEqual([]);
   expect(errors).toEqual([]);
 });
 

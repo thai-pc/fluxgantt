@@ -68,7 +68,7 @@ test.describe('SVG renderer', () => {
 
     // Collapse the inner summary only, so the tree now genuinely contains all three row kinds
     // at once: an expanded container (`phase-1`), a collapsed container (`group-a`), and leaves.
-    await page.locator(`${SVG_ROW}[data-task-id="group-a"] .fg-timeline__row-toggle`).click();
+    await page.locator(`.fg-timeline__sticky-column .fg-timeline__row-toggle[data-task-id="group-a"]`).click();
 
     const mixed = await new AxeBuilder({ page }).include('#gantt').analyze();
     expect(mixed.violations).toEqual([]);
@@ -86,7 +86,7 @@ test.describe('SVG renderer', () => {
     expect(expanded['leaf-b']).toBeNull();
     expect(expanded['standalone']).toBeNull();
 
-    await page.locator(`${SVG_ROW}[data-task-id="group-a"] .fg-timeline__row-toggle`).click();
+    await page.locator(`.fg-timeline__sticky-column .fg-timeline__row-toggle[data-task-id="group-a"]`).click();
 
     const afterCollapse = await ariaExpandedByTaskId(page, SVG_ROW);
     expect(afterCollapse['group-a']).toBe('false');
@@ -122,7 +122,7 @@ test.describe('SVG renderer', () => {
     // rects, so a synthesized pointer click on it is always intercepted (same posture as
     // `tests/e2e/collapse-expand.spec.ts`).
     await page.locator(`${SVG_ROW}[data-task-id="leaf-a1"]`).focus();
-    await page.locator(`${SVG_ROW}[data-task-id="phase-1"] .fg-timeline__row-toggle`).click();
+    await page.locator(`.fg-timeline__sticky-column .fg-timeline__row-toggle[data-task-id="phase-1"]`).click();
 
     await expect(page.locator('svg.fg-timeline [tabindex="0"]')).toHaveCount(1);
     const activeTag = await page.evaluate(() => document.activeElement?.tagName ?? null);
@@ -166,7 +166,7 @@ test.describe('SVG renderer', () => {
   test('`aria-level` survives a collapse — the still-visible rows keep their real depth', async ({
     page,
   }) => {
-    await page.locator(`${SVG_ROW}[data-task-id="group-a"] .fg-timeline__row-toggle`).click();
+    await page.locator(`.fg-timeline__sticky-column .fg-timeline__row-toggle[data-task-id="group-a"]`).click();
 
     const after = await ariaLevelByTaskId(page, SVG_ROW);
     // A collapsed container is still a container, so it keeps its own level; hiding its

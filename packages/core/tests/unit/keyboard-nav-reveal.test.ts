@@ -65,11 +65,15 @@ function setup(opts: {
     root.appendChild(g);
     return g;
   });
-  container.appendChild(root);
+  // The chart sits in the renderer's layer wrapper, NOT directly in the scroller: the reveal must
+  // read `handle.container`, never `parentElement`.
+  const layer = document.createElement('div');
+  layer.appendChild(root);
+  container.appendChild(layer);
   document.body.appendChild(container);
   const onSelect = vi.fn();
   const onRangeSelect = vi.fn();
-  const handle = { interactionRoot: root } as unknown as InteractiveRendererHandle;
+  const handle = { interactionRoot: root, container } as unknown as InteractiveRendererHandle;
   const nav = enableKeyboardNav(handle, {
     onSelect,
     onToggle: vi.fn(),

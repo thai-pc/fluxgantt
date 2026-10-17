@@ -109,6 +109,7 @@ export function exportSvg(svg: SVGSVGElement, options?: ExportSvgOptions): strin
   //    unconditionally (selection) / conditionally (link handles), so this must remove ALL of
   //    them, not just the first (`querySelector('style')` would leave the second behind).
   clone.querySelectorAll('style').forEach((el) => el.remove());
+  clone.style.removeProperty('grid-area'); // layer placement, meaningless outside the live wrapper
 
   // 5b. Strip `tabindex` (spec-keyboard-nav.md §9): a static, non-interactive exported SVG
   //     has nothing that is actually focusable — leaving `tabindex="0"`/`"-1"` in place would

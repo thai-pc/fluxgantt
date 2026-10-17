@@ -103,10 +103,100 @@ describe('enableClickSelect — DOM interaction', () => {
     return { handle, dispose, onSelect, onToggle, onRangeSelect, onClear };
   }
 
-  it('handle.interactionRoot and handle.pointerEventTarget both alias handle.svg (Ticket 2 aliasing guarantee)', () => {
+  it('interactionRoot is the chart svg; pointerEventTarget is the layer wrapper that contains it', () => {
     const { handle } = setup();
     expect(handle.interactionRoot).toBe(handle.svg);
-    expect(handle.pointerEventTarget).toBe(handle.svg);
+    expect(handle.pointerEventTarget.classList.contains('fg-timeline__layer')).toBe(true);
+    expect(handle.pointerEventTarget.contains(handle.svg)).toBe(true);
+  });
+
+  describe('pinned label column clones (spec-svg-sticky-label-column.md section 6)', () => {
+    const click = (el: Element, init: { shiftKey?: boolean; ctrlKey?: boolean; metaKey?: boolean } = {}) => {
+      dispatchPointer(el, 'pointerdown', { pointerId: 1, clientX: 20, clientY: 50, bubbles: true, ...init });
+      dispatchPointer(el, 'pointerup', { pointerId: 1, clientX: 20, clientY: 50, bubbles: true, ...init });
+    };
+    const clone = (h: ReturnType<typeof setup>['handle'], id: string): SVGElement =>
+      h.pointerEventTarget.querySelector(
+        `.fg-timeline__sticky-column .fg-timeline__row-label[data-task-id="${id}"]`,
+      ) as SVGElement;
+
+    it('a clone carries the row attributes but has no .fg-timeline__row ancestor', () => {
+      const { handle } = setup();
+      const c = clone(handle, 't2');
+      expect(c.closest('.fg-timeline__row')).toBeNull();
+      expect(c.dataset.rowIndex).toBe('1');
+    });
+
+    it('a click on a pinned label selects exactly that row', () => {
+      const { handle, onSelect, onClear } = setup();
+      click(clone(handle, 't2'));
+      expect(onClear).not.toHaveBeenCalled();
+      expect(onSelect).toHaveBeenCalledWith(toTaskId('t2'));
+    });
+
+    it('Shift range and Ctrl/Cmd toggle work from a pinned label', () => {
+      const { handle, onSelect, onRangeSelect, onToggle } = setup();
+      click(clone(handle, 't1'));
+      click(clone(handle, 't3'), { shiftKey: true });
+      expect(onSelect).toHaveBeenCalledWith(toTaskId('t1'));
+      expect(onRangeSelect).toHaveBeenCalledWith([toTaskId('t1'), toTaskId('t2'), toTaskId('t3')]);
+      click(clone(handle, 't2'), { ctrlKey: true });
+      click(clone(handle, 't3'), { metaKey: true });
+      expect(onToggle.mock.calls.map((c) => c[0])).toEqual([toTaskId('t2'), toTaskId('t3')]);
+    });
+
+    it.each(['column', 'header', 'corner'])('a click on the blank %s overlay clears the selection', (name) => {
+      const { handle, onSelect, onClear } = setup();
+      click(handle.pointerEventTarget.querySelector(`.fg-timeline__sticky-${name}`)!);
+      expect(onSelect).not.toHaveBeenCalled();
+      expect(onClear).toHaveBeenCalledTimes(1);
+    });
+
+    it('a click on the layer itself (no task under it) clears the selection', () => {
+      const { handle, onClear } = setup();
+      click(handle.pointerEventTarget);
+      expect(onClear).toHaveBeenCalledTimes(1);
+    });
+
+    it('a forged data-task-id on a clone is still only a string for the caller (no id leaves unchecked here)', () => {
+      const { handle, onSelect } = setup();
+      const c = clone(handle, 't1');
+      c.dataset.taskId = 'not-in-the-store';
+      click(c);
+      // `toTaskId` accepts any non-empty string; the facade's own `has()` gate lives above this layer.
+      expect(onSelect).toHaveBeenCalledWith(toTaskId('not-in-the-store'));
+    });
+
+    it('a click on a pinned clone hands focus to the real row it stands for (before onSelect runs)', () => {
+      const { handle, onSelect } = setup();
+      const order: string[] = [];
+      const row = handle.svg.querySelector('.fg-timeline__row[data-task-id="t2"]') as SVGElement;
+      row.addEventListener('focus', () => order.push('focus'));
+      onSelect.mockImplementation(() => order.push('select'));
+      click(clone(handle, 't2'));
+      expect(document.activeElement).toBe(row);
+      expect(order).toEqual(['focus', 'select']);
+    });
+
+    it('a click on a real label does not re-focus anything itself', () => {
+      const { handle } = setup();
+      const row = handle.svg.querySelector('.fg-timeline__row[data-task-id="t1"]') as SVGElement;
+      const spy = vi.spyOn(row, 'focus');
+      click(handle.svg.querySelector('.fg-timeline__row-label')!);
+      expect(spy).not.toHaveBeenCalled();
+    });
+
+    it('a click on a pinned toggle clone selects nothing (collapse-toggle owns it)', () => {
+      tasks = [
+        task('root', '2026-01-05T09:00', '2026-01-07T09:00', { type: 'summary' }),
+        task('child', '2026-01-05T09:00', '2026-01-06T09:00', { parent: toTaskId('root') }),
+      ];
+      const { handle, onSelect, onClear } = setup();
+      const toggle = handle.pointerEventTarget.querySelector('.fg-timeline__sticky-column .fg-timeline__row-toggle')!;
+      click(toggle);
+      expect(onSelect).not.toHaveBeenCalled();
+      expect(onClear).not.toHaveBeenCalled();
+    });
   });
 
   describe('collapse toggle exclusion guard (spec-collapse-expand.md §7.2/§9.6)', () => {
@@ -333,13 +423,14 @@ describe('enableClickSelect — minimal InteractiveRendererHandle mock (SVG-deco
     const root = document.createElement('div');
     document.body.appendChild(root);
     root.innerHTML = `
-      <div class="fg-timeline__row" data-row-index="0">
+      <div class="fg-timeline__row" data-row-index="0" data-task-id="mock-1">
         <div class="fg-task" data-task-id="mock-1"></div>
       </div>
     `;
     const handle: InteractiveRendererHandle = {
       interactionRoot: root,
       pointerEventTarget: root,
+      container: document.body,
       // Required by the shared contract but irrelevant to this module (nothing here does
       // painted-space <-> content-space conversion) — the default width is enough.
       getLabelColumnWidth: () => 160,

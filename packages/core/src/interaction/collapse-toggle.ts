@@ -66,7 +66,7 @@ export function enableCollapseToggle(
     if (!(event.target instanceof Element)) return;
     const toggleEl = event.target.closest('.fg-timeline__row-toggle');
     if (!toggleEl) return;
-    const rowEl = toggleEl.closest('.fg-timeline__row');
+    const rowEl = toggleEl.closest('[data-row-index]');
     const idAttr = rowEl?.getAttribute('data-task-id');
     if (idAttr === null || idAttr === undefined) return;
     options.onToggleCollapse(toTaskId(idAttr));

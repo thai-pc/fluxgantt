@@ -110,9 +110,9 @@ export interface SvgRendererHandle extends InteractiveRendererHandle {
   /** Same node as `svg` — `enableClickSelect`/`enableKeyboardNav` query `.fg-timeline__row`
    *  structure and attach their `keydown` listener here (spec-canvas-renderer-ticket2.md §3.3). */
   readonly interactionRoot: SVGSVGElement;
-  /** Same node as `svg` — SVG has no separate hit-testing layer, the visible `<svg>` receives
-   *  real pointer events directly (spec-canvas-renderer-ticket2.md §3.3). */
-  readonly pointerEventTarget: SVGSVGElement;
+  /** The `div.fg-timeline__layer` wrapper that holds the chart `<svg>` AND the pinned overlays, so a
+   *  pointer event on any of them bubbles to one listener target. */
+  readonly pointerEventTarget: HTMLElement;
   readonly container: HTMLElement;
   /** Full repaint (no diff — spec §5.5) with new input. The optional `options` are merged exactly
    *  like `setOptions()` BEFORE the single repaint, so changing input and options together costs
@@ -152,6 +152,8 @@ export const LABEL_COLUMN_WIDTH = 160;
 const HEADER_HEIGHT = 32;
 const LABEL_INDENT_PX = 16;
 const LABEL_PADDING_PX = 8;
+// Shared prefix of every pinned layer's inline style: one grid cell, logical start edge.
+const PIN = 'position:sticky;grid-area:1/1;align-self:start;justify-self:start;';
 
 /** Compile-time constant — never derived from task/user data (security §8). Exported so
  *  `interaction/drag-create-dep.ts`'s rubber-band preview can reference the SAME marker id
@@ -194,7 +196,7 @@ const LINK_HANDLE_STYLE_TEXT =
 // unconditional (unlike LINK_HANDLE_STYLE_TEXT, which is gated behind `showLinkHandles`) —
 // selection must stay visible even in a `readOnly` chart.
 const SELECTION_STYLE_TEXT =
-  '.fg-task--selected .fg-task__bar{outline:var(--fg-task-selected-width,2px) solid var(--fg-task-selected,#4338ca);outline-offset:var(--fg-task-selected-offset,2px)}';
+  '.fg-timeline__layer>.fg-timeline .fg-timeline__row-label{opacity:0}.fg-task--selected .fg-task__bar{outline:var(--fg-task-selected-width,2px) solid var(--fg-task-selected,#4338ca);outline-offset:var(--fg-task-selected-offset,2px)}';
 
 /** Geometry offset (px) between the task bar's own edge and the extra focus-ring `<rect>`'s
  *  edge — matches the `--fg-task-focus-offset` design token's default (spec §5.1). SVG
@@ -234,14 +236,7 @@ const FOCUS_STYLE_TEXT =
   '.fg-task__focus-ring{fill:none;stroke:none;pointer-events:none}' +
   '.fg-timeline__row:focus-visible .fg-task__focus-ring{stroke:var(--fg-task-focus,#0ea5e9);stroke-width:var(--fg-task-focus-width,2px)}';
 
-/** Defensive string-length cap applied to any task field folded into an `aria-label`
- *  attribute value (security.md "limit string length"). */
-const MAX_ARIA_NAME_LENGTH = 200;
 
-const DEFAULT_VIEW_MODE: ViewMode = 'week';
-const DEFAULT_DENSITY: Density = 'default';
-const DEFAULT_LOCALE = 'en';
-const DEFAULT_ARIA_LABEL = 'Gantt chart';
 
 /**
  * Creates and mounts an SVG renderer into `container` — appends one
@@ -262,36 +257,49 @@ export function createSvgRenderer(
   // painted with, so `getLabelColumnWidth()` never has to re-derive the resolution below.
   let currentLabelColumnWidth = LABEL_COLUMN_WIDTH;
 
-  // `display:block`: no inline descender gap under the chart, and the overlay float below lands under it.
-  const svg = el('svg', { class: 'fg-timeline' }, { display: 'block' });
+  // `display:block`: no inline descender gap (kept for the export root). `grid-area:1/1` puts the chart in
+  // the layer's single grid cell; `exportSvg` strips it from the clone.
+  const svg = el('svg', { class: 'fg-timeline' });
+  svg.style.cssText = 'display:block;grid-area:1/1';
   // `role`/`aria-rowcount`/`aria-multiselectable` are set INSIDE render() (spec-keyboard-nav.md
   // §3.2 point 1) — `aria-rowcount` depends on the row count, which isn't known until the
   // first render(), so no static value is set here beyond the role/attribute EXISTING in the
   // DOM once render() runs synchronously below.
 
-  // Pinned date axis: an aria-hidden presentation replica of the in-svg header, placed AFTER the
-  // chart svg so `container.querySelector('svg')` stays the grid. `position:sticky` is
-  // compositor-native; `overflow:visible` keeps the 1px divider half below the box; the
-  // background also fills the label-column corner so scrolled row labels do not show through.
+  // One wrapper holds the chart and every pinned layer in a single grid cell, so a flex/grid host sees ONE
+  // in-flow child (no float, no negative margin) and the sticky containing block is the whole chart.
+  // `align-self:start` is load-bearing: without it a fixed-height flex/grid host stretches the wrapper to
+  // its own height and sticky stops pinning at the cell's bottom. `max-content`: the wrapper is exactly
+  // the chart's width, so blank container space beside a narrow chart is not part of the event target.
+  const layer = document.createElement('div');
+  layer.className = 'fg-timeline__layer';
+  layer.style.cssText = 'display:grid;width:max-content;align-self:start';
+
+  // Pinned layers: aria-hidden presentation replicas, placed AFTER the chart svg so
+  // `container.querySelector('svg')` stays the grid. `position:sticky` is compositor-native. Logical
+  // placement only (`justify-self:start`, `inset-inline-start`, never a physical `left`). DOM order is
+  // z-order (each sticky box is its own stacking context): chart < column < header < corner.
   const BAND_BG = 'var(--fg-bg-subtle, #f3f4f6)';
-  const overlay = el(
-    'svg',
-    { class: 'fg-timeline__sticky-header', 'aria-hidden': 'true', height: HEADER_HEIGHT },
-    {
-      position: 'sticky',
-      top: '0',
-      // Logical, not 'left': in an RTL host the chart svg sits at the inline-start (right) edge, and
-      // a physical left float would misalign the date labels with the day columns.
-      float: 'inline-start',
-      overflow: 'visible',
-      // -1px top: Firefox does not pixel-snap a sticky box, so at a fractional container y the
-      // opaque fill starts mid-pixel; the shadow adds an opaque row above (clipped at rest).
-      'clip-path': 'inset(-1px 0 -1px)',
-      background: BAND_BG,
-      'box-shadow': `0 -1px 0 ${BAND_BG}`,
-    },
+  const pin = (name: string, css: string): SVGSVGElement => {
+    const e = el('svg', { class: `fg-timeline__sticky-${name}`, 'aria-hidden': 'true' });
+    e.style.cssText = PIN + css;
+    return e;
+  };
+  // Label column: CLONES of every row label and toggle (the real ones stay in their gridcells for AT and
+  // export, hidden live by `SELECTION_STYLE_TEXT`). No `viewBox`, so a clone keeps its original's
+  // coordinates. The ground must be opaque or the scrolled chart shows through; the library paints no
+  // ground, so it borrows the host's `--fg-bg` token (white without one).
+  const column = pin('column', 'inset-inline-start:0;background:var(--fg-bg,#fff)');
+  // Date axis replica. -1px top: Firefox does not pixel-snap a sticky box, so at a fractional container y
+  // the opaque fill starts mid-pixel; the shadow adds an opaque row above (clipped at rest).
+  const overlay = pin('header', `top:0;clip-path:inset(-1px 0 0);background:${BAND_BG};box-shadow:0 -1px 0 ${BAND_BG}`);
+  // Top-left corner, pinned on BOTH axes: its LOGICAL border carries the label divider across the band.
+  const corner = pin(
+    'corner',
+    `top:0;inset-inline-start:0;box-sizing:border-box;background:${BAND_BG};border-inline-end:1px solid var(--fg-border,#e5e7eb)`,
   );
-  container.append(svg, overlay);
+  layer.append(svg, column, overlay, corner);
+  container.append(layer);
   // Keeps natively focus-scrolled rows out from under the band; restored on destroy().
   const priorScrollPaddingTop = container.style.scrollPaddingTop;
   container.style.scrollPaddingTop = `${HEADER_HEIGHT}px`;
@@ -301,7 +309,7 @@ export function createSvgRenderer(
   return {
     svg,
     interactionRoot: svg,
-    pointerEventTarget: svg,
+    pointerEventTarget: layer,
     container,
     update(nextInput: SvgRendererInput, nextOptions?: Partial<SvgRendererOptions>): void {
       if (destroyed) return;
@@ -317,8 +325,7 @@ export function createSvgRenderer(
     destroy(): void {
       if (destroyed) return;
       destroyed = true;
-      svg.remove();
-      overlay.remove();
+      layer.remove();
       container.style.scrollPaddingTop = priorScrollPaddingTop;
     },
     getLabelColumnWidth(): number {
@@ -338,21 +345,17 @@ export function createSvgRenderer(
     // during a purely programmatic/headless mutation (e.g. a host app calling
     // `gantt.addTask()` while the Gantt itself isn't focused): focus is only ever
     // RESTORED, never newly grabbed.
-    const hadFocusInside =
-      typeof document !== 'undefined' && document.activeElement !== null && svg.contains(document.activeElement);
+    const hadFocusInside = svg.contains(document.activeElement);
 
     const calendar = currentInput.calendar ?? DEFAULT_CALENDAR;
-    const viewMode = currentOptions.viewMode ?? DEFAULT_VIEW_MODE;
-    const density = currentOptions.density ?? DEFAULT_DENSITY;
-    const locale = currentOptions.locale ?? DEFAULT_LOCALE;
+    const viewMode = currentOptions.viewMode ?? 'week';
+    const density = currentOptions.density ?? 'default';
+    const locale = currentOptions.locale ?? 'en';
     const messages = currentOptions.messages;
     // `String()` because `??` only guards null/undefined: a loosely-typed JS host can hand us a
     // number or an object here, and a bare `.slice` would throw mid-render. Same coercion the
     // custom `messages.taskLabel` return value gets in `renderer-base.ts`.
-    const ariaLabel = String(currentOptions.ariaLabel ?? DEFAULT_ARIA_LABEL).slice(
-      0,
-      MAX_ARIA_NAME_LENGTH,
-    );
+    const ariaLabel = String(currentOptions.ariaLabel ?? 'Gantt chart').slice(0, 200); // security.md: cap the length of a string folded into an attribute
 
     const optionRange = currentOptions.timeRange;
     const range = optionRange
@@ -383,7 +386,7 @@ export function createSvgRenderer(
       // Single summary warning per render (spec §11 Q5) — not silent, but not a
       // per-task flood either.
       console.warn(
-        `@fluxgantt/core svg-renderer: ${clampedCount} task(s) have end before start — bar width clamped to 0.`,
+        `@fluxgantt/core svg-renderer: ${clampedCount} task(s) have end before start.`,
       );
     }
 
@@ -409,30 +412,22 @@ export function createSvgRenderer(
     const totalHeight = offsetY + bodyHeight;
 
     // Full repaint — no diff in v1 (spec §5.5 / handle doc).
-    while (svg.firstChild) svg.removeChild(svg.firstChild);
+    svg.replaceChildren();
 
+    // ARIA grid structure (spec-keyboard-nav.md §3.2 point 1) — replaces the old placeholder
+    // `role="img"`. `aria-multiselectable` is always "true": Core's selection model always
+    // supports multi-select (Ctrl/Shift-click, Shift+Arrow), not gated by any config flag.
+    //
+    // `treegrid` vs `grid` (spec-collapse-expand.md §6.4): the root role follows whether the layout
+    // contains an expandable row, because `aria-expanded` is only valid on a row under `treegrid`
+    // (axe `aria-conditional-attr`). A flat project emits no `aria-expanded` and stays a `grid`.
+    // Both roles take `aria-rowcount`/`aria-multiselectable` identically.
+    const isTree = isTreeLayout(rows);
     setAttrs(svg, {
       width: totalWidth,
       height: totalHeight,
       viewBox: `0 0 ${totalWidth} ${totalHeight}`,
       'aria-label': ariaLabel,
-    });
-    // ARIA grid structure (spec-keyboard-nav.md §3.2 point 1) — replaces the old placeholder
-    // `role="img"`. `aria-multiselectable` is always "true": Core's selection model always
-    // supports multi-select (Ctrl/Shift-click, Shift+Arrow), not gated by any config flag.
-    //
-    // `treegrid` vs `grid` (spec-collapse-expand.md §6.4, REVISED): the root role is now chosen
-    // by whether the current layout actually contains an expandable row. This supersedes §0
-    // decision 1 ("defer treegrid, keep grid for v1"), which was not tenable: WAI-ARIA allows
-    // `aria-expanded` on a row only under `treegrid`, never under `grid`, so shipping §6.3's
-    // `aria-expanded` while keeping `role="grid"` produces a genuine, serious-impact violation
-    // (axe `aria-conditional-attr`: "This attribute is supported with treegrid rows, but not
-    // grid") — caught by `tests/a11y/collapse-expand.spec.ts`. A flat project emits no
-    // `aria-expanded` at all and therefore stays a plain `grid`, so this changes nothing for
-    // charts without hierarchy. Both roles take `aria-rowcount`/`aria-multiselectable`
-    // identically, and the keyboard contract (roving tabindex, arrow navigation) is unchanged.
-    const isTree = isTreeLayout(rows);
-    setAttrs(svg, {
       role: isTree ? 'treegrid' : 'grid',
       'aria-rowcount': rows.length,
       'aria-multiselectable': 'true',
@@ -445,9 +440,9 @@ export function createSvgRenderer(
 
     svg.append(
       createArrowheadMarker(),
-      createStyle(SELECTION_STYLE_TEXT),
-      createStyle(FOCUS_STYLE_TEXT),
-      ...(showLinkHandles ? [createStyle(LINK_HANDLE_STYLE_TEXT)] : []),
+      Object.assign(el('style', {}), {
+        textContent: SELECTION_STYLE_TEXT + FOCUS_STYLE_TEXT + (showLinkHandles ? LINK_HANDLE_STYLE_TEXT : ''),
+      }),
       renderGrid(gridColumns, offsetX, totalHeight),
     );
     const header = renderHeader(
@@ -455,17 +450,11 @@ export function createSvgRenderer(
       offsetX,
       timeScale.totalWidth,
     );
-    svg.appendChild(header);
-    // Negative top margin pulls the overlay's natural position to y=0 so sticky engages at once.
-    // It is a float so it takes no in-flow height (the scroll container, a BFC, still contains
-    // it) and its margin box ends at the 32px band: a sticky box may only travel while its margin
-    // box stays inside the container, so an in-flow `margin-bottom` would pin it in place.
-    overlay.setAttribute('width', `${totalWidth}`);
-    overlay.style.marginTop = `-${totalHeight}px`;
-    svg.appendChild(
+    svg.append(header);
+    svg.append(
       renderDependencies(currentInput.dependencies, barByTaskId, rowHeight, offsetX, offsetY),
     );
-    svg.appendChild(
+    svg.append(
       renderRows(
         rows,
         barByTaskId,
@@ -487,13 +476,24 @@ export function createSvgRenderer(
     // stay the topmost thing along the label column's own edge.
     const todayX = todayLineX(timeScale, now);
     const todayLine = todayX === null ? null : renderTodayLine(todayX, offsetX, totalHeight);
-    if (todayLine) svg.appendChild(todayLine);
+    if (todayLine) svg.append(todayLine);
     const divider = renderLabelDivider(offsetX, totalHeight);
-    svg.appendChild(divider);
-    // The band replicates everything that crosses the header in the chart (the full-height rules
-    // included; `clip-path` trims them to the band), or the band would hide them there.
-    overlay.replaceChildren(
-      ...(todayLine ? [header, todayLine, divider] : [header, divider]).map((n) => n.cloneNode(true)),
+    svg.append(divider);
+    // Pinned layers. The band replicates what crosses the header in the chart (the today rule, which
+    // `overflow` trims to the band); the column replicates the divider and every label/toggle, tagged
+    // with their row's dataset so a click on a clone resolves exactly like one on the original. Full
+    // renders are the only path today; a future selection-only row patch need not touch either.
+    setAttrs(overlay, { width: totalWidth, height: HEADER_HEIGHT });
+    setAttrs(corner, { width: offsetX, height: HEADER_HEIGHT });
+    setAttrs(column, { width: offsetX, height: totalHeight });
+    overlay.replaceChildren(header.cloneNode(true));
+    if (todayLine) overlay.append(todayLine.cloneNode(true));
+    column.replaceChildren(
+      ...[divider, ...svg.querySelectorAll<SVGElement>('.fg-timeline__row-toggle,.fg-timeline__row-label')].map((n) => {
+        const c = n.cloneNode(true) as SVGElement;
+        Object.assign(c.dataset, n.closest<SVGElement>('[data-row-index]')?.dataset);
+        return c;
+      }),
     );
 
     // Focus restoration (spec §4.5 point 4) — MUST run after every element above is already
@@ -525,19 +525,16 @@ function createArrowheadMarker(): SVGDefsElement {
     markerHeight: 6,
     orient: 'auto-start-reverse',
   });
-  marker.appendChild(
+  marker.append(
     el('path', { d: 'M 0 0 L 8 4 L 0 8 z' }, { fill: 'var(--fg-dep-line, #64748b)' }),
   );
-  defs.appendChild(marker);
+  defs.append(marker);
   return defs;
 }
 
-function createStyle(text: string): SVGStyleElement {
-  return Object.assign(el('style', {}), { textContent: text });
-}
-
 function setAttrs<E extends Element>(e: E, attrs: Record<string, string | number>): E {
-  for (const k in attrs) e.setAttribute(k, String(attrs[k]));
+  // `setAttribute` stringifies a number itself, so the cast only silences the DOM typing.
+  for (const k in attrs) e.setAttribute(k, attrs[k] as string);
   return e;
 }
 
@@ -569,14 +566,14 @@ function renderGrid(columns: readonly GridColumn[], offsetX: number, totalHeight
         { class: 'fg-timeline__grid-cell', x, y: 0, width: col.width, height: totalHeight },
         { fill },
       );
-      g.appendChild(rect);
+      g.append(rect);
     }
     const line = el(
       'line',
       { class: 'fg-timeline__grid-line', x1: x, x2: x, y1: 0, y2: totalHeight },
       { stroke: 'var(--fg-grid-line, #e5e7eb)' },
     );
-    g.appendChild(line);
+    g.append(line);
   }
   return g;
 }
@@ -587,7 +584,7 @@ function renderHeader(tiers: HeaderTiers, offsetX: number, timelineWidth: number
   const bg = el('rect', { x: offsetX, y: 0, width: timelineWidth, height: HEADER_HEIGHT }, {
     fill: 'var(--fg-bg-subtle, #f3f4f6)',
   });
-  g.appendChild(bg);
+  g.append(bg);
 
   [tiers.upper, tiers.lower].forEach((tier, row) => {
     for (const l of tier) {
@@ -606,17 +603,17 @@ function renderHeader(tiers: HeaderTiers, offsetX: number, timelineWidth: number
           fill: 'var(--fg-fg-muted, #6b6b73)',
         },
       );
-      text.appendChild(document.createTextNode(l.text));
-      g.appendChild(text);
+      text.append(document.createTextNode(l.text));
+      g.append(text);
     }
   });
 
   const divider = el(
     'line',
-    { x1: offsetX, x2: offsetX + timelineWidth, y1: HEADER_HEIGHT, y2: HEADER_HEIGHT },
+    { x1: offsetX, x2: offsetX + timelineWidth, y1: HEADER_HEIGHT - 0.5, y2: HEADER_HEIGHT - 0.5 },
     { stroke: 'var(--fg-border-strong, #d4d4d8)' },
   );
-  g.appendChild(divider);
+  g.append(divider);
 
   return g;
 }
@@ -662,7 +659,7 @@ function renderTodayLine(x: number, offsetX: number, totalHeight: number): SVGLi
 function renderLabelDivider(offsetX: number, totalHeight: number): SVGLineElement {
   return el(
     'line',
-    { class: 'fg-timeline__label-divider', x1: offsetX, x2: offsetX, y1: 0, y2: totalHeight },
+    { class: 'fg-timeline__label-divider', x1: offsetX - 0.5, x2: offsetX - 0.5, y1: 0, y2: totalHeight },
     { stroke: 'var(--fg-border, #e5e7eb)' },
   );
 }
@@ -718,8 +715,24 @@ function renderRows(
     // versus the pre-keyboard-nav DOM shape.
     const cell = el('g', { class: 'fg-timeline__row-cell', role: 'gridcell' });
 
+    const cy = offsetY + row.y + rowHeight / 2;
+    // Collapse/expand glyph (spec-collapse-expand.md §6): a right-pointing triangle, rotated to point
+    // down when expanded. `aria-hidden`: the row already carries `aria-expanded`. No task-derived text.
     if (row.hasChildren) {
-      cell.appendChild(renderRowToggle(row, offsetY, rowHeight));
+      const half = TOGGLE_GLYPH_SIZE_PX / 2;
+      const cx = LABEL_PADDING_PX + row.depth * LABEL_INDENT_PX + half;
+      cell.append(
+        el(
+          'path',
+          {
+            class: 'fg-timeline__row-toggle',
+            d: `M ${cx - half} ${cy - half} L ${cx + half} ${cy} L ${cx - half} ${cy + half} Z`,
+            'aria-hidden': 'true',
+            ...(row.isCollapsed ? {} : { transform: `rotate(90 ${cx} ${cy})` }),
+          },
+          { fill: 'var(--fg-fg-muted, #6b6b73)' },
+        ),
+      );
     }
 
     const label = el(
@@ -727,51 +740,25 @@ function renderRows(
       {
         class: 'fg-timeline__row-label',
         x: LABEL_PADDING_PX + row.depth * LABEL_INDENT_PX + TOGGLE_GLYPH_GUTTER_PX,
-        y: offsetY + row.y + rowHeight / 2,
+        y: cy,
       },
       { 'dominant-baseline': 'middle', fill: 'var(--fg-fg, #18181b)' },
     );
     // SECURITY: `task.name` is untrusted host-app data — text node only, never innerHTML
     // or a template string assembled into markup (security.md §1, spec §8).
-    label.appendChild(document.createTextNode(row.task.name));
-    cell.appendChild(label);
+    label.append(document.createTextNode(row.task.name));
+    cell.append(label);
 
     const isCritical = criticalIds.has(row.task.id);
-    cell.appendChild(
+    cell.append(
       renderTaskBar(row.task, bar, offsetX, offsetY, isCritical, isSelected, calendar, locale, showLinkHandles, rollup?.get(row.task.id), messages),
     );
 
-    rowGroup.appendChild(cell);
-    g.appendChild(rowGroup);
+    rowGroup.append(cell);
+    g.append(rowGroup);
   }
 
   return g;
-}
-
-/** Collapse/expand toggle glyph (spec-collapse-expand.md §6.1/§6.2) — a small triangle,
- *  rotated via `transform` between "pointing right" (collapsed) and "pointing down"
- *  (expanded), the same rotation technique already used for the milestone diamond in
- *  `renderTaskBar`. Only called for rows where `row.hasChildren` is `true`. No task-derived
- *  string content (`<path>`, no `<text>`) — zero new XSS surface (security.md, spec §8).
- *  `aria-hidden` since the row itself already carries `aria-expanded` (avoids double-
- *  announcing expanded/collapsed once on the glyph and once on the row). */
-function renderRowToggle(row: RowLayout, offsetY: number, rowHeight: number): SVGPathElement {
-  const size = TOGGLE_GLYPH_SIZE_PX;
-  const cx = LABEL_PADDING_PX + row.depth * LABEL_INDENT_PX + size / 2;
-  const cy = offsetY + row.y + rowHeight / 2;
-  const half = size / 2;
-  // Right-pointing triangle in local space, rotated to point down when expanded.
-  const d = `M ${cx - half} ${cy - half} L ${cx + half} ${cy} L ${cx - half} ${cy + half} Z`;
-  return el(
-    'path',
-    {
-      class: 'fg-timeline__row-toggle',
-      d,
-      'aria-hidden': 'true',
-      ...(row.isCollapsed ? {} : { transform: `rotate(90 ${cx} ${cy})` }),
-    },
-    { fill: 'var(--fg-fg-muted, #6b6b73)' },
-  );
 }
 
 function renderTaskBar(
@@ -843,7 +830,7 @@ function renderTaskBar(
     },
   );
 
-  wrapper.appendChild(shape);
+  wrapper.append(shape);
 
   // Completed portion (`.fg-task__progress`), painted over the bar. Appended here — after the
   // bar, before the focus ring and link handles — because SVG paints in document order, so the
@@ -864,7 +851,7 @@ function renderTaskBar(
       { class: 'fg-task__progress', x, y, width: progressWidth, height: bar.height, rx: 3 },
       { fill: 'var(--fg-task-completed, #10b981)' },
     );
-    wrapper.appendChild(progressShape);
+    wrapper.append(progressShape);
   }
 
   // Keyboard-focus ring (spec-keyboard-nav.md §5.2, mechanism corrected — see
@@ -893,46 +880,35 @@ function renderTaskBar(
     },
     { fill: 'none' },
   );
-  wrapper.appendChild(focusRing);
+  wrapper.append(focusRing);
 
+  // Connector handles for drag-create-dependency (spec-drag-create-dependency.md §4.1), at the exact
+  // anchor a resulting FS/SS/FF/SF arrow would attach. Hidden by default, revealed on `.fg-task:hover`
+  // by the injected `<style>`. `aria-hidden`: no keyboard-reachable equivalent exists yet.
   if (showLinkHandles) {
-    wrapper.appendChild(renderLinkHandle(bar, offsetX, offsetY, 'start'));
-    wrapper.appendChild(renderLinkHandle(bar, offsetX, offsetY, 'end'));
+    for (const edge of ['start', 'end'] as const) {
+      const anchor = anchorOf(bar, edge);
+      wrapper.append(
+        el(
+          'circle',
+          {
+            class: 'fg-task__link-handle',
+            'data-handle-end': edge,
+            cx: anchor.x + offsetX,
+            cy: anchor.y + offsetY,
+            'aria-hidden': 'true',
+          },
+          {
+            r: 'var(--fg-link-handle-radius, 4px)',
+            fill: 'var(--fg-link-handle-fill, #ffffff)',
+            stroke: 'var(--fg-link-handle-stroke, #6366f1)',
+            'stroke-width': 'var(--fg-link-handle-stroke-width, 1.5px)',
+          },
+        ),
+      );
+    }
   }
   return wrapper;
-}
-
-/** Connector handle for drag-create-dependency (spec-drag-create-dependency.md §4.1) —
- *  positioned via the shared `anchorOf` geometry helper so it sits exactly where a resulting
- *  FS/SS/FF/SF arrow would attach. Hidden by default, revealed on `.fg-task:hover` by the
- *  static `<style>` injected in `render()` (pure CSS, no JS hover tracking). */
-function renderLinkHandle(
-  bar: TaskBarLayout,
-  offsetX: number,
-  offsetY: number,
-  edge: 'start' | 'end',
-): SVGCircleElement {
-  const anchor = anchorOf(bar, edge); // same anchor math committed dependency arrows use
-  // A11y: `aria-hidden` — no keyboard-reachable equivalent exists yet (same posture as
-  // drag-move/drag-resize, which are pointer-only today): hide from AT rather than expose an
-  // affordance that cannot be operated without a pointer.
-  const circle = el(
-    'circle',
-    {
-      class: 'fg-task__link-handle',
-      'data-handle-end': edge,
-      cx: anchor.x + offsetX,
-      cy: anchor.y + offsetY,
-      'aria-hidden': 'true',
-    },
-    {
-      r: 'var(--fg-link-handle-radius, 4px)',
-      fill: 'var(--fg-link-handle-fill, #ffffff)',
-      stroke: 'var(--fg-link-handle-stroke, #6366f1)',
-      'stroke-width': 'var(--fg-link-handle-stroke-width, 1.5px)',
-    },
-  );
-  return circle;
 }
 
 function renderDependencies(
@@ -969,7 +945,7 @@ function renderDependencies(
       },
       { fill: 'none', stroke: 'var(--fg-dep-line, #64748b)' },
     );
-    g.appendChild(path);
+    g.append(path);
   }
 
   return g;

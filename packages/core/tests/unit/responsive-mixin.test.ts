@@ -141,6 +141,9 @@ describe('withResponsive — coarse-pointer adaptation', () => {
     // for the property at all (it drops an inline `touch-action` silently), so a computed-style
     // assertion here would be vacuous rather than strict.
     expect(styleEl(container)!.textContent).toContain('touch-action: none');
+    // `touch-action` of an ancestor applies to the pinned overlays too (siblings of the chart svg
+    // inside the layer), which is what lets the JS pan own a finger that starts on them.
+    expect(styleEl(container)!.textContent).toMatch(/\.fg-timeline__layer[^{]*\{ touch-action: none/);
     expect(styleEl(container)!.textContent).toContain('(pointer: coarse)');
   });
 
@@ -349,6 +352,32 @@ describe('withResponsive — the pan recognizer (touch arbitration)', () => {
     pointer('pointerdown', barChild!, 300, 400);
     pointer('pointermove', barChild!, 250, 380);
     expect(container.scrollLeft).toBe(500);
+  });
+
+  it.each(['column', 'header', 'corner'])('a drag that starts on the pinned %s overlay pans too', (name) => {
+    mountWithScroll();
+    const overlay = container.querySelector(`.fg-timeline__sticky-${name}`)!;
+    pointer('pointerdown', overlay, 300, 400);
+    pointer('pointermove', overlay, 250, 380);
+    expect(container.scrollLeft).toBe(550);
+    expect(container.scrollTop).toBe(120);
+  });
+
+  it('a drag that starts on a pinned label clone pans (the clone is no .fg-task)', () => {
+    mountWithScroll();
+    const clone = container.querySelector('.fg-timeline__sticky-column .fg-timeline__row-label')!;
+    pointer('pointerdown', clone, 300, 400);
+    pointer('pointermove', clone, 250, 400);
+    expect(container.scrollLeft).toBe(550);
+  });
+
+  it('the pan listeners sit on the layer wrapper, the renderer pointer target', () => {
+    const { svg } = mountWithScroll();
+    expect(svg.parentElement!.className).toBe('fg-timeline__layer');
+    const layer = container.querySelector('.fg-timeline__layer')!;
+    pointer('pointerdown', layer, 300, 400);
+    pointer('pointermove', layer, 250, 400);
+    expect(container.scrollLeft).toBe(550);
   });
 
   it('pointercancel ends the gesture like pointerup, and a second pointer cannot hijack a live pan (pinchZoom: false; with pinch on, a second finger cancels the pan instead, see responsive-pinch.test.ts)', () => {

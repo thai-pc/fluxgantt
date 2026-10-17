@@ -118,6 +118,60 @@ describe('withEditHooks — SVG grid area', () => {
   });
 });
 
+describe('withEditHooks — pinned label column clones', () => {
+  const pinned = (cls: string, id: string): Element =>
+    container.querySelector(`.fg-timeline__sticky-column ${cls}[data-task-id="${id}"]`)!;
+
+  it('dblclick on a pinned label reports part label with the real pointer position', () => {
+    const { activated } = setup();
+    const clone = pinned('.fg-timeline__row-label', 'b');
+    expect(clone.closest('.fg-timeline__row')).toBeNull();
+    dbl(clone, 12, 34);
+    expect(activated).toHaveLength(1);
+    expect(activated[0]).toMatchObject({ taskId: 'b', part: 'label', source: 'pointer', clientX: 12, clientY: 34 });
+  });
+
+  it('contextmenu on a pinned label reports part label and honours preventDefault', () => {
+    const { gantt, context } = setup();
+    gantt.on('task:context-requested', (p) => p.preventDefault());
+    const e = ctxMenu(pinned('.fg-timeline__row-label', 'a'));
+    expect(context).toHaveLength(1);
+    expect(context[0]).toMatchObject({ taskId: 'a', part: 'label', source: 'pointer' });
+    expect(e.defaultPrevented).toBe(true);
+  });
+
+  it('a pinned toggle, the blank column and the header band emit nothing', () => {
+    const { activated, context } = setup({ hier: true });
+    for (const t of [
+      pinned('.fg-timeline__row-toggle', 'p'),
+      container.querySelector('.fg-timeline__sticky-column')!,
+      container.querySelector('.fg-timeline__sticky-header')!,
+      container.querySelector('.fg-timeline__sticky-corner')!,
+    ]) {
+      dbl(t);
+      ctxMenu(t);
+    }
+    expect(activated).toHaveLength(0);
+    expect(context).toHaveLength(0);
+  });
+
+  it('a touch long-press that starts on a pinned label fires once with part label', () => {
+    vi.useFakeTimers();
+    const { context } = setup();
+    const clone = pinned('.fg-timeline__row-label', 'a');
+    ptr('pointerdown', clone, { pointerType: 'touch', x: 20, y: 30 });
+    vi.advanceTimersByTime(500);
+    expect(context).toHaveLength(1);
+    expect(context[0]).toMatchObject({ taskId: 'a', source: 'long-press', part: 'label' });
+  });
+
+  it('a single contextmenu on the SVG chart fires exactly one event (no duplicate root listener)', () => {
+    const { context } = setup();
+    ctxMenu(barEl('a'));
+    expect(context).toHaveLength(1);
+  });
+});
+
 describe('withEditHooks — headless / lifecycle', () => {
   it('applying to an unmounted instance does nothing and destroy is safe before and after mount', () => {
     const base = withEditHooks(createGantt({ tasks: [] }));

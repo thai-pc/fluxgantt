@@ -708,6 +708,7 @@ describe('enableKeyboardNav — minimal InteractiveRendererHandle mock (SVG-deco
     const handle: InteractiveRendererHandle = {
       interactionRoot: root,
       pointerEventTarget: root,
+      container: document.body,
       // Required by the shared contract but irrelevant to this module (nothing here does
       // painted-space <-> content-space conversion) — the default width is enough.
       getLabelColumnWidth: () => 160,

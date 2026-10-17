@@ -20,8 +20,8 @@ export interface BarHit {
  * `HTMLElement` that both share) is where `enableClickSelect`/`enableKeyboardNav` query
  * `.fg-timeline__row` structure and where `enableKeyboardNav` attaches its `keydown` listener.
  * `pointerEventTarget` is where `enableClickSelect` attaches its `pointerdown` listener — for
- * SVG this is the SAME node as `interactionRoot` (the visible `<svg>` receives real pointer
- * events directly); for Canvas it is the visible `<canvas>`, a DIFFERENT node than
+ * SVG this is the `.fg-timeline__layer` wrapper (it contains `interactionRoot` AND the pinned
+ * overlays, so their events bubble to it); for Canvas it is the visible `<canvas>`, a DIFFERENT node than
  * `interactionRoot` (the hidden ARIA layer never receives real pointer events). The optional
  * `hitTestRow` method is the Canvas-only pixel-space row-resolution path; its absence (SVG)
  * signals `enableClickSelect` to fall back to the existing DOM-`.closest()` path.
@@ -41,6 +41,8 @@ export interface BarHit {
 export interface InteractiveRendererHandle {
   readonly interactionRoot: Element;
   readonly pointerEventTarget: Element;
+  /** The host container: the scroll viewport in both renderers (SVG: the parent of the layer wrapper). */
+  readonly container: HTMLElement;
   /**
    * The label-column width (px) the most recent successful render actually painted with — the
    * live value, which `SvgRendererOptions`/`CanvasRendererOptions`'s `labelColumnWidth` may have
