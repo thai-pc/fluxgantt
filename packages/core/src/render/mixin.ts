@@ -97,7 +97,7 @@ export function withRender<T extends GanttInstance>(instance: T): T & RenderCapa
   const render: RenderCapability = {
     mount(container: HTMLElement): void {
       if (internal.dead()) return; // safe no-op
-      internal.unmount(); // implicit remount if already mounted (no-op otherwise)
+      internal.teardown(); // implicit remount if already mounted (no-op otherwise)
 
       // Monotonic race-guard token (spec-canvas-auto-switch.md §5) — bumped on every mount()
       // call (both the sync-SVG and async-Canvas paths, for symmetry), and also by unmount()/
@@ -123,7 +123,7 @@ export function withRender<T extends GanttInstance>(instance: T): T & RenderCapa
       // Bumped BEFORE the mount-state check — an in-flight async Canvas attempt has no mount
       // state assigned yet, but must still be invalidated here (spec §5).
       internal.bumpGen();
-      internal.unmount();
+      internal.teardown();
     },
 
     refresh(): void {

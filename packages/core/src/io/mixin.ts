@@ -175,7 +175,7 @@ export function withIo<T extends GanttInstance>(instance: T): T & IoCapability {
     },
 
     exportSvg(options?: ExportSvgOptions): string {
-      const handle = internal.mounted('exportSvg');
+      const handle = internal.requireMount('exportSvg');
       if ('svg' in handle) return exportSvgFn(handle.svg, options);
       // Validate before the (up to 5,000-row) throwaway build, as exportPng does.
       assertValidBackground(options?.background, 'exportSvg');
@@ -189,7 +189,7 @@ export function withIo<T extends GanttInstance>(instance: T): T & IoCapability {
     },
 
     async exportPng(options?: ExportPngOptions): Promise<Blob> {
-      const handle = internal.mounted('exportPng');
+      const handle = internal.requireMount('exportPng');
       if ('svg' in handle) return exportPngFn(handle.svg, options);
       // Argument errors first (as in SVG mode), before the chunk load opens an await window.
       resolvePngOptions(options);

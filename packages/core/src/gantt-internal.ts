@@ -150,7 +150,7 @@ export interface GanttInternal {
    *  effect, dispose interactions, destroy the renderer handle, clear the slot. Lives in
    *  `gantt.ts` (not `render/mixin.ts`) because base `destroy()` must be able to tear a mount
    *  down without pulling the render layer into its graph. No-op when unmounted. */
-  unmount(): void;
+  teardown(): void;
 
   // --- Interaction slot (writer: interaction/mixin.ts) ---
   hooks(): InteractionHooks | undefined;
@@ -177,7 +177,7 @@ export interface GanttInternal {
   /** Guard for `exportSvg()`/`exportPng()` — throws when not mounted (never mounted,
    *  unmounted, or destroyed); otherwise returns the live handle, SVG or Canvas. The caller
    *  discriminates with `'svg' in handle` (only `SvgRendererHandle` has `.svg`). */
-  mounted(method: string): SvgRendererHandle | CanvasRendererHandle;
+  requireMount(method: string): SvgRendererHandle | CanvasRendererHandle;
 
   // --- Critical-path emit-on-change guard (shared with render/mixin.ts's render effect) ---
   /** Records `ids` as the last emitted critical set and reports whether it actually CHANGED —

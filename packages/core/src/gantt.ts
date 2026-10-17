@@ -693,7 +693,7 @@ class Gantt implements GanttInstance {
       bumpGen: () => ++this.#mountGeneration,
       gen: () => this.#mountGeneration,
       dead: () => this.#destroyed,
-      unmount: () => {
+      teardown: () => {
         this.#teardownMount();
       },
       hooks: () => this.#interactionHooks,
@@ -713,7 +713,7 @@ class Gantt implements GanttInstance {
       },
       withKids: (ids) => this.#expandWithDescendants(ids),
       load: (tasks, dependencies, format) => this.#commitImport(tasks, dependencies, format),
-      mounted: (method) => this.#assertMounted(method),
+      requireMount: (method) => this.#assertMounted(method),
       noteCrit: (ids) => {
         if (this.#sameCriticalIds(ids)) return false;
         this.#lastCriticalIds = ids;
