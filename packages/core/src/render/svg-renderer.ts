@@ -114,8 +114,10 @@ export interface SvgRendererHandle extends InteractiveRendererHandle {
    *  real pointer events directly (spec-canvas-renderer-ticket2.md §3.3). */
   readonly pointerEventTarget: SVGSVGElement;
   readonly container: HTMLElement;
-  /** Full repaint (no diff — spec §5.5) with new input. */
-  update(input: SvgRendererInput): void;
+  /** Full repaint (no diff — spec §5.5) with new input. The optional `options` are merged exactly
+   *  like `setOptions()` BEFORE the single repaint, so changing input and options together costs
+   *  one render instead of two. */
+  update(input: SvgRendererInput, options?: Partial<SvgRendererOptions>): void;
   /** Change viewMode/density/timeRange/locale/ariaLabel/labelColumnWidth and repaint with the
    *  last input. */
   setOptions(options: Partial<SvgRendererOptions>): void;
@@ -301,9 +303,10 @@ export function createSvgRenderer(
     interactionRoot: svg,
     pointerEventTarget: svg,
     container,
-    update(nextInput: SvgRendererInput): void {
+    update(nextInput: SvgRendererInput, nextOptions?: Partial<SvgRendererOptions>): void {
       if (destroyed) return;
       currentInput = nextInput;
+      currentOptions = { ...currentOptions, ...nextOptions };
       render();
     },
     setOptions(nextOptions: Partial<SvgRendererOptions>): void {
@@ -501,25 +504,12 @@ export function createSvgRenderer(
     // scroll). The keyboard path reveals the row explicitly instead (interaction/keyboard-nav.ts
     // revealFocusedRow), so pointer focus never scrolls.
     if (hadFocusInside && focusedTaskId !== undefined) {
-      const rowEl = svg.querySelector<SVGElement>(
-        `.fg-timeline__row[data-task-id="${cssEscapeAttr(focusedTaskId)}"]`,
+      const rowEl = [...svg.querySelectorAll<SVGElement>('.fg-timeline__row')].find(
+        (row) => row.getAttribute('data-task-id') === focusedTaskId,
       );
       rowEl?.focus({ preventScroll: true });
     }
   }
-}
-
-/** Minimal CSS.escape-equivalent for a `data-task-id` value interpolated into an attribute
- *  selector string (`querySelector`). `task.id` is a branded, developer-controlled `TaskId`
- *  (never raw untrusted host free-text — same posture already documented at
- *  `renderTaskBar`'s `data-task-id` assignment above), but this is cheap defense-in-depth
- *  against a value containing a `"` breaking the selector string. Uses the platform
- *  `CSS.escape` when available (all supported browsers + modern jsdom), falls back to a
- *  minimal manual escape otherwise so this file never hard-requires `CSS.escape`. */
-function cssEscapeAttr(value: string): string {
-  const css = (globalThis as { CSS?: { escape?: (v: string) => string } }).CSS;
-  if (css?.escape) return css.escape(value);
-  return value.replace(/["\\]/g, '\\$&');
 }
 
 // --- DOM builders (drawing only — no layout math) ------------------------------------

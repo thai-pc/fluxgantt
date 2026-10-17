@@ -1739,6 +1739,41 @@ describe('canvas dimension guard', () => {
     });
   });
 
+  describe('update(input, options) — atomic apply and rollback', () => {
+    it('applies the input and the options in ONE render', () => {
+      setDpr(1);
+      installMockContext(createMockContext2D());
+      const a = [task('a', '2026-01-05T09:00', '2026-01-06T17:00')];
+      const h = createCanvasRenderer(container, { tasks: a, dependencies: [] }, { viewMode: 'day' });
+      const before = h.getTimeScale();
+      const b = [task('b', '2026-01-05T09:00', '2026-01-20T17:00')];
+      h.update({ tasks: b, dependencies: [] }, { viewMode: 'month' });
+      expect(h.getTimeScale()).not.toBe(before);
+      expect(h.getTimeScale().pixelsPerDay).not.toBe(before.pixelsPerDay); // the viewMode took effect
+    });
+
+    it('rolls BOTH the input and the options back when the render throws', () => {
+      setDpr(1);
+      installMockContext(createMockContext2D());
+      const narrow = [task('a', '2026-01-05T09:00', '2026-01-06T17:00')];
+      const h = createCanvasRenderer(container, { tasks: narrow, dependencies: [] }, { viewMode: 'day' });
+      const prevWidth = h.canvas.width;
+      const prevScale = h.getTimeScale();
+      const wide = [
+        task('start', '2026-01-01T00:00', '2026-01-02T00:00'),
+        task('end', '2029-06-01T00:00', '2029-06-02T00:00'),
+      ];
+      expect(() => h.update({ tasks: wide, dependencies: [] }, { viewMode: 'day', locale: 'fr' })).toThrow(
+        CanvasDimensionExceededError,
+      );
+      expect(h.canvas.width).toBe(prevWidth);
+      expect(h.getTimeScale()).toBe(prevScale);
+      // The rolled-back options did not keep `locale: 'fr'` / the viewMode: a later plain update works at 'day'.
+      expect(() => h.update({ tasks: narrow, dependencies: [] })).not.toThrow();
+      expect(h.getTimeScale().pixelsPerDay).toBe(prevScale.pixelsPerDay);
+    });
+  });
+
   describe('update() — a LATER render()-internal throw (computeGridColumns) also rolls back state fully', () => {
     it('a MAX_GRID_COLUMNS throw from computeGridColumns (unrelated to the dimension guard, fires AFTER it passes) still rolls back getTimeScale(), not just canvas.height/currentInput', () => {
       setDpr(1);

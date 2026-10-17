@@ -87,6 +87,9 @@ export interface MountState {
    * state-only whenever no mount state exists (always, without `withRender`).
    */
   readonly anchored: (mutate: () => void) => void;
+  /** Repaints from scratch, dropping the render layer's derived-data cache first
+   *  (`RenderCapability.refresh()`); provided by `render/mixin.ts`. */
+  readonly refresh: () => void;
 }
 
 /** Registered by `withInteraction`, consulted LAZILY by `withRender`'s `mount()` — this

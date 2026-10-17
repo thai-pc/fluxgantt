@@ -170,9 +170,18 @@ export function isWorkingPlainDate(day: PlainDate, cal: WorkingCalendar, holiday
   return cal.workingDays.includes(weekdayCode(day.dayOfWeek)) && !holidays.has(day.toString());
 }
 
+// Parsed holiday sets, keyed by the `holidays` array and revalidated by timezone + length, so
+// replacing or growing it (or retargeting the zone) re-parses. Callers only ever read the set.
+// Editing an entry IN PLACE is not detected (calendars are immutable for an instance's life).
+const holidayCache = new WeakMap<DateInput[], [string, Set<string>]>();
+
 export function holidaySet(cal: WorkingCalendar, api: T): Set<string> {
+  const key = `${cal.timezone}|${cal.holidays.length}`;
+  const hit = holidayCache.get(cal.holidays);
+  if (hit?.[0] === key) return hit[1];
   const set = new Set<string>();
   for (const h of cal.holidays) set.add(normalize(h, cal.timezone, api).toPlainDate().toString());
+  holidayCache.set(cal.holidays, [key, set]);
   return set;
 }
 

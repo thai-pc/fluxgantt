@@ -7,12 +7,12 @@
 // (spec §3 "Seam cho Canvas").
 //
 // Every date computation calls back into `compute/working-calendar.ts`
-// (`normalizeDate`, `isWorkingDay`, `isHoliday`) — this file never reimplements
+// (`normalizeDate`, `isWorkingPlainDate`, `holidaySet`) — this file never reimplements
 // calendar/timezone/DST arithmetic with native `Date` (architecture.md "Temporal API
 // for all date/time computation").
 import type { Temporal } from '@js-temporal/polyfill';
 import { getTemporal } from '../internal/temporal.js';
-import { normalizeDate, isWorkingDay, isHoliday } from '../compute/working-calendar.js';
+import { normalizeDate, isWorkingPlainDate, holidaySet } from '../compute/working-calendar.js';
 import { MAX_HIERARCHY_DEPTH } from '../compute/hierarchy.js';
 import type {
   DateInput,
@@ -64,6 +64,22 @@ const DATE_OPTIONS: Intl.DateTimeFormatOptions = {
   day: 'numeric',
 };
 
+/** Formatted date labels keyed by locale + ISO date. `PlainDate.toLocaleString` builds an
+ *  `Intl.DateTimeFormat` internally on every call, which dominated a 2000-task repaint; a project
+ *  has a few dozen distinct dates, so the hit rate is ~100%. Bounded: the map is cleared when it
+ *  reaches 512 entries and refills with what is in use, so a host cycling locales or dates cannot
+ *  grow it without limit and caching never stops for good. */
+const dateLabels = new Map<string, string>();
+function dateLabel(date: Temporal.PlainDate, locale: string): string {
+  const key = `${locale}|${date.toString()}`;
+  let label = dateLabels.get(key);
+  if (label === undefined) {
+    if (dateLabels.size >= 512) dateLabels.clear();
+    dateLabels.set(key, (label = date.toLocaleString(locale, DATE_OPTIONS)));
+  }
+  return label;
+}
+
 /**
  * `rolled` — optional rollup entry for this task (Ticket B2). When present, the dates and
  * percentage announced are the AGGREGATE ones, matching what the bar is actually drawn at.
@@ -89,8 +105,8 @@ export function buildTaskAriaLabel(
   const start = normalizeDate(effective?.start ?? task.start, calendar.timezone).toPlainDate();
   const end = normalizeDate(effective?.end ?? task.end, calendar.timezone).toPlainDate();
   const name = task.name.slice(0, MAX_ARIA_TASK_NAME_LENGTH);
-  const startLabel = start.toLocaleString(locale, DATE_OPTIONS);
-  const endLabel = end.toLocaleString(locale, DATE_OPTIONS);
+  const startLabel = dateLabel(start, locale);
+  const endLabel = dateLabel(end, locale);
   // `Number.prototype.toLocaleString`, NOT `new Intl.NumberFormat(...)` — identical digits, but
   // no Intl constructor (the expensive half) per task per paint and no format cache to key or
   // invalidate. Localized because an `ar-EG` host was otherwise getting Western Arabic digits
@@ -596,7 +612,7 @@ const GRID_LABEL_OPTIONS: Readonly<Record<ViewMode, Intl.DateTimeFormatOptions>>
  * v1 deliberately steps by day for every `viewMode`, only `pixelsPerDay`/label format
  * change; see spec note re: not merging real week/month columns in v1).
  * `isWeekend`/`isHoliday` are computed by calling back into
- * `compute/working-calendar.ts` (`isWorkingDay`/`isHoliday`) — never re-derived here.
+ * `compute/working-calendar.ts` (`isWorkingPlainDate`/`holidaySet`) — never re-derived here.
  * `now` is an injected parameter (not `Temporal.Now` read internally) so this function
  * stays deterministic/testable (spec §6).
  */
@@ -611,6 +627,9 @@ export function computeGridColumns(
   const cols: GridColumn[] = [];
   const endDate = timeScale.range.end.toPlainDate();
   const nowDate = now.toPlainDate();
+  // Parsed ONCE, not once per column (it normalises every holiday). A column's date is already a
+  // plain date, so the weekday/holiday checks need no per-column `normalize()` round trip.
+  const holidays = holidaySet(calendar, api);
   let cursor = timeScale.range.start.toPlainDate();
   let guard = 0;
 
@@ -625,8 +644,8 @@ export function computeGridColumns(
       x: timeScale.dateToX(cursor),
       width: timeScale.pixelsPerDay,
       label: cursor.toLocaleString(locale, GRID_LABEL_OPTIONS[viewMode]),
-      isWeekend: !isWorkingDay(cursor, calendar),
-      isHoliday: isHoliday(cursor, calendar),
+      isWeekend: !isWorkingPlainDate(cursor, calendar, holidays),
+      isHoliday: holidays.has(cursor.toString()),
       isToday: cursor.equals(nowDate),
     });
     cursor = cursor.add({ days: 1 });
