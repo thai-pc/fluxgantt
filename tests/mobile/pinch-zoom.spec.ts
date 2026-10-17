@@ -217,7 +217,7 @@ test.describe('Tier A: review regressions (responsive.html)', () => {
     await page.evaluate(
       async ([x, y]) => {
         const init = (cx: number, buttons = 1): PointerEventInit => ({
-          pointerId: 1,
+          pointerId: 7, // a NEW id, as real browsers hand out: reusing 1 would overwrite the ghost
           pointerType: 'touch',
           isPrimary: true,
           bubbles: true,
