@@ -24,7 +24,12 @@ import type { SvgRendererHandle } from '../render/index.js';
 import { ARROWHEAD_MARKER_ID } from '../render/index.js';
 import type { Task, TaskId } from '../types.js';
 import { toTaskId } from '../types.js';
-import { getPointerDragController, DEFAULT_DRAG_THRESHOLD_PX } from './pointer-drag.js';
+import {
+  getPointerDragController,
+  DEFAULT_DRAG_THRESHOLD_PX,
+  findGroupTask,
+  readClientScale,
+} from './pointer-drag.js';
 import type { PointerGestureRecognizer } from './pointer-drag.js';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
@@ -60,32 +65,28 @@ const LINK_PRIORITY = -10; // lower than RESIZE_PRIORITY (0) and MOVE_PRIORITY (
 const LINKING_CLASS = 'fg-task--linking';
 
 /** Client-px → SVG user-space transform, captured ONCE at gesture start (the `<svg>` box and
- *  its viewBox don't change during a drag). */
-interface ClientToUserTransform {
-  readonly offsetLeft: number;
-  readonly offsetTop: number;
-  readonly scaleX: number;
-  readonly scaleY: number;
-}
+ *  its viewBox don't change during a drag; jsdom has no layout engine, so the scale falls back to
+ *  1:1). Both axes are needed since the preview line's endpoint can land in any row. */
+type ClientToUserTransform = ReturnType<typeof readClientScale>;
 
 interface LinkState {
-  readonly fromTaskId: TaskId;
+  readonly from: TaskId;
   /** Which handle was grabbed — DETERMINES THE EDGE DIRECTION at commit (FS = predecessor's
    *  finish → successor's start): grabbing the owner's END/finish handle makes the owner the
    *  predecessor (owner → drop); grabbing its START handle makes the owner the successor
    *  (drop → owner). Not a display concern — it flips the argument order of `linkTasks`. */
-  readonly handleEnd: 'start' | 'end';
+  readonly edge: 'start' | 'end';
   /** SVG user-space coordinates of the grabbed handle — read directly off its own `cx`/`cy`
-   *  attributes at `hitTest()` time (no geometry re-derivation, same "read the
+   *  attributes at `claim()` time (no geometry re-derivation, same "read the
    *  already-rendered DOM" posture as `drag-resize.ts`'s `barX`/`barWidth`). */
-  readonly originX: number;
-  readonly originY: number;
-  /** Assigned exactly once, in `onDragStart` — `null` before the gesture passes the
+  readonly ox: number;
+  readonly oy: number;
+  /** Assigned exactly once, in `start` — `null` before the gesture passes the
    *  threshold. */
-  previewPath: SVGPathElement | null;
-  /** Captured once in `onDragStart` so `onMove` doesn't force a layout reflow
+  line: SVGPathElement | null;
+  /** Captured once in `start` so `onMove` doesn't force a layout reflow
    *  (`getBoundingClientRect`) + reparse the viewBox on every `pointermove`. */
-  transform: ClientToUserTransform | null;
+  xf: ClientToUserTransform | null;
 }
 
 /**
@@ -105,11 +106,12 @@ export function enableDragCreateDep(
   const dragThresholdPx = options.dragThresholdPx ?? DEFAULT_DRAG_THRESHOLD_PX;
 
   const recognizer: PointerGestureRecognizer<LinkState> = {
-    name: 'drag-create-dep',
+    cls: LINKING_CLASS,
+    cursor: 'crosshair',
     priority: LINK_PRIORITY,
-    dragThresholdPx,
+    slop: dragThresholdPx,
 
-    hitTest(event, groupEl) {
+    claim(event, groupEl) {
       if (!(event.target instanceof Element)) return null;
       const handleEl = event.target.closest('.fg-task__link-handle');
       // Decision 1's core constraint: ONLY a pointerdown squarely on a handle claims this
@@ -117,25 +119,23 @@ export function enableDragCreateDep(
       // decline so move/resize get a chance.
       if (!handleEl || !groupEl.contains(handleEl)) return null;
 
-      const taskIdAttr = groupEl.getAttribute('data-task-id');
-      if (taskIdAttr === null) return null;
-      const fromTaskId = toTaskId(taskIdAttr);
       // Race between the rendered DOM and the latest `tasks` — skip, don't throw (mirrors
       // drag-move/drag-resize's own posture).
-      if (!getTasks().some((t) => t.id === fromTaskId)) return null;
+      const fromTaskId = findGroupTask(groupEl, getTasks)?.id;
+      if (fromTaskId === undefined) return null;
 
       const handleEnd = handleEl.getAttribute('data-handle-end') === 'start' ? 'start' : 'end';
       const cx = Number(handleEl.getAttribute('cx'));
       const cy = Number(handleEl.getAttribute('cy'));
       if (!Number.isFinite(cx) || !Number.isFinite(cy)) return null;
 
-      return { fromTaskId, handleEnd, originX: cx, originY: cy, previewPath: null, transform: null };
+      return { from: fromTaskId, edge: handleEnd, ox: cx, oy: cy, line: null, xf: null };
     },
 
-    onDragStart(ctx) {
+    start(ctx) {
       // CRITICAL, non-obvious (spec §4.2): the shared coordinator (`pointer-drag.ts`'s
-      // `onPointerDown`) unconditionally calls `captureEl.setPointerCapture(pointerId)` for
-      // whatever recognizer claimed the gesture — `captureEl` here is the handle circle
+      // `onPointerDown`) unconditionally calls `captureEl.setPointerCapture(pointerId)` (`cap` in the context) for
+      // whatever recognizer claimed the gesture — `cap` here is the handle circle
       // itself. Per the Pointer Events spec, once an element has pointer capture, EVERY
       // subsequent event for that pointerId (including the final `pointerup`) is RETARGETED
       // to the capturing element — `event.target` would stay pinned to the origin handle for
@@ -149,7 +149,7 @@ export function enableDragCreateDep(
       // whether `window` listeners fire), and the coordinator's own `teardownListeners()`
       // already calls `releasePointerCapture` again defensively (idempotent, try/catch).
       try {
-        ctx.captureEl.releasePointerCapture?.(ctx.pointerId);
+        ctx.cap.releasePointerCapture?.(ctx.pointerId);
       } catch {
         // Best-effort — mirrors pointer-drag.ts's own posture for this exact call.
       }
@@ -158,7 +158,7 @@ export function enableDragCreateDep(
       path.setAttribute('class', 'fg-dependency-preview');
       path.setAttribute(
         'd',
-        `M ${ctx.state.originX} ${ctx.state.originY} L ${ctx.state.originX} ${ctx.state.originY}`,
+        `M ${ctx.state.ox} ${ctx.state.oy} L ${ctx.state.ox} ${ctx.state.oy}`,
       );
       path.setAttribute('marker-end', `url(#${ARROWHEAD_MARKER_ID})`);
       path.style.setProperty('fill', 'none');
@@ -170,28 +170,23 @@ export function enableDragCreateDep(
       // no `.fg-task` ancestor, spuriously reading as "no drop target".
       path.style.setProperty('pointer-events', 'none');
       handle.svg.appendChild(path);
-      ctx.state.previewPath = path;
-      ctx.state.transform = computeClientToUserTransform(handle);
-
-      ctx.groupEl.classList.add(LINKING_CLASS);
-      document.body.style.cursor = 'crosshair';
+      ctx.state.line = path;
+      ctx.state.xf = readClientScale(handle.svg);
     },
 
-    onMove(ctx, _dxPixels, event) {
-      const path = ctx.state.previewPath;
-      if (!path || !ctx.state.transform) return; // defensive; onDragStart always runs first
-      const { x, y } = applyTransform(ctx.state.transform, event.clientX, event.clientY);
-      path.setAttribute('d', `M ${ctx.state.originX} ${ctx.state.originY} L ${x} ${y}`);
+    move(ctx, _dxPixels, event) {
+      const path = ctx.state.line;
+      if (!path || !ctx.state.xf) return; // defensive; `start` always runs first
+      const { x, y } = applyTransform(ctx.state.xf, event.clientX, event.clientY);
+      path.setAttribute('d', `M ${ctx.state.ox} ${ctx.state.oy} L ${x} ${y}`);
       if (options.onLinking) {
-        options.onLinking(ctx.state.fromTaskId, resolveDropTarget(event, ctx.state.fromTaskId));
+        options.onLinking(ctx.state.from, resolveDropTarget(event, ctx.state.from));
       }
     },
 
-    onCommit(ctx, _dxPixels, event) {
-      ctx.groupEl.classList.remove(LINKING_CLASS);
-      document.body.style.cursor = '';
-      ctx.state.previewPath?.remove();
-      const dropId = resolveDropTarget(event, ctx.state.fromTaskId);
+    commit(ctx, _dxPixels, event) {
+      ctx.state.line?.remove();
+      const dropId = resolveDropTarget(event, ctx.state.from);
       // Empty space OR self — decision 2's silent revert, resolved right here so the
       // facade's commit handler only ever has to deal with STORE-level rejections
       // (duplicate-pair / cycle), never a self-pair.
@@ -201,14 +196,12 @@ export function enableDragCreateDep(
       // (owner → drop); grabbing its START handle → owner is the successor (drop → owner).
       // Without this, a drag started from a start-handle produced the REVERSED dependency.
       const [from, to] =
-        ctx.state.handleEnd === 'start' ? [dropId, ctx.state.fromTaskId] : [ctx.state.fromTaskId, dropId];
+        ctx.state.edge === 'start' ? [dropId, ctx.state.from] : [ctx.state.from, dropId];
       options.onDependencyCreated(from, to);
     },
 
-    onCancel(ctx) {
-      ctx.groupEl.classList.remove(LINKING_CLASS);
-      document.body.style.cursor = '';
-      ctx.state.previewPath?.remove();
+    cancel(ctx) {
+      ctx.state.line?.remove();
     },
   };
 
@@ -230,24 +223,6 @@ function resolveDropTarget(event: PointerEvent, fromTaskId: TaskId): TaskId | un
   return candidate;
 }
 
-/** Build the client-px → SVG user-space transform ONCE (at gesture start), same
- *  `getBoundingClientRect()` + `viewBox`-ratio technique `drag-resize.ts`'s `hitTest` uses
- *  (jsdom has no layout engine → an all-zero `DOMRect` → scale falls back to 1:1, preserving
- *  DOM-attribute-level testability). Needs BOTH axes here (unlike drag-resize's x-only scale)
- *  since the preview line's endpoint can land in any row. Called once per gesture, not per
- *  `pointermove`, so a live drag never forces a layout reflow. */
-function computeClientToUserTransform(handle: SvgRendererHandle): ClientToUserTransform {
-  const svgRect = handle.svg.getBoundingClientRect();
-  const vbAttr = handle.svg.getAttribute('viewBox');
-  const vb = vbAttr ? vbAttr.split(/\s+/).map(Number) : undefined;
-  const vbWidth = vb?.[2];
-  const vbHeight = vb?.[3];
-  const scaleX = svgRect.width > 0 && Number.isFinite(vbWidth) && vbWidth! > 0 ? svgRect.width / vbWidth! : 1;
-  const scaleY =
-    svgRect.height > 0 && Number.isFinite(vbHeight) && vbHeight! > 0 ? svgRect.height / vbHeight! : 1;
-  return { offsetLeft: svgRect.left, offsetTop: svgRect.top, scaleX: scaleX || 1, scaleY: scaleY || 1 };
-}
-
 function applyTransform(t: ClientToUserTransform, clientX: number, clientY: number): { x: number; y: number } {
-  return { x: (clientX - t.offsetLeft) / t.scaleX, y: (clientY - t.offsetTop) / t.scaleY };
+  return { x: (clientX - t.left) / t.scaleX, y: (clientY - t.top) / t.scaleY };
 }

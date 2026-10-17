@@ -618,7 +618,7 @@ export function computeGridColumns(
     guard++;
     if (guard > MAX_GRID_COLUMNS) {
       throw new Error(
-        `computeGridColumns: exceeded max column guard (${MAX_GRID_COLUMNS}) — narrow options.timeRange or the task date range (check for an out-of-range date)`,
+        `computeGridColumns: exceeded max column guard (${MAX_GRID_COLUMNS}) — narrow options.timeRange or check for an out-of-range date`,
       );
     }
     cols.push({

@@ -163,19 +163,19 @@ export function withIo<T extends GanttInstance>(instance: T): T & IoCapability {
     },
 
     importJson(data: string | object, options?: ImportJsonOptions): ImportSummary {
-      internal.assertAlive('importJson');
+      internal.alive('importJson');
       const { tasks, dependencies } = importJsonFn(data, options); // may throw IoValidationError
-      return internal.commitImport(tasks, dependencies, 'json');
+      return internal.load(tasks, dependencies, 'json');
     },
 
     importCsv(csv: string, options?: ImportCsvOptions): ImportSummary {
-      internal.assertAlive('importCsv');
+      internal.alive('importCsv');
       const { tasks } = importCsvFn(csv, options); // may throw IoValidationError
-      return internal.commitImport(tasks, [], 'csv');
+      return internal.load(tasks, [], 'csv');
     },
 
     exportSvg(options?: ExportSvgOptions): string {
-      const handle = internal.assertMounted('exportSvg');
+      const handle = internal.requireMount('exportSvg');
       if ('svg' in handle) return exportSvgFn(handle.svg, options);
       // Validate before the (up to 5,000-row) throwaway build, as exportPng does.
       assertValidBackground(options?.background, 'exportSvg');
@@ -189,7 +189,7 @@ export function withIo<T extends GanttInstance>(instance: T): T & IoCapability {
     },
 
     async exportPng(options?: ExportPngOptions): Promise<Blob> {
-      const handle = internal.assertMounted('exportPng');
+      const handle = internal.requireMount('exportPng');
       if ('svg' in handle) return exportPngFn(handle.svg, options);
       // Argument errors first (as in SVG mode), before the chunk load opens an await window.
       resolvePngOptions(options);
@@ -201,7 +201,7 @@ export function withIo<T extends GanttInstance>(instance: T): T & IoCapability {
       }
       // The await opened a window for unmount()/remount()/destroy(); the module re-checks
       // liveness before painting so it never paints a dead handle.
-      return mod.exportCanvasPng(handle, options, () => internal.getMountState()?.rendererHandle === handle);
+      return mod.exportCanvasPng(handle, options, () => internal.mountOf()?.handle === handle);
     },
   };
 

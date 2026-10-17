@@ -166,12 +166,17 @@ export function importCsv(csv: string, options?: ImportCsvOptions): ImportCsvRes
       throw new IoValidationError(`row has ${row.length} columns, expected ${header.length}`, path);
     }
 
-    const cell = (col: CsvColumn): string | undefined => {
+    // Values are taken literally — NO unescape (security review B1; see the note above).
+    const get = (col: CsvColumn): string | undefined => {
       const idx = columnIndex.get(col);
       return idx === undefined ? undefined : row[idx];
     };
-    // Values are taken literally — NO unescape (security review B1; see the note above).
-    const get = (col: CsvColumn): string | undefined => cell(col);
+    // An optional column: absent or empty means "not set", anything else is validated by `check`
+    // (handed the cell and its error path).
+    const optional = <T>(col: CsvColumn, check: (cell: string, at: string) => T): T | undefined => {
+      const v = get(col);
+      return v === undefined || v === '' ? undefined : check(v, `${path}.${col}`);
+    };
 
     const id = assertNonEmptyString(get('id'), `${path}.id`, limits.maxIdLength);
     if (seenIds.has(id)) {
@@ -191,24 +196,10 @@ export function importCsv(csv: string, options?: ImportCsvOptions): ImportCsvRes
     );
     const type = assertOneOf(get('type'), TASK_KINDS, `${path}.type`);
 
-    const durationCell = get('duration');
-    const duration =
-      durationCell === undefined || durationCell === ''
-        ? undefined
-        : assertFiniteNumber(Number(durationCell), `${path}.duration`, { min: 0 });
-    const parentCell = get('parent');
-    const parent =
-      parentCell === undefined || parentCell === ''
-        ? undefined
-        : assertNonEmptyString(parentCell, `${path}.parent`, limits.maxIdLength);
-    const notesCell = get('notes');
-    const notes =
-      notesCell === undefined || notesCell === '' ? undefined : assertString(notesCell, `${path}.notes`, limits.maxStringLength);
-    const colorCell = get('color');
-    const color =
-      colorCell === undefined || colorCell === ''
-        ? undefined
-        : validateColor(colorCell, `${path}.color`, limits.maxStringLength);
+    const duration = optional('duration', (v, at) => assertFiniteNumber(Number(v), at, { min: 0 }));
+    const parent = optional('parent', (v, at) => assertNonEmptyString(v, at, limits.maxIdLength));
+    const notes = optional('notes', (v, at) => assertString(v, at, limits.maxStringLength));
+    const color = optional('color', (v, at) => validateColor(v, at, limits.maxStringLength));
 
     result.push({
       id: toTaskId(id),

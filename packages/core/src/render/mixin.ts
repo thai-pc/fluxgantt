@@ -96,16 +96,16 @@ export function withRender<T extends GanttInstance>(instance: T): T & RenderCapa
 
   const render: RenderCapability = {
     mount(container: HTMLElement): void {
-      if (internal.isDestroyed()) return; // safe no-op
-      internal.teardownMount(); // implicit remount if already mounted (no-op otherwise)
+      if (internal.dead()) return; // safe no-op
+      internal.teardown(); // implicit remount if already mounted (no-op otherwise)
 
       // Monotonic race-guard token (spec-canvas-auto-switch.md §5) — bumped on every mount()
       // call (both the sync-SVG and async-Canvas paths, for symmetry), and also by unmount()/
       // destroy() so those invalidate any in-flight Canvas attempt too.
-      const generation = internal.bumpMountGeneration();
+      const generation = internal.bumpGen();
       // Read ONCE, at this instant — the auto-switch decision is made once, at mount() time
       // only; adding/removing tasks later does not re-evaluate it.
-      const taskCount = internal.taskStore.size;
+      const taskCount = internal.tasks.size;
 
       if (taskCount <= CANVAS_AUTO_SWITCH_THRESHOLD) {
         mountSvg(internal, container, generation, taskCount); // fully synchronous
@@ -119,17 +119,17 @@ export function withRender<T extends GanttInstance>(instance: T): T & RenderCapa
     },
 
     unmount(): void {
-      if (internal.isDestroyed()) return;
+      if (internal.dead()) return;
       // Bumped BEFORE the mount-state check — an in-flight async Canvas attempt has no mount
       // state assigned yet, but must still be invalidated here (spec §5).
-      internal.bumpMountGeneration();
-      internal.teardownMount();
+      internal.bumpGen();
+      internal.teardown();
     },
 
     refresh(): void {
-      const mount = internal.getMountState();
-      if (internal.isDestroyed() || !mount) return; // nothing to refresh headless or post-destroy
-      renderNow(internal, mount.rendererHandle, mount.getFocusedTaskId);
+      const mount = internal.mountOf();
+      if (internal.dead() || !mount) return; // nothing to refresh headless or post-destroy
+      renderNow(internal, mount.handle, mount.focusedId);
     },
   };
 
@@ -151,7 +151,7 @@ async function mountCanvasAsync(
   generation: number,
   taskCount: number,
 ): Promise<void> {
-  const superseded = (): boolean => generation !== internal.getMountGeneration() || internal.isDestroyed();
+  const superseded = (): boolean => generation !== internal.gen() || internal.dead();
 
   let canvasModule: typeof CanvasRendererModule;
   try {
@@ -206,7 +206,7 @@ function mountSvg(
   fallbackReason?: FallbackReason,
 ): void {
   // Defensive, cheap even on the sync path.
-  if (generation !== internal.getMountGeneration() || internal.isDestroyed()) return;
+  if (generation !== internal.gen() || internal.dead()) return;
   const handle = createSvgRenderer(container, renderInput(internal), rendererOptions(internal));
   finishMount(internal, 'svg', handle, taskCount, fallbackReason);
 }
@@ -227,8 +227,8 @@ function finishMount(
   taskCount: number,
   fallbackReason?: FallbackReason,
 ): void {
-  const interactions = internal.getInteractionHooks()?.wireInto(handle, renderer, internal);
-  const getFocusedTaskId = interactions?.getFocusedTaskId ?? ((): TaskId | undefined => undefined);
+  const interactions = internal.hooks()?.wire(handle, renderer, internal);
+  const getFocusedTaskId = interactions?.focusedId ?? ((): TaskId | undefined => undefined);
   const disposeInteractions = interactions?.dispose ?? ((): void => {});
 
   // `getFocusedTaskId` is captured directly from this closure (NOT read back off the mount
@@ -240,17 +240,17 @@ function finishMount(
 
   const state: MountState = {
     renderer,
-    rendererHandle: handle,
-    disposeEffect,
-    disposeInteractions,
-    getFocusedTaskId,
-    withScrollAnchor: (mutate) => {
+    handle: handle,
+    stopFx: disposeEffect,
+    stopUi: disposeInteractions,
+    focusedId: getFocusedTaskId,
+    anchored: (mutate) => {
       withScrollAnchor(handle, mutate);
     },
   };
-  internal.setMountState(state);
+  internal.setMount(state);
 
-  internal.emitEvent('renderer:selected', {
+  internal.emit('renderer:selected', {
     renderer,
     taskCount,
     ...(fallbackReason ? { canvasFallbackReason: fallbackReason } : {}),
@@ -307,19 +307,19 @@ function renderNow(
 ): void {
   // Track all three stores' revisions — read .value unconditionally so this effect re-runs on
   // ANY task, dependency or selection mutation (coarse — no per-field granularity here).
-  void internal.taskStore.revision.value;
-  void internal.dependencyStore.revision.value;
-  void internal.selectionStore.revision.value;
+  void internal.tasks.revision.value;
+  void internal.deps.revision.value;
+  void internal.sel.revision.value;
   // (spec-collapse-expand.md §9) — the single most important integration assertion in this
   // whole feature: a collapse/expand must trigger a repaint, exactly like any other store
   // mutation this effect already tracks.
-  void internal.collapseStore.revision.value;
+  void internal.fold.revision.value;
   const viewMode = internal.viewMode.value; // tracked — re-runs this effect on zoomTo()
 
-  const tasks = internal.taskStore.all();
-  const dependencies = internal.dependencyStore.all();
-  const selectedTaskIds = internal.selectionStore.all();
-  const collapsedIds = new Set(internal.collapseStore.all());
+  const tasks = internal.tasks.all();
+  const dependencies = internal.deps.all();
+  const selectedTaskIds = internal.sel.all();
+  const collapsedIds = new Set(internal.fold.all());
 
   let criticalPath: CriticalPathResult | undefined;
   // `undefined` (not an empty map) when no `config.rollup` provider is supplied, so the
@@ -328,14 +328,14 @@ function renderNow(
   let rollup: ReadonlyMap<TaskId, RolledUpRow> | undefined;
   if (tasks.length === 0) {
     // No tasks → no critical path; reset so the next non-empty compute always re-emits.
-    internal.resetCriticalIds();
+    internal.resetCrit();
   }
   if (tasks.length > 0) {
     try {
       criticalPath = computeCriticalPathFn(tasks, dependencies, internal.calendar);
       // Emit only when the critical set actually changed (not on every mutation / render).
-      if (internal.noteCriticalIds(criticalPath.criticalTaskIds)) {
-        internal.emitEvent('critical-path:computed', criticalPath.criticalTaskIds);
+      if (internal.noteCrit(criticalPath.criticalTaskIds)) {
+        internal.emit('critical-path:computed', criticalPath.criticalTaskIds);
       }
     } catch (err) {
       // Cyclic graph (possible if a caller used DependencyStore.link(..., {allowCycle: true})
@@ -463,17 +463,17 @@ function rollupFor(
 }
 
 function renderInput(internal: GanttInternal): SvgRendererInput {
-  const tasks = internal.taskStore.all();
+  const tasks = internal.tasks.all();
   // Seeded on the FIRST paint too, not only from the reactive effect's first run — otherwise a
   // hierarchical chart with a `rollup` provider would paint one frame of authored geometry and
   // then visibly jump to the aggregate spans.
   const rollup = rollupFor(internal, tasks);
   return {
     tasks,
-    dependencies: internal.dependencyStore.all(),
+    dependencies: internal.deps.all(),
     calendar: internal.calendar,
-    selectedTaskIds: internal.selectionStore.all(),
-    collapsedIds: new Set(internal.collapseStore.all()),
+    selectedTaskIds: internal.sel.all(),
+    collapsedIds: new Set(internal.fold.all()),
     ...(rollup !== undefined ? { rollup } : {}),
   };
 }
@@ -513,5 +513,5 @@ function rendererOptions(internal: GanttInternal): SvgRendererOptions & CanvasRe
     // misleading dead control. (SVG-only; Canvas has no connector-handle affordance in v1.)
     showLinkHandles: !config.readOnly && config.enableDependencyDrag !== false,
   };
-  return internal.taskStore.size === 0 ? { ...opts, timeRange: emptyStateTimeRange(internal) } : opts;
+  return internal.tasks.size === 0 ? { ...opts, timeRange: emptyStateTimeRange(internal) } : opts;
 }

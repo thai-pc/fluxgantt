@@ -10,7 +10,7 @@
 //
 // WHY A MIXIN: scrolling needs a mounted DOM container, and class prototype methods never
 // tree-shake, so putting these on the base facade would bill every headless consumer for them.
-// Everything here reaches the live chart through `internal.getMountState()` and the renderer
+// Everything here reaches the live chart through `internal.mountOf()` and the renderer
 // handle's existing public members; neither renderer changes.
 //
 // Scroll never moves focus and never changes selection: the typical caller is a host search box
@@ -132,35 +132,35 @@ export function withViewport<T extends GanttInstance>(instance: T): T & Viewport
 
   const capability: ViewportCapability = {
     scrollToTask(id, options = {}) {
-      internal.assertAlive('scrollToTask');
-      const task = internal.requireTask(id, 'scrollToTask');
-      let mount = internal.getMountState();
+      internal.alive('scrollToTask');
+      const task = internal.need(id, 'scrollToTask');
+      let mount = internal.mountOf();
       if (!mount) return false;
 
       const density = currentDensity();
       const layout = (): ReturnType<typeof layoutRows> =>
-        layoutRows(internal.taskStore.all(), density, new Set(internal.collapseStore.all()));
+        layoutRows(internal.tasks.all(), density, new Set(internal.fold.all()));
       let row = layout().find((r) => r.task.id === id);
       if (!row) {
         if (options.expand === false) return false;
         // Walk the parent chain (bounded, so a malformed cycle cannot loop) and un-collapse it.
-        const next = new Set(internal.collapseStore.all());
+        const next = new Set(internal.fold.all());
         let parent = task.parent;
-        for (let i = internal.taskStore.size; parent !== undefined && i > 0; i--) {
+        for (let i = internal.tasks.size; parent !== undefined && i > 0; i--) {
           next.delete(parent);
-          parent = internal.taskStore.get(parent)?.parent;
+          parent = internal.tasks.get(parent)?.parent;
         }
-        if (internal.collapseStore.replace([...next])) {
-          internal.emitEvent('collapse:changed', internal.collapseStore.all());
+        if (internal.fold.replace([...next])) {
+          internal.emit('collapse:changed', internal.fold.all());
         }
         row = layout().find((r) => r.task.id === id);
         if (!row) return false;
         // The expand repaint may have replaced the mount state; read the live one.
-        mount = internal.getMountState();
+        mount = internal.mountOf();
         if (!mount) return false;
       }
 
-      const handle = mount.rendererHandle;
+      const handle = mount.handle;
       const { container } = handle;
       const labelW = handle.getLabelColumnWidth();
       const scale = handle.getTimeScale();
@@ -192,10 +192,10 @@ export function withViewport<T extends GanttInstance>(instance: T): T & Viewport
     },
 
     scrollToDate(date, options = {}) {
-      internal.assertAlive('scrollToDate');
-      const mount = internal.getMountState();
+      internal.alive('scrollToDate');
+      const mount = internal.mountOf();
       if (!mount) return false;
-      const handle = mount.rendererHandle;
+      const handle = mount.handle;
       const { container } = handle;
       const scale = handle.getTimeScale();
       const rel = scale.dateToX(date); // throws on an unparseable date
@@ -210,7 +210,7 @@ export function withViewport<T extends GanttInstance>(instance: T): T & Viewport
     },
 
     setDensity(density) {
-      internal.assertAlive('setDensity');
+      internal.alive('setDensity');
       if (typeof density !== 'string' || !Object.hasOwn(ROW_HEIGHT, density)) {
         throw new Error(
           `gantt.setDensity: invalid density "${String(density)}" — must be one of ${Object.keys(ROW_HEIGHT).join(', ')}`,
@@ -220,17 +220,17 @@ export function withViewport<T extends GanttInstance>(instance: T): T & Viewport
       internal.densityPinned = true; // the host has taken ownership, even on an equal call
       if (density === prev) return;
 
-      const mount = internal.getMountState();
+      const mount = internal.mountOf();
       if (!mount) {
         internal.density = density; // picked up by render/mixin.ts at mount
       } else {
-        const { container } = mount.rendererHandle;
+        const { container } = mount.handle;
         const oldTop = container.scrollTop;
         const firstRow = oldTop / ROW_HEIGHT[prev];
         const before = internal.density;
         internal.density = density;
         try {
-          mount.rendererHandle.setOptions({ density });
+          mount.handle.setOptions({ density });
         } catch (e) {
           // Canvas rolls itself back atomically; keep our slot in agreement and rethrow.
           if (before === undefined) delete internal.density;
@@ -241,7 +241,7 @@ export function withViewport<T extends GanttInstance>(instance: T): T & Viewport
           container.scrollTop = firstRow * ROW_HEIGHT[density];
         }
       }
-      internal.emitEvent('viewport:changed', { viewMode: internal.viewMode.peek(), density });
+      internal.emit('viewport:changed', { viewMode: internal.viewMode.peek(), density });
     },
   };
 

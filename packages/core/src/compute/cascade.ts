@@ -9,10 +9,8 @@
 import type { Temporal } from '@js-temporal/polyfill';
 import { normalizeDate, addWorkingHours } from './working-calendar.js';
 import {
-  pushInto,
+  indexGraph,
   topologicalSort,
-  validateTaskDuration,
-  validateDependencyLag,
   resolveDuration,
   compareInstant,
   laterOf,
@@ -66,33 +64,12 @@ export function computeCascade(
   calendar: WorkingCalendar,
   changedTaskIds: readonly TaskId[],
 ): CascadeResult {
-  const taskById = new Map<TaskId, Task>();
-  for (const t of tasks) {
-    if (taskById.has(t.id)) {
-      throw new Error(`computeCascade: duplicate task id ${t.id}`);
-    }
-    taskById.set(t.id, t);
-    validateTaskDuration(t, CALLER_NAME);
-  }
-
-  for (const d of dependencies) {
-    if (!taskById.has(d.from) || !taskById.has(d.to)) {
-      throw new Error(`computeCascade: dependency ${d.id} references a task that does not exist`);
-    }
-    validateDependencyLag(d, CALLER_NAME);
-  }
+  const { taskById, predecessors, successors } = indexGraph(tasks, dependencies, CALLER_NAME);
 
   for (const id of changedTaskIds) {
     if (!taskById.has(id)) {
       throw new Error(`computeCascade: changed task ${id} not found`);
     }
-  }
-
-  const predecessors = new Map<TaskId, Dependency[]>(); // dep.to   -> dep
-  const successors = new Map<TaskId, Dependency[]>(); // dep.from -> dep
-  for (const d of dependencies) {
-    pushInto(predecessors, d.to, d);
-    pushInto(successors, d.from, d);
   }
 
   // Whole-graph topological order + cycle check (reused — see spec-cascade.md §2.3).

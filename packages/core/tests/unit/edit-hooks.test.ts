@@ -527,10 +527,10 @@ describe('withEditHooks — Canvas-style handle (row-wide hit test)', () => {
       getLabelColumnWidth: () => 160,
       hitTestRow: () => (hit ? { ...hit, taskId: toTaskId(hit.taskId) } : undefined),
     };
-    internal.setMountState({ renderer: 'canvas', rendererHandle: handle } as unknown as MountState);
+    internal.setMount({ renderer: 'canvas', handle } as unknown as MountState);
     const activated: TaskActivatedPayload[] = [];
     gantt.on('task:activated', (p) => activated.push(p));
-    internal.emitEvent('renderer:selected', { renderer: 'canvas', taskCount: 1 });
+    internal.emit('renderer:selected', { renderer: 'canvas', taskCount: 1 });
     return { canvas, root, activated, internal };
   }
 
@@ -693,17 +693,17 @@ describe('withEditHooks — Canvas keyboard path', () => {
       destroy: () => undefined,
       ...(anchor ? { getRowAnchor: () => ({ clientX: 111, clientY: 222 }) } : {}),
     };
-    internal.setMountState({
+    internal.setMount({
       renderer: 'canvas',
-      rendererHandle: handle,
-      disposeEffect: () => undefined,
-      disposeInteractions: () => undefined,
+      handle,
+      stopFx: () => undefined,
+      stopUi: () => undefined,
     } as unknown as MountState);
     const activated: TaskActivatedPayload[] = [];
     const context: TaskContextRequestedPayload[] = [];
     gantt.on('task:activated', (p) => activated.push(p));
     gantt.on('task:context-requested', (p) => context.push(p));
-    internal.emitEvent('renderer:selected', { renderer: 'canvas', taskCount: 1 });
+    internal.emit('renderer:selected', { renderer: 'canvas', taskCount: 1 });
     return { gantt, root, row, canvas, activated, context, cleanup: () => root.remove() };
   }
 

@@ -48,9 +48,9 @@ export function withEditHooks<T extends GanttInstance>(instance: T, options: Edi
   function install(): void {
     uninstall?.();
     uninstall = undefined;
-    const mount = internal.getMountState();
+    const mount = internal.mountOf();
     if (disposed || !mount) return;
-    const handle = mount.rendererHandle;
+    const handle = mount.handle;
     const pointerTarget = handle.pointerEventTarget;
     const root = handle.interactionRoot;
 
@@ -88,7 +88,7 @@ export function withEditHooks<T extends GanttInstance>(instance: T, options: Edi
         else if (target.closest('.fg-timeline__row-label')) part = 'label';
       }
       // A forged or stale id never leaves the library.
-      return id !== null && internal.taskStore.has(toTaskId(id)) ? { id: toTaskId(id), part } : undefined;
+      return id !== null && internal.tasks.has(toTaskId(id)) ? { id: toTaskId(id), part } : undefined;
     };
 
     /** Emits the context event; resolves to whether the host called `preventDefault()`. */
@@ -99,7 +99,7 @@ export function withEditHooks<T extends GanttInstance>(instance: T, options: Edi
       y: number,
     ): boolean => {
       let prevented = false;
-      internal.emitEvent('task:context-requested', {
+      internal.emit('task:context-requested', {
         taskId: hit.id,
         part: hit.part,
         source,
@@ -147,9 +147,9 @@ export function withEditHooks<T extends GanttInstance>(instance: T, options: Edi
     const fireLongPress = (state: NonNullable<typeof press>): void => {
       cancelPress();
       // `unmount()` has no hook: bail out unless this handle is still the mounted one.
-      if (disposed || internal.getMountState()?.rendererHandle !== handle) return;
+      if (disposed || internal.mountOf()?.handle !== handle) return;
       // The row may have been removed meanwhile (a repaint alone keeps the id valid).
-      if (!internal.taskStore.has(state.hit.id)) return;
+      if (!internal.tasks.has(state.hit.id)) return;
       originPrevented = emitContext(state.hit, 'long-press', state.px, state.py);
       // The gesture now belongs to the host's menu: end it for the drag / selection recognizers
       // (both treat a window `pointercancel` as a cancel and commit nothing).
@@ -174,7 +174,7 @@ export function withEditHooks<T extends GanttInstance>(instance: T, options: Edi
       if (down && Math.hypot(e.clientX - down.x, e.clientY - down.y) >= DRAG_THRESHOLD_PX) return;
       const hit = resolve(e.target, e.clientX, e.clientY);
       if (!hit) return;
-      internal.emitEvent('task:activated', {
+      internal.emit('task:activated', {
         taskId: hit.id,
         part: hit.part,
         source: 'pointer',
@@ -215,7 +215,7 @@ export function withEditHooks<T extends GanttInstance>(instance: T, options: Edi
       const activate = plain && (e.key === 'F2' || (e.key === 'Enter' && !e.defaultPrevented));
       if (!menu && !activate) return;
       const idAttr = rowEl.getAttribute('data-task-id');
-      if (idAttr === null || !internal.taskStore.has(toTaskId(idAttr))) return;
+      if (idAttr === null || !internal.tasks.has(toTaskId(idAttr))) return;
       const id = toTaskId(idAttr);
       // Anchor: centre of the focused row; a degenerate rect (windowed Canvas ARIA layer) falls
       // back to the chart's top-left plus the label column, never NaN.
@@ -231,7 +231,7 @@ export function withEditHooks<T extends GanttInstance>(instance: T, options: Edi
       }
       if (activate) {
         e.preventDefault();
-        internal.emitEvent('task:activated', { taskId: id, part: 'row', source: 'keyboard', clientX: x, clientY: y });
+        internal.emit('task:activated', { taskId: id, part: 'row', source: 'keyboard', clientX: x, clientY: y });
         return;
       }
       origin = 'keyboard';

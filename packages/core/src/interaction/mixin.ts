@@ -56,8 +56,8 @@ import type { TaskId } from '../types.js';
  */
 export function withInteraction<T extends GanttInstance>(instance: T): T {
   const internal = getInternal(instance);
-  internal.setInteractionHooks({
-    wireInto: (handle, renderer) => wireInto(instance, internal, handle, renderer),
+  internal.setHooks({
+    wire: (handle, renderer) => wireInto(instance, internal, handle, renderer),
   });
   return instance;
 }
@@ -80,7 +80,7 @@ function wireInto(
 
   // Selection is NOT gated by readOnly (confirmed): readOnly disables drag-move/drag-resize/
   // drag-create-dep, not click-select (spec-selection.md §5.5).
-  const clickSelectDispose = enableClickSelect(handle, () => internal.taskStore.all(), {
+  const clickSelectDispose = enableClickSelect(handle, () => internal.tasks.all(), {
     // A click also moves the keyboard-nav roving focus (set BEFORE the commit so the repaint that
     // the selection change triggers already carries the new roving row). `keyboardNav` is
     // assigned below; these only run on a later pointer event.
@@ -95,7 +95,7 @@ function wireInto(
     onRangeSelect: (ids) => commitRangeSelect(internal, ids),
     onClear: () => commitClearSelection(internal),
     density,
-    getCollapsedIds: () => new Set(internal.collapseStore.all()),
+    getCollapsedIds: () => new Set(internal.fold.all()),
   });
 
   // Registered UNCONDITIONALLY (spec-keyboard-nav.md §6.2), same group as enableClickSelect
@@ -121,11 +121,11 @@ function wireInto(
     },
     onZoomIn: () => instance.zoomIn(),
     onZoomOut: () => instance.zoomOut(),
-    getTasks: () => internal.taskStore.all(),
+    getTasks: () => internal.tasks.all(),
     density,
     isReadOnly: () => config.readOnly === true,
-    getSelection: () => internal.selectionStore.all(),
-    getCollapsedIds: () => new Set(internal.collapseStore.all()),
+    getSelection: () => internal.sel.all(),
+    getCollapsedIds: () => new Set(internal.fold.all()),
     onToggleCollapse: (id) => {
       instance.toggleCollapse(id); // reuses the public method in full — same emit contract as a programmatic call
     },
@@ -137,7 +137,7 @@ function wireInto(
   //
   // ORDERING: `signals.ts` runs effects SYNCHRONOUSLY outside `batch()` (`Effect._notify` ->
   // `_run` once `batchDepth` returns to 0) — so an unwrapped `instance.toggleCollapse(taskId)`
-  // call bumps `collapseStore.revision` and the render effect repaints IMMEDIATELY, before
+  // call bumps `fold.revision` and the render effect repaints IMMEDIATELY, before
   // `keyboardNav.syncFocusToRows()` below ever runs. Since `focusedTaskId` lives in
   // `keyboard-nav.ts` as a plain local (not a signal), that repaint would already have painted
   // the stale, about-to-be-hidden roving-tabindex/focus-ring target, and the later clamp would
@@ -148,7 +148,7 @@ function wireInto(
   // inside `toggleCollapse()` regardless of `batch()` — only the render EFFECT's flush is
   // deferred — so `syncFocusToRows()`'s `getCollapsedIds()` read here already sees the toggled
   // state).
-  const collapseToggleDispose = enableCollapseToggle(handle, () => internal.taskStore.all(), {
+  const collapseToggleDispose = enableCollapseToggle(handle, () => internal.tasks.all(), {
     onToggleCollapse: (taskId) => {
       batch(() => {
         instance.toggleCollapse(taskId); // reuses the public method in full
@@ -157,10 +157,9 @@ function wireInto(
     },
   });
 
-  let dragMoveDispose: () => void = () => {};
-  let dragResizeDispose: () => void = () => {};
-  let dragCreateDepDispose: () => void = () => {};
-  let wheelZoomDispose: () => void = () => {};
+  // Disposers of every module wired below, in wiring order (the ones that are SVG-only simply
+  // never get pushed in Canvas mode).
+  const disposers = [clickSelectDispose, collapseToggleDispose, keyboardNav.dispose];
 
   if (renderer === 'svg') {
     // Cast, not a narrow: `renderer`/`handle` are two separate parameters, so TypeScript cannot
@@ -173,47 +172,34 @@ function wireInto(
       // priority, not call order) — all three wire through the SAME coordinator on `svgHandle`,
       // so a handle claim always wins over an edge-zone claim, which always wins over a
       // whole-bar claim.
-      dragResizeDispose = enableDragResize(svgHandle, () => internal.taskStore.all(), {
+      disposers.push(enableDragResize(svgHandle, () => internal.tasks.all(), {
         onTaskResized: (taskId, newEnd) => commitResize(instance, internal, taskId, newEnd),
-      });
-      dragMoveDispose = enableDragMove(svgHandle, () => internal.taskStore.all(), {
+      }));
+      disposers.push(enableDragMove(svgHandle, () => internal.tasks.all(), {
         onTaskMoved: (taskId, newStart, newEnd) => commitDrag(internal, taskId, newStart, newEnd),
-      });
+      }));
       if (config.enableDependencyDrag !== false) {
-        dragCreateDepDispose = enableDragCreateDep(svgHandle, () => internal.taskStore.all(), {
+        disposers.push(enableDragCreateDep(svgHandle, () => internal.tasks.all(), {
           onDependencyCreated: (fromTaskId, toTaskId) => commitCreateDep(instance, internal, fromTaskId, toTaskId),
-        });
+        }));
       }
     }
     // Registered UNCONDITIONALLY, same posture as enableKeyboardNav's zoom case arms — Ctrl+wheel
     // mutates no store state, so readOnly has nothing to protect against here (spec-wheel-zoom.md §4).
-    wheelZoomDispose = enableWheelZoom(svgHandle, {
+    disposers.push(enableWheelZoom(svgHandle, {
       onZoomIn: () => instance.zoomIn(),
       onZoomOut: () => instance.zoomOut(),
-    });
+    }));
   }
-  // Canvas mode: drag-move/drag-resize/drag-create-dep/wheel-zoom stay SVG-only — their
-  // disposers stay the no-op default above.
+  // Canvas mode: drag-move/drag-resize/drag-create-dep/wheel-zoom stay SVG-only.
 
   return {
-    getFocusedTaskId: keyboardNav.getFocusedTaskId,
-    dispose: () => {
-      // Order matters (the shared pointer-drag coordinator wraps handle.destroy): unregister ALL
-      // THREE pointer-drag-coordinated recognizers via their returned disposers — order among
-      // them doesn't matter; the coordinator only detaches its pointerdown listener + unwraps
-      // handle.destroy once ALL have unregistered (refcounted, see pointer-drag.ts). click-select
-      // never touched that coordinator (it owns its own independent listeners), so it has no
-      // shared refcount to worry about — still disposed here, order-independent among the rest.
-      // The reactive render effect is stopped by the caller BEFORE this runs, and
-      // `rendererHandle.destroy()` AFTER it (see `gantt.ts`'s `teardownMount`).
-      dragResizeDispose();
-      dragMoveDispose();
-      dragCreateDepDispose();
-      clickSelectDispose();
-      collapseToggleDispose();
-      keyboardNav.dispose();
-      wheelZoomDispose();
-    },
+    focusedId: keyboardNav.getFocusedTaskId,
+    // Order among the disposers is irrelevant: the shared pointer-drag coordinator is refcounted
+    // (see pointer-drag.ts) and click-select/keyboard-nav own independent listeners. The reactive
+    // render effect is stopped by the caller BEFORE this runs, and `handle.destroy()`
+    // AFTER it (see `gantt.ts`'s `unmount`).
+    dispose: () => disposers.forEach((d) => d()),
   };
 }
 
@@ -225,7 +211,7 @@ function commitDrag(
   newStart: Temporal.ZonedDateTime,
   newEnd: Temporal.ZonedDateTime,
 ): void {
-  const task = internal.taskStore.get(taskId);
+  const task = internal.tasks.get(taskId);
   if (!task) return; // task removed mid-drag (race) - nothing to commit
   // A drag that snapped to a zero-day delta changed nothing: writing it back would re-store the
   // start as a ZonedDateTime (same instant) with no task:moved and a phantom history entry.
@@ -236,7 +222,7 @@ function commitDrag(
   // move + any cascade shifts into ONE history entry. start+end always shift by the identical
   // instant delta (drag-move's own contract), so the instant span (end − start) is preserved →
   // the diff/emit step never fires task:resized from a drag.
-  internal.commitScheduleChange(taskId, { start: newStart, end: newEnd }, true);
+  internal.reschedule(taskId, { start: newStart, end: newEnd }, true);
 }
 
 function commitResize(
@@ -245,7 +231,7 @@ function commitResize(
   taskId: TaskId,
   newEnd: Temporal.ZonedDateTime,
 ): void {
-  const task = internal.taskStore.get(taskId);
+  const task = internal.tasks.get(taskId);
   if (!task) return; // task removed mid-resize (race) — nothing to commit, mirrors commitDrag
   const tz = internal.calendar.timezone;
   const startNs = normalizeDate(task.start, tz).epochNanoseconds;
@@ -286,7 +272,7 @@ function commitCreateDep(
   fromTaskId: TaskId,
   toTaskId: TaskId,
 ): void {
-  if (!internal.taskStore.has(fromTaskId) || !internal.taskStore.has(toTaskId)) return; // race: a task removed mid-drag
+  if (!internal.tasks.has(fromTaskId) || !internal.tasks.has(toTaskId)) return; // race: a task removed mid-drag
   try {
     instance.linkTasks(fromTaskId, toTaskId, 'FS'); // emits dependency:added on success
   } catch (err) {
@@ -301,21 +287,21 @@ function commitCreateDep(
 }
 
 function commitSelect(internal: GanttInternal, taskId: TaskId): void {
-  internal.applySelection(internal.expandWithDescendants([taskId]));
+  internal.applySel(internal.withKids([taskId]));
 }
 
 function commitToggleSelect(internal: GanttInternal, taskId: TaskId): void {
-  if (!internal.taskStore.has(taskId)) return; // race: task removed mid-click
-  const group = new Set(internal.expandWithDescendants([taskId]));
-  const current = new Set(internal.selectionStore.all());
+  if (!internal.tasks.has(taskId)) return; // race: task removed mid-click
+  const group = new Set(internal.withKids([taskId]));
+  const current = new Set(internal.sel.all());
   const isSelected = current.has(taskId); // the group's own representative id
   if (isSelected) for (const g of group) current.delete(g);
   else for (const g of group) current.add(g);
-  internal.applySelection([...current]);
+  internal.applySel([...current]);
 }
 
 function commitRangeSelect(internal: GanttInternal, rawIds: readonly TaskId[]): void {
-  internal.applySelection(internal.expandWithDescendants(rawIds));
+  internal.applySel(internal.withKids(rawIds));
 }
 
 /**
@@ -329,9 +315,9 @@ function commitRangeSelect(internal: GanttInternal, rawIds: readonly TaskId[]): 
  */
 function commitKeyboardRangeSelect(internal: GanttInternal, anchorId: TaskId, focusId: TaskId): void {
   const rows = layoutRows(
-    internal.taskStore.all(),
+    internal.tasks.all(),
     internal.config.density ?? 'default',
-    new Set(internal.collapseStore.all()),
+    new Set(internal.fold.all()),
   );
   const anchorIndex = rows.findIndex((r) => r.task.id === anchorId);
   const focusIndex = rows.findIndex((r) => r.task.id === focusId);
@@ -353,16 +339,16 @@ function commitKeyboardRangeSelect(internal: GanttInternal, anchorId: TaskId, fo
  */
 function commitDeleteSelected(instance: GanttInstance, internal: GanttInternal): void {
   if (internal.config.readOnly) return; // defense in depth — enableKeyboardNav's own isReadOnly() gate already prevents this call
-  const ids = internal.selectionStore.all();
+  const ids = internal.sel.all();
   if (ids.length === 0) return;
-  internal.beginTransaction();
+  internal.begin();
   try {
     for (const id of ids) instance.removeTask(id);
   } finally {
-    internal.endTransaction();
+    internal.end();
   }
 }
 
 function commitClearSelection(internal: GanttInternal): void {
-  internal.applySelection([]);
+  internal.applySel([]);
 }

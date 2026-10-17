@@ -188,7 +188,7 @@ export function withResponsive<T extends GanttInstance>(
 
   const onPointerDown = (event: Event): void => {
     const pe = event as PointerEvent;
-    const mount = internal.getMountState();
+    const mount = internal.mountOf();
     if (disposed || !mount || pan !== undefined) return;
     // A pointerdown ON a task bar belongs to `interaction/pointer-drag.ts` — claiming it here
     // would break drag-move/resize/create-dependency, which is the whole point of NOT making
@@ -196,7 +196,7 @@ export function withResponsive<T extends GanttInstance>(
     // to the `<g class="fg-task">` group the recognizers key off.
     const target = pe.target;
     if (target instanceof Element && target.closest('.fg-task[data-task-id]') !== null) return;
-    const { container } = mount.rendererHandle;
+    const { container } = mount.handle;
     pan = {
       id: pe.pointerId,
       startX: pe.clientX,
@@ -208,9 +208,9 @@ export function withResponsive<T extends GanttInstance>(
 
   const onPointerMove = (event: Event): void => {
     const pe = event as PointerEvent;
-    const mount = internal.getMountState();
+    const mount = internal.mountOf();
     if (!pan || pe.pointerId !== pan.id || !mount) return;
-    const { container } = mount.rendererHandle;
+    const { container } = mount.handle;
     // Inverted: dragging the content LEFT reveals content to the right, i.e. scrolls forward —
     // the direct-manipulation convention every native scroller uses. The browser self-clamps
     // `scrollLeft`/`scrollTop` to the valid range, so no manual clamp is needed.
@@ -230,9 +230,9 @@ export function withResponsive<T extends GanttInstance>(
    *  Known, accepted: `zoomTo()` first writes a centre-anchored `scrollLeft` and this overwrites it
    *  in the same task, so a synchronous `viewport:changed` listener sees the intermediate value. */
   const stepZoom = (zoomIn: boolean, midX: number): void => {
-    const mount = internal.getMountState();
+    const mount = internal.mountOf();
     if (disposed || !mount) return;
-    const handle = mount.rendererHandle;
+    const handle = mount.handle;
     const c = handle.container;
     const before = instance.getViewMode();
     const offX = midX - c.getBoundingClientRect().left - c.clientLeft;
@@ -343,9 +343,9 @@ export function withResponsive<T extends GanttInstance>(
   /** Installs or removes everything that is conditional on the pointer being coarse. Idempotent
    *  in both directions — re-entered on every mount and on every `matchMedia` change. */
   function applyCoarse(): void {
-    const mount = internal.getMountState();
+    const mount = internal.mountOf();
     if (!mount) return; // headless or unmounted — re-applied from `renderer:selected`
-    const { container, pointerEventTarget } = mount.rendererHandle;
+    const { container, pointerEventTarget } = mount.handle;
 
     if (isCoarse()) {
       if (!styleEl) {
@@ -367,7 +367,7 @@ export function withResponsive<T extends GanttInstance>(
       }
       if (!internal.densityPinned) {
         internal.density = touchDensity;
-        mount.rendererHandle.setOptions({ density: touchDensity });
+        mount.handle.setOptions({ density: touchDensity });
       }
     } else {
       teardownCoarse();
@@ -377,7 +377,7 @@ export function withResponsive<T extends GanttInstance>(
       if (!internal.densityPinned) {
         const restored = internal.config.density ?? 'default';
         internal.density = restored;
-        mount.rendererHandle.setOptions({ density: restored });
+        mount.handle.setOptions({ density: restored });
       }
     }
   }
@@ -387,23 +387,23 @@ export function withResponsive<T extends GanttInstance>(
    *  `ResizeObserver` is added to the SVG renderer itself, because nothing else in its
    *  content-sized geometry depends on container width. */
   function applyLabelWidth(containerWidth: number): void {
-    const mount = internal.getMountState();
+    const mount = internal.mountOf();
     if (disposed || !mount) return;
     const next = clampLabelWidth(containerWidth);
     if (next === labelColumnWidth) return; // no repaint for a resize that changes nothing
     labelColumnWidth = next;
-    mount.rendererHandle.setOptions({ labelColumnWidth: next });
+    mount.handle.setOptions({ labelColumnWidth: next });
   }
 
   function observeContainer(): void {
-    const mount = internal.getMountState();
+    const mount = internal.mountOf();
     if (!mount) return;
     observer?.disconnect();
     // Feature-detected and degrading quietly, the same posture (and for the same reason) as
     // `render/canvas-renderer.ts`'s own observer: a runtime without `ResizeObserver` keeps the
     // default 160px column rather than throwing.
     if (typeof ResizeObserver !== 'function') return;
-    const { container } = mount.rendererHandle;
+    const { container } = mount.handle;
     observer = new ResizeObserver(() => {
       applyLabelWidth(container.clientWidth);
     });

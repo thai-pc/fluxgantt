@@ -157,13 +157,7 @@ function validateSchemaVersion(envelope: Record<string, unknown>): void {
 }
 
 function validateAndBuildTasks(rawTasksIn: unknown, limits: ImportLimits): TaskInput[] {
-  const rawTasks = rawTasksIn === undefined ? [] : rawTasksIn;
-  if (!Array.isArray(rawTasks)) {
-    throw new IoValidationError('tasks must be an array', '$.tasks');
-  }
-  if (rawTasks.length > limits.maxTaskCount) {
-    throw new IoValidationError(`tasks exceeds maxTaskCount (${limits.maxTaskCount})`, '$.tasks');
-  }
+  const rawTasks = arrayWithin(rawTasksIn, 'tasks', 'maxTaskCount', limits.maxTaskCount, '$.tasks');
 
   const seenIds = new Set<string>();
   const result: TaskInput[] = [];
@@ -183,31 +177,25 @@ function validateAndBuildTasks(rawTasksIn: unknown, limits: ImportLimits): TaskI
     const progress = assertFiniteNumberInRange(raw.progress, 0, 1, `${path}.progress`);
     const type = assertOneOf(raw.type, TASK_KINDS, `${path}.type`);
 
-    const duration =
-      raw.duration === undefined ? undefined : assertFiniteNumber(raw.duration, `${path}.duration`, { min: 0 });
-    const priority = raw.priority === undefined ? undefined : assertFiniteNumber(raw.priority, `${path}.priority`);
+    // An optional field: absent (`undefined`) means "not set", anything else is validated by
+    // `check` (handed the value and its error path).
+    const optional = <T>(key: string, check: (value: unknown, at: string) => T): T | undefined =>
+      raw[key] === undefined ? undefined : check(raw[key], `${path}.${key}`);
+    const duration = optional('duration', (v, at) => assertFiniteNumber(v, at, { min: 0 }));
+    const priority = optional('priority', assertFiniteNumber);
     const parent =
-      raw.parent === undefined || raw.parent === null
-        ? undefined
-        : assertNonEmptyString(raw.parent, `${path}.parent`, limits.maxIdLength);
-    const notes = raw.notes === undefined ? undefined : assertString(raw.notes, `${path}.notes`, limits.maxStringLength);
-    const color =
-      raw.color === undefined ? undefined : validateColor(raw.color, `${path}.color`, limits.maxStringLength);
-    const constraint =
-      raw.constraint === undefined ? undefined : validateTaskConstraint(raw.constraint, `${path}.constraint`);
-    const resources =
-      raw.resources === undefined ? undefined : validateResourceAssignments(raw.resources, `${path}.resources`, limits);
-    const meta =
-      raw.meta === undefined ? undefined : validateMeta(raw.meta, `${path}.meta`, limits.maxMetaKeys, limits.maxMetaDepth);
+      raw.parent === null ? undefined : optional('parent', (v, at) => assertNonEmptyString(v, at, limits.maxIdLength));
+    const notes = optional('notes', (v, at) => assertString(v, at, limits.maxStringLength));
+    const color = optional('color', (v, at) => validateColor(v, at, limits.maxStringLength));
+    const constraint = optional('constraint', validateTaskConstraint);
+    const resources = optional('resources', (v, at) => validateResourceAssignments(v, at, limits));
+    const meta = optional('meta', (v, at) => validateMeta(v, at, limits.maxMetaKeys, limits.maxMetaDepth));
 
     // createdAt/updatedAt: validated if present (must parse as a DateInput string) but
     // INTENTIONALLY DROPPED below — TaskInput cannot carry them, TaskStore.add() always
     // re-stamps fresh timestamps (spec §9/§10).
-    if (raw.createdAt !== undefined && raw.createdAt !== null) {
-      assertParsableDateInput(raw.createdAt, `${path}.createdAt`);
-    }
-    if (raw.updatedAt !== undefined && raw.updatedAt !== null) {
-      assertParsableDateInput(raw.updatedAt, `${path}.updatedAt`);
+    for (const key of ['createdAt', 'updatedAt']) {
+      if (raw[key] !== undefined && raw[key] !== null) assertParsableDateInput(raw[key], `${path}.${key}`);
     }
 
     result.push({
@@ -232,16 +220,19 @@ function validateAndBuildTasks(rawTasksIn: unknown, limits: ImportLimits): TaskI
   return result;
 }
 
+/** `raw` as an array of at most `max` items; `undefined` counts as empty (only the top-level
+ *  `tasks`/`dependencies` keys can be absent — a present `resources` is never `undefined` here). */
+function arrayWithin(raw: unknown, label: string, limitName: string, max: number, path: string): unknown[] {
+  const list = raw === undefined ? [] : raw;
+  if (!Array.isArray(list)) throw new IoValidationError(`${label} must be an array`, path);
+  if (list.length > max) throw new IoValidationError(`${label} exceeds ${limitName} (${max})`, path);
+  return list;
+}
+
 function validateResourceAssignments(raw: unknown, path: string, limits: ImportLimits): ResourceAssignment[] {
-  if (!Array.isArray(raw)) {
-    throw new IoValidationError('resources must be an array', path);
-  }
   // Cap per-task assignment count (security review N4) — consistent with every other collection
   // having an explicit cap. Reuses maxMetaKeys as the per-task collection bound.
-  if (raw.length > limits.maxMetaKeys) {
-    throw new IoValidationError(`resources exceeds maxMetaKeys (${limits.maxMetaKeys})`, path);
-  }
-  return raw.map((item: unknown, i: number) => {
+  return arrayWithin(raw, 'resources', 'maxMetaKeys', limits.maxMetaKeys, path).map((item: unknown, i: number) => {
     const itemPath = `${path}[${i}]`;
     assertPlainObject(item, itemPath);
     const resourceId = assertNonEmptyString(item.resourceId, `${itemPath}.resourceId`, limits.maxIdLength);
@@ -251,13 +242,13 @@ function validateResourceAssignments(raw: unknown, path: string, limits: ImportL
 }
 
 function validateAndBuildDependencies(rawDepsIn: unknown, limits: ImportLimits): DependencyInput[] {
-  const rawDeps = rawDepsIn === undefined ? [] : rawDepsIn;
-  if (!Array.isArray(rawDeps)) {
-    throw new IoValidationError('dependencies must be an array', '$.dependencies');
-  }
-  if (rawDeps.length > limits.maxDependencyCount) {
-    throw new IoValidationError(`dependencies exceeds maxDependencyCount (${limits.maxDependencyCount})`, '$.dependencies');
-  }
+  const rawDeps = arrayWithin(
+    rawDepsIn,
+    'dependencies',
+    'maxDependencyCount',
+    limits.maxDependencyCount,
+    '$.dependencies',
+  );
 
   const result: DependencyInput[] = [];
   rawDeps.forEach((raw: unknown, i: number) => {

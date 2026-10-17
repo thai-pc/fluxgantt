@@ -89,7 +89,7 @@ describe('withConflicts — detectConflicts()', () => {
     vi.spyOn(console, 'warn').mockImplementation(() => {}); // the watcher also notices
     const { g } = make();
     g.addTask(task('c', '2026-01-06T09:00', '2026-01-06T10:00'));
-    getInternal(g).dependencyStore.link(B, toTaskId('c'), 'FS', { lag: Number.NaN });
+    getInternal(g).deps.link(B, toTaskId('c'), 'FS', { lag: Number.NaN });
     expect(() => g.detectConflicts()).toThrow(/invalid lag/);
   });
 
@@ -266,7 +266,7 @@ describe('withConflicts — lifecycle', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const { g, seen } = make();
     g.addTask(task('c', '2026-01-06T09:00', '2026-01-06T10:00'));
-    getInternal(g).dependencyStore.link(B, toTaskId('c'), 'FS', { lag: Number.NaN });
+    getInternal(g).deps.link(B, toTaskId('c'), 'FS', { lag: Number.NaN });
     await flush();
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('@fluxgantt/core:'), expect.anything());
     expect(seen).toEqual([]);
