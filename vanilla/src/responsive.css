@@ -1,0 +1,25 @@
+/* Fixture-only overrides for `responsive.html`, kept OUT of `style.css` so the nine other demo
+   pages are untouched (a shared edit would move visual-regression baselines).
+
+   `style.css` gives `main` a 960px max-width and 1.5rem side padding, and `#gantt` a fixed 420px
+   height. On a 393x851 Pixel 5 that padding steals 48px from a viewport the label-column clamp is
+   measuring, and 420px of chart in an 851px-tall window leaves the mobile specs scrolling the PAGE
+   to reach the chart. Both are page chrome, not chart behaviour — so this file removes them rather
+   than the mobile specs working around them. */
+main {
+  padding: 1rem 0;
+}
+
+#gantt {
+  /* Full viewport width: the point of the fixture is that the chart adapts to its container, so
+     the container must actually be the phone's width. */
+  height: 60vh;
+  border-radius: 0;
+  border-left: none;
+  border-right: none;
+}
+
+h1,
+p {
+  padding: 0 1rem;
+}

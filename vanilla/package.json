@@ -1,0 +1,21 @@
+{
+  "name": "plain-html-demo",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "description": "Vanilla TypeScript @fluxgantt/core demo pages (Vite). Generated from the FluxGantt repo.",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@fluxgantt/core": "^0.5.0",
+    "@js-temporal/polyfill": "^0.5.1"
+  },
+  "devDependencies": {
+    "typescript": "^6.0.3",
+    "vite": "^8.3.0"
+  }
+}
