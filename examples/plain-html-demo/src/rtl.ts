@@ -11,8 +11,15 @@
 //   ?responsive=1 also compose `withResponsive()`
 //   ?theme=dark   also compose `withTheme()` and select the dark theme
 import './temporal.js'; // must stay first: installs globalThis.Temporal where it is not native
-import { createGantt, toTaskId, type TaskInput } from '@fluxgantt/core';
-import { withRender } from '@fluxgantt/core/render';
+import { createGantt, toTaskId, DEFAULT_CALENDAR, type TaskInput } from '@fluxgantt/core';
+import {
+  withRender,
+  createTimeScale,
+  deriveTimeRange,
+  layoutRows,
+  layoutTaskBar,
+  ROW_HEIGHT,
+} from '@fluxgantt/core/render';
 import { withInteraction } from '@fluxgantt/core/interaction';
 import { withViewport } from '@fluxgantt/core/viewport';
 import { withIo } from '@fluxgantt/core/io';
@@ -117,8 +124,37 @@ for (const name of ['task:moved', 'task:resized', 'dependency:added', 'selection
 
 gantt.mount(document.getElementById('gantt')!);
 
+// A bar's rectangle in VIEWPORT coordinates. SVG: measured from the DOM. Canvas: a bar has no node,
+// so it is computed with the renderer's own layout functions and then mapped through the mirror
+// (the painted box is flipped about its own width, which sits at the container's right edge).
+function barBox(id: string): { x: number; y: number; w: number; h: number } | undefined {
+  const bar = document.querySelector(`.fg-task[data-task-id="${id}"] .fg-task__bar`);
+  if (bar) {
+    const r = bar.getBoundingClientRect();
+    return { x: r.left, y: r.top, w: r.width, h: r.height };
+  }
+  const canvas = document.querySelector<HTMLCanvasElement>('canvas.fg-timeline-canvas');
+  const container = document.getElementById('gantt');
+  if (!canvas || !container) return undefined;
+  const tasks = gantt.getTasks();
+  const viewMode = gantt.getViewMode();
+  const scale = createTimeScale(deriveTimeRange(tasks, viewMode, DEFAULT_CALENDAR), viewMode, DEFAULT_CALENDAR);
+  const row = layoutRows(tasks, 'default', new Set()).find((r) => r.task.id === id);
+  if (!row) return undefined;
+  const b = layoutTaskBar(row.task, scale, row, ROW_HEIGHT.default);
+  const rect = canvas.getBoundingClientRect();
+  const left = 160 + b.x;
+  return {
+    x: rtl ? rect.right - (left + b.width) : rect.left + left,
+    y: rect.top + 32 + b.y - container.scrollTop,
+    w: b.width,
+    h: b.height,
+  };
+}
+
 if (import.meta.env.DEV) {
   const w = window as unknown as Record<string, unknown>;
   w['__gantt'] = gantt;
   w['__events'] = events;
+  w['__fx'] = { barBox, pxPerDay: 24 };
 }
