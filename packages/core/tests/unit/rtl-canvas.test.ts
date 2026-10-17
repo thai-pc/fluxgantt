@@ -376,3 +376,18 @@ describe('withRtl over a Canvas mount (spec 5.2, 6.4)', () => {
   }, 30_000);
 });
 
+
+describe('hitTestRow.onLabel (replaces the edit-hooks mirror seam)', () => {
+  it('is true only inside the label column, in layout space, for both directions', () => {
+    for (const rtl of [false, true]) {
+      const h = createCanvasRenderer(container, { tasks, dependencies: [] }, { viewMode: 'week', viewportHeight: CANVAS_H, ...(rtl ? { rtl: true } : {}) });
+      const W = LABEL + h.getTimeScale().totalWidth;
+      vi.spyOn(h.canvas, 'getBoundingClientRect').mockReturnValue(rect(0, W));
+      const y = HEADER + 16;
+      const at = (lx: number) => h.hitTestRow(rtl ? W - lx : lx, y)?.onLabel;
+      expect(at(40)).toBe(true);
+      expect(at(LABEL - 1)).toBe(true);
+      expect(at(LABEL + 40)).toBe(false);
+    }
+  });
+});

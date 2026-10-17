@@ -288,6 +288,16 @@ export function createCanvasDrag(
     return handleStyle;
   };
 
+  // Horizontal `position: sticky` does not pin inside a RTL scroll container in WebKit (Chromium and
+  // Firefox pin it through `inset-inline-start`): measure where the viewport-wide overlay really is
+  // and translate it back over the visible box. A no-op wherever sticky already did the job.
+  let pinShift = 0;
+  const pinOverlay = (): void => {
+    const box = container.getBoundingClientRect();
+    const dx = box.left + container.clientLeft - overlay!.getBoundingClientRect().left;
+    if (Math.abs(dx) > 0.5) overlay!.style.transform = `translateX(${(pinShift += dx)}px)`;
+  };
+
   const paint = (): void => {
     // Nothing to draw and nothing to clear: skip the (O(rows) on a new state) layout entirely.
     if (!preview && !overlay && hoverId === undefined && host.selectedCount() === 0) return;
@@ -314,6 +324,7 @@ export function createCanvasDrag(
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, overlay.width, overlay.height);
     if (!preview && handles.length === 0) return;
+    if (view.rtl) pinOverlay();
     // Paint in MAIN-canvas-local coordinates: translate by where the main canvas sits relative to
     // the overlay, so scroll offsets, padding and the sub-pixel inline-baseline gap cannot skew it.
     const cr = canvas.getBoundingClientRect();

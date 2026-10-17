@@ -73,7 +73,7 @@ export interface InteractiveRendererHandle {
   hitTestRow?(
     clientX: number,
     clientY: number,
-  ): { taskId: TaskId; rowIndex: number; hitToggle: boolean; onBar?: boolean } | undefined;
+  ): { taskId: TaskId; rowIndex: number; hitToggle: boolean; onBar?: boolean; onLabel?: boolean } | undefined;
   /**
    * Present ONLY when the chart is painted mirrored (set by `withRtl`; do not rely on it). An
    * involution `x -> W - x` on the painted width `W` (label column + `timeScale.totalWidth`)

@@ -31,6 +31,7 @@ This file is the context entry point for AI. Details are split into rules under 
    | `+ withRender + withViewport` | 15.39 KiB | 16 KiB |
    | `+ withConflicts` (headless) | 9.27 KiB | 10 KiB |
    | `+ withRender + withEditHooks` (not in the kitchen sink) | 15.84 KiB | 16 KiB |
+   | `+ withRender + withRtl` (not in the kitchen sink) | 14.8 KiB | 15.5 KiB |
    | kitchen sink (everything = the pre-split facade) | 23.66 KiB | 24 KiB |
 
    Hello world went 22.3 KiB → 7.41 KiB and the fully-composed instance 34.9 KiB → 23.66 KiB (the old "full core" check measured `dist/index.js` as a plain file, which code-splitting has since hollowed out; the kitchen-sink fixture replaces it). Non-core features are plugins.

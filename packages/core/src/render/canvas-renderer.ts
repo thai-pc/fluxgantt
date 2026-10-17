@@ -281,7 +281,7 @@ export interface CanvasRendererHandle extends InteractiveRendererHandle {
   hitTestRow(
     clientX: number,
     clientY: number,
-  ): { taskId: TaskId; rowIndex: number; hitToggle: boolean; onBar: boolean } | undefined;
+  ): { taskId: TaskId; rowIndex: number; hitToggle: boolean; onBar: boolean; onLabel: boolean } | undefined;
   /** Always present on a Canvas handle (the pointer-drag coordinator's Canvas discriminator), but
    *  returns `undefined` until `attachDrag()` has run and after its disposer. */
   hitTestBar(clientX: number, clientY: number, pointerType?: string): BarHit | undefined;
@@ -1060,7 +1060,7 @@ export function createCanvasRenderer(
   function hitTestRow(
     clientX: number,
     clientY: number,
-  ): { taskId: TaskId; rowIndex: number; hitToggle: boolean; onBar: boolean } | undefined {
+  ): { taskId: TaskId; rowIndex: number; hitToggle: boolean; onBar: boolean; onLabel: boolean } | undefined {
     const rect = canvas.getBoundingClientRect();
     const x = layoutX(state.options.rtl === true, clientX - rect.left, rect.width);
     const y = clientY - rect.top;
@@ -1086,7 +1086,7 @@ export function createCanvasRenderer(
     const toggleEnd = toggleStart + TOGGLE_GLYPH_GUTTER_PX;
     const hitToggle = row.hasChildren && x >= toggleStart && x < toggleEnd;
 
-    return { taskId: row.task.id, rowIndex: row.rowIndex, hitToggle, onBar: insideBar(g, x, y) };
+    return { taskId: row.task.id, rowIndex: row.rowIndex, hitToggle, onBar: insideBar(g, x, y), onLabel: x < currentLabelColumnWidth };
   }
 
   /**

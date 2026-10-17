@@ -1,0 +1,84 @@
+# Right-to-left charts
+
+FluxGantt can mirror the whole chart for right-to-left locales (Arabic, Hebrew, Persian, Urdu): the
+earliest date is at the **right**, the label column sits at the right edge, bars grow toward the
+left, dependency arrows, the progress fill, the collapse toggle and the today line all follow, and
+text stays upright and reads right-to-left. It works in both renderers (SVG, and Canvas above 2,000
+tasks), in `exportSvg()` / `exportPng()`, with drag, resize, link-drawing, zoom and
+`scrollToTask()` / `scrollToDate()`.
+
+It is an opt-in mixin on its own subpath, so a left-to-right chart pays for it with about **0 to
+60 bytes** (a handful of optional seams) and a chart that composes it pays about **0.4 KiB** gzip:
+
+```ts
+import { createGantt } from '@fluxgantt/core';
+import { withRender } from '@fluxgantt/core/render';
+import { withInteraction } from '@fluxgantt/core/interaction';
+import { withRtl } from '@fluxgantt/core/rtl';
+
+const gantt = withRtl(
+  withInteraction(
+    withRender(
+      createGantt({
+        tasks,
+        rtl: true,
+        locale: 'ar',
+        ariaLabel: 'خطة المشروع',
+      }),
+    ),
+  ),
+);
+gantt.mount(document.getElementById('chart')!);
+```
+
+`withRtl` adds no methods and returns the same instance. Without `rtl: true` it does nothing at all,
+which is why the React and Vue wrappers compose it for you and you only pass the `rtl` prop:
+
+```tsx
+<FluxGantt tasks={tasks} rtl locale="ar" />
+```
+
+A runnable page with Arabic data (and Hebrew via `?lang=he`) lives in
+`examples/plain-html-demo/rtl.html`.
+
+## What changes
+
+- **Direction.** The mount container gets `dir="rtl"` (and gets its previous `dir` back when the chart
+  is unmounted or destroyed). The vertical scrollbar moves to the left, the sticky date axis stays
+  aligned with the day columns, and the initial view shows the label column and the start of the
+  project.
+- **Geometry.** Layout, hit-testing and dates are computed exactly as before; the painted chart is
+  mirrored. The data never learns about it, so exports, undo, the critical path and
+  `getTasks()` are identical to a left-to-right chart.
+- **Pointer.** Dragging a bar toward the left moves it **later**, toward the right **earlier**. Resize
+  still edits the `end`, and its grab zone is the bar's *visually left* edge. The link handle on the
+  right is the start of the task and the one on the left is its end.
+- **Scrolling.** In a `dir="rtl"` scroll container `scrollLeft` is `0` at the start (right) edge and
+  goes **negative** toward later dates. FluxGantt's own zoom anchor, `scrollToTask()` and
+  `scrollToDate()` already account for that. If your code reads or writes the container's
+  `scrollLeft` yourself, use `-scrollLeft` as the distance from the start edge.
+- **Accessibility.** The ARIA grid, row and gridcell order are unchanged (they follow the DOM, which is
+  not mirrored), the critical path is still a dashed outline and the focus ring still follows the
+  focused bar.
+
+## Strings and dates
+
+Core ships English only, and `rtl` does not change that. Date labels follow `locale` through `Intl`
+(`locale: 'ar'`, `'he'`, `'fa'`...). The two accessible names the library composes are yours through
+[`messages`](/docs/i18n). Hijri and Persian calendars are not supported (dates are Gregorian).
+
+## Limits, by design
+
+- **Construction-time only.** Like `locale`, `rtl` is read once. To switch at runtime, destroy and
+  rebuild the instance (in React or Vue change the `key`).
+- **The label column moves with the timeline.** It is one mirrored unit; it cannot sit on the opposite
+  side of the chart direction.
+- **No start-edge resize**, as in left-to-right charts.
+- **Browsers.** The negative-`scrollLeft` model is the evergreen standard (Chrome 85+, Firefox, Safari
+  14+). The mirrored text placement was verified in Chromium, Firefox, WebKit and Safari 26. Older
+  engines that used other RTL scroll models are not supported.
+- **Exported SVG.** The file carries its own transform and `direction` attributes and needs no CSS,
+  and browsers render it as the live chart. Some non-browser SVG viewers (Inkscape, resvg) ignore the
+  SVG `direction` property and may place the label text differently.
+- **Keyboard.** Arrow Left and Right are reserved; when horizontal navigation is added it will be
+  logical (toward the start / end of the row), not physical.

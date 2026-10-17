@@ -90,6 +90,7 @@ export default defineConfig({
         { text: 'Theming', link: '/docs/theming' },
         { text: 'Responsive & Touch', link: '/docs/responsive' },
         { text: 'i18n', link: '/docs/i18n' },
+        { text: 'Right-to-left', link: '/docs/rtl' },
       ],
     },
   ],

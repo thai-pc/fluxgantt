@@ -29,6 +29,14 @@ const LABEL_W = 160;
 const LINK_SCROLL = -700;
 const ROW_IDS = ['plan', 'req', 'design', 'dev', 'docs', 'test', 'launch'];
 
+// `Locator.boundingBox()` is not used for transformed SVG text: WebKit reports it from the untransformed
+// quad. `getBoundingClientRect()` agrees with what is painted in all three engines.
+const textBox = (page: Page, id: string) =>
+  page.evaluate((i) => {
+    const r = document.querySelector(`.fg-timeline__row[data-task-id="${i}"] text`)!.getBoundingClientRect();
+    return { x: r.left, width: r.width };
+  }, id);
+
 const svgBox = (page: Page) =>
   page.evaluate(() => {
     const r = document.querySelector('#gantt svg.fg-timeline')!.getBoundingClientRect();
@@ -58,9 +66,9 @@ test.describe('SVG geometry', () => {
     const svg = await svgBox(page);
     const columnLeft = svg.right - LABEL_W;
     for (const id of ROW_IDS) {
-      const label = await page.locator(`.fg-timeline__row[data-task-id="${id}"] text`).first().boundingBox();
-      expect(label!.x, id).toBeGreaterThanOrEqual(columnLeft - 1);
-      expect(label!.x + label!.width, id).toBeLessThanOrEqual(svg.right + 1);
+      const label = await textBox(page, id);
+      expect(label.x, id).toBeGreaterThanOrEqual(columnLeft - 1);
+      expect(label.x + label.width, id).toBeLessThanOrEqual(svg.right + 1);
       const bar = await barBox(page, id);
       expect(bar.x + bar.w, id).toBeLessThanOrEqual(columnLeft + 1);
     }
@@ -84,11 +92,11 @@ test.describe('SVG geometry', () => {
     const twin = await context.newPage();
     await openRtl(twin, 'rtl=0');
     for (const id of ROW_IDS) {
-      const r = await page.locator(`.fg-timeline__row[data-task-id="${id}"] text`).first().boundingBox();
-      const l = await twin.locator(`.fg-timeline__row[data-task-id="${id}"] text`).first().boundingBox();
+      const r = await textBox(page, id);
+      const l = await textBox(twin, id);
       const s = await svgBox(page);
       const ls = await svgBox(twin);
-      expect(Math.abs(s.right - (r!.x + r!.width) - (l!.x - ls.left)), id).toBeLessThanOrEqual(1.5);
+      expect(Math.abs(s.right - (r.x + r.width) - (l.x - ls.left)), id).toBeLessThanOrEqual(1.5);
     }
     await twin.close();
   });
@@ -433,7 +441,8 @@ test.describe('Canvas renderer (>= 2000 tasks)', () => {
       pg.evaluate(
         ([sel, from, w]) => {
           const cv = document.querySelector<HTMLCanvasElement>(sel as string)!;
-          const d = cv.getContext('2d')!.getImageData(from as number, 32, w as number, 8 * 32).data;
+          const k = cv.width / cv.clientWidth; // device pixels per CSS px (2 in WebKit's Desktop Safari preset)
+          const d = cv.getContext('2d')!.getImageData(Math.round((from as number) * k), Math.round(32 * k), Math.round((w as number) * k), Math.round(8 * 32 * k)).data;
           let n = 0;
           for (let i = 0; i < d.length; i += 4) if (d[i]! < 90 && d[i + 1]! < 90 && d[i + 2]! < 90) n++;
           return n;
@@ -505,7 +514,8 @@ test.describe('Canvas renderer (>= 2000 tasks)', () => {
           }
         }
       }
-      return { left: r.left + min, right: r.left + max + 1 };
+      const k = ov.width / r.width; // device pixels per CSS px
+      return { left: r.left + min / k, right: r.left + (max + 1) / k };
     });
     // the ghost is the bar shifted 4 days to the visual LEFT
     expect(Math.abs(ghost.left - (b.x - 4 * PX_PER_DAY))).toBeLessThanOrEqual(3);

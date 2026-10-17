@@ -460,11 +460,9 @@ type GanttConfig = {
   canvasViewportHeight?: number;  // default 600 (px). Canvas mode only: bounds the <canvas>
                                   // backing store and the container's visible scroll height.
                                   // No SVG equivalent
-  rtl?:          boolean;   // default false — DECLARED ONLY, NOT IMPLEMENTED, no wave assigned,
-                            // and deliberately absent from GanttConfig: an inert public field
-                            // is a promise. Text surfaces already get browser bidi for free;
-                            // the unimplemented part is chart GEOMETRY (mirrored time axis,
-                            // label column on the right).
+  rtl?:          boolean;         // default false — read only by withRtl() (§7.6), inert
+                                  // without it. Mirrors the chart GEOMETRY (earliest date and
+                                  // label column at the right). Construction-time only
   locale?:       string;          // default 'en' — construction-time only, no setLocale()
   ariaLabel?:    string;          // default 'Gantt chart' — accessible name of the chart, and
                                   // the <title> of every exported SVG/PNG
@@ -714,6 +712,28 @@ gantt.getResolvedTheme(): 'light' | 'dark'    // painted ('auto' collapsed)
 `GanttConfig.theme` (§7.1) seeds the initial value and is inert on an instance that never applies
 `withTheme` — exactly as `density`/`locale` are inert without `withRender`. `'auto'` tracks
 `prefers-color-scheme` live and unsubscribes on `destroy()`.
+
+**RTL is an opt-in mixin too** — the chart is painted in layout space and mirrored at paint time and
+at the pointer/scroll boundaries, so only a chart that asks for it pays:
+
+```typescript
+import { withRtl } from '@fluxgantt/core/rtl';
+
+const gantt = withRtl(withRender(createGantt({ tasks, rtl: true })));   // adds no methods
+```
+
+`withRtl` returns the instance unchanged and does nothing unless `config.rtl === true` (so wrappers
+compose it unconditionally). Per mount it sets `dir="rtl"` on the container (restored when the mount
+is torn down), mirrors the SVG through one transformed `<g class="fg-rtl" direction="rtl">` (an
+attribute, so `exportSvg()`/`exportPng()` keep it) or flips the Canvas renderer natively, and
+counter-flips every text so glyphs stay upright. Browsers count `scrollLeft` from 0 at the start
+(right) edge down to negative values in a `dir=rtl` container; the zoom anchor and
+`scrollToTask`/`scrollToDate` convert to that logical offset. Pointer drags negate dx once, the
+resize hit zone follows the END edge to the visually-left side, the link rubber band starts at the
+mirrored handle. Not covered: translated built-in strings (use `messages`), a runtime toggle
+(rebuild), left-edge resize, Hijri/Persian calendars. The Phase 0 probe (Chromium 153, Firefox 155,
+WebKit 26.6 and Safari 26.6.2) found all four engines agree on `direction: rtl` + `text-anchor:
+start` inside the counter-flipped group, which is why no per-engine anchor fallback exists.
 
 ### 7.7 Selection
 

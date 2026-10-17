@@ -75,8 +75,7 @@ export function withEditHooks<T extends GanttInstance>(instance: T, options: Edi
         if (!hit || hit.hitToggle) return undefined;
         id = hit.taskId;
         onBar = hit.onBar === true;
-        const lx = x - pointerTarget.getBoundingClientRect().left;
-        if ((handle.mirrorX?.(lx) ?? lx) < handle.getLabelColumnWidth()) part = 'label';
+        if (hit.onLabel) part = 'label';
       } else {
         if (!(target instanceof Element) || target.closest('.fg-timeline__row-toggle')) return undefined;
         // The painted grid sits outside the row groups: fall back to the row spanning y.
