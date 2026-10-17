@@ -125,7 +125,7 @@ export function enableDragCreateDep(
       const cy = Number(handleEl.getAttribute('cy'));
       if (!Number.isFinite(cx) || !Number.isFinite(cy)) return null;
 
-      return { from: fromTaskId, edge: handleEnd, ox: cx, oy: cy, line: null, xf: null };
+      return { from: fromTaskId, edge: handleEnd, ox: handle.mirrorX?.(cx) ?? cx, oy: cy, line: null, xf: null };
     },
 
     start(ctx) {

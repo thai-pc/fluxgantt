@@ -130,7 +130,7 @@ interface OpenGesture {
 
 /** What the coordinator needs from a renderer: SVG and Canvas handles both satisfy it. `hitTestBar`
  *  is present only on Canvas and doubles as the discriminator (no per-bar DOM to `closest()`). */
-type DragSurface = Pick<InteractiveRendererHandle, 'pointerEventTarget' | 'hitTestBar'> & {
+type DragSurface = Pick<InteractiveRendererHandle, 'pointerEventTarget' | 'hitTestBar' | 'mirrorX'> & {
   destroy(): void;
   getTimeScale(): TimeScale;
 };
@@ -159,6 +159,10 @@ function createController(handle: DragSurface): PointerDragController {
   // across recognizers instead of being one-shot per `enableDragMove` call.
   let originalDestroy: (() => void) | undefined;
   let wrappedDestroy: (() => void) | undefined;
+
+  // Layout-space dx: a mirrored chart (`withRtl`) paints later dates further left, so the pointer
+  // delta flips sign here, once, for every recognizer.
+  const dxOf = (e: PointerEvent, s: OpenGesture): number => (handle.mirrorX ? -1 : 1) * (e.clientX - s.ctx.x0);
 
   return { register };
 
@@ -289,7 +293,7 @@ function createController(handle: DragSurface): PointerDragController {
       return;
     }
 
-    const dxRaw = event.clientX - s.ctx.x0;
+    const dxRaw = dxOf(event, s);
     const dyRaw = event.clientY - s.ctx.y0;
 
     if (!s.moved) {
@@ -329,7 +333,7 @@ function createController(handle: DragSurface): PointerDragController {
       return;
     }
 
-    const dxRaw = event.clientX - s.ctx.x0;
+    const dxRaw = dxOf(event, s);
     s.rec.commit(s.ctx, dxRaw, event);
   }
 

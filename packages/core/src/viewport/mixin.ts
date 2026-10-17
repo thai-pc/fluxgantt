@@ -107,9 +107,11 @@ function applyScroll(
   left: number | undefined,
   top: number | undefined,
   behavior: string | undefined,
+  k: number,
 ): void {
   // Never write a non-finite value into the DOM (an axis that is NaN/Infinity is skipped).
-  const x = left !== undefined && Number.isFinite(left) ? left : undefined;
+  // `k` is -1 on a mirrored chart (RTL scroll containers count `scrollLeft` from 0 down to negative).
+  const x = left !== undefined && Number.isFinite(left) ? k * left : undefined;
   const y = top !== undefined && Number.isFinite(top) ? top : undefined;
   if (
     behavior === 'smooth' &&
@@ -183,13 +185,14 @@ export function withViewport<T extends GanttInstance>(instance: T): T & Viewport
         x1 += half;
       }
       const align = options.align ?? 'nearest';
+      const k = handle.mirrorX ? -1 : 1;
       const top =
         viewH > 0
           ? resolveAxis(itemTop, itemTop + ROW_HEIGHT[density], container.scrollTop, viewH, align)
           : undefined;
       const viewW = container.clientWidth - pinned;
-      const left = viewW > 0 ? resolveAxis(x0, x1, container.scrollLeft, viewW, align) : undefined;
-      applyScroll(container, left, top, options.behavior);
+      const left = viewW > 0 ? resolveAxis(x0, x1, k * container.scrollLeft, viewW, align) : undefined;
+      applyScroll(container, left, top, options.behavior, k);
       return true;
     },
 
@@ -205,10 +208,13 @@ export function withViewport<T extends GanttInstance>(instance: T): T & Viewport
       const labelW = handle.getLabelColumnWidth();
       const pinned = mount.renderer === 'svg' ? labelW : 0;
       const x = labelW - pinned + rel;
+      const k = handle.mirrorX ? -1 : 1;
       const viewW = container.clientWidth - pinned;
       const left =
-        viewW > 0 ? resolveAxis(x, x, container.scrollLeft, viewW, options.align ?? 'center') : undefined;
-      applyScroll(container, left, undefined, options.behavior);
+        viewW > 0
+          ? resolveAxis(x, x, k * container.scrollLeft, viewW, options.align ?? 'center')
+          : undefined;
+      applyScroll(container, left, undefined, options.behavior, k);
       return rel >= 0 && rel <= scale.totalWidth;
     },
 

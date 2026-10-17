@@ -138,7 +138,8 @@ export function enableDragResize(
       // claims — move always wins for very thin bars, never unmovable).
       if (barWidth * scaleX < edgeHitZonePx) return null;
 
-      const rightEdgeX = left + (barX + barWidth) * scaleX;
+      const endX = barX + barWidth;
+      const rightEdgeX = left + (handle.mirrorX?.(endX) ?? endX) * scaleX;
       // Defensive bound only: in production `closest()` already guarantees the pointerdown
       // landed on `barEl`, so `event.clientX` is already within the bar's client-space span.
       if (event.clientX < rightEdgeX - edgeHitZonePx || event.clientX > rightEdgeX + edgeHitZonePx) return null;

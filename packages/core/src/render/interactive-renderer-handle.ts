@@ -74,4 +74,12 @@ export interface InteractiveRendererHandle {
     clientX: number,
     clientY: number,
   ): { taskId: TaskId; rowIndex: number; hitToggle: boolean; onBar?: boolean } | undefined;
+  /**
+   * Present ONLY when the chart is painted mirrored (set by `withRtl`; do not rely on it). An
+   * involution `x -> W - x` on the painted width `W` (label column + `timeScale.totalWidth`)
+   * mapping between LAYOUT space (what the renderers compute) and the visual left-origin space of
+   * the painted box, in either direction. Consumers use `handle.mirrorX?.(x) ?? x`; its presence is
+   * also the single "is mirrored" predicate (dx sign, scroll sign).
+   */
+  mirrorX?: (x: number) => number;
 }
