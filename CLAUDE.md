@@ -22,18 +22,18 @@ This file is the context entry point for AI. Details are split into rules under 
 
    | Fixture | Measured | Budget |
    |---|---|---|
-   | `createGantt()` only (hello world) | 7.50 KiB | 9 KiB |
-   | `+ withIo` | 12.61 KiB | 14 KiB |
-   | `+ withRender` | 14.47 KiB | 15 KiB |
-   | `+ withRender + withInteraction` | 19.02 KiB | 19.5 KiB |
-   | `+ withRender + withTheme` | 15.15 KiB | 16 KiB |
-   | `+ withRender + withInteraction + withResponsive` | 20.39 KiB | 21 KiB |
-   | `+ withRender + withViewport` | 15.35 KiB | 16 KiB |
-   | `+ withConflicts` (headless) | 9.37 KiB | 10 KiB |
-   | `+ withRender + withEditHooks` (not in the kitchen sink) | 15.80 KiB | 16 KiB |
-   | kitchen sink (everything = the pre-split facade) | 23.81 KiB | 24 KiB |
+   | `createGantt()` only (hello world) | 7.32 KiB | 9 KiB |
+   | `+ withIo` | 12.36 KiB | 14 KiB |
+   | `+ withRender` | 14.27 KiB | 15 KiB |
+   | `+ withRender + withInteraction` | 18.60 KiB | 19.5 KiB |
+   | `+ withRender + withTheme` | 14.94 KiB | 16 KiB |
+   | `+ withRender + withInteraction + withResponsive` | 19.38 KiB | 21 KiB |
+   | `+ withRender + withViewport` | 15.13 KiB | 16 KiB |
+   | `+ withConflicts` (headless) | 9.19 KiB | 10 KiB |
+   | `+ withRender + withEditHooks` (not in the kitchen sink) | 15.60 KiB | 16 KiB |
+   | kitchen sink (everything = the pre-split facade) | 23.27 KiB | 24 KiB |
 
-   Hello world went 22.3 KiB → 7.50 KiB and the fully-composed instance 34.9 KiB → 23.81 KiB (the old "full core" check measured `dist/index.js` as a plain file, which code-splitting has since hollowed out; the kitchen-sink fixture replaces it). Non-core features are plugins.
+   Hello world went 22.3 KiB → 7.32 KiB and the fully-composed instance 34.9 KiB → 23.27 KiB (the old "full core" check measured `dist/index.js` as a plain file, which code-splitting has since hollowed out; the kitchen-sink fixture replaces it). Non-core features are plugins.
 
    The `withRender + withInteraction` budget was raised 19 → 19.5 KiB once, for the i18n scaffold (`GanttConfig.messages`), after the levers this rule prefers were measured and came up ~67 B short: merging the two renderer-option builders recovered only 13 B, and ~68 B of the cost is the irreducible price of threading host messages through both renderers. Justified as WCAG-adjacent — the strings in question are accessible names. Treat that as the exception it was, not a precedent: the rule is still change the shape, not the budget.
 
@@ -105,6 +105,41 @@ This file is the context entry point for AI. Details are split into rules under 
    it is inside `responsive/mixin.ts` precisely so they stay so. The `gesturestart` iOS fallback
    (+60-80 B) was deliberately not added; it is applied only if the manual iOS check in
    `RELEASING.md` shows page zoom leaking onto the chart.
+
+   The 2026-10 headroom pass 2 ran ahead of four queued features (keyboard focus scroll, Canvas drag,
+   the sticky label column, RTL) that together want ~470 B on the kitchen sink, which sat at 190 B of
+   headroom. Nothing was raised; bytes were stripped, again with zero behavior change (exported SVG
+   byte-identical, zero visual diffs, every test-asserted message substring kept). Gzip bytes, measured
+   with `pnpm size`, kitchen sink / `+ withRender + withInteraction` / `+ withRender + withEditHooks`:
+   24386 -> 23831 (-555), 19479 -> 19050 (-429), 16177 -> 15971 (-206); hello world 7679 -> 7500 (-179);
+   every fixture lost 179-450 B. Headroom is now 745 B (kitchen sink), 918 B (`+ withInteraction`) and 413 B
+   (`+ withEditHooks`, the tightest; `+ withConflicts` has 834 B). The levers, and what each taught:
+   (1) **Long property names that cross module boundaries were the biggest single lever, ~-230 B on the
+   kitchen sink.** A minifier cannot rename a property, and gzip charges a name's full length at its first
+   occurrence plus ~3 B per reference, so `dependencyStore`, `getMountGeneration` or `expandWithDescendants`
+   repeated across the base class and every mixin cost real bytes. The internal `GanttInternal` /
+   `MountState` / `InteractionDisposers` members (`tasks`, `deps`, `fold`, `alive`, `mountOf`, ...) and the
+   internal pointer-drag recognizer/context/state members (`claim`, `move`, `commit`, `rec`, `grp`, `ts`,
+   ...) now have terse names, renamed with the TypeScript language service so every reference moved
+   together (-155 B then -76 B on the kitchen sink; the `GanttInternal` half is also -89 B on hello world, the
+   pointer-drag half is not in it). Only surfaces that are
+   not exported from a package entry were renamed; public option/handle/type member names are untouched.
+   (2) **gzip makes repeated text almost free, so only de-duplicating DIFFERENT-looking code or removing
+   unique tokens pays.** Four near-identical lever candidates measured as noise or a loss (a `line()` builder
+   for the four SVG rules +15 B, a `renderRows` closure +14..+19 B, an `el()` style `cssText` -13..+3 B,
+   hoisting the repeated `getTasks`/`getCollapsedIds`/zoom lambdas in `interaction/mixin.ts` +2 B) and were
+   dropped, as were a merged forward/backward `walkWorkingHours` (+26 B) and a collapsed `selection.ts` click
+   branch (+27 B even though raw bytes fell 125 B). What won: one `applyOp` for undo+redo (-23..-33 B on every
+   fixture), one `indexGraph` shared by CPM and cascade (-16..-22 B), the drag chrome (class + cursor) owned
+   by the pointer-drag coordinator instead of repeated in three recognizers plus `findGroupTask` and
+   `readClientScale` shared by the three hit-tests (-92 B on `+ withInteraction`), the CSV and JSON import
+   `optional()` / `arrayWithin()` helpers (-68 B on `+ withIo`), a `setFocus` pair and a hoisted modifier
+   check in keyboard-nav (-29 B), one `#replaceCollapsed` (-2..-5 B), and four diagnostic tails nothing
+   asserts on (-53 B on hello world). (3) The measurement noise floor is about +-20 B per change (gzip
+   re-bins), so any lever under ~25 B is judged on the cumulative number, not alone. (4) Not done, on
+   purpose: merging `SelectionStore`/`CollapseStore` (would change the public class shape), merging the RGB
+   and HSL color regexes (security-critical whitelist, auditability beats ~15 B), and collapsing
+   `topologicalSort`'s successor map into the callers' (changes the cascade `shifts` order).
 
    Run `pnpm size` from `packages/core` (or `pnpm size` at the root via turbo) to re-measure; the numbers above are its output, converted from its decimal-kB report to KiB. **It needs Node >= 22.19** — that is `size-limit` 14's own declared `engines.node` (`^22.19.0 || ^24.5.0 || >=26.0.0`), and the floor is enforced by the root `engines.node` so a permitted Node cannot be one the repo fails on. Before 14 the practical floor was 22.18, because `size-limit` calls `fs.glob` with `withFileTypes` (added in Node 22.2) and on an older 22.x it dies with an opaque `TypeError: i.isFile is not a function` that looks like a repo misconfiguration but is not. `.nvmrc` pins an exact version for this reason; CI reads it via `node-version-file`.
 6. **Tier-gate correctly** — Pro (resource/baseline/MSProject), Cloud (multiplayer/AI). Don't cram Pro/Cloud code into `core`.
