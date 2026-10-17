@@ -155,7 +155,7 @@ export function withTheme<T extends GanttInstance>(instance: T): T & ThemeCapabi
     // A listener registered BEFORE `withTheme` may already have unmounted during this same emit.
     const m = internal.mountOf();
     if (disposed || !m) return;
-    // Every mount ends through `unmount()` -> `handle.destroy()` (unmount(), an
+    // Every mount ends through the base class's teardown -> `handle.destroy()` (the public `unmount()`, an
     // implicit remount, base destroy()), and there is no unmount event, so wrap the handle's
     // destroy — the same pattern `interaction/pointer-drag.ts` uses. The listener reads the live
     // handle each mount, which keeps application order irrelevant.

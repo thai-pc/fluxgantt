@@ -48,7 +48,7 @@ export interface CascadeResult {
  *
  * `tasks` must already contain the changed task(s)' new `start`/`end` — the caller (facade)
  * applies the direct mutation to its store FIRST, then calls `computeCascade` with
- * `tasks.all()`. Cascade itself never receives an explicit "old vs. new" delta; it
+ * `taskStore.all()`. Cascade itself never receives an explicit "old vs. new" delta; it
  * recomputes each successor's required earliest-start from the graph's CURRENT state, which
  * is why it is naturally idempotent — calling it twice in a row with no intervening state
  * change returns `{ shifts: [] }` the second time.

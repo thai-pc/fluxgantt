@@ -22,12 +22,12 @@ import type { Task } from '../types.js';
 
 export interface PointerGestureContext<TState> {
   /** Opaque, owned by the claiming recognizer (built once at `claim()`, passed by
-   *  reference to every `onMove`/`onCommit`/`onCancel` call). */
+   *  reference to every `move`/`commit`/`cancel` call). */
   readonly state: TState;
   /** The matched `.fg-task[data-task-id]` element. */
   readonly grp: Element;
   /** `event.target` at `pointerdown` — used to pair `setPointerCapture`/
-   *  `releasePointerCapture`; may be a child of `groupEl` (e.g. `.fg-task__bar`). */
+   *  `releasePointerCapture`; may be a child of `grp` (e.g. `.fg-task__bar`). */
   readonly cap: Element;
   readonly pointerId: number;
   readonly x0: number;
@@ -61,14 +61,14 @@ export interface PointerGestureRecognizer<TState> {
    * `null`/`undefined` to decline. MUST be cheap, MUST NOT mutate DOM.
    */
   claim(event: PointerEvent, groupEl: Element): TState | null | undefined;
-  /** Called exactly once, the FIRST `pointermove` that exceeds `dragThresholdPx` — after
+  /** Called exactly once, the FIRST `pointermove` that exceeds `slop` — after
    *  the coordinator's own `event.preventDefault()` (blocks text-selection, unconditional,
    *  recognizer-agnostic) and after it applied `cls`/`cursor`. Add any further drag
    *  chrome here. */
   start?(ctx: PointerGestureContext<TState>): void;
   /** Called on every valid `pointermove` AFTER the threshold (including the one that
    *  crossed it, right after `start`). `dxPixels` = `event.clientX -
-   *  ctx.startClientX` (client-coordinate delta, unsnapped — snapping is the recognizer's
+   *  ctx.x0` (client-coordinate delta, unsnapped — snapping is the recognizer's
    *  own concern via `snapDeltaToDay`). */
   move(ctx: PointerGestureContext<TState>, dxPixels: number, event: PointerEvent): void;
   /** Called once on the `pointerup` that ends a past-threshold gesture. This is the ONLY
@@ -77,17 +77,17 @@ export interface PointerGestureRecognizer<TState> {
   commit(ctx: PointerGestureContext<TState>, dxPixels: number, event: PointerEvent): void;
   /** Called on cancellation: Escape, `pointercancel`, disposer-mid-drag, a garbage-coord
    *  `pointerup`, or the gesture's own recognizer being unregistered mid-drag. Called ONLY
-   *  for a gesture that had actually STARTED (exceeded `dragThresholdPx`, i.e. `start`
-   *  ran) — a pre-threshold cancel added no chrome, so `onCancel` is skipped rather than
+   *  for a gesture that had actually STARTED (exceeded `slop`, i.e. `start`
+   *  ran) — a pre-threshold cancel added no chrome, so `cancel` is skipped rather than
    *  clobbering host-owned state (e.g. `document.body.style.cursor`). The coordinator has
    *  already removed `cls` and reset the cursor; this reverts the recognizer's own DOM
-   *  mutations made in `start`/`onMove`. */
+   *  mutations made in `start`/`move`. */
   cancel(ctx: PointerGestureContext<TState>): void;
 }
 
 export interface PointerDragController {
   /** Registers one recognizer. Returns a disposer: unregisters it, and — if a gesture this
-   *  recognizer currently owns is open — cancels it first (`onCancel`, no commit), same as
+   *  recognizer currently owns is open — cancels it first (`cancel`, no commit), same as
    *  `enableDragMove`'s existing disposer-mid-drag contract. Idempotent (calling twice is a
    *  safe no-op). When the LAST registered recognizer unregisters, the controller detaches
    *  its `pointerdown` listener from `handle.svg` and restores the original (unwrapped)
@@ -145,7 +145,7 @@ export function readClientScale(svg: SVGSVGElement): { left: number; top: number
 
 interface OpenGesture {
   readonly rec: PointerGestureRecognizer<unknown>;
-  /** Built once, passed by reference to every `onMove`/`onCommit`/`onCancel` call —
+  /** Built once, passed by reference to every `move`/`commit`/`cancel` call —
    *  recognizers must treat it as readonly. */
   readonly ctx: PointerGestureContext<unknown>;
   moved: boolean;
@@ -362,7 +362,7 @@ function createController(handle: SvgRendererHandle): PointerDragController {
   }
 
   /** Cancel an in-progress gesture: remove listeners, call the claiming recognizer's
-   *  `onCancel`, do NOT commit. Shared by pointercancel/Escape/disposer-mid-drag/destroy. */
+   *  `cancel`, do NOT commit. Shared by pointercancel/Escape/disposer-mid-drag/destroy. */
   function cancelActiveGesture(): void {
     const s = state;
     if (!s) return;
@@ -370,7 +370,7 @@ function createController(handle: SvgRendererHandle): PointerDragController {
     state = null;
     // Only revert chrome for a gesture that actually STARTED. A pre-threshold cancel (a touch
     // that turns into a scroll → `pointercancel`, or Escape without moving) never ran
-    // `start`/`onMove`, so calling `onCancel` here would clobber host-owned state such
+    // `start`/`move`, so calling `cancel` here would clobber host-owned state such
     // as `document.body.style.cursor` that this gesture never set (regression B1).
     if (s.moved) {
       clearChrome(s);

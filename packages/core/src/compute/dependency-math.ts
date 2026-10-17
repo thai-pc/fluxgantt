@@ -48,15 +48,6 @@ export function pushInto<K>(map: Map<K, Dependency[]>, key: K, dep: Dependency):
 }
 
 /**
- * Topological sort + cycle detection via Kahn's algorithm (BFS on in-degree). Chosen
- * over `DependencyStore.hasCycle()` (DFS 3-color) because CPM needs a full topological
- * order to run forward/backward pass, not just a cycle boolean — see
- * spec-critical-path.md §5.2. Any task left with a non-zero in-degree once the queue is
- * exhausted is, by construction, part of (or downstream of) a cycle. `callerName` is
- * threaded into the thrown `CyclicDependencyError` so both `computeCriticalPath` and
- * `computeCascade` report their own name (spec-cascade.md §2.1).
- */
-/**
  * Shared input stage of `computeCriticalPath` and `computeCascade`: indexes the tasks by id,
  * validates every task duration / dependency lag, and builds the predecessor (`dep.to` -> deps)
  * and successor (`dep.from` -> deps) adjacency maps. Throws on a duplicate task id or a
@@ -92,6 +83,15 @@ export function indexGraph(
   return { taskById, predecessors, successors };
 }
 
+/**
+ * Topological sort + cycle detection via Kahn's algorithm (BFS on in-degree). Chosen
+ * over `DependencyStore.hasCycle()` (DFS 3-color) because CPM needs a full topological
+ * order to run forward/backward pass, not just a cycle boolean — see
+ * spec-critical-path.md §5.2. Any task left with a non-zero in-degree once the queue is
+ * exhausted is, by construction, part of (or downstream of) a cycle. `callerName` is
+ * threaded into the thrown `CyclicDependencyError` so both `computeCriticalPath` and
+ * `computeCascade` report their own name (spec-cascade.md §2.1).
+ */
 export function topologicalSort(
   tasks: readonly Task[],
   predecessors: Map<TaskId, Dependency[]>,

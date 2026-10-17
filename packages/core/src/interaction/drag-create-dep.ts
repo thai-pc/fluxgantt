@@ -134,7 +134,7 @@ export function enableDragCreateDep(
 
     start(ctx) {
       // CRITICAL, non-obvious (spec §4.2): the shared coordinator (`pointer-drag.ts`'s
-      // `onPointerDown`) unconditionally calls `captureEl.setPointerCapture(pointerId)` for
+      // `onPointerDown`) unconditionally calls `captureEl.setPointerCapture(pointerId)` (`cap` in the context) for
       // whatever recognizer claimed the gesture — `cap` here is the handle circle
       // itself. Per the Pointer Events spec, once an element has pointer capture, EVERY
       // subsequent event for that pointerId (including the final `pointerup`) is RETARGETED

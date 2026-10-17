@@ -40,7 +40,7 @@ export interface DragMoveOptions {
    * released (`pointerup`) — NOT for a plain click (below threshold) or a cancelled drag
    * (Escape/`pointercancel`/disposer mid-drag). This is the ONLY commit mechanism —
    * `enableDragMove` does NOT write to `TaskStore` or any store itself. To update
-   * `TaskStore`, call `tasks.update(taskId, { start: newStart, end: newEnd })` inside
+   * `TaskStore`, call `taskStore.update(taskId, { start: newStart, end: newEnd })` inside
    * this callback.
    */
   onTaskMoved(taskId: TaskId, newStart: Temporal.ZonedDateTime, newEnd: Temporal.ZonedDateTime): void;
