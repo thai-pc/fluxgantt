@@ -25,15 +25,15 @@ This file is the context entry point for AI. Details are split into rules under 
    | `createGantt()` only (hello world) | 7.41 KiB | 9 KiB |
    | `+ withIo` | 12.45 KiB | 14 KiB |
    | `+ withRender` | 14.41 KiB | 15 KiB |
-   | `+ withRender + withInteraction` | 18.82 KiB | 19.5 KiB |
+   | `+ withRender + withInteraction` | 18.86 KiB | 19.5 KiB |
    | `+ withRender + withTheme` | 15.08 KiB | 16 KiB |
-   | `+ withRender + withInteraction + withResponsive` | 20.17 KiB | 21 KiB |
+   | `+ withRender + withInteraction + withResponsive` | 20.24 KiB | 21 KiB |
    | `+ withRender + withViewport` | 15.28 KiB | 16 KiB |
    | `+ withConflicts` (headless) | 9.27 KiB | 10 KiB |
-   | `+ withRender + withEditHooks` (not in the kitchen sink) | 15.72 KiB | 16 KiB |
-   | kitchen sink (everything = the pre-split facade) | 23.50 KiB | 24 KiB |
+   | `+ withRender + withEditHooks` (not in the kitchen sink) | 15.74 KiB | 16 KiB |
+   | kitchen sink (everything = the pre-split facade) | 23.54 KiB | 24 KiB |
 
-   Hello world went 22.3 KiB → 7.41 KiB and the fully-composed instance 34.9 KiB → 23.50 KiB (the old "full core" check measured `dist/index.js` as a plain file, which code-splitting has since hollowed out; the kitchen-sink fixture replaces it). Non-core features are plugins.
+   Hello world went 22.3 KiB → 7.41 KiB and the fully-composed instance 34.9 KiB → 23.54 KiB (the old "full core" check measured `dist/index.js` as a plain file, which code-splitting has since hollowed out; the kitchen-sink fixture replaces it). Non-core features are plugins.
 
    The `withRender + withInteraction` budget was raised 19 → 19.5 KiB once, for the i18n scaffold (`GanttConfig.messages`), after the levers this rule prefers were measured and came up ~67 B short: merging the two renderer-option builders recovered only 13 B, and ~68 B of the cost is the irreducible price of threading host messages through both renderers. Justified as WCAG-adjacent — the strings in question are accessible names. Treat that as the exception it was, not a precedent: the rule is still change the shape, not the budget.
 
@@ -151,7 +151,9 @@ This file is the context entry point for AI. Details are split into rules under 
 
    The 2026-10 SVG render-perf pass (one repaint per effect run, critical path + rollup memoized by store revision, aria-label date memo, `computeGridColumns` holiday hoist, a per-array holiday-set cache in the compute layer) cost about +55 B on `+ withRender` and +60 B on every fixture holding the compute layer (the holiday cache), measured against master as of #113: hello world 7584, `+ withIo` 12744, `+ withRender` 14755, `+ withRender + withInteraction` 19275, kitchen sink 24069 (507 B of headroom), `+ withConflicts` 9488, `+ withRender + withEditHooks` 16094 (290 B). The render-side additions were partly paid for inside the same change (single `update(input, options?)`, the `cssEscapeAttr` helper replaced by an attribute scan, two warning tails trimmed). A row-level patch path for selection (+100-260 B est.) was deliberately not built.
 
-   Run `pnpm size` from `packages/core` (or `pnpm size` at the root via turbo) to re-measure; the numbers above are its output, converted from its decimal-kB report to KiB. **It needs Node >= 22.19** — that is `size-limit` 14's own declared `engines.node` (`^22.19.0 || ^24.5.0 || >=26.0.0`), and the floor is enforced by the root `engines.node` so a permitted Node cannot be one the repo fails on. Before 14 the practical floor was 22.18, because `size-limit` calls `fs.glob` with `withFileTypes` (added in Node 22.2) and on an older 22.x it dies with an opaque `TypeError: i.isFile is not a function` that looks like a repo misconfiguration but is not. `.nvmrc` pins an exact version for this reason; CI reads it via `node-version-file`.
+   Canvas-mode drag (2026-10, rebased onto headroom pass 2 and the SVG render-perf pass) costs the kitchen sink about +45 B (now 24109, 467 B of headroom), `+ withRender + withInteraction` about +40 B (19317), `+ withInteraction + withResponsive` about +55 B (20721) and `+ withEditHooks` about +25 B (16115); the other fixtures moved +0 B. The heavy code (hit-test, recognizers, overlay) sits in the lazy Canvas chunk (~8.5 -> ~11.3 KiB gzip, in no budget). Helper extraction (`badPoint`/`tryCapture`), a window-listener loop and a cached `pointerEventTarget` local each COST bytes under gzip and were not kept.
+
+Run `pnpm size` from `packages/core` (or `pnpm size` at the root via turbo) to re-measure; the numbers above are its output, converted from its decimal-kB report to KiB. **It needs Node >= 22.19** — that is `size-limit` 14's own declared `engines.node` (`^22.19.0 || ^24.5.0 || >=26.0.0`), and the floor is enforced by the root `engines.node` so a permitted Node cannot be one the repo fails on. Before 14 the practical floor was 22.18, because `size-limit` calls `fs.glob` with `withFileTypes` (added in Node 22.2) and on an older 22.x it dies with an opaque `TypeError: i.isFile is not a function` that looks like a repo misconfiguration but is not. `.nvmrc` pins an exact version for this reason; CI reads it via `node-version-file`.
 6. **Tier-gate correctly** — Pro (resource/baseline/MSProject), Cloud (multiplayer/AI). Don't cram Pro/Cloud code into `core`.
 7. **Every new feature ships with tests.** See `.claude/rules/testing.md`.
 8. **Security**: validate every external input (file import, share link, API). See `.claude/rules/security.md`.
