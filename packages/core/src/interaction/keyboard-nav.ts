@@ -129,6 +129,8 @@ export function enableKeyboardNav(
   let anchorTaskId: TaskId | undefined;
 
   // --- Initial focus resolution (spec §4.2) — synchronous, once, at setup time. --------
+  // `render/mixin.ts` (`renderNow`'s first-paint skip) relies on this: with nothing selected the
+  // initial focus is the FIRST row, exactly the renderer's own fallback. Change one, change both.
   {
     const rows = layoutRows(options.getTasks(), options.density, options.getCollapsedIds());
     const selection = new Set(options.getSelection());

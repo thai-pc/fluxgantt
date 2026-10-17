@@ -51,18 +51,28 @@ async function repaint(page: import('@playwright/test').Page, op: Op): Promise<R
   );
 }
 
+const RUNS = 3;
+const median = (xs: number[]): number => xs.slice().sort((a, b) => a - b)[Math.floor(xs.length / 2)]!;
+
 test.describe('SVG repaint at 2000 tasks (spec-svg-render-perf.md)', () => {
   for (const op of ['zoom', 'density', 'collapse', 'select', 'selectAll', 'updateTask'] as const) {
-    test(`${op}: exactly one full render, within budget`, async ({ page }) => {
-      test.setTimeout(120_000);
-      await openMounted(page);
-      await expect(page.locator('.fg-timeline__row')).toHaveCount(2000);
-      // `zoom` starts at 'week' (the default) and the first hop is to 'week' again, so warm it once:
-      // the measured call is always a real change.
-      if (op === 'zoom' || op === 'density') await repaint(page, op);
-      const r = await repaint(page, op);
-      expect(r.renders).toBe(1);
-      expect(r.paintMs).toBeLessThan(BUDGET_MS[op]);
+    test(`${op}: exactly one full render, median of ${RUNS} fresh pages within budget`, async ({ page }) => {
+      test.setTimeout(180_000);
+      const samples: number[] = [];
+      for (let run = 0; run < RUNS; run++) {
+        await openMounted(page);
+        await expect(page.locator('.fg-timeline__row')).toHaveCount(2000);
+        // `zoom`/`density` start at the default, so warm once: the measured call is a real change.
+        if (op === 'zoom' || op === 'density') await repaint(page, op);
+        const r = await repaint(page, op);
+        expect(r.renders).toBe(1);
+        samples.push(r.paintMs);
+      }
+      // Median, not a single sample: one scheduler hiccup on a shared runner must not fail the build.
+      // The raw samples are in the failure message and the changeset.
+      expect(median(samples), `raw paintMs samples: ${samples.map(Math.round).join(', ')}`).toBeLessThan(
+        BUDGET_MS[op],
+      );
     });
   }
 
