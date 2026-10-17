@@ -379,6 +379,22 @@ async function main() {
       await ctx.close();
     }
 
+    // --- gallery 6 (extra): the RTL demo (Arabic plan, withRtl) at 1270x760 ---
+    {
+      const ctx = await browser.newContext({
+        viewport: { width: 1270, height: 760 }, deviceScaleFactor: 2, colorScheme: 'light',
+      });
+      const page = await ctx.newPage();
+      await page.goto(BASE + '/rtl.html');
+      await page.waitForSelector('#gantt svg.fg-timeline');
+      await page.addStyleTag({ content: CHROME_CSS + '#gantt{--launch-h:470px;height:470px!important}' });
+      await page.waitForTimeout(300);
+      const raw = path.join(TMP, 'gallery-6-rtl.raw.png');
+      await page.screenshot({ path: raw });
+      downscale(raw, path.join(OUT, 'gallery-6-rtl.png'), 1270, 760);
+      await ctx.close();
+    }
+
     // --- gallery 2, 3, 5 and thumbnail ---
     await composed(browser, sizeBars(sizes), 1270, 760, 'gallery-2-bundle-size.png');
     await composed(browser, tsHtml(), 1270, 760, 'gallery-3-typescript.png');
@@ -395,12 +411,12 @@ async function main() {
     await pp.waitForFunction(() => window.__gantt);
     await pp.addStyleTag({ content: 'main>p{display:none!important}h1{font-size:1.1rem}#gantt{height:40vh!important}' });
     // The dataset spans five months, far wider than 393px, and the timeline starts months before
-    // the first task. Hand-picked framing (measured on this fixture: at quarter zoom the Design bar
-    // sits 427px from the left edge): zoom out to 'quarter' so three bars and their arrows fit, and
-    // scroll so Design starts ~140px in. The label column scrolls WITH the content (it is not
-    // sticky), so the task names are off-screen in this shot; the caption carries the point.
+    // the first task. Hand-picked framing, measured on this fixture: at quarter zoom the Design bar
+    // sits 427px from the left edge and the pinned label column is 157px wide, so scrollLeft 248
+    // puts Design just right of the labels with Build and part of Test visible beside it. (Since
+    // the label column is pinned on horizontal scroll, the task names stay on screen.)
     await pp.evaluate(() => window.__gantt.zoomTo('quarter'));
-    await pp.evaluate(() => { document.querySelector('#gantt').scrollLeft = 290; });
+    await pp.evaluate(() => { document.querySelector('#gantt').scrollLeft = 248; });
     await pp.waitForTimeout(500);
     const phonePng = path.join(TMP, 'phone.png');
     await pp.screenshot({ path: phonePng });
@@ -409,7 +425,7 @@ async function main() {
     await composed(browser, `<div style="background:linear-gradient(135deg,#312e81,#6366f1);height:100%;display:flex;align-items:center;padding:0 110px;gap:90px">
       <div style="height:690px;aspect-ratio:393/851;border-radius:44px;background:#111;padding:12px;box-shadow:0 30px 70px rgba(0,0,0,.5)"><img src="data:image/png;base64,${b64}" style="width:100%;height:100%;border-radius:34px;display:block"></div>
       <div style="color:#fff"><div style="font-size:46px;font-weight:700;letter-spacing:-.02em;line-height:1.1">Built for touch</div>
-        <ul style="font-size:24px;line-height:1.7;margin-top:22px;padding-left:26px;opacity:.95"><li>Touch density with larger link handles</li><li>Zoom out to see the whole plan on a phone</li><li>A finger on a bar drags it, elsewhere it pans</li></ul>
+        <ul style="font-size:24px;line-height:1.7;margin-top:22px;padding-left:26px;opacity:.95"><li>Touch density with larger link handles</li><li>Label column narrows to fit the screen</li><li>A finger on a bar drags it, elsewhere it pans</li></ul>
         <div style="font-size:18px;opacity:.7;margin-top:26px">withResponsive() &middot; opt-in, 0 B for charts that skip it</div></div></div>`,
       1270, 760, 'gallery-4-responsive.png');
   } finally {

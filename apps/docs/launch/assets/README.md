@@ -10,16 +10,17 @@ ever needs one, copy it into `apps/docs/public/` at that point rather than movin
 
 | File | Size | What it is |
 |---|---|---|
-| `drag-task.gif` | 110 KB | 1200x675, ~6 s loop. Real mouse drag of "Write docs" 6 days later, snapping to the day grid. |
-| `dependency-cascade.gif` | 114 KB | 1200x675, ~6 s. Drag "User research" 4 days later in `schedulingMode: 'auto'`; Wireframes, Frontend, API, QA and the Launch milestone are pushed. |
-| `critical-path.gif` | 117 KB | 1200x675, ~6 s. Resize "API integration" (right edge) until its chain is the longest; the dashed-red critical path re-routes from Frontend build to API integration. |
-| `demo-teaser.mp4` | 259 KB | 1920x1080 H.264, ~18 s, silent: the three GIFs back to back. **Not** the optional 60-90 s voiceover video from the spec. |
-| `gallery-1-chart.png` | 67 KB | 1270x760. The chart, light theme (gallery image 1). |
+| `drag-task.gif` | 112 KB | 1200x675, ~6 s loop. Real mouse drag of "Write docs" 6 days later, snapping to the day grid. |
+| `dependency-cascade.gif` | 116 KB | 1200x675, ~6 s. Drag "User research" 4 days later in `schedulingMode: 'auto'`; Wireframes, Frontend, API, QA and the Launch milestone are pushed. |
+| `critical-path.gif` | 120 KB | 1200x675, ~6 s. Resize "API integration" (right edge) until its chain is the longest; the dashed-red critical path re-routes from Frontend build to API integration. |
+| `demo-teaser.mp4` | 261 KB | 1920x1080 H.264, ~18 s, silent: the three GIFs back to back. **Not** the optional 60-90 s voiceover video from the spec. |
+| `gallery-1-chart.png` | 69 KB | 1270x760. The chart, light theme (gallery image 1). |
 | `gallery-1b-chart-dark.png` | 68 KB | 1270x760. Same chart, dark theme (extra, not in the spec's five). |
-| `gallery-2-bundle-size.png` | 113 KB | 1270x760. Bar chart of FluxGantt (measured by the script) against dhtmlx and Frappe (`/docs/comparison` figures), **Frappe included**. |
+| `gallery-2-bundle-size.png` | 112 KB | 1270x760. Bar chart of FluxGantt (measured by the script) against dhtmlx and Frappe (`/docs/comparison` figures), **Frappe included**. |
 | `gallery-3-typescript.png` | 257 KB | 1270x760. The branded-ID compile error; the message is real `tsc` output. |
-| `gallery-4-responsive.png` | 260 KB | 1270x760. `/responsive.html` in Pixel 5 emulation (393x851, touch, DPR 2), zoomed to `quarter` and scrolled so three bars, their arrows and the enlarged link handles show, in a frame. |
-| `gallery-5-headless.png` | 172 KB | 1270x760. The headless `createGantt()` + `computeCriticalPath()` snippet, dark. |
+| `gallery-4-responsive.png` | 265 KB | 1270x760. `/responsive.html` in Pixel 5 emulation (393x851, touch, DPR 2), zoomed to `quarter` and scrolled so task names (pinned label column), three bars, their arrows and the enlarged link handles show, in a frame. |
+| `gallery-6-rtl.png` | 47 KB | 1270x760. Extra: the `/rtl.html` Arabic plan (`withRtl()`): labels on the right, time running right to left. |
+| `gallery-5-headless.png` | 171 KB | 1270x760. The headless `createGantt()` + `computeCriticalPath()` snippet, dark. |
 | `thumbnail.png` | 8 KB | 240x240. Three-bar fragment with one dashed-red critical bar on indigo `#6366f1`. |
 
 Sizes are as of the last run; the script prints exact ones.
@@ -71,5 +72,7 @@ byte-for-byte.
   with `schedulingMode: 'auto'` and a 9-task project. It is dev-only (not a Vite build input).
 - The critical-path GIF is a **resize**, not a move. The critical path is computed from durations
   and dependencies, not from where a bar sits on the calendar, so moving a bar never re-routes it.
-- Gallery 4 does not show task names: the label column scrolls with the content (it is not
-  sticky), and the dataset is five months wide, so showing several bars means scrolling past it.
+- Gallery 4's framing is hand-picked (`quarter` zoom, `scrollLeft` 248) for the current fixture and
+  the 157 px pinned label column; if the responsive fixture's data or the label-column clamp
+  changes, re-check it. Gallery 6 (RTL) is an extra beyond the five specified images; Product Hunt
+  allows up to eight.
