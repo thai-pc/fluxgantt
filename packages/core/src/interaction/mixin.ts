@@ -157,10 +157,9 @@ function wireInto(
     },
   });
 
-  let dragMoveDispose: () => void = () => {};
-  let dragResizeDispose: () => void = () => {};
-  let dragCreateDepDispose: () => void = () => {};
-  let wheelZoomDispose: () => void = () => {};
+  // Disposers of every module wired below, in wiring order (the ones that are SVG-only simply
+  // never get pushed in Canvas mode).
+  const disposers = [clickSelectDispose, collapseToggleDispose, keyboardNav.dispose];
 
   if (renderer === 'svg') {
     // Cast, not a narrow: `renderer`/`handle` are two separate parameters, so TypeScript cannot
@@ -173,47 +172,34 @@ function wireInto(
       // priority, not call order) — all three wire through the SAME coordinator on `svgHandle`,
       // so a handle claim always wins over an edge-zone claim, which always wins over a
       // whole-bar claim.
-      dragResizeDispose = enableDragResize(svgHandle, () => internal.taskStore.all(), {
+      disposers.push(enableDragResize(svgHandle, () => internal.taskStore.all(), {
         onTaskResized: (taskId, newEnd) => commitResize(instance, internal, taskId, newEnd),
-      });
-      dragMoveDispose = enableDragMove(svgHandle, () => internal.taskStore.all(), {
+      }));
+      disposers.push(enableDragMove(svgHandle, () => internal.taskStore.all(), {
         onTaskMoved: (taskId, newStart, newEnd) => commitDrag(internal, taskId, newStart, newEnd),
-      });
+      }));
       if (config.enableDependencyDrag !== false) {
-        dragCreateDepDispose = enableDragCreateDep(svgHandle, () => internal.taskStore.all(), {
+        disposers.push(enableDragCreateDep(svgHandle, () => internal.taskStore.all(), {
           onDependencyCreated: (fromTaskId, toTaskId) => commitCreateDep(instance, internal, fromTaskId, toTaskId),
-        });
+        }));
       }
     }
     // Registered UNCONDITIONALLY, same posture as enableKeyboardNav's zoom case arms — Ctrl+wheel
     // mutates no store state, so readOnly has nothing to protect against here (spec-wheel-zoom.md §4).
-    wheelZoomDispose = enableWheelZoom(svgHandle, {
+    disposers.push(enableWheelZoom(svgHandle, {
       onZoomIn: () => instance.zoomIn(),
       onZoomOut: () => instance.zoomOut(),
-    });
+    }));
   }
-  // Canvas mode: drag-move/drag-resize/drag-create-dep/wheel-zoom stay SVG-only — their
-  // disposers stay the no-op default above.
+  // Canvas mode: drag-move/drag-resize/drag-create-dep/wheel-zoom stay SVG-only.
 
   return {
     getFocusedTaskId: keyboardNav.getFocusedTaskId,
-    dispose: () => {
-      // Order matters (the shared pointer-drag coordinator wraps handle.destroy): unregister ALL
-      // THREE pointer-drag-coordinated recognizers via their returned disposers — order among
-      // them doesn't matter; the coordinator only detaches its pointerdown listener + unwraps
-      // handle.destroy once ALL have unregistered (refcounted, see pointer-drag.ts). click-select
-      // never touched that coordinator (it owns its own independent listeners), so it has no
-      // shared refcount to worry about — still disposed here, order-independent among the rest.
-      // The reactive render effect is stopped by the caller BEFORE this runs, and
-      // `rendererHandle.destroy()` AFTER it (see `gantt.ts`'s `teardownMount`).
-      dragResizeDispose();
-      dragMoveDispose();
-      dragCreateDepDispose();
-      clickSelectDispose();
-      collapseToggleDispose();
-      keyboardNav.dispose();
-      wheelZoomDispose();
-    },
+    // Order among the disposers is irrelevant: the shared pointer-drag coordinator is refcounted
+    // (see pointer-drag.ts) and click-select/keyboard-nav own independent listeners. The reactive
+    // render effect is stopped by the caller BEFORE this runs, and `rendererHandle.destroy()`
+    // AFTER it (see `gantt.ts`'s `teardownMount`).
+    dispose: () => disposers.forEach((d) => d()),
   };
 }
 
