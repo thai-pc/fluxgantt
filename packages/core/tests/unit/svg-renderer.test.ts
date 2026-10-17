@@ -776,7 +776,9 @@ describe('sticky header overlay (pinned date axis)', () => {
     expect(overlay).not.toBeNull();
     expect(overlay.tagName.toLowerCase()).toBe('svg');
     expect(overlay.getAttribute('aria-hidden')).toBe('true');
-    expect(h.svg.nextElementSibling).toBe(overlay);
+    // Layer order is z-order: chart, column, header, corner.
+    expect(h.svg.nextElementSibling!.classList.contains('fg-timeline__sticky-column')).toBe(true);
+    expect(overlay.previousElementSibling).toBe(h.svg.nextElementSibling);
     expect(overlay.parentElement).toBe(h.pointerEventTarget);
     expect(container.querySelector('svg')).toBe(h.svg);
     expect(h.svg.style.display).toBe('block');
@@ -818,10 +820,10 @@ describe('sticky header overlay (pinned date axis)', () => {
     expect(overlay.querySelector('.fg-timeline__row')).toBeNull();
   });
 
-  it('replicates the full-height rules that cross the header (label divider) and clips them to the band', () => {
+  it('holds the header (and the today rule when present) but no label divider, which moved to the column', () => {
     createSvgRenderer(container, { tasks: baseTasks, dependencies: baseDeps });
     const overlay = overlayOf(container);
-    expect(overlay.querySelectorAll('.fg-timeline__label-divider')).toHaveLength(1);
+    expect(overlay.querySelectorAll('.fg-timeline__label-divider')).toHaveLength(0);
     // Only the top overhang: the divider lines are pixel-snapped INSIDE the band, nothing hangs below.
     expect(overlay.style.getPropertyValue('clip-path')).toBe('inset(-1px 0 0)');
     // Opaque extra row above the band (Firefox fractional-y ghost): shadow in the same colour.

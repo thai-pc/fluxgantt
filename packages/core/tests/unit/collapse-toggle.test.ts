@@ -51,6 +51,31 @@ describe('enableCollapseToggle — SVG mode (DOM delegation)', () => {
     expect(onToggleCollapse).toHaveBeenCalledWith(toTaskId('root'));
   });
 
+  it('click on a pinned toggle CLONE (data-row-index + data-task-id, no .fg-timeline__row ancestor) fires with its id', () => {
+    const { onToggleCollapse } = setup();
+    const column = document.createElement('div');
+    column.innerHTML =
+      '<path class="fg-timeline__row-toggle" data-row-index="0" data-task-id="root"></path>' +
+      '<text class="fg-timeline__row-label" data-row-index="0" data-task-id="root"></text>';
+    container.appendChild(column);
+    const clone = column.querySelector('.fg-timeline__row-toggle')!;
+    expect(clone.closest('.fg-timeline__row')).toBeNull();
+    clone.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(onToggleCollapse).toHaveBeenCalledWith(toTaskId('root'));
+    // The label clone is not a toggle.
+    column.querySelector('.fg-timeline__row-label')!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(onToggleCollapse).toHaveBeenCalledTimes(1);
+  });
+
+  it('a toggle clone with no row attributes at all is ignored (never a thrown error)', () => {
+    const { onToggleCollapse } = setup();
+    const bare = document.createElement('path');
+    bare.setAttribute('class', 'fg-timeline__row-toggle');
+    container.appendChild(bare);
+    expect(() => bare.dispatchEvent(new MouseEvent('click', { bubbles: true }))).not.toThrow();
+    expect(onToggleCollapse).not.toHaveBeenCalled();
+  });
+
   it('click elsewhere on the same row (the task bar, not the toggle) does NOT fire onToggleCollapse', () => {
     const { onToggleCollapse } = setup();
     const bar = container.querySelector('.fg-task[data-task-id="root"]')!;

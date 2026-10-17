@@ -88,7 +88,7 @@ const DEFAULT_LABEL_COLUMN_WIDTH = 160;
  *  via `.textContent`, never `innerHTML` (security.md §1). */
 const COARSE_STYLE_TEXT = `
 @media ${COARSE_QUERY} {
-  .fg-timeline, .fg-timeline-canvas { touch-action: none; }
+  .fg-timeline__layer, .fg-timeline, .fg-timeline-canvas { touch-action: none; }
   .fg-timeline { --fg-link-handle-radius: 12px; }
 }
 `;
