@@ -56,6 +56,42 @@ export function pushInto<K>(map: Map<K, Dependency[]>, key: K, dep: Dependency):
  * threaded into the thrown `CyclicDependencyError` so both `computeCriticalPath` and
  * `computeCascade` report their own name (spec-cascade.md §2.1).
  */
+/**
+ * Shared input stage of `computeCriticalPath` and `computeCascade`: indexes the tasks by id,
+ * validates every task duration / dependency lag, and builds the predecessor (`dep.to` -> deps)
+ * and successor (`dep.from` -> deps) adjacency maps. Throws on a duplicate task id or a
+ * dependency naming a task that does not exist.
+ */
+export function indexGraph(
+  tasks: readonly Task[],
+  dependencies: readonly Dependency[],
+  callerName: string,
+): {
+  taskById: Map<TaskId, Task>;
+  predecessors: Map<TaskId, Dependency[]>;
+  successors: Map<TaskId, Dependency[]>;
+} {
+  const taskById = new Map<TaskId, Task>();
+  for (const task of tasks) {
+    if (taskById.has(task.id)) {
+      throw new Error(`${callerName}: duplicate task id ${task.id}`);
+    }
+    taskById.set(task.id, task);
+    validateTaskDuration(task, callerName);
+  }
+  const predecessors = new Map<TaskId, Dependency[]>();
+  const successors = new Map<TaskId, Dependency[]>();
+  for (const dep of dependencies) {
+    if (!taskById.has(dep.from) || !taskById.has(dep.to)) {
+      throw new Error(`${callerName}: dependency ${dep.id} references a task that does not exist`);
+    }
+    validateDependencyLag(dep, callerName);
+    pushInto(predecessors, dep.to, dep);
+    pushInto(successors, dep.from, dep);
+  }
+  return { taskById, predecessors, successors };
+}
+
 export function topologicalSort(
   tasks: readonly Task[],
   predecessors: Map<TaskId, Dependency[]>,

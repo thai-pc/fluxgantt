@@ -15,10 +15,8 @@ import { addWorkingHours, subtractWorkingHours, differenceInWorkingHours } from 
 import {
   MAX_CPM_HOURS,
   CyclicDependencyError,
-  pushInto,
+  indexGraph,
   topologicalSort,
-  validateTaskDuration,
-  validateDependencyLag,
   resolveDuration,
   laterOf,
   earlierOf,
@@ -83,28 +81,7 @@ export function computeCriticalPath(
     throw new Error('computeCriticalPath: tasks must not be empty');
   }
 
-  const taskById = new Map<TaskId, Task>();
-  for (const task of tasks) {
-    if (taskById.has(task.id)) {
-      throw new Error(`computeCriticalPath: duplicate task id ${task.id}`);
-    }
-    taskById.set(task.id, task);
-    validateTaskDuration(task, CALLER_NAME);
-  }
-
-  for (const dep of dependencies) {
-    if (!taskById.has(dep.from) || !taskById.has(dep.to)) {
-      throw new Error(`computeCriticalPath: dependency ${dep.id} references a task that does not exist`);
-    }
-    validateDependencyLag(dep, CALLER_NAME);
-  }
-
-  const predecessors = new Map<TaskId, Dependency[]>();
-  const successors = new Map<TaskId, Dependency[]>();
-  for (const dep of dependencies) {
-    pushInto(predecessors, dep.to, dep);
-    pushInto(successors, dep.from, dep);
-  }
+  const { taskById, predecessors, successors } = indexGraph(tasks, dependencies, CALLER_NAME);
 
   const sorted = topologicalSort(tasks, predecessors, CALLER_NAME);
 
