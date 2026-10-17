@@ -24,9 +24,14 @@ import { normalizeDate } from '../compute/working-calendar.js';
 import { getTemporal } from '../internal/temporal.js';
 import type { SvgRendererHandle, TimeScale } from '../render/index.js';
 import type { DateInput, Task, TaskId } from '../types.js';
-import { toTaskId } from '../types.js';
 import type { Temporal } from '@js-temporal/polyfill';
-import { getPointerDragController, DEFAULT_DRAG_THRESHOLD_PX, snapDeltaToDay } from './pointer-drag.js';
+import {
+  getPointerDragController,
+  DEFAULT_DRAG_THRESHOLD_PX,
+  findGroupTask,
+  readClientScale,
+  snapDeltaToDay,
+} from './pointer-drag.js';
 import type { PointerGestureRecognizer } from './pointer-drag.js';
 
 export interface DragResizeOptions {
@@ -134,18 +139,16 @@ export function enableDragResize(
       : DEFAULT_EDGE_HIT_ZONE_PX);
 
   const recognizer: PointerGestureRecognizer<ResizeState> = {
-    name: 'drag-resize',
+    chromeClass: RESIZING_CLASS,
+    cursor: 'ew-resize',
     priority: RESIZE_PRIORITY,
     dragThresholdPx,
     hitTest(event, groupEl) {
-      const taskIdAttr = groupEl.getAttribute('data-task-id');
-      if (taskIdAttr === null) return null;
       // Same gate as drag-move: a rolled-up bar has no authored edge under the cursor
       // (spec-summary-rollup.md Ticket B2). Declining here also frees the edge zone, so a
       // rolled-up bar is inert rather than resize-only.
       if (groupEl.getAttribute('data-rolled-up') !== null) return null;
-      const taskId = toTaskId(taskIdAttr);
-      const task = getTasks().find((t) => t.id === taskId);
+      const task = findGroupTask(groupEl, getTasks);
       // Race between the rendered DOM and the latest `tasks` — skip, don't throw (mirrors
       // drag-move's own posture).
       if (!task) return null;
@@ -164,16 +167,13 @@ export function enableDragResize(
       // translate the edge into client space before comparing against `event.clientX` (review
       // E1/E2). jsdom has no layout engine (`getBoundingClientRect()` → all-zero), so the
       // scale falls back to 1 — preserving the 1:1 behavior the DOM-attribute tests assume.
-      const svgRect = handle.svg.getBoundingClientRect();
-      const vbAttr = handle.svg.getAttribute('viewBox');
-      const vbWidth = vbAttr ? Number(vbAttr.split(/\s+/)[2]) : NaN;
-      const scaleX = svgRect.width > 0 && Number.isFinite(vbWidth) && vbWidth > 0 ? svgRect.width / vbWidth : 1;
+      const { left, scaleX } = readClientScale(handle.svg);
 
       // Narrow-bar fallback in CLIENT px (a bar thinner ON SCREEN than the hit-zone never
       // claims — move always wins for very thin bars, never unmovable).
       if (barWidth * scaleX < edgeHitZonePx) return null;
 
-      const rightEdgeX = svgRect.left + (barX + barWidth) * scaleX;
+      const rightEdgeX = left + (barX + barWidth) * scaleX;
       // Defensive bound only: in production `closest()` already guarantees the pointerdown
       // landed on `barEl`, so `event.clientX` is already within the bar's client-space span.
       if (event.clientX < rightEdgeX - edgeHitZonePx || event.clientX > rightEdgeX + edgeHitZonePx) return null;
@@ -185,7 +185,7 @@ export function enableDragResize(
       const progressRatio = barWidth > 0 && Number.isFinite(progressWidth) ? progressWidth / barWidth : 0;
 
       return {
-        taskId,
+        taskId: task.id,
         barEl,
         progressEl,
         progressRatio,
@@ -193,12 +193,6 @@ export function enableDragResize(
         originalEnd: task.end,
         originalWidth: barWidth,
       };
-    },
-    onDragStart(ctx) {
-      ctx.groupEl.classList.add(RESIZING_CLASS);
-      // Active-gesture chrome, NOT the deferred hover affordance (resolution #5 — out of
-      // scope v1).
-      document.body.style.cursor = 'ew-resize';
     },
     onMove(ctx, dxPixels) {
       const deltaDays = snapDeltaToDay(dxPixels, ctx.timeScale);
@@ -227,8 +221,6 @@ export function enableDragResize(
       options.onResizing?.(ctx.state.taskId, tentativeEnd);
     },
     onCommit(ctx, dxPixels) {
-      ctx.groupEl.classList.remove(RESIZING_CLASS);
-      document.body.style.cursor = '';
       const deltaDays = snapDeltaToDay(dxPixels, ctx.timeScale);
       const newEnd = computeClampedResizedEnd(
         ctx.timeScale,
@@ -244,8 +236,6 @@ export function enableDragResize(
       if (ctx.state.progressEl) {
         ctx.state.progressEl.setAttribute('width', String(ctx.state.originalWidth * ctx.state.progressRatio));
       }
-      ctx.groupEl.classList.remove(RESIZING_CLASS);
-      document.body.style.cursor = '';
     },
   };
 

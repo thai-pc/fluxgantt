@@ -18,6 +18,7 @@
 // `core/index.ts` (spec §0): only `drag-move.ts`/`drag-resize.ts` import this module,
 // keeping the public surface small (coding-conventions.md).
 import type { SvgRendererHandle, TimeScale } from '../render/index.js';
+import type { Task } from '../types.js';
 
 export interface PointerGestureContext<TState> {
   /** Opaque, owned by the claiming recognizer (built once at `hitTest()`, passed by
@@ -38,8 +39,11 @@ export interface PointerGestureContext<TState> {
 }
 
 export interface PointerGestureRecognizer<TState> {
-  /** Debug/error messages only. */
-  readonly name: string;
+  /** Class the coordinator puts on the gesture's task group for the lifetime of a STARTED drag
+   *  (`onDragStart` .. commit/cancel), e.g. `fg-task--dragging`. */
+  readonly chromeClass: string;
+  /** `document.body.style.cursor` while a STARTED drag is open. */
+  readonly cursor: string;
   /**
    * Ascending = tried first. No meaning is assigned by `pointer-drag.ts` itself — callers
    * pick their own convention. `drag-resize.ts` uses a lower number than `drag-move.ts` so
@@ -59,7 +63,8 @@ export interface PointerGestureRecognizer<TState> {
   hitTest(event: PointerEvent, groupEl: Element): TState | null | undefined;
   /** Called exactly once, the FIRST `pointermove` that exceeds `dragThresholdPx` — after
    *  the coordinator's own `event.preventDefault()` (blocks text-selection, unconditional,
-   *  recognizer-agnostic). Add drag chrome (CSS class, cursor) here. */
+   *  recognizer-agnostic) and after it applied `chromeClass`/`cursor`. Add any further drag
+   *  chrome here. */
   onDragStart?(ctx: PointerGestureContext<TState>): void;
   /** Called on every valid `pointermove` AFTER the threshold (including the one that
    *  crossed it, right after `onDragStart`). `dxPixels` = `event.clientX -
@@ -67,13 +72,15 @@ export interface PointerGestureRecognizer<TState> {
    *  own concern via `snapDeltaToDay`). */
   onMove(ctx: PointerGestureContext<TState>, dxPixels: number, event: PointerEvent): void;
   /** Called once on the `pointerup` that ends a past-threshold gesture. This is the ONLY
-   *  commit point. */
+   *  commit point. The coordinator has already removed `chromeClass` and reset the cursor, so a
+   *  throw from a host callback can never leave them stuck. */
   onCommit(ctx: PointerGestureContext<TState>, dxPixels: number, event: PointerEvent): void;
   /** Called on cancellation: Escape, `pointercancel`, disposer-mid-drag, a garbage-coord
    *  `pointerup`, or the gesture's own recognizer being unregistered mid-drag. Called ONLY
    *  for a gesture that had actually STARTED (exceeded `dragThresholdPx`, i.e. `onDragStart`
    *  ran) — a pre-threshold cancel added no chrome, so `onCancel` is skipped rather than
-   *  clobbering host-owned state (e.g. `document.body.style.cursor`). Reverts the chrome/DOM
+   *  clobbering host-owned state (e.g. `document.body.style.cursor`). The coordinator has
+   *  already removed `chromeClass` and reset the cursor; this reverts the recognizer's own DOM
    *  mutations made in `onDragStart`/`onMove`. */
   onCancel(ctx: PointerGestureContext<TState>): void;
 }
@@ -115,6 +122,25 @@ export function snapDeltaToDay(dxPixels: number, timeScale: TimeScale): number {
   // Clamp a finite-but-absurd delta so a recognizer's `.add({ days: n })` commit path can
   // never throw a Temporal RangeError (review B2).
   return Math.max(-MAX_DRAG_DAYS, Math.min(MAX_DRAG_DAYS, n));
+}
+
+/** The task a `.fg-task[data-task-id]` group stands for (`undefined` on a DOM/data race). */
+export function findGroupTask(groupEl: Element, getTasks: () => readonly Task[]): Task | undefined {
+  const id = groupEl.getAttribute('data-task-id');
+  return getTasks().find((t) => t.id === id);
+}
+
+/** Client-px per user-unit of the chart `<svg>` along each axis (1 when the viewBox is missing,
+ *  malformed or the box is not laid out, e.g. jsdom) plus its client-space origin. */
+export function readClientScale(svg: SVGSVGElement): { left: number; top: number; scaleX: number; scaleY: number } {
+  const rect = svg.getBoundingClientRect();
+  const [, , vbWidth = NaN, vbHeight = NaN] = (svg.getAttribute('viewBox') ?? '').split(/\s+/).map(Number);
+  return {
+    left: rect.left,
+    top: rect.top,
+    scaleX: rect.width > 0 && vbWidth > 0 ? rect.width / vbWidth || 1 : 1,
+    scaleY: rect.height > 0 && vbHeight > 0 ? rect.height / vbHeight || 1 : 1,
+  };
 }
 
 interface OpenGesture {
@@ -292,6 +318,8 @@ function createController(handle: SvgRendererHandle): PointerDragController {
       // Block text-selection while dragging with a mouse — only once this is confirmed a
       // drag. Unconditional, coordinator-owned (not per-recognizer).
       event.preventDefault();
+      s.ctx.groupEl.classList.add(s.recognizer.chromeClass);
+      document.body.style.cursor = s.recognizer.cursor;
       s.recognizer.onDragStart?.(s.ctx);
     }
 
@@ -306,6 +334,9 @@ function createController(handle: SvgRendererHandle): PointerDragController {
 
     if (!s.exceededThreshold) return; // plain click — no commit, no cancel
 
+    // Reset the drag chrome BEFORE the recognizer commits/cancels (B2): a throw from a host
+    // callback must not leave `grabbing`/`fg-task--dragging` stuck.
+    clearChrome(s);
     if (!Number.isFinite(event.clientX) || !Number.isFinite(event.clientY)) {
       // Garbage coordinates on the final release event — don't commit data from corrupt
       // coords, cancel instead.
@@ -341,7 +372,15 @@ function createController(handle: SvgRendererHandle): PointerDragController {
     // that turns into a scroll → `pointercancel`, or Escape without moving) never ran
     // `onDragStart`/`onMove`, so calling `onCancel` here would clobber host-owned state such
     // as `document.body.style.cursor` that this gesture never set (regression B1).
-    if (s.exceededThreshold) s.recognizer.onCancel(s.ctx);
+    if (s.exceededThreshold) {
+      clearChrome(s);
+      s.recognizer.onCancel(s.ctx);
+    }
+  }
+
+  function clearChrome(s: OpenGesture): void {
+    s.ctx.groupEl.classList.remove(s.recognizer.chromeClass);
+    document.body.style.cursor = '';
   }
 
   function teardownListeners(s: OpenGesture): void {

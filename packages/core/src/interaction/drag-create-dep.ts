@@ -24,7 +24,12 @@ import type { SvgRendererHandle } from '../render/index.js';
 import { ARROWHEAD_MARKER_ID } from '../render/index.js';
 import type { Task, TaskId } from '../types.js';
 import { toTaskId } from '../types.js';
-import { getPointerDragController, DEFAULT_DRAG_THRESHOLD_PX } from './pointer-drag.js';
+import {
+  getPointerDragController,
+  DEFAULT_DRAG_THRESHOLD_PX,
+  findGroupTask,
+  readClientScale,
+} from './pointer-drag.js';
 import type { PointerGestureRecognizer } from './pointer-drag.js';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
@@ -60,13 +65,9 @@ const LINK_PRIORITY = -10; // lower than RESIZE_PRIORITY (0) and MOVE_PRIORITY (
 const LINKING_CLASS = 'fg-task--linking';
 
 /** Client-px → SVG user-space transform, captured ONCE at gesture start (the `<svg>` box and
- *  its viewBox don't change during a drag). */
-interface ClientToUserTransform {
-  readonly offsetLeft: number;
-  readonly offsetTop: number;
-  readonly scaleX: number;
-  readonly scaleY: number;
-}
+ *  its viewBox don't change during a drag; jsdom has no layout engine, so the scale falls back to
+ *  1:1). Both axes are needed since the preview line's endpoint can land in any row. */
+type ClientToUserTransform = ReturnType<typeof readClientScale>;
 
 interface LinkState {
   readonly fromTaskId: TaskId;
@@ -105,7 +106,8 @@ export function enableDragCreateDep(
   const dragThresholdPx = options.dragThresholdPx ?? DEFAULT_DRAG_THRESHOLD_PX;
 
   const recognizer: PointerGestureRecognizer<LinkState> = {
-    name: 'drag-create-dep',
+    chromeClass: LINKING_CLASS,
+    cursor: 'crosshair',
     priority: LINK_PRIORITY,
     dragThresholdPx,
 
@@ -117,12 +119,10 @@ export function enableDragCreateDep(
       // decline so move/resize get a chance.
       if (!handleEl || !groupEl.contains(handleEl)) return null;
 
-      const taskIdAttr = groupEl.getAttribute('data-task-id');
-      if (taskIdAttr === null) return null;
-      const fromTaskId = toTaskId(taskIdAttr);
       // Race between the rendered DOM and the latest `tasks` — skip, don't throw (mirrors
       // drag-move/drag-resize's own posture).
-      if (!getTasks().some((t) => t.id === fromTaskId)) return null;
+      const fromTaskId = findGroupTask(groupEl, getTasks)?.id;
+      if (fromTaskId === undefined) return null;
 
       const handleEnd = handleEl.getAttribute('data-handle-end') === 'start' ? 'start' : 'end';
       const cx = Number(handleEl.getAttribute('cx'));
@@ -171,10 +171,7 @@ export function enableDragCreateDep(
       path.style.setProperty('pointer-events', 'none');
       handle.svg.appendChild(path);
       ctx.state.previewPath = path;
-      ctx.state.transform = computeClientToUserTransform(handle);
-
-      ctx.groupEl.classList.add(LINKING_CLASS);
-      document.body.style.cursor = 'crosshair';
+      ctx.state.transform = readClientScale(handle.svg);
     },
 
     onMove(ctx, _dxPixels, event) {
@@ -188,8 +185,6 @@ export function enableDragCreateDep(
     },
 
     onCommit(ctx, _dxPixels, event) {
-      ctx.groupEl.classList.remove(LINKING_CLASS);
-      document.body.style.cursor = '';
       ctx.state.previewPath?.remove();
       const dropId = resolveDropTarget(event, ctx.state.fromTaskId);
       // Empty space OR self — decision 2's silent revert, resolved right here so the
@@ -206,8 +201,6 @@ export function enableDragCreateDep(
     },
 
     onCancel(ctx) {
-      ctx.groupEl.classList.remove(LINKING_CLASS);
-      document.body.style.cursor = '';
       ctx.state.previewPath?.remove();
     },
   };
@@ -230,24 +223,6 @@ function resolveDropTarget(event: PointerEvent, fromTaskId: TaskId): TaskId | un
   return candidate;
 }
 
-/** Build the client-px → SVG user-space transform ONCE (at gesture start), same
- *  `getBoundingClientRect()` + `viewBox`-ratio technique `drag-resize.ts`'s `hitTest` uses
- *  (jsdom has no layout engine → an all-zero `DOMRect` → scale falls back to 1:1, preserving
- *  DOM-attribute-level testability). Needs BOTH axes here (unlike drag-resize's x-only scale)
- *  since the preview line's endpoint can land in any row. Called once per gesture, not per
- *  `pointermove`, so a live drag never forces a layout reflow. */
-function computeClientToUserTransform(handle: SvgRendererHandle): ClientToUserTransform {
-  const svgRect = handle.svg.getBoundingClientRect();
-  const vbAttr = handle.svg.getAttribute('viewBox');
-  const vb = vbAttr ? vbAttr.split(/\s+/).map(Number) : undefined;
-  const vbWidth = vb?.[2];
-  const vbHeight = vb?.[3];
-  const scaleX = svgRect.width > 0 && Number.isFinite(vbWidth) && vbWidth! > 0 ? svgRect.width / vbWidth! : 1;
-  const scaleY =
-    svgRect.height > 0 && Number.isFinite(vbHeight) && vbHeight! > 0 ? svgRect.height / vbHeight! : 1;
-  return { offsetLeft: svgRect.left, offsetTop: svgRect.top, scaleX: scaleX || 1, scaleY: scaleY || 1 };
-}
-
 function applyTransform(t: ClientToUserTransform, clientX: number, clientY: number): { x: number; y: number } {
-  return { x: (clientX - t.offsetLeft) / t.scaleX, y: (clientY - t.offsetTop) / t.scaleY };
+  return { x: (clientX - t.left) / t.scaleX, y: (clientY - t.top) / t.scaleY };
 }

@@ -20,9 +20,13 @@
 import { normalizeDate } from '../compute/working-calendar.js';
 import type { SvgRendererHandle, TimeScale } from '../render/index.js';
 import type { DateInput, Task, TaskId } from '../types.js';
-import { toTaskId } from '../types.js';
 import type { Temporal } from '@js-temporal/polyfill';
-import { getPointerDragController, DEFAULT_DRAG_THRESHOLD_PX, snapDeltaToDay } from './pointer-drag.js';
+import {
+  getPointerDragController,
+  DEFAULT_DRAG_THRESHOLD_PX,
+  findGroupTask,
+  snapDeltaToDay,
+} from './pointer-drag.js';
 import type { PointerGestureRecognizer } from './pointer-drag.js';
 
 // Canonical home is now `pointer-drag.ts` — re-exported here (pure re-export, zero behavior
@@ -107,12 +111,11 @@ export function enableDragMove(
   const dragThresholdPx = options.dragThresholdPx ?? DEFAULT_DRAG_THRESHOLD_PX;
 
   const recognizer: PointerGestureRecognizer<MoveState> = {
-    name: 'drag-move',
+    chromeClass: DRAGGING_CLASS,
+    cursor: 'grabbing',
     priority: MOVE_PRIORITY,
     dragThresholdPx,
-    hitTest(event, groupEl) {
-      const taskIdAttr = groupEl.getAttribute('data-task-id');
-      if (taskIdAttr === null) return null;
+    hitTest(_event, groupEl) {
       // A bar drawn at its ROLLED-UP span (spec-summary-rollup.md Ticket B2) is not draggable:
       // the painted geometry is derived on read from its descendants, so `task.start`/`end`
       // below — the only thing this gesture can commit — is NOT what the user is pointing at.
@@ -120,15 +123,10 @@ export function enableDragMove(
       // displacement measured from a position that was never on screen. The renderer marks the
       // bar; `interaction/` never sees the rollup map itself.
       if (groupEl.getAttribute('data-rolled-up') !== null) return null;
-      const taskId = toTaskId(taskIdAttr);
-      const task = getTasks().find((t) => t.id === taskId);
+      const task = findGroupTask(groupEl, getTasks);
       // Race between the rendered DOM and the latest `tasks` — skip, don't throw.
       if (!task) return null;
-      return { taskId, originalStart: task.start, originalEnd: task.end };
-    },
-    onDragStart(ctx) {
-      ctx.groupEl.classList.add(DRAGGING_CLASS);
-      document.body.style.cursor = 'grabbing';
+      return { taskId: task.id, originalStart: task.start, originalEnd: task.end };
     },
     onMove(ctx, dxPixels) {
       const deltaDays = snapDeltaToDay(dxPixels, ctx.timeScale);
@@ -147,13 +145,10 @@ export function enableDragMove(
       }
     },
     onCommit(ctx, dxPixels) {
-      // Reset drag chrome (class + cursor) BEFORE computing/committing (B2): the commit path
-      // is clamped and cannot throw, but resetting first also means a throw from the host's
-      // `onTaskMoved` callback can't leave `grabbing`/`fg-task--dragging` stuck.
+      // The coordinator already reset the drag chrome (class + cursor), so a throw from the
+      // host's `onTaskMoved` can't leave `grabbing`/`fg-task--dragging` stuck.
       // The transform is intentionally kept — the bar holds its dragged position until the
       // caller re-renders with the updated task.
-      ctx.groupEl.classList.remove(DRAGGING_CLASS);
-      document.body.style.cursor = '';
       const deltaDays = snapDeltaToDay(dxPixels, ctx.timeScale);
       const { newStart, newEnd } = computeDraggedDates(
         ctx.timeScale,
@@ -164,11 +159,9 @@ export function enableDragMove(
       options.onTaskMoved(ctx.state.taskId, newStart, newEnd);
     },
     onCancel(ctx) {
-      // `removeAttribute`/`classList.remove` are already no-ops when nothing was set — safe
-      // to call unconditionally (matches every existing cancellation-path test).
+      // `removeAttribute` is already a no-op when nothing was set — safe to call
+      // unconditionally (matches every existing cancellation-path test).
       ctx.groupEl.removeAttribute('transform');
-      ctx.groupEl.classList.remove(DRAGGING_CLASS);
-      document.body.style.cursor = '';
     },
   };
 
