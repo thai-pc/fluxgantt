@@ -229,9 +229,9 @@ test.describe('Tier A: review regressions (responsive.html)', () => {
         const t = document.elementFromPoint(x!, y!)!;
         t.dispatchEvent(new PointerEvent('pointerdown', init(x!)));
         for (let i = 1; i <= 6; i++) {
-          document.elementFromPoint(x! - i * 20, y!)!.dispatchEvent(new PointerEvent('pointermove', init(x! - i * 20)));
+          t.dispatchEvent(new PointerEvent('pointermove', init(x! - i * 20)));
         }
-        document.elementFromPoint(x! - 120, y!)!.dispatchEvent(new PointerEvent('pointerup', init(x! - 120, 0)));
+        t.dispatchEvent(new PointerEvent('pointerup', init(x! - 120, 0)));
       },
       [svgBox.x + 3, svgBox.y + 48] as const,
     );
