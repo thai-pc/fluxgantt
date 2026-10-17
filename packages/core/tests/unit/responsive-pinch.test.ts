@@ -469,31 +469,33 @@ describe('pinch — property: random pointer sequences', () => {
       x: fc.integer({ min: -50, max: 600 }),
       y: fc.integer({ min: 0, max: 200 }),
     });
+    // ONE mount for every run (a jsdom paint per run made this the slowest test in the package);
+    // each run ends by lifting every pointer, which is itself the "drains cleanly" assertion.
+    const s = setup();
+    const zi = vi.spyOn(s.gantt, 'zoomIn');
+    const zo = vi.spyOn(s.gantt, 'zoomOut');
     fc.assert(
       fc.property(fc.array(op, { maxLength: 25 }), (ops) => {
-        container.replaceChildren();
-        const s = setup();
-        let steps = 0;
-        const zi = vi.spyOn(s.gantt, 'zoomIn');
-        const zo = vi.spyOn(s.gantt, 'zoomOut');
         for (const o of ops) {
           const before = zi.mock.calls.length + zo.mock.calls.length;
-          ptr(`pointer${o.kind}`, s.svg, o.id, o.x, o.y);
+          ptr(`pointer${o.kind}`, container.querySelector('svg')!, o.id, o.x, o.y);
           const delta = zi.mock.calls.length + zo.mock.calls.length - before;
           expect(delta).toBeLessThanOrEqual(1);
           if (o.kind !== 'move') expect(delta).toBe(0);
-          steps += delta;
         }
-        for (const id of [1, 2, 3]) ptr('pointerup', s.svg, id, 0, 0);
-        // All released: a brand-new two-finger pinch must work from a clean state.
-        const f = twoFingers(s, 100);
+        for (const id of [1, 2, 3]) ptr('pointerup', container.querySelector('svg')!, id, 0, 0);
+        // All released: a brand-new two-finger pinch must step from a clean state. The chart
+        // repaints on a step, so re-resolve the surface the events are dispatched on.
+        const surface = container.querySelector('svg') as SVGElement;
         const modeBefore = s.gantt.getViewMode();
-        f.spread(150);
+        ptr('pointerdown', surface, 1, 100, 100);
+        ptr('pointerdown', surface, 2, 200, 100);
+        ptr('pointermove', surface, 2, 100 + 150, 100);
         if (modeBefore !== 'day') expect(s.gantt.getViewMode()).not.toBe(modeBefore);
-        s.gantt.destroy();
-        return steps >= 0;
+        ptr('pointerup', surface, 1, 0, 0);
+        ptr('pointerup', surface, 2, 0, 0);
       }),
-      { numRuns: 12 },
+      { numRuns: 25 },
     );
   });
 });
