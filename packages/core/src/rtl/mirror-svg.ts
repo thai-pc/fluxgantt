@@ -21,5 +21,8 @@ export function mirrorSvg(root: SVGSVGElement, width: number): void {
   for (const t of g.querySelectorAll('text')) {
     const x = Number(t.getAttribute('x'));
     if (Number.isFinite(x)) t.setAttribute('transform', `matrix(-1 0 0 1 ${2 * x} 0)`);
+    // Per-label base direction (first strong character), so "Launch!" and "(Review (draft)" keep their
+    // order inside the RTL group; Arabic-first labels still run right to left. Inline, so it survives export.
+    if (t.classList.contains('fg-timeline__row-label')) t.style.setProperty('unicode-bidi', 'plaintext');
   }
 }

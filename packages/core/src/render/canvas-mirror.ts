@@ -19,7 +19,15 @@ export function fillTextAt(ctx: CanvasRenderingContext2D, text: string, x: numbe
   }
   ctx.save();
   ctx.transform(-1, 0, 0, 1, 2 * x, 0);
-  if (ctx.textAlign === 'left' || ctx.textAlign === 'start') ctx.textAlign = 'right';
+  // Physical values are mirrored by the group flip, so they swap sides; `start` is the physical right
+  // under `direction: rtl` and, like `center` and `end`, already lands right after the counter-flip.
+  const align = ctx.textAlign;
+  if (align === 'left' || align === 'start') ctx.textAlign = 'right';
+  else if (align === 'right') ctx.textAlign = 'left';
+  // Per-label base direction from the first strong character (`unicode-bidi: plaintext`), so
+  // "Launch!" or "(Review (draft)" keep their order inside an RTL chart.
+  const strong = /[A-Za-z\u00C0-\u052F]|([\u0590-\u08FF\uFB1D-\uFDFF\uFE70-\uFEFF])/.exec(text);
+  if (strong && !strong[1]) ctx.direction = 'ltr';
   ctx.fillText(text, x, y);
   ctx.restore();
 }

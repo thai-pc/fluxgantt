@@ -105,3 +105,15 @@ describe('mirrorSvg', () => {
     );
   });
 });
+
+describe('mirrorSvg row-label bidi', () => {
+  it('sets unicode-bidi: plaintext inline on row labels only', () => {
+    const svg = el('svg') as SVGSVGElement;
+    const row = el('text', { x: '8', class: 'fg-timeline__row-label' });
+    const head = el('text', { x: '8' });
+    svg.append(row, head);
+    mirrorSvg(svg, 100);
+    expect((row as SVGElement).style.getPropertyValue('unicode-bidi')).toBe('plaintext');
+    expect((head as SVGElement).style.getPropertyValue('unicode-bidi')).toBe('');
+  });
+});

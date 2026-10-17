@@ -240,8 +240,7 @@ export function enableKeyboardNav(
       case 'ArrowRight':
         // No-op, `preventDefault()` NOT called (reserved for future horizontal/cell nav —
         // spec §4.4). When that lands it must be LOGICAL (inline-start/end), not physical: under
-        // `withRtl` ArrowRight goes toward the start of the row, which is visually leftwards for
-        // the timeline. Keep key -> direction in one place and flip it on `handle.mirrorX`.
+        // `withRtl` the start of the row is visually RIGHT, so inline-start is ArrowRight there. Keep key -> direction in one place and flip it on `handle.mirrorX`.
         return;
       case ' ':
       case 'Spacebar': // legacy key value some UAs still report for Space

@@ -41,8 +41,19 @@ interface Rec {
 }
 function recordingCtx(init: Record<string, unknown> = {}): { ctx: CanvasRenderingContext2D; rec: Rec } {
   const rec: Rec = { calls: [], props: { textAlign: 'start', direction: 'ltr', ...init } };
+  const stack: Record<string, unknown>[] = [];
   const ctx = new Proxy(rec.props, {
-    get: (t, k: string) => (k in t ? t[k] : (...args: unknown[]): void => void rec.calls.push({ name: k, args })),
+    get: (t, k: string) => {
+      // save()/restore() scope the 2D state (direction, textAlign), like the real context
+      if (k === 'save') return (): void => void (rec.calls.push({ name: k, args: [] }), stack.push({ ...t }));
+      if (k === 'restore')
+        return (): void => {
+          rec.calls.push({ name: k, args: [] });
+          const prev = stack.pop();
+          if (prev) Object.assign(t, prev);
+        };
+      return k in t ? t[k] : (...args: unknown[]): void => void rec.calls.push({ name: k, args });
+    },
     set: (t, k: string, v: unknown) => {
       rec.calls.push({ name: `${k}=`, args: [v] });
       t[k] = v;
@@ -80,8 +91,22 @@ describe('applyMirror / fillTextAt (spec 6.1)', () => {
 
   it('leaves a centered run centered, and keeps save/restore balanced', () => {
     const { ctx, rec } = recordingCtx({ direction: 'rtl', textAlign: 'center' });
-    fillTextAt(ctx, 'x', 5, 5);
+    fillTextAt(ctx, 'مهمة', 5, 5);
     expect(names(rec)).toEqual(['save', 'transform', 'fillText', 'restore']);
+  });
+
+  it('maps physical alignments across the flip and picks the base direction from the first strong char', () => {
+    const run = (align: string, text: string) => {
+      const { ctx, rec } = recordingCtx({ direction: 'rtl', textAlign: align });
+      fillTextAt(ctx, text, 30, 8);
+      return rec;
+    };
+    expect(run('right', 'x').calls.find((c) => c.name === 'textAlign=')!.args).toEqual(['left']);
+    expect(run('end', 'x').calls.some((c) => c.name === 'textAlign=')).toBe(false);
+    expect(run('start', 'Launch!').calls.find((c) => c.name === 'direction=')!.args).toEqual(['ltr']);
+    expect(run('start', '(Review (draft)').calls.find((c) => c.name === 'direction=')!.args).toEqual(['ltr']);
+    expect(run('start', 'مهمة 1').calls.some((c) => c.name === 'direction=')).toBe(false);
+    expect(run('start', '123 مهمة').calls.some((c) => c.name === 'direction=')).toBe(false);
   });
 
   it('layoutX is an involution and the identity when not mirrored (property)', () => {
@@ -185,7 +210,7 @@ describe('renderPixels with rtl (spec 6.2)', () => {
       if (c.name !== 'fillText') return;
       const flip = rec.calls.slice(0, i).reverse().find((x) => x.name === 'transform')!;
       expect(flip.args).toEqual([-1, 0, 0, 1, 2 * (c.args[1] as number), 0]);
-      expect(rec.calls[i - 1]!.name === 'transform' || rec.calls[i - 1]!.name === 'textAlign=').toBe(true);
+      expect(['transform', 'textAlign=', 'direction='].includes(rec.calls[i - 1]!.name)).toBe(true);
     });
   });
 

@@ -64,7 +64,7 @@ export function withRtl<T extends GanttInstance>(instance: T): T {
     } else {
       handle.setOptions({
         onPaint: (...roots) => {
-          for (const root of roots) mirrorSvg(root, width());
+          for (const root of roots) mirrorSvg(root, Number(root.getAttribute('width')));
         },
       });
     }

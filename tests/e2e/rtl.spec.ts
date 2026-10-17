@@ -603,3 +603,49 @@ test.describe('Canvas hidden a11y layer (risk 6.6)', () => {
     expect(await scrollLeft(page)).toBe(-1500);
   });
 });
+
+test.describe('mixed-direction labels (unicode-bidi: plaintext)', () => {
+  test('Latin-first labels with trailing/neutral punctuation keep their reading order in the SVG chart', async ({ page }) => {
+    await openRtl(page);
+    await gantt(page, (g) => {
+      const t = g as unknown as { updateTask(id: string, p: object): void };
+      t.updateTask('req', { name: 'Launch!' });
+      t.updateTask('design', { name: '(Review (draft)' });
+    });
+    const order = await page.evaluate(() => {
+      // x of the first and last character of a label's text node, in client space
+      const edges = (id: string): { first: number; last: number } => {
+        const t = document.querySelector(`.fg-timeline__row[data-task-id="${id}"] text`)!;
+        const n = t.firstChild as Text;
+        const at = (i: number): number => {
+          const r = document.createRange();
+          r.setStart(n, i);
+          r.setEnd(n, i + 1);
+          return r.getBoundingClientRect().left;
+        };
+        return { first: at(0), last: at(n.length - 1) };
+      };
+      return { launch: edges('req'), review: edges('design') };
+    });
+    // "Launch!": L is left of "!" (it would be the other way round under a forced RTL base)
+    expect(order.launch.first).toBeLessThan(order.launch.last);
+    // "(Review (draft)": the string starts with "(" at the left and ends with ")" at the right
+    expect(order.review.first).toBeLessThan(order.review.last);
+  });
+
+  test('an Arabic-first label still runs right to left (first character is the right-most)', async ({ page }) => {
+    await openRtl(page);
+    const o = await page.evaluate(() => {
+      const t = document.querySelector('.fg-timeline__row[data-task-id="design"] text')!;
+      const n = t.firstChild as Text;
+      const at = (i: number): number => {
+        const r = document.createRange();
+        r.setStart(n, i);
+        r.setEnd(n, i + 1);
+        return r.getBoundingClientRect().left;
+      };
+      return { first: at(0), last: at(n.length - 1) };
+    });
+    expect(o.first).toBeGreaterThan(o.last);
+  });
+});
