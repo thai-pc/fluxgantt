@@ -25,6 +25,13 @@ import type { TaskInput } from '../../src/store/index.js';
 // shape without an inline `typeof import(...)` type query (forbidden by
 // @typescript-eslint/consistent-type-imports — erased at compile time either way).
 import type * as CanvasRendererModule from '../../src/render/canvas-renderer.js';
+import * as criticalPath from '../../src/compute/critical-path.js';
+
+// Pass-through spy: only used to count CPM calls on the Canvas -> SVG fallback path.
+vi.mock('../../src/compute/critical-path.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof criticalPath>();
+  return { ...actual, computeCriticalPath: vi.fn(actual.computeCriticalPath) };
+});
 
 // `vi.fn(actual.createCanvasRenderer)` wraps the REAL implementation by default (success-path
 // tests exercise the genuine Canvas renderer, not a stub) while letting individual tests swap
@@ -1021,6 +1028,34 @@ describe('renderer auto-switch (spec-canvas-auto-switch.md)', () => {
       expect(container.querySelector('svg')).not.toBeNull();
       expect(container.querySelector('canvas')).toBeNull();
       expect(warn).toHaveBeenCalledTimes(1);
+    },
+    HEAVY_TEST_TIMEOUT_MS,
+  );
+
+  it(
+    'a Canvas construction failure falls back to SVG with ONE critical-path computation and ONE critical-path:computed event',
+    async () => {
+      vi.spyOn(console, 'warn').mockImplementation(() => {});
+      vi.mocked(createCanvasRenderer).mockImplementationOnce(() => {
+        throw new CanvasDimensionExceededError('height', 100_000, 32_767, 3000, 1);
+      });
+      const gantt = createGantt({ tasks: buildManyTasks(CANVAS_AUTO_SWITCH_THRESHOLD + 1) });
+      const computed = vi.fn();
+      const selected = vi.fn();
+      gantt.on('critical-path:computed', computed);
+      gantt.on('renderer:selected', selected);
+      vi.mocked(criticalPath.computeCriticalPath).mockClear();
+
+      gantt.mount(container);
+      await vi.waitFor(
+        () => {
+          expect(selected).toHaveBeenCalledTimes(1);
+        },
+        HEAVY_WAIT_FOR_TIMEOUT_MS,
+      );
+
+      expect(vi.mocked(criticalPath.computeCriticalPath)).toHaveBeenCalledTimes(1);
+      expect(computed).toHaveBeenCalledTimes(1);
     },
     HEAVY_TEST_TIMEOUT_MS,
   );

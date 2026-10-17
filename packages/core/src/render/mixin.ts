@@ -169,6 +169,8 @@ async function mountCanvasAsync(
   if (superseded()) return; // superseded while awaiting the import
 
   let handle: CanvasRendererHandle;
+  // Created before the `try`: the construction-failure fallback below reuses it, so the critical
+  // path derived for the Canvas attempt is neither recomputed nor lost (with its pending emit).
   const memo = createMemo();
   try {
     handle = canvasModule.createCanvasRenderer(
@@ -187,7 +189,7 @@ async function mountCanvasAsync(
       `@fluxgantt/core: Canvas renderer initialization failed (${reason}) — falling back to the SVG renderer.`,
       constructErr,
     );
-    mountSvg(internal, container, generation, taskCount, reason);
+    mountSvg(internal, container, generation, taskCount, reason, memo);
     return;
   }
 
@@ -205,10 +207,10 @@ function mountSvg(
   generation: number,
   taskCount: number,
   fallbackReason?: FallbackReason,
+  memo = createMemo(),
 ): void {
   // Defensive, cheap even on the sync path.
   if (generation !== internal.gen() || internal.dead()) return;
-  const memo = createMemo();
   const handle = createSvgRenderer(
     container,
     renderInput(internal, memo, false),
@@ -354,10 +356,9 @@ function renderInput(internal: GanttInternal, memo: RenderMemo, track: boolean):
     } else {
       try {
         memo.criticalPath = computeCriticalPathFn(tasks, dependencies, internal.calendar);
-        // Emit only when the critical set actually changed (not on every mutation / render).
-        if (internal.noteCrit(memo.criticalPath.criticalTaskIds)) {
-          memo.emit = memo.criticalPath.criticalTaskIds;
-        }
+        // Announced (and noted as announced) by `renderNow`'s flush, so a memo that is discarded
+        // before it paints can never mark a set as already announced.
+        memo.emit = memo.criticalPath.criticalTaskIds;
       } catch (err) {
         // Cyclic graph (possible if a caller used DependencyStore.link(..., {allowCycle: true})
         // directly, bypassing linkTasks) — the reactive render effect must NEVER throw. Swallow,
@@ -394,7 +395,8 @@ function renderNow(
   if (memo.emit) {
     const ids = memo.emit;
     memo.emit = undefined;
-    internal.emit('critical-path:computed', ids);
+    // Emit only when the critical set actually changed (not on every mutation / render).
+    if (internal.noteCrit(ids)) internal.emit('critical-path:computed', ids);
   }
   // The constructor already painted exactly this state, apart from which row holds the roving
   // tabindex. It painted the first row (the renderer's own default), which is also where keyboard
