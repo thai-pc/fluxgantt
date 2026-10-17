@@ -16,7 +16,7 @@
 // the interaction layer, explicitly permitted per architecture.md. Still imports nothing
 // outside `@fluxgantt/core`'s own tree (no react/vue/svelte).
 import type { InteractiveRendererHandle } from '../render/index.js';
-import { layoutRows, type RowLayout } from '../render/renderer-base.js';
+import { layoutRows, ROW_HEIGHT, type RowLayout } from '../render/renderer-base.js';
 import { toTaskId, type Density, type Task, type TaskId } from '../types.js';
 
 export interface KeyboardNavOptions {
@@ -385,6 +385,23 @@ export function enableKeyboardNav(
     } else {
       setFocus(next);
       options.onSelect(next);
+    }
+    revealFocusedRow(rows[nextIndex]!);
+  }
+
+  /**
+   * Scrolls the SVG chart vertically, by the minimum, so the keyboard-focused row sits fully
+   * below the pinned 32px header band and inside the viewport. Writes `scrollTop` only (never
+   * `scrollLeft`). Canvas reveals its own focused row, so it is skipped here. A row taller than
+   * the band pins to its top; an unlaid-out container (clientHeight <= 32) is left untouched.
+   */
+  function revealFocusedRow(row: RowLayout): void {
+    const viewH = focusRoot.clientHeight - 32; // HEADER_HEIGHT, duplicated as in viewport/mixin.ts
+    if (viewH > 0 && handle.interactionRoot.localName === 'svg') {
+      focusRoot.scrollTop = Math.min(
+        row.y,
+        Math.max(focusRoot.scrollTop, row.y + ROW_HEIGHT[options.density] - viewH),
+      );
     }
   }
 

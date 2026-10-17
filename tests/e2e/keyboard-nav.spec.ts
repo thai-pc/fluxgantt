@@ -259,3 +259,116 @@ test('no native bookmark-dialog interference: page stays intact after Ctrl/Cmd+D
 
   await expect(page.locator('svg.fg-timeline')).toBeVisible();
 });
+
+// --- Keep the keyboard-focused row visible (spec-keyboard-focus-scroll.md) ----------------------
+//
+// Fixture: `/collapse.html?pad=60` — 420px `overflow: auto` container, SVG mode, `filler-N` rows.
+// The pinned 32px date axis covers the top of the container's client area, so a focused row is
+// "visible" only inside `[origin + 32, origin + clientHeight]`.
+
+const HEADER = 32;
+
+async function containerBox(page: Page) {
+  return page.evaluate(() => {
+    const c = document.getElementById('gantt')!;
+    const r = c.getBoundingClientRect();
+    return { top: r.top + c.clientTop, h: c.clientHeight };
+  });
+}
+
+async function setScroll(page: Page, top: number, left = 0): Promise<void> {
+  await page.evaluate(
+    ([t, l]) => {
+      const c = document.getElementById('gantt')!;
+      c.scrollTop = t as number;
+      c.scrollLeft = l as number;
+    },
+    [top, left] as const,
+  );
+  await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => r(null))));
+}
+
+const scrollOf = (page: Page) =>
+  page.evaluate(() => {
+    const c = document.getElementById('gantt')!;
+    return { top: c.scrollTop, left: c.scrollLeft };
+  });
+
+async function expectFocusedRowInBand(page: Page): Promise<void> {
+  const c = await containerBox(page);
+  const id = await page.evaluate(() => document.activeElement?.getAttribute('data-task-id'));
+  const box = (await row(page, id!).boundingBox())!;
+  expect(box.y).toBeGreaterThanOrEqual(c.top + HEADER - 0.5);
+  expect(box.y + box.height).toBeLessThanOrEqual(c.top + c.h + 0.5);
+}
+
+test.describe('keeps the focused row visible (SVG)', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.goto('/collapse.html?pad=60');
+    await expect(page.locator('svg.fg-timeline')).toBeVisible();
+    await focusFirstRow(page);
+  });
+
+  for (const shift of [false, true]) {
+    test(`${shift ? 'Shift+' : ''}ArrowDown past the bottom keeps the row below the header, scrollLeft untouched`, async ({
+      page,
+    }) => {
+      await setScroll(page, 0, 80);
+      const left = (await scrollOf(page)).left;
+      expect(left).toBeGreaterThan(0);
+      for (let i = 0; i < 30; i++) {
+        await page.keyboard.press(shift ? 'Shift+ArrowDown' : 'ArrowDown');
+        await expectFocusedRowInBand(page);
+        expect((await scrollOf(page)).left).toBe(left);
+      }
+      expect((await scrollOf(page)).top).toBeGreaterThan(0);
+    });
+  }
+
+  test('ArrowUp onto a row above the fold lands it below the header band', async ({ page }) => {
+    for (let i = 0; i < 30; i++) await page.keyboard.press('ArrowDown');
+    await setScroll(page, 400);
+    // Focus is on a row far above the scrolled view; ArrowUp must bring its predecessor into the band.
+    await page.keyboard.press('ArrowUp');
+    await expectFocusedRowInBand(page);
+    for (let i = 0; i < 40; i++) {
+      await page.keyboard.press('ArrowUp');
+      await expectFocusedRowInBand(page);
+    }
+  });
+
+  test('a pointer click on a fully or partly visible row does not scroll', async ({ page }) => {
+    const c = await containerBox(page);
+    await setScroll(page, 0);
+    await page.mouse.click(400, c.top + HEADER + 48);
+    expect((await scrollOf(page)).top).toBe(0);
+    await setScroll(page, 10); // row 0 is now partly under the band
+    await page.mouse.click(400, c.top + HEADER + 20);
+    expect((await scrollOf(page)).top).toBe(10);
+  });
+
+  test('prefers-reduced-motion: the scroll lands in the same frame', async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    const tops: number[] = [];
+    for (let i = 0; i < 20; i++) {
+      await page.keyboard.press('ArrowDown');
+      // Read without waiting a frame: an animated scroll would still be at the old offset.
+      tops.push((await scrollOf(page)).top);
+      await expectFocusedRowInBand(page);
+    }
+    expect(tops[tops.length - 1]).toBeGreaterThan(0);
+  });
+});
+
+test('Canvas mode: ArrowDown past the bottom and back stays in the row band, no double scroll', async ({
+  page,
+}) => {
+  await page.goto('/canvas-a11y-harness.html');
+  const container = page.locator('#gantt');
+  await page.locator('.fg-timeline-a11y-layer [tabindex="0"]').first().focus();
+  for (let i = 0; i < 25; i++) await page.keyboard.press('ArrowDown');
+  // Canvas-only expectation (row 25 bottom 832 - 568px band), identical to a11y/canvas-renderer.
+  expect(await container.evaluate((el) => el.scrollTop)).toBe(264);
+  for (let i = 0; i < 25; i++) await page.keyboard.press('ArrowUp');
+  expect(await container.evaluate((el) => el.scrollTop)).toBe(0);
+});
