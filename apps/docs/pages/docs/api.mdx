@@ -186,9 +186,10 @@ offsets. The methods cannot detect that and still return `true`, because the ret
 that the target exists and a scroll was requested, not that the container moved. Canvas mode sets
 `overflow-y: auto` itself.
 
-The date axis stays pinned to the top of the scroll viewport in both modes, and in SVG mode the
-**label column is pinned to the inline-start edge** on horizontal scroll as well (Canvas still
-scrolls its label column away). Everything lives in one wrapper, `div.fg-timeline__layer`, that
+The date axis stays pinned to the top of the scroll viewport in both modes, and the
+**label column is pinned to the inline-start edge** on horizontal scroll as well (in Canvas mode it
+is a sticky sibling `canvas.fg-timeline-canvas-labels`, so select the chart with
+`.fg-timeline-canvas`, not `container > canvas`). In SVG mode everything lives in one wrapper, `div.fg-timeline__layer`, that
 holds the chart `<svg>` and three `aria-hidden`, `position: sticky` layers: the label column
 (`svg.fg-timeline__sticky-column`, clones of each row label and toggle), the date axis
 (`svg.fg-timeline__sticky-header`) and the top corner (`svg.fg-timeline__sticky-corner`).
@@ -210,9 +211,8 @@ wrapper is in between), and the exported SVG never contains any layer. Consequen
   viewport while the page scrolls through the chart. A fixed host navbar will cover the header.
 - Right-to-left pages are supported: the layers follow the chart's inline-start edge.
 - `scrollToTask`/`scrollToDate` use one model: `align: 'start'` parks the row directly **under** the
-  32px header, and (SVG) the bar directly **right of** the pinned column; the usable area is
-  `clientHeight - 32` by `clientWidth - labelColumnWidth`. Canvas keeps scrolling its label column,
-  so there the horizontal numbers include it.
+  32px header, and the bar directly **right of** the pinned column; the usable area is
+  `clientHeight - 32` by `clientWidth - labelColumnWidth`, in SVG and Canvas alike.
 - Pointer events: a click on a pinned label or toggle behaves exactly like one on the real label
   (select, Shift/Ctrl, collapse, `task:activated`, `task:context-requested`, touch pan). A click on
   the blank column or the date band clears the selection, like any blank chart space.
@@ -350,7 +350,7 @@ gantt.on('task:context-requested', (p) => {
   **Canvas mode never reports `'bar'`** (its hit-test is row-wide): treat `'row'` and `'bar'` as
   "the task" and do not rely on `'bar'`.
 - **Coordinates** are viewport (client) coordinates. For keyboard gestures they are the centre of
-  the focused row (Canvas: the painted row's label column), an anchor for a popover.
+  the focused row (the pinned label column, in both modes), an anchor for a popover.
 - **`preventDefault()`** suppresses the native context menu (mouse, keyboard, and Android's touch
   menu) only if you call it synchronously inside the listener. With no listener, or a listener that does not
   call it, the browser menu opens as usual. This is deliberate: the React and Vue wrappers

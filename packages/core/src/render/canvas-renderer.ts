@@ -36,6 +36,15 @@
 // mode to full keyboard+mouse+screen-reader parity with SVG mode. Drag-move/drag-resize/
 // drag-create-dep attach later via `attachDrag()` (see `canvas-drag.ts`).
 //
+// **PINNED LABEL COLUMN (spec-canvas-sticky-label-column.md).** The row labels, toggles, label
+// divider and top-left corner live on a SECOND, narrow (`labelColumnWidth` wide) canvas,
+// `canvas.fg-timeline-canvas-labels`: opaque, `position: sticky` top + inline-start, and
+// `pointer-events: none`, so the compositor pins it on horizontal scroll (a column painted into the
+// scrolling bitmap would slide for a frame and snap back) and every listener stays on the chart
+// canvas. The drag overlay is created later and lands BETWEEN the two, so ghosts and handles pass
+// under the column. Because nothing in `renderPixels()` reads `scrollLeft`, a horizontal-only
+// scroll no longer repaints at all (see the frame callback in `createCanvasRenderer`).
+//
 // **ROW VIRTUALIZATION (fix #37, spec-canvas-row-virtualization.md).** The `<canvas>` backing
 // store is no longer sized to the FULL content (`totalWidth x totalHeight`) — it is sized to a
 // small, bounded, host-controlled viewport (`resolvedViewportHeightPx`, default 600px via

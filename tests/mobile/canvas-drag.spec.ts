@@ -52,6 +52,23 @@ test.describe('Canvas touch drag', () => {
     expect(await events(page, 'task:moved')).toHaveLength(0);
   });
 
+  test('the label column stays pinned while panning, and a tap on a pinned label selects that row', async ({ page }) => {
+    await scrollTo(page, 200);
+    const geo = await page.evaluate(() => {
+      const c = document.getElementById('gantt')!;
+      const l = c.querySelector('canvas.fg-timeline-canvas-labels')!.getBoundingClientRect();
+      const m = c.querySelector('canvas.fg-timeline-canvas')!.getBoundingClientRect();
+      const r = c.getBoundingClientRect();
+      return { boxLeft: r.left + c.clientLeft, labelLeft: l.left, labelRight: l.right, mainTop: m.top };
+    });
+    expect(Math.abs(geo.labelLeft - geo.boxLeft)).toBeLessThanOrEqual(0.5);
+    // row 1 = 'b'; the touch density rows are taller than 32 px, so take the row from the anchor of 'a'
+    const a = await barBox(page, 'a');
+    await page.touchscreen.tap(geo.labelLeft + (geo.labelRight - geo.labelLeft) / 2, a.y + a.h / 2);
+    await expect.poll(async () => (await events(page, 'selection:changed')).length).toBeGreaterThan(0);
+    expect((await events(page, 'selection:changed')).at(-1)!.payload['ids']).toEqual(['a']);
+  });
+
   test('tapping a bar selects it and reveals link handles on the overlay', async ({ page }) => {
     await scrollTo(page, 200);
     const c = centre(await barBox(page, 'a'));

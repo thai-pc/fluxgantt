@@ -172,7 +172,7 @@ describe('paint split', () => {
     expect(texts).toEqual(['name-p', 'name-a', 'name-b']);
     const rows = layoutRows(tasks, 'default', undefined);
     const y0 = rows[0]!.y + 32 / 2; // before the HEADER translate
-    expect(lab.calls.find((c) => c.name === 'fillText')!.args.slice(1)).toEqual([8 + 0 + 16, y0]);
+    expect(lab.calls.find((c) => c.name === 'fillText')!.args.slice(1)).toEqual([22, y0]);
     // exactly one toggle (the summary row) => one filled triangle path
     expect(count(lab, 'fill')).toBe(1);
     // divider snapped inside the box: moveTo(offsetX - 0.5, 0)
@@ -333,12 +333,15 @@ describe('hit-testing inside the pinned column', () => {
 
   it('just right of the column a bar under the pointer is still a bar (content math)', () => {
     const h = mount();
-    scrolled(h, 400);
-    const bar = layoutTaskBar(layoutRows(tasks, 'default', undefined)[2]!.task, h.getTimeScale(), layoutRows(tasks, 'default', undefined)[2]!, 32, undefined);
-    const contentX = LABEL + bar.x + 5;
-    const hit = h.hitTestRow(100 - 400 + contentX, HEADER + 16 + 64);
+    const rows = layoutRows(tasks, 'default', undefined);
+    const bar = layoutTaskBar(rows[2]!.task, h.getTimeScale(), rows[2]!, 32, undefined);
+    expect(bar.x).toBeGreaterThan(0);
+    scrolled(h, bar.x); // the bar's left edge is parked exactly at the column's right edge
+    const hit = h.hitTestRow(100 + LABEL + 5, HEADER + 16 + 64);
     expect(hit).toMatchObject({ taskId: 'b', onLabel: false });
     expect(hit?.onBar).toBe(true);
+    // ... and 5 px to the left of that edge the same row resolves as its label instead
+    expect(h.hitTestRow(100 + LABEL - 5, HEADER + 16 + 64)).toMatchObject({ taskId: 'b', onLabel: true, onBar: false });
   });
 
   it('header band and below the last row are still not rows', () => {
