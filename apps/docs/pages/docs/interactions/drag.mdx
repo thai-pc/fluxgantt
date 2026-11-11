@@ -57,6 +57,9 @@ yourself, so the events and undo behaviour are identical either way.
 | <kbd>Tab</kbd> | Move focus into the chart — one stop for the whole grid (WAI-ARIA APG grid pattern), not one per row | — | no |
 | <kbd>↑</kbd> / <kbd>↓</kbd> | Move focus one row **and** select it, replacing the previous selection. No wraparound at either end | `select` | no |
 | <kbd>Shift</kbd>+<kbd>↑</kbd>/<kbd>↓</kbd> | Extend the selection from the anchor row | `select` | no |
+| <kbd>Home</kbd> / <kbd>End</kbd> | Move focus to the first / last visible row and select it. With <kbd>Shift</kbd>, extend the selection from the anchor row | `select` | no |
+| <kbd>PageUp</kbd> / <kbd>PageDown</kbd> | Move focus one page of rows (the container height, minus one row of overlap), clamped at both ends. With <kbd>Shift</kbd>, extend the selection | `select` | no |
+| <kbd>g</kbd> | Scroll the focused row's bar into view horizontally (<kbd>G</kbd> works too). Needs [`withViewport`](/docs/api#viewport-zoom); moves neither focus nor selection | `scrollToTask` | no |
 | <kbd>Space</kbd> | Toggle the focused row's selection | `select` / `deselect` | no |
 | <kbd>Enter</kbd> | Collapse/expand the focused row. On a leaf: nothing, unless [`withEditHooks`](/docs/api#edit-hooks) is applied, which then emits `task:activated` | `toggleCollapse` | no |
 | <kbd>F2</kbd> | With `withEditHooks`: emit `task:activated` for the focused row (summary rows too, where <kbd>Enter</kbd> still collapses) | — | no |
@@ -71,6 +74,15 @@ yourself, so the events and undo behaviour are identical either way.
 | <kbd>Click</kbd> | Select a row (plus its descendants) | `select` | no |
 | <kbd>Ctrl/Cmd</kbd>+click | Add/remove one row from the selection | `select` | no |
 | <kbd>Shift</kbd>+click | Select the range from the anchor row | `select` | no |
+
+- **<kbd>↑</kbd>/<kbd>↓</kbd> scroll vertically only**, so stepping through rows never moves the
+  timeline sideways. <kbd>g</kbd> is the explicit "go to bar". In the SVG renderer the row label sits
+  in the pinned label column, so the focused row stays visible even when its bar is off-screen.
+- **<kbd>PageUp</kbd>/<kbd>PageDown</kbd> assume the chart's own scroll container.** They page by the
+  container's height, so give the container a fixed height with `overflow: auto`; in an auto-height
+  container that the page scrolls instead, a "page" is the whole chart.
+- <kbd>Home</kbd>/<kbd>End</kbd> always mean first/last **row**. Cell-level Home/End is not offered
+  because the grid has no cells.
 
 Two things worth knowing before you bind your own handlers on top:
 

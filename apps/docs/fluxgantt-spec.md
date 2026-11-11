@@ -1121,7 +1121,7 @@ the edges (same as SVG). Ctrl+wheel zoom is still SVG-only there.
 | ArrowUp / ArrowDown | Move focus and the selection one row; with Shift, extend the range from the anchor. No wraparound |
 | Home / End | Focus the first / last visible row (selection follows; Shift extends the range) |
 | PageUp / PageDown | Move focus a page of rows (one row of overlap), clamped at the ends; Shift extends the range |
-| g | Scroll the focused row's bar into view horizontally (needs `withViewport`; honors the pinned label column, RTL, milestones and reduced motion). Does not move focus or selection. ArrowUp / ArrowDown never scroll horizontally |
+| g / G | Scroll the focused row's bar into view horizontally (needs `withViewport`; honors the pinned label column, RTL, milestones and reduced motion). Does not move focus or selection. ArrowUp / ArrowDown never scroll horizontally |
 | ArrowLeft / ArrowRight | Reserved for future cell navigation; not bound |
 | Tab | Enters / leaves the chart. Rows use a roving tabindex (exactly one row is a tab stop); there are no cells to Tab between |
 | Space | Toggle the focused task's selection |
