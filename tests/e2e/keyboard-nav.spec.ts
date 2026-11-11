@@ -423,7 +423,7 @@ test('click a row, ArrowDown x5: the focused row is document.activeElement after
 }) => {
   await page.goto('/canvas-mount-perf-harness.html?taskCount=60&mounted=1&interaction=1');
   await page.waitForSelector('.fg-timeline__row');
-  await page.locator('.fg-task[data-task-id="perf-task-3"]').click();
+  await page.locator('.fg-timeline__sticky-column .fg-timeline__row-label[data-task-id="perf-task-3"]').click();
   for (let i = 1; i <= 5; i++) {
     await page.keyboard.press('ArrowDown');
     const expected = `perf-task-${3 + i}`;

@@ -9,4 +9,11 @@ SVG charts at 2000 tasks no longer repaint the whole chart when only the selecti
 - Output is byte-identical to a full render (property-tested over random operation sequences, LTR and RTL). Not repeated on a patch: the clock read for the today wash (stale across local midnight until the next full render) and the "end before start" `console.warn`.
 - Bytes were found elsewhere first (row builder as a closure, single-caller builders inlined, `append(string)` instead of `createTextNode`, shorter diagnostics); see the table in CLAUDE.md golden rule 5. No limit changed.
 
-Timings (2000 SVG tasks, p50 of fresh pages to two rAFs, loaded dev machine, so only the ratios mean anything): PROVISIONAL, to be filled from the final calibration run.
+Timings (2000 SVG tasks, p50 of fresh pages to two animation frames, ms, dev machine, before -> after):
+
+| | Chromium | Firefox | WebKit |
+|---|---|---|---|
+| `select(id)` | 1102 -> 38 | 3592 -> 23 | 3034 -> 24 |
+| ArrowDown | 1670 -> 53 | 1703 -> 33 | 1234 -> 33 |
+
+Programmatic `row.focus()` already repainted nothing before this change (about 20-40 ms of frame time either way). The "before" runs were taken on a more heavily loaded machine than the "after" runs, so only the order of magnitude is meaningful.
