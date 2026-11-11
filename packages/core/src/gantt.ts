@@ -659,7 +659,7 @@ class Gantt implements GanttInstance {
       (!Number.isInteger(config.historyLimit) || config.historyLimit < 0)
     ) {
       throw new Error(
-        `createGantt: config.historyLimit must be a non-negative integer`,
+        `createGantt: config.historyLimit must be a non-negative integer, got ${config.historyLimit}`,
       );
     }
     this.#historyLimit = config.historyLimit ?? DEFAULT_HISTORY_LIMIT;
