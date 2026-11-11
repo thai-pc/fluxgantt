@@ -32,8 +32,6 @@ import {
   anchorOf,
   buildTaskAriaLabel,
   type GanttMessages,
-  type GridColumn,
-  type HeaderTiers,
   type RolledUpRow,
   type RowLayout,
   type TaskBarLayout,
