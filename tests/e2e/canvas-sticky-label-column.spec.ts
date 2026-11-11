@@ -147,9 +147,11 @@ test.describe('Canvas pinned label column', () => {
     const g = await geo(page);
     const rowCount = () => page.evaluate(() => Number(document.querySelector('[role="treegrid"],[role="grid"]')!.getAttribute('aria-rowcount')));
     const before = await rowCount();
+    const sel0 = (await events(page, 'selection:changed')).length;
     const sumY = g.main.top + HEADER + 5 * ROW + ROW / 2; // 'sum' is row 5
     await page.mouse.click(g.box.left + 6 + 6, sumY); // the toggle gutter: padding 6 + half the glyph
     await expect.poll(rowCount).toBe(before - 2);
+    expect(await events(page, 'selection:changed')).toHaveLength(sel0); // a toggle click does not select
     // a click on the blank part of a pinned row (left of the label text is the toggle; far right is blank)
     // still resolves to the row: the label column is a normal click target
     const n = (await events(page, 'selection:changed')).length;
@@ -181,11 +183,25 @@ test.describe('Canvas pinned label column', () => {
     const g = await geo(page);
     const c = centre(b);
     expect(c.x).toBeGreaterThan(g.box.left + LABEL_W);
-    // Drag the bar's centre into the column and sample the column under the ghost: no bar colour there.
+    // Composited pixels of the row band under the ghost, sampled before the drag and while it is held.
+    const clip = { x: g.box.left + 4, y: c.y - ROW / 2, width: LABEL_W - 8, height: ROW };
+    const setLabels = (v: string) =>
+      page.evaluate((vis) => {
+        document.querySelector<HTMLCanvasElement>('canvas.fg-timeline-canvas-labels')!.style.visibility = vis;
+      }, v);
+    const shot = () => page.screenshot({ clip });
+    const restShown = await shot();
+    await setLabels('hidden');
+    const restHidden = await shot();
+    await setLabels('');
+    // Drag the bar's centre into the column.
     await mouseDragTo(page, c, { x: g.box.left + 40, y: c.y }, { release: false });
     await frames(page);
-    const ghost = await labelInk(page, 4, 0, LABEL_W - 8, 4);
-    expect(ghost.ink).toBe(0);
+    expect((await shot()).equals(restShown)).toBe(true); // the ghost is hidden under the opaque column
+    // Control: with the column hidden the same clip shows the ghost, so the check above can fail.
+    await setLabels('hidden');
+    expect((await shot()).equals(restHidden)).toBe(false);
+    await setLabels('');
     await page.keyboard.press('Escape');
     await page.mouse.up();
     // link: from the end handle of 'b' to a point inside the column

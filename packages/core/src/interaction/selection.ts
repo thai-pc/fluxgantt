@@ -100,7 +100,7 @@ export function enableClickSelect(
 
   /** Branches on `handle.hitTestRow`'s presence — the Canvas/SVG discriminator
    *  (spec-canvas-renderer-ticket2.md §7.3). */
-  function resolveHit(event: PointerEvent, target: Element): { taskId: TaskId; rowIndex: number } | undefined {
+  function resolveHit(event: PointerEvent, target: Element): { taskId: TaskId; rowIndex: number; hitToggle?: boolean } | undefined {
     if (handle.hitTestRow) {
       return handle.hitTestRow(event.clientX, event.clientY);
     }
@@ -174,6 +174,7 @@ export function enableClickSelect(
       anchorRowIndex = undefined;
       return;
     }
+    if (hit.hitToggle) return; // Canvas: the toggle glyph belongs to `enableCollapseToggle`
 
     if (event.shiftKey && anchorTaskId !== undefined && anchorRowIndex !== undefined) {
       const lo = Math.min(anchorRowIndex, hit.rowIndex);

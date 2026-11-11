@@ -538,6 +538,21 @@ describe('canvas click-select', () => {
     expect(onSelect).toHaveBeenCalledWith(toTaskId('t1'));
   });
 
+  it('a click the hit test reports as a toggle hit neither selects nor clears', () => {
+    const { handle, onSelect, onToggle, onRangeSelect, onClear } = setupCanvas();
+    vi.spyOn(handle, 'hitTestRow').mockReturnValue({
+      taskId: toTaskId('t1'),
+      rowIndex: 0,
+      hitToggle: true,
+      onBar: false,
+      onLabel: true,
+    });
+    dispatchPointer(handle.canvas, 'pointerdown', { pointerId: 1, clientX: 10, clientY: ROW0_Y, bubbles: true });
+    dispatchPointer(window, 'pointerup', { pointerId: 1, clientX: 10, clientY: ROW0_Y });
+    expect(handle.hitTestRow).toHaveBeenCalled();
+    for (const cb of [onSelect, onToggle, onRangeSelect, onClear]) expect(cb).not.toHaveBeenCalled();
+  });
+
   it('click in the header band fires onClear, not onSelect', () => {
     const { handle, onSelect, onClear } = setupCanvas();
     dispatchPointer(handle.canvas, 'pointerdown', { pointerId: 1, clientX: 100, clientY: 10, bubbles: true });
