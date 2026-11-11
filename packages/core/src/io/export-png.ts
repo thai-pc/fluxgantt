@@ -75,7 +75,7 @@ export async function exportPng(svg: SVGSVGElement, options?: ExportPngOptions):
     // per-side limit AND the total-area cap (review B1).
     throw new Error(
       `gantt.exportPng: output ${pxWidth}x${pxHeight}px exceeds the ${MAX_PNG_DIMENSION_PX}px ` +
-        'per-side / total-area limit — lower scale',
+        'per-side / total-area limit',
     );
   }
 
