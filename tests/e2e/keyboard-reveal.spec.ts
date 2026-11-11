@@ -5,6 +5,7 @@ import { test, expect, type Page } from '@playwright/test';
 // rows in a 420px-high `#gantt` scroller (withViewport + withInteraction composed).
 
 const HEADER_HEIGHT = 32;
+const ROW_HEIGHT = 32; // default density
 
 const scroll = (page: Page) =>
   page.evaluate(() => {
@@ -51,11 +52,10 @@ test('arrows keep scrollLeft; g brings the focused bar into view beside the labe
 
 test('End / Home / PageDown move focus and keep the focused row below the header', async ({ page }) => {
   // Focus starts on row 0: one page = floor((clientHeight - header) / rowHeight) - 1 rows.
-  const page1 = await page.evaluate((header) => {
-    const c = document.getElementById('gantt')!;
-    const rowH = document.querySelector('.fg-timeline__row')!.getBoundingClientRect().height;
-    return Math.max(1, Math.floor((c.clientHeight - header) / rowH) - 1);
-  }, HEADER_HEIGHT);
+  const page1 = await page.evaluate(
+    ([header, rowH]) => Math.max(1, Math.floor((document.getElementById('gantt')!.clientHeight - header!) / rowH!) - 1),
+    [HEADER_HEIGHT, ROW_HEIGHT],
+  );
   expect(page1).toBeGreaterThan(1);
   await page.keyboard.press('PageDown');
   const focused = page.locator('.fg-timeline__row:focus');
