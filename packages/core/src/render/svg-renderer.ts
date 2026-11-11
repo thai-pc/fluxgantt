@@ -444,8 +444,23 @@ export function createSvgRenderer(
     // keyboard interaction has happened, the grid must still be exactly one native Tab stop.
     const focusedTaskId = currentInput.focusedTaskId ?? rows[0]?.task.id;
 
+    const defs = el('defs', {});
+    defs.append(
+      el('marker', {
+        id: ARROWHEAD_MARKER_ID,
+        viewBox: '0 0 8 8',
+        refX: 7,
+        refY: 4,
+        markerWidth: 6,
+        markerHeight: 6,
+        orient: 'auto-start-reverse',
+      }),
+    );
+    defs.firstElementChild!.append(
+      el('path', { d: 'M 0 0 L 8 4 L 0 8 z' }, { fill: 'var(--fg-dep-line, #64748b)' }),
+    );
     svg.append(
-      createArrowheadMarker(),
+      defs,
       Object.assign(el('style', {}), {
         textContent: SELECTION_STYLE_TEXT + FOCUS_STYLE_TEXT + (showLinkHandles ? LINK_HANDLE_STYLE_TEXT : ''),
       }),
@@ -457,9 +472,29 @@ export function createSvgRenderer(
       timeScale.totalWidth,
     );
     svg.append(header);
-    svg.append(
-      renderDependencies(currentInput.dependencies, barByTaskId, rowHeight, offsetX, offsetY),
-    );
+    // Dependency arrows. An unknown type (untrusted data) or a dangling endpoint is skipped, same
+    // resilience posture as `layoutTaskBar`; skipping also keeps `dep.type` out of the class token
+    // unless it is one of the four known values.
+    const depsGroup = el('g', { class: 'fg-timeline__dependencies' });
+    for (const dep of currentInput.dependencies) {
+      const fromBar = barByTaskId.get(dep.from);
+      const toBar = barByTaskId.get(dep.to);
+      if (!isKnownDependencyType(dep.type) || !fromBar || !toBar) continue;
+      depsGroup.append(
+        el(
+          'path',
+          {
+            class: `fg-dependency fg-dependency--${dep.type.toLowerCase()}`,
+            d: layoutDependencyPath(dep, fromBar, toBar, rowHeight)
+              .points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x + offsetX} ${p.y + offsetY}`)
+              .join(' '),
+            'marker-end': `url(#${ARROWHEAD_MARKER_ID})`,
+          },
+          { fill: 'none', stroke: 'var(--fg-dep-line, #64748b)' },
+        ),
+      );
+    }
+    svg.append(depsGroup);
     // One row `<g role=row>` (+ its gridcell, toggle, label and bar). A closure over this render's
     // locals so the row builder takes no parameter list.
     const makeRow = (row: RowLayout): SVGGElement => {
@@ -662,9 +697,30 @@ export function createSvgRenderer(
     // dependency arrows — document order is z-order — but before the label divider, which must
     // stay the topmost thing along the label column's own edge.
     const todayX = todayLineX(timeScale, now);
-    const todayLine = todayX === null ? null : renderTodayLine(todayX, offsetX, totalHeight);
+    // Decoration: `aria-hidden`, because the root is a grid whose children must be row-structured
+    // (axe `aria-required-children`). `stroke` is an inline CSSOM property, NOT a CSS rule, so
+    // `exportSvg()` (which strips every `<style>`) keeps it.
+    const todayLine =
+      todayX === null
+        ? null
+        : el(
+            'line',
+            {
+              class: 'fg-timeline__today-line',
+              'aria-hidden': 'true',
+              x1: todayX + offsetX,
+              x2: todayX + offsetX,
+              y1: 0,
+              y2: totalHeight,
+            },
+            { stroke: 'var(--fg-task-critical, #ef4444)', 'stroke-width': '2' },
+          );
     if (todayLine) svg.append(todayLine);
-    const divider = renderLabelDivider(offsetX, totalHeight);
+    const divider = el(
+      'line',
+      { class: 'fg-timeline__label-divider', x1: offsetX - 0.5, x2: offsetX - 0.5, y1: 0, y2: totalHeight },
+      { stroke: 'var(--fg-border, #e5e7eb)' },
+    );
     svg.append(divider);
     // Pinned layers. The band replicates what crosses the header in the chart (the today rule, which
     // `overflow` trims to the band); the column replicates the divider and every label/toggle, tagged
@@ -698,24 +754,6 @@ export function createSvgRenderer(
 }
 
 // --- DOM builders (drawing only — no layout math) ------------------------------------
-
-function createArrowheadMarker(): SVGDefsElement {
-  const defs = el('defs', {});
-  const marker = el('marker', {
-    id: ARROWHEAD_MARKER_ID,
-    viewBox: '0 0 8 8',
-    refX: 7,
-    refY: 4,
-    markerWidth: 6,
-    markerHeight: 6,
-    orient: 'auto-start-reverse',
-  });
-  marker.append(
-    el('path', { d: 'M 0 0 L 8 4 L 0 8 z' }, { fill: 'var(--fg-dep-line, #64748b)' }),
-  );
-  defs.append(marker);
-  return defs;
-}
 
 function setAttrs<E extends Element>(e: E, attrs: Record<string, string | number>): E {
   // `setAttribute` stringifies a number itself, so the cast only silences the DOM typing.
@@ -799,92 +837,6 @@ function renderHeader(tiers: HeaderTiers, offsetX: number, timelineWidth: number
     { stroke: 'var(--fg-border-strong, #d4d4d8)' },
   );
   g.append(divider);
-
-  return g;
-}
-
-/**
- * The today marker: a full-height rule at the current instant (spec §9.1). `x` is CONTENT
- * space from `todayLineX` — `offsetX` is added here, the same way every other renderer in
- * this file localizes its coordinates.
- *
- * Complements, never replaces, `GridColumn.isToday`'s column wash: that is a `fill` saying
- * "this DAY is today", this is a `stroke` saying "we are HERE within it". Both are visible at
- * once by construction (different properties, different elements).
- *
- * There is no "Today" text label: it did not fit the `withRender + withInteraction` gzip
- * budget, and golden rule 5 says shrink the feature rather than the budget. The rule alone
- * carries the meaning; revisit if the budget ever gains headroom.
- *
- * SECURITY/EXPORT: `stroke` is an inline CSSOM property, NOT a CSS rule. `exportSvg()` strips
- * every `<style>` element from its clone and bakes only inline/computed values for
- * `BAKED_STYLE_PROPERTIES`, so a rule-based stroke would export as SVG's default black.
- *
- * `aria-hidden`: this is decoration, and the root is a `grid`/`treegrid` whose children must
- * be row-structured — an exposed element here would be an axe `aria-required-children`
- * violation. Same treatment as the row toggle and the focus ring.
- */
-function renderTodayLine(x: number, offsetX: number, totalHeight: number): SVGLineElement {
-  const lineX = x + offsetX;
-  const line = el(
-    'line',
-    {
-      class: 'fg-timeline__today-line',
-      'aria-hidden': 'true',
-      x1: lineX,
-      x2: lineX,
-      y1: 0,
-      y2: totalHeight,
-    },
-    { stroke: 'var(--fg-task-critical, #ef4444)', 'stroke-width': '2' },
-  );
-  return line;
-}
-
-function renderLabelDivider(offsetX: number, totalHeight: number): SVGLineElement {
-  return el(
-    'line',
-    { class: 'fg-timeline__label-divider', x1: offsetX - 0.5, x2: offsetX - 0.5, y1: 0, y2: totalHeight },
-    { stroke: 'var(--fg-border, #e5e7eb)' },
-  );
-}
-
-function renderDependencies(
-  dependencies: readonly Dependency[],
-  barByTaskId: ReadonlyMap<TaskId, TaskBarLayout>,
-  rowHeight: number,
-  offsetX: number,
-  offsetY: number,
-): SVGGElement {
-  const g = el('g', { class: 'fg-timeline__dependencies' });
-
-  for (const dep of dependencies) {
-    // Unknown dependency type from untrusted data (review N3/N5) — skip, same resilience
-    // posture as a dangling reference; also keeps `dep.type` out of the class token unless
-    // it is one of the four known values.
-    if (!isKnownDependencyType(dep.type)) continue;
-    const fromBar = barByTaskId.get(dep.from);
-    const toBar = barByTaskId.get(dep.to);
-    // Dangling dependency reference (from/to task not in the current row layout) — skip
-    // rather than throw, same resilience posture as layoutTaskBar (spec §4).
-    if (!fromBar || !toBar) continue;
-
-    const layout = layoutDependencyPath(dep, fromBar, toBar, rowHeight);
-    const d = layout.points
-      .map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x + offsetX} ${p.y + offsetY}`)
-      .join(' ');
-
-    const path = el(
-      'path',
-      {
-        class: `fg-dependency fg-dependency--${dep.type.toLowerCase()}`,
-        d,
-        'marker-end': `url(#${ARROWHEAD_MARKER_ID})`,
-      },
-      { fill: 'none', stroke: 'var(--fg-dep-line, #64748b)' },
-    );
-    g.append(path);
-  }
 
   return g;
 }
