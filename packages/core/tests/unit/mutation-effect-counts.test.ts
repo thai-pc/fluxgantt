@@ -88,7 +88,7 @@ function chain(n: number, extra: Partial<GanttConfig> = {}): GanttConfig {
   const dependencies = [];
   for (let i = 0; i < n; i++) {
     tasks.push(t(`k${i}`));
-    if (i > 0) dependencies.push({ from: id(`k${i - 1}`), to: id(`k${i}`) });
+    if (i > 0) dependencies.push({ from: id(`k${i - 1}`), to: id(`k${i}`), type: 'FS' as const });
   }
   return { tasks, dependencies, ...extra };
 }
@@ -100,7 +100,7 @@ function subtree(n: number): GanttConfig {
   const dependencies = [];
   for (let i = 0; i < n; i++) {
     tasks.push(t(`s${i}`, { parent: id('p') }));
-    if (i > 0) dependencies.push({ from: id(`s${i - 1}`), to: id(`s${i}`) });
+    if (i > 0) dependencies.push({ from: id(`s${i - 1}`), to: id(`s${i}`), type: 'FS' as const });
   }
   return { tasks, dependencies };
 }

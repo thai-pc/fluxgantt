@@ -23,9 +23,9 @@ const tasks = (): TaskInput[] => [
   t('d', '2026-01-13T09:00', '2026-01-14T17:00'),
 ];
 const deps = [
-  { from: id('a'), to: id('b') },
-  { from: id('b'), to: id('c') },
-  { from: id('c'), to: id('d') },
+  { from: id('a'), to: id('b'), type: 'FS' as const },
+  { from: id('b'), to: id('c'), type: 'FS' as const },
+  { from: id('c'), to: id('d'), type: 'FS' as const },
 ];
 
 let container: HTMLElement;

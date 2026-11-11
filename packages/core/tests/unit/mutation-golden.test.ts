@@ -30,18 +30,18 @@ function worldTasks(): TaskInput[] {
   ];
 }
 const worldDeps = [
-  { from: id('a'), to: id('b') },
-  { from: id('b'), to: id('c') },
+  { from: id('a'), to: id('b'), type: 'FS' as const },
+  { from: id('b'), to: id('c'), type: 'FS' as const },
   { from: id('a2'), to: id('c'), type: 'SS' as const, lag: 4 },
-  { from: id('c'), to: id('d') },
+  { from: id('c'), to: id('d'), type: 'FS' as const },
 ];
 
 function chain(n: number) {
   const tasks: TaskInput[] = [];
-  const dependencies: { from: ReturnType<typeof id>; to: ReturnType<typeof id> }[] = [];
+  const dependencies: { from: ReturnType<typeof id>; to: ReturnType<typeof id>; type: 'FS' }[] = [];
   for (let i = 0; i < n; i++) {
     tasks.push(t(`k${i}`, '2026-01-05T09:00', '2026-01-05T17:00'));
-    if (i > 0) dependencies.push({ from: id(`k${i - 1}`), to: id(`k${i}`) });
+    if (i > 0) dependencies.push({ from: id(`k${i - 1}`), to: id(`k${i}`), type: 'FS' });
   }
   return { tasks, dependencies };
 }

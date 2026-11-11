@@ -80,7 +80,7 @@ describe('calibration: the worst shape at the cap stays bounded', () => {
     const tasks = names.map((n) => ({ ...(rawTask(n) as unknown as TaskInput), id: toTaskId(n) }));
     const dependencies = names
       .slice(1)
-      .map((n, i) => ({ from: toTaskId(names[i]!), to: toTaskId(n) }))
+      .map((n, i) => ({ from: toTaskId(names[i]!), to: toTaskId(n), type: 'FS' as const }))
       .reverse();
     const { ops } = countOps(() => createGantt({ tasks, dependencies }));
     expect(ops).toBeGreaterThan(10_000_000);

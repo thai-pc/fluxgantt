@@ -24,9 +24,9 @@ const mk = (n: string): TaskInput => ({
 
 interface Dataset {
   tasks: TaskInput[];
-  dependencies: Array<{ from: ReturnType<typeof id>; to: ReturnType<typeof id> }>;
+  dependencies: Array<{ from: ReturnType<typeof id>; to: ReturnType<typeof id>; type: 'FS' }>;
 }
-const link = (a: string, b: string) => ({ from: id(a), to: id(b) });
+const link = (a: string, b: string) => ({ from: id(a), to: id(b), type: 'FS' as const });
 
 /** Four shapes, each with exactly `e` dependencies. */
 const SHAPES: Record<string, (e: number) => Dataset> = {
@@ -64,12 +64,12 @@ const FOUR_N = 4 * N;
 /** 4x data costs 16x ops for a Theta(E^2) loader; allow for the linear terms around it. */
 const QUADRATIC_BAND = { min: 10, max: 20 };
 
-const viaConstructor = (d: Dataset) => () => createGantt({ tasks: d.tasks, dependencies: d.dependencies });
-const viaImportJson = (d: Dataset) => () =>
+const viaConstructor = (d: Dataset): (() => unknown) => () => createGantt({ tasks: d.tasks, dependencies: d.dependencies });
+const viaImportJson = (d: Dataset): (() => unknown) => () =>
   withIo(createGantt({})).importJson({
     fluxgantt: { schemaVersion: '1.0' },
     tasks: d.tasks,
-    dependencies: d.dependencies.map((x) => ({ ...x, type: 'FS' })),
+    dependencies: d.dependencies,
   });
 
 describe('load-cost harness: operation counts at N and 4N dependencies (documents the quadratic load)', () => {
