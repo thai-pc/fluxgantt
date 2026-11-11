@@ -65,10 +65,11 @@ const DATE_OPTIONS: Intl.DateTimeFormatOptions = {
 };
 
 /** Formatted date labels keyed by locale + ISO date. `PlainDate.toLocaleString` builds an
- *  `Intl.DateTimeFormat` internally on every call, which dominated a 2000-task repaint; a project
- *  has a few dozen distinct dates, so the hit rate is ~100%. Bounded: the map is cleared when it
- *  reaches 16384 entries and refills with what is in use, so a host cycling locales or dates cannot
- *  grow it without limit and caching never stops for good. */
+ *  `Intl.DateTimeFormat` internally on every call, which dominated a 2000-task repaint. A paint
+ *  touches one start and one end per task, so a long range holds about one distinct date per day
+ *  (~1000 at a 520-day span): the cap must sit above that or the clear fires mid-paint and the hit
+ *  rate falls to ~0. Bounded: the map is cleared at 16384 entries (~1.5 MB of short strings) and
+ *  refills with what is in use, so a host cycling locales or dates cannot grow it without limit. */
 const dateLabels = new Map<string, string>();
 function dateLabel(date: Temporal.PlainDate, locale: string): string {
   const key = `${locale}|${date.toString()}`;
