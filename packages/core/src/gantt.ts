@@ -1176,7 +1176,7 @@ class Gantt implements GanttInstance {
     this.#assertAlive('computeCriticalPath');
     const tasks = this.#taskStore.all();
     if (tasks.length === 0) {
-      throw new Error('gantt.computeCriticalPath: no tasks — add at least one task first');
+      throw new Error('gantt.computeCriticalPath: no tasks');
     }
     // May throw CyclicDependencyError — propagated, not swallowed.
     const result = computeCriticalPathFn(tasks, this.#dependencyStore.all(), this.#calendar);
@@ -1530,8 +1530,8 @@ class Gantt implements GanttInstance {
   #teardownMount(): void {
     const m = this.#mount;
     if (!m) return; // never mounted / already unmounted / headless
-    m.stopFx();
-    m.stopUi();
+    m.fx();
+    m.ui();
     m.handle.destroy();
     this.#mount = undefined;
   }

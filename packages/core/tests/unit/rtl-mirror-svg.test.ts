@@ -117,3 +117,34 @@ describe('mirrorSvg row-label bidi', () => {
     expect((head as SVGElement).style.getPropertyValue('unicode-bidi')).toBe('');
   });
 });
+
+describe('mirrorSvg incremental idempotence (spec-svg-row-patch.md section 4)', () => {
+  it('a text added to the wrapped group later is mirrored on the next call, the rest are not touched again', () => {
+    const svg = chart();
+    mirrorSvg(svg, 400);
+    const g = svg.firstElementChild!;
+    const added = el('text', { x: '30', class: 'fg-timeline__row-label' });
+    g.querySelector('.fg-timeline__rows')!.append(added);
+    expect(added.hasAttribute('transform')).toBe(false);
+    const firstBefore = g.querySelector('text')!.getAttribute('transform');
+    mirrorSvg(svg, 400);
+    expect(svg.children).toHaveLength(1); // not wrapped a second time
+    expect(g.querySelectorAll('.fg-rtl')).toHaveLength(0);
+    expect(added.getAttribute('transform')).toBe('matrix(-1 0 0 1 60 0)');
+    expect((added as SVGElement).style.getPropertyValue('unicode-bidi')).toBe('plaintext');
+    expect(g.querySelector('text')!.getAttribute('transform')).toBe(firstBefore); // header text not double-flipped
+  });
+
+  it('a non-finite width after wrapping is still a no-op', () => {
+    const svg = chart();
+    mirrorSvg(svg, 400);
+    g_add(svg);
+    const before = svg.outerHTML;
+    mirrorSvg(svg, Number.NaN);
+    expect(svg.outerHTML).toBe(before);
+  });
+});
+
+function g_add(svg: SVGSVGElement): void {
+  svg.firstElementChild!.append(el('text', { x: '5' }));
+}

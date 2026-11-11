@@ -6,23 +6,28 @@
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
 /** Wraps the children of `root` in `<g class="fg-rtl" transform="matrix(-1 0 0 1 width 0)"
- *  direction="rtl">` and counter-flips every `<text>` about its own `x`. Idempotent. `width` is the
- *  painted width (label column + timeline). A non-finite `width` is a no-op. */
+ *  direction="rtl">` and counter-flips every `<text>` about its own `x`. Idempotent and incremental:
+ *  an already wrapped root is not wrapped again, but a `<text>` added since (a row the renderer
+ *  replaced in place) is still flipped. `width` is the painted width (label column + timeline). A
+ *  non-finite `width` is a no-op. */
 export function mirrorSvg(root: SVGSVGElement, width: number): void {
-  if (!Number.isFinite(width) || root.firstElementChild?.classList.contains('fg-rtl')) return;
-  const g = document.createElementNS(SVG_NS, 'g');
-  g.setAttribute('class', 'fg-rtl');
-  g.setAttribute('transform', `matrix(-1 0 0 1 ${width} 0)`);
-  // The attribute (not CSS) so a standalone export keeps it: `direction: rtl` makes
-  // `text-anchor: start` mean "right end of the run" and gives Arabic/Hebrew an RTL bidi base.
-  g.setAttribute('direction', 'rtl');
-  g.append(...root.childNodes);
-  root.appendChild(g);
-  for (const t of g.querySelectorAll('text')) {
+  if (!Number.isFinite(width)) return;
+  let g = root.firstElementChild;
+  if (!g?.classList.contains('fg-rtl')) {
+    g = document.createElementNS(SVG_NS, 'g');
+    g.setAttribute('class', 'fg-rtl');
+    g.setAttribute('transform', `matrix(-1 0 0 1 ${width} 0)`);
+    // The attribute (not CSS) so a standalone export keeps it: `direction: rtl` makes
+    // `text-anchor: start` mean "right end of the run" and gives Arabic/Hebrew an RTL bidi base.
+    g.setAttribute('direction', 'rtl');
+    g.append(...root.childNodes);
+    root.appendChild(g);
+  }
+  for (const t of g.querySelectorAll('text:not([transform])')) {
     const x = Number(t.getAttribute('x'));
     if (Number.isFinite(x)) t.setAttribute('transform', `matrix(-1 0 0 1 ${2 * x} 0)`);
     // Per-label base direction (first strong character), so "Launch!" and "(Review (draft)" keep their
     // order inside the RTL group; Arabic-first labels still run right to left. Inline, so it survives export.
-    if (t.classList.contains('fg-timeline__row-label')) t.style.setProperty('unicode-bidi', 'plaintext');
+    if (t.classList.contains('fg-timeline__row-label')) (t as SVGTextElement).style.setProperty('unicode-bidi', 'plaintext');
   }
 }

@@ -71,6 +71,7 @@ import {
 // and re-exporting it from `.` pinned the SVG renderer into every consumer's graph).
 import { createSvgRenderer, withRender, type RenderCapability } from '@fluxgantt/core/render';
 import { withViewport, type ViewportCapability } from '@fluxgantt/core/viewport';
+import { withInteraction } from '@fluxgantt/core/interaction';
 
 // `@fluxgantt/core` treats Temporal as an optional peerDependency and reads `globalThis.Temporal`
 // — it is the HOST APP's job to install it (`packages/core/src/internal/temporal.ts`). Guarded
@@ -177,7 +178,7 @@ const container = document.getElementById('gantt')!;
 // `mount()` lives on the opt-in `withRender` mixin since the facade split — this harness times
 // that exact path, so it composes it. `withInteraction` is deliberately NOT composed: gesture
 // wiring is not part of what §9.4 measures.
-const gantt: GanttInstance & RenderCapability & ViewportCapability = withViewport(
+const baseGantt: GanttInstance & RenderCapability & ViewportCapability = withViewport(
   withRender(
     createGantt({
       tasks,
@@ -187,6 +188,9 @@ const gantt: GanttInstance & RenderCapability & ViewportCapability = withViewpor
     }),
   ),
 );
+// `?interaction=1` composes `withInteraction` (keyboard navigation, click select) so the
+// `arrowDown` / `focus` repaint ops have something to drive. Opt-in: the default stays gesture-free.
+const gantt = params.get('interaction') === '1' ? withInteraction(baseGantt) : baseGantt;
 
 /** Times one `gantt.mount(container)` call via `renderer:selected` — resolves after the chosen
  *  renderer has fully painted, regardless of which renderer path (sync SVG / async Canvas) was
@@ -244,34 +248,50 @@ function mountSvgDirectAndTime(): Promise<{ ms: number }> {
   return Promise.resolve({ ms });
 }
 
-type RepaintOp = 'zoom' | 'density' | 'collapse' | 'select' | 'selectAll' | 'updateTask';
+type RepaintOp = 'zoom' | 'density' | 'collapse' | 'select' | 'selectAll' | 'updateTask' | 'arrowDown' | 'focus';
 const viewModes = ['month', 'week', 'day'] as const;
 let zoomStep = 0;
 let densityStep = 0;
 let selectStep = 0;
 
-/** Counts full SVG renders by watching for the `<defs>` arrowhead marker each `render()` appends
- *  (one per render) — a wall-clock-independent tripwire for redundant repaints. */
-function countRenders(svg: Element, run: () => void): number {
+/** Counts what one mutation did to the SVG subtree: `renders` = full renders (each appends exactly one
+ *  `<defs>` arrowhead marker) and `patched` = row elements added (`g[role=row]`: a full render adds all
+ *  of them, a row patch only the rebuilt ones). Wall-clock independent tripwires for redundant work. */
+function countRenders(svg: Element, run: () => void): { renders: number; patched: number } {
   const observer = new MutationObserver(() => {});
-  observer.observe(svg, { childList: true });
+  observer.observe(svg, { childList: true, subtree: true });
   run();
   const records = observer.takeRecords();
   observer.disconnect();
   let renders = 0;
-  for (const r of records) for (const n of r.addedNodes) if (n.nodeName === 'defs') renders++;
-  return renders;
+  let patched = 0;
+  for (const r of records) {
+    for (const n of r.addedNodes) {
+      if (n.nodeName === 'defs') renders++;
+      else if (n.nodeName === 'g' && (n as Element).getAttribute('role') === 'row') patched++;
+    }
+  }
+  return { renders, patched };
 }
+
+const nextFrames = (): Promise<void> =>
+  new Promise<void>((res) => requestAnimationFrame(() => requestAnimationFrame(() => res())));
 
 /** Runs one mutation against the MOUNTED chart, then waits two animation frames (style + layout +
  *  paint). `jsMs` = the synchronous call, `paintMs` = until the second frame, `renders` = full SVG
- *  renders the call caused. */
+ *  renders the call caused, `patched` = rows rebuilt (see `countRenders`). */
 async function repaintAndTime(
   op: RepaintOp,
-): Promise<{ jsMs: number; paintMs: number; renders: number }> {
+): Promise<{ jsMs: number; paintMs: number; renders: number; patched: number }> {
   const svg = container.querySelector('svg.fg-timeline')!;
+  if (op === 'arrowDown') {
+    // Put DOM focus on the roving row first, outside the timed window (a keydown reaches the chart
+    // only through a focused row).
+    svg.querySelector<SVGElement>('[role=row][tabindex="0"]')!.focus({ preventScroll: true });
+    await nextFrames();
+  }
   const t0 = performance.now();
-  const renders = countRenders(svg, () => {
+  const counts = countRenders(svg, () => {
     switch (op) {
       case 'zoom':
         gantt.zoomTo(viewModes[++zoomStep % viewModes.length]!);
@@ -291,11 +311,19 @@ async function repaintAndTime(
       case 'updateTask':
         gantt.updateTask(toTaskId('perf-task-10'), { name: `renamed ${performance.now()}` });
         break;
+      case 'arrowDown':
+        document.activeElement!.dispatchEvent(
+          new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true }),
+        );
+        break;
+      case 'focus':
+        svg.querySelectorAll<SVGElement>('[role=row]')[10 + (selectStep++ % 5)]!.focus({ preventScroll: true });
+        break;
     }
   });
   const jsMs = performance.now() - t0;
-  await new Promise<void>((res) => requestAnimationFrame(() => requestAnimationFrame(() => res())));
-  return { jsMs, paintMs: performance.now() - t0, renders };
+  await nextFrames();
+  return { jsMs, paintMs: performance.now() - t0, ...counts };
 }
 
 // Deliberately NO auto-mount-on-load here: `__mountAndTime()` must measure a genuine COLD first

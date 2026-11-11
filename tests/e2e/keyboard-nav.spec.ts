@@ -417,3 +417,18 @@ for (const height of [420, 250]) {
     expect(top).toBe(Math.max(0, 32 * n + 32 - (ch - HEADER)));
   });
 }
+
+test('click a row, ArrowDown x5: the focused row is document.activeElement after every in-place row patch', async ({
+  page,
+}) => {
+  await page.goto('/canvas-mount-perf-harness.html?taskCount=60&mounted=1&interaction=1');
+  await page.waitForSelector('.fg-timeline__row');
+  await page.locator('.fg-timeline__sticky-column .fg-timeline__row-label[data-task-id="perf-task-3"]').click();
+  for (let i = 1; i <= 5; i++) {
+    await page.keyboard.press('ArrowDown');
+    const expected = `perf-task-${3 + i}`;
+    await expect(page.locator('svg.fg-timeline [role=row][tabindex="0"]')).toHaveAttribute('data-task-id', expected);
+    expect(await page.evaluate(() => document.activeElement?.getAttribute('data-task-id'))).toBe(expected);
+  }
+  expect(await page.locator('svg.fg-timeline [role=row][aria-selected="true"]').count()).toBe(1);
+});

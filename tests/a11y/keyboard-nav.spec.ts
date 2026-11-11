@@ -80,3 +80,23 @@ test('the today marker introduces no axe violation under the grid role', async (
   const results = await new AxeBuilder({ page }).include('#gantt').analyze();
   expect(results.violations).toEqual([]);
 });
+
+test('after several in-place row patches the chart is axe-clean with one tab stop and correct aria-selected (spec-svg-row-patch.md)', async ({
+  page,
+}) => {
+  await page.goto('/selection.html');
+  await page.locator('svg.fg-timeline [tabindex="0"]').first().focus();
+  // Click, arrow, Shift-range and a second click: every one is a row patch (no full render).
+  await page.locator('.fg-task[data-task-id="sibling-a"]').click();
+  await page.keyboard.press('ArrowDown');
+  await page.keyboard.press('Shift+ArrowDown');
+  await page.locator('.fg-task[data-task-id="phase-1"]').click();
+
+  expect(await page.locator('svg.fg-timeline [role=row][tabindex="0"]').count()).toBe(1);
+  // The parent click selects the parent and its two children.
+  expect(await page.locator('svg.fg-timeline [role=row][aria-selected="true"]').count()).toBe(3);
+  expect(await page.locator('svg.fg-timeline').getAttribute('role')).toBe('treegrid');
+
+  const results = await new AxeBuilder({ page }).include('#gantt').analyze();
+  expect(results.violations).toEqual([]);
+});

@@ -36,14 +36,14 @@ export function dateToIso(date: Date): string {
  */
 export function assertParsableDateInput(raw: unknown, path: string): string {
   if (typeof raw !== 'string' || raw.length === 0) {
-    throw new IoValidationError('expected a non-empty date string', path);
+    throw new IoValidationError('expected a date string', path);
   }
   // Bound per-field parse work + error echo (security review B2) — a date string can only
   // legitimately be a short ISO-8601 value; anything longer is rejected before it reaches
   // Temporal's parser (which otherwise had only the blanket maxInputLengthChars gate).
   if (raw.length > MAX_DATE_STRING_LENGTH) {
     throw new IoValidationError(
-      `date string exceeds max length ${MAX_DATE_STRING_LENGTH}`,
+      `date string exceeds ${MAX_DATE_STRING_LENGTH} chars`,
       path,
     );
   }

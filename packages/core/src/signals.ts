@@ -151,7 +151,7 @@ function flush(): void {
   // Loop until stable (an effect may trigger further effects).
   let guard = 0;
   while (pending.size > 0) {
-    if (++guard > 10_000) throw new Error('signals: flush loop did not converge (cycle?)');
+    if (++guard > 10_000) throw new Error('signals: flush did not converge');
     const batchList = [...pending];
     pending.clear();
     for (const e of batchList) e._run();

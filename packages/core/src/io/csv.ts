@@ -180,7 +180,7 @@ export function importCsv(csv: string, options?: ImportCsvOptions): ImportCsvRes
 
     const id = assertNonEmptyString(get('id'), `${path}.id`, limits.maxIdLength);
     if (seenIds.has(id)) {
-      throw new IoValidationError(`duplicate task id "${id}" within import`, `${path}.id`);
+      throw new IoValidationError(`duplicate task id "${id}"`, `${path}.id`);
     }
     seenIds.add(id);
 
