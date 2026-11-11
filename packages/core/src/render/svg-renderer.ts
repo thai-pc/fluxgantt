@@ -591,7 +591,7 @@ export function createSvgRenderer(
         // `aria-expanded="false"`). `aria-level` goes on EVERY row of a `treegrid` (leaves
         // included: a leaf still has a real depth) and on none of a plain `grid`, where axe's
         // `invalidTableRowAttrs` would flag it (same gating as `aria-expanded`).
-        ...(row.hasChildren ? { 'aria-expanded': String(!row.isCollapsed) } : {}),
+        ...(row.hasChildren ? { 'aria-expanded': !row.isCollapsed } : {}),
         ...(isTree ? { 'aria-level': row.depth + 1 } : {}),
       });
       // Single-column v1 (spec §3.2 point 3): exactly one `role="gridcell"` wrapper per row,
@@ -646,7 +646,7 @@ export function createSvgRenderer(
       const wrapper = el('g', {
         class: `fg-task fg-task--${kind}${isCritical ? ' fg-task--critical' : ''}${isSelected ? ' fg-task--selected' : ''}`,
         'data-task-id': task.id,
-        ...(rolled !== undefined && task.type !== 'milestone' ? { 'data-rolled-up': 'true' } : {}),
+        ...(rolled && task.type !== 'milestone' ? { 'data-rolled-up': 'true' } : {}),
         'aria-label': buildTaskAriaLabel(task, isCritical, isSelected, calendar, locale, rolled, messages),
       });
 
@@ -831,7 +831,7 @@ export function createSvgRenderer(
 
 // --- DOM builders (drawing only — no layout math) ------------------------------------
 
-function setAttrs<E extends Element>(e: E, attrs: Record<string, string | number>): E {
+function setAttrs<E extends Element>(e: E, attrs: Record<string, string | number | boolean>): E {
   // `setAttribute` stringifies a number itself, so the cast only silences the DOM typing.
   for (const k in attrs) e.setAttribute(k, attrs[k] as string);
   return e;
@@ -842,7 +842,7 @@ function setAttrs<E extends Element>(e: E, attrs: Record<string, string | number
  *  already-validated task fields the callers passed before this helper existed. */
 function el<K extends keyof SVGElementTagNameMap>(
   tag: K,
-  attrs: Record<string, string | number>,
+  attrs: Record<string, string | number | boolean>,
   style?: Record<string, string>,
 ): SVGElementTagNameMap[K] {
   const e = setAttrs(document.createElementNS(SVG_NS, tag), attrs);
