@@ -27,6 +27,7 @@ test('arrows keep scrollLeft; g brings the focused bar into view beside the labe
   expect(max).toBeGreaterThan(0);
 
   for (let i = 0; i < 3; i++) await page.keyboard.press('ArrowDown');
+  const selectionBefore = await page.evaluate(() => (window as unknown as { __gantt: { getSelection(): string[] } }).__gantt.getSelection());
   expect((await scroll(page)).left).toBe(max);
 
   // Focus is on row 3 (leaf-a2, August). Its bar must be off-screen before `g`.
@@ -45,14 +46,21 @@ test('arrows keep scrollLeft; g brings the focused bar into view beside the labe
   expect(after.x + after.width).toBeLessThanOrEqual(c.x + c.width + 1);
   // Focus and selection did not move.
   await expect(page.locator('.fg-timeline__row[data-task-id="leaf-a2"]')).toBeFocused();
+  expect(await page.evaluate(() => (window as unknown as { __gantt: { getSelection(): string[] } }).__gantt.getSelection())).toEqual(selectionBefore);
 });
 
 test('End / Home / PageDown move focus and keep the focused row below the header', async ({ page }) => {
+  // Focus starts on row 0: one page = floor((clientHeight - header) / rowHeight) - 1 rows.
+  const page1 = await page.evaluate((header) => {
+    const c = document.getElementById('gantt')!;
+    const rowH = document.querySelector('.fg-timeline__row')!.getBoundingClientRect().height;
+    return Math.max(1, Math.floor((c.clientHeight - header) / rowH) - 1);
+  }, HEADER_HEIGHT);
+  expect(page1).toBeGreaterThan(1);
   await page.keyboard.press('PageDown');
   const focused = page.locator('.fg-timeline__row:focus');
   await expect(focused).toHaveCount(1);
-  const idx = Number(await focused.getAttribute('data-row-index'));
-  expect(idx).toBeGreaterThan(1);
+  expect(Number(await focused.getAttribute('data-row-index'))).toBe(page1);
 
   await page.keyboard.press('End');
   await expect(page.locator('.fg-timeline__row[data-task-id="filler-199"]')).toBeFocused();
