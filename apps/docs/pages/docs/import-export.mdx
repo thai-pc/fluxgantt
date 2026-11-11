@@ -114,6 +114,29 @@ is **strict**: malformed input throws an `IoValidationError` atomically (nothing
 loaded), and enforces size/count limits to guard against a malicious file. Unknown top-level
 keys (e.g. a future Pro `resources` block) are tolerated and ignored.
 
+### Import limits
+
+Every import is capped by `ImportLimits`, merged over `DEFAULT_IMPORT_LIMITS` and overridable
+per call with `options.limits`:
+
+| Limit | Default |
+|---|---|
+| `maxTaskCount` | 50,000 |
+| `maxDependencyCount` | 2,500 |
+| `maxHierarchyDepth` | 100 |
+| `maxIdLength` | 256 |
+| `maxNameLength` | 500 |
+| `maxStringLength` | 10,000 |
+| `maxMetaKeys` / `maxMetaDepth` | 100 / 5 |
+| `maxInputLengthChars` | 20,000,000 |
+
+`maxDependencyCount` is deliberately low for now: linking dependencies one by one costs time
+proportional to the square of their number, so the previous 100,000 could freeze a tab on a
+crafted file. 2,500 loads in under about a second in the worst case. If you trust the file, raise
+it for that call, for example `importJson(doc, { limits: { maxDependencyCount: 10_000 } })`, and
+expect the load time to grow quadratically. CSV carries no dependencies, so this limit never
+applies to it.
+
 ```ts
 import { createGantt } from '@fluxgantt/core';
 import { importJson, IoValidationError } from '@fluxgantt/core/io';

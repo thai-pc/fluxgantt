@@ -5,7 +5,14 @@
 import type { ImportLimits } from './types.js';
 
 export const MAX_TASK_COUNT = 50_000;
-export const MAX_DEPENDENCY_COUNT = 100_000;
+/** Interim DoS cap (spec-mutation-batching.md §6): `DependencyStore.link()` is Theta(E^2) per
+ *  load (pair scan + full adjacency rebuild + DFS per edge), so the old 100_000 allowed ~10^10
+ *  container operations from one file. 2_500 is the largest E whose WORST shape (a reversed
+ *  chain) loads in under ~1 s single-threaded (0.8-0.9 s measured on the reference machine,
+ *  ~22M counted Map/array ops); in-order chain, hub star and chain-with-many-sources are
+ *  cheaper. Hosts that trust their data can raise it per call via `options.limits`. Restore the
+ *  old value only after `DependencyStore.linkAll` makes the load linear. */
+export const MAX_DEPENDENCY_COUNT = 2_500;
 export const MAX_ID_LENGTH = 256;
 export const MAX_NAME_LENGTH = 500;
 export const MAX_STRING_LENGTH = 10_000;
