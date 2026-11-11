@@ -47,6 +47,8 @@ const BUDGET_MS: Record<Op, number> = {
   arrowDown: 600,
 };
 const MOUNT_BUDGET_MS = 1700;
+// Post-fix median ~700 ms (renderer-thread CPU, Chromium) on a loaded dev box; the old walk was ~8400.
+const LONG_SPAN_UPDATE_BUDGET_MS = 3000;
 
 async function openMounted(page: import('@playwright/test').Page, interaction = false): Promise<void> {
   await page.goto(`/canvas-mount-perf-harness.html?taskCount=2000&grouped=1&mounted=1${interaction ? '&interaction=1' : ''}`);
@@ -97,6 +99,28 @@ test.describe('SVG repaint at 2000 tasks (spec-svg-render-perf.md)', () => {
       );
     });
   }
+
+  // First-edit cost on a LONG range (investigation V). CPM's slack loop used to walk every day
+  // between ES and LS per task, so one `updateTask` cost O(tasks x span): ~8.4 s CPU at 2000 tasks /
+  // 520 working days / 20 holidays (about 24 s on a loaded box), against ~0.7 s now (one shared
+  // working-hours table, a date-only parse fast path and a date-label cache that no longer thrashes).
+  // The budget is ~4x the post-fix median so it passes on a loaded runner and still fails loudly on
+  // the old walk. The deterministic tripwire lives in tests/unit/critical-path-slack.property.test.ts.
+  test(`updateTask on a ${520}-day range: one render, median of ${RUNS} fresh pages within budget`, async ({ page }) => {
+    test.setTimeout(240_000);
+    const samples: number[] = [];
+    for (let run = 0; run < RUNS; run++) {
+      await page.goto('/canvas-mount-perf-harness.html?taskCount=2000&span=520&holidays=20&mounted=1');
+      await page.waitForSelector('.fg-timeline__row');
+      await expect(page.locator('.fg-timeline__row')).toHaveCount(2000);
+      const r = await repaint(page, 'updateTask');
+      expect(r.renders).toBe(1);
+      samples.push(r.paintMs);
+    }
+    expect(median(samples), `raw paintMs samples: ${samples.map(Math.round).join(', ')}`).toBeLessThan(
+      LONG_SPAN_UPDATE_BUDGET_MS,
+    );
+  });
 
   test('cold mount: one render (not three), renderer is svg', async ({ page }) => {
     test.setTimeout(120_000);
