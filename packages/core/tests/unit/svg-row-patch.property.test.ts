@@ -18,7 +18,7 @@ type Op =
   | { k: 'select'; i: number; j: number }
   | { k: 'selectAll' }
   | { k: 'deselect' }
-  | { k: 'key'; key: 'ArrowDown' | 'ArrowUp'; shift: boolean }
+  | { k: 'key'; key: 'ArrowDown' | 'ArrowUp' | 'Home' | 'End' | 'PageDown' | 'PageUp'; shift: boolean }
   | { k: 'collapse'; i: number }
   | { k: 'update'; i: number; days: number }
   | { k: 'rename'; i: number }
@@ -31,7 +31,7 @@ const opArb: fc.Arbitrary<Op> = fc.oneof(
   { weight: 4, arbitrary: fc.record({ k: fc.constant('select' as const), i: fc.nat(11), j: fc.nat(11) }) },
   { weight: 1, arbitrary: fc.constant<Op>({ k: 'selectAll' }) },
   { weight: 1, arbitrary: fc.constant<Op>({ k: 'deselect' }) },
-  { weight: 5, arbitrary: fc.record({ k: fc.constant('key' as const), key: fc.constantFrom('ArrowDown' as const, 'ArrowUp' as const), shift: fc.boolean() }) },
+  { weight: 5, arbitrary: fc.record({ k: fc.constant('key' as const), key: fc.constantFrom('ArrowDown' as const, 'ArrowUp' as const, 'Home' as const, 'End' as const, 'PageDown' as const, 'PageUp' as const), shift: fc.boolean() }) },
   { weight: 1, arbitrary: fc.record({ k: fc.constant('collapse' as const), i: fc.nat(11) }) },
   { weight: 1, arbitrary: fc.record({ k: fc.constant('update' as const), i: fc.nat(11), days: fc.integer({ min: 0, max: 6 }) }) },
   { weight: 1, arbitrary: fc.record({ k: fc.constant('rename' as const), i: fc.nat(11) }) },
