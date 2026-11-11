@@ -87,10 +87,10 @@ test('after several in-place row patches the chart is axe-clean with one tab sto
   await page.goto('/selection.html');
   await page.locator('svg.fg-timeline [tabindex="0"]').first().focus();
   // Click, arrow, Shift-range and a second click: every one is a row patch (no full render).
-  await page.locator('.fg-timeline__row[data-task-id="sibling-a"]').click();
+  await page.locator('.fg-task[data-task-id="sibling-a"]').click();
   await page.keyboard.press('ArrowDown');
   await page.keyboard.press('Shift+ArrowDown');
-  await page.locator('.fg-timeline__row[data-task-id="phase-1"]').click();
+  await page.locator('.fg-task[data-task-id="phase-1"]').click();
 
   expect(await page.locator('svg.fg-timeline [role=row][tabindex="0"]').count()).toBe(1);
   // The parent click selects the parent and its two children.
