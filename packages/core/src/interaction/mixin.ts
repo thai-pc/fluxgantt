@@ -122,6 +122,8 @@ function wireInto(
     },
     onZoomIn: () => instance.zoomIn(),
     onZoomOut: () => instance.zoomOut(),
+    // Read at keypress time so composition order is irrelevant; inert without `withViewport`.
+    onReveal: (id) => (instance as { scrollToTask?: (id: TaskId) => boolean }).scrollToTask?.(id),
     getTasks: () => internal.tasks.all(),
     // Live, not the construction-time constant: `setDensity()` and `withResponsive` change the
     // painted density after mount, and the keyboard reveal scrolls by row geometry.
