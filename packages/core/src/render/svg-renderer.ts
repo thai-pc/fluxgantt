@@ -459,17 +459,74 @@ export function createSvgRenderer(
     defs.firstElementChild!.append(
       el('path', { d: 'M 0 0 L 8 4 L 0 8 z' }, { fill: 'var(--fg-dep-line, #64748b)' }),
     );
+    const grid = el('g', { class: 'fg-timeline__grid' });
+    for (const col of gridColumns) {
+      const x = col.x + offsetX;
+      if (col.isToday || col.isHoliday || col.isWeekend) {
+        grid.append(
+          el(
+            'rect',
+            { class: 'fg-timeline__grid-cell', x, y: 0, width: col.width, height: totalHeight },
+            {
+              fill: col.isToday
+                ? 'var(--fg-grid-today, #fef3c7)'
+                : col.isHoliday
+                  ? 'var(--fg-grid-holiday, #fee2e2)'
+                  : 'var(--fg-grid-weekend, #f9fafb)',
+            },
+          ),
+        );
+      }
+      grid.append(
+        el(
+          'line',
+          { class: 'fg-timeline__grid-line', x1: x, x2: x, y1: 0, y2: totalHeight },
+          { stroke: 'var(--fg-grid-line, #e5e7eb)' },
+        ),
+      );
+    }
     svg.append(
       defs,
       Object.assign(el('style', {}), {
         textContent: SELECTION_STYLE_TEXT + FOCUS_STYLE_TEXT + (showLinkHandles ? LINK_HANDLE_STYLE_TEXT : ''),
       }),
-      renderGrid(gridColumns, offsetX, totalHeight),
+      grid,
     );
-    const header = renderHeader(
-      computeHeaderTiers(timeScale, viewMode, locale, gridColumns),
-      offsetX,
-      timeScale.totalWidth,
+    // Date axis. Inline style (not presentation attributes): a host `text { font-size }` rule beats an
+    // attribute but never an inline style, and `exportSvg` clones keep it. Family is pinned too
+    // (unlike row labels, which inherit the host font) because the label-fit estimator is only
+    // conservative for system-ui metrics. Labels are Temporal/Intl-formatted, never user input.
+    const header = el('g', { class: 'fg-timeline__header' });
+    header.append(
+      el(
+        'rect',
+        { x: offsetX, y: 0, width: timeScale.totalWidth, height: HEADER_HEIGHT },
+        { fill: 'var(--fg-bg-subtle, #f3f4f6)' },
+      ),
+    );
+    const tiers = computeHeaderTiers(timeScale, viewMode, locale, gridColumns);
+    [tiers.upper, tiers.lower].forEach((tier, tierIndex) => {
+      for (const l of tier) {
+        const text = el(
+          'text',
+          { class: 'fg-timeline__header-label', x: offsetX + l.x, y: tierIndex ? 24 : 8 },
+          {
+            font: `${HEADER_FONT_PX}px system-ui, sans-serif`,
+            'text-anchor': tierIndex ? 'middle' : 'start',
+            'dominant-baseline': 'middle',
+            fill: 'var(--fg-fg-muted, #6b6b73)',
+          },
+        );
+        text.append(l.text);
+        header.append(text);
+      }
+    });
+    header.append(
+      el(
+        'line',
+        { x1: offsetX, x2: offsetX + timeScale.totalWidth, y1: HEADER_HEIGHT - 0.5, y2: HEADER_HEIGHT - 0.5 },
+        { stroke: 'var(--fg-border-strong, #d4d4d8)' },
+      ),
     );
     svg.append(header);
     // Dependency arrows. An unknown type (untrusted data) or a dangling endpoint is skipped, same
@@ -772,71 +829,4 @@ function el<K extends keyof SVGElementTagNameMap>(
   const e = setAttrs(document.createElementNS(SVG_NS, tag), attrs);
   for (const k in style) e.style.setProperty(k, style[k]!);
   return e;
-}
-
-function renderGrid(columns: readonly GridColumn[], offsetX: number, totalHeight: number): SVGGElement {
-  const g = el('g', { class: 'fg-timeline__grid' });
-  for (const col of columns) {
-    const x = col.x + offsetX;
-    if (col.isToday || col.isHoliday || col.isWeekend) {
-      const fill = col.isToday
-        ? 'var(--fg-grid-today, #fef3c7)'
-        : col.isHoliday
-          ? 'var(--fg-grid-holiday, #fee2e2)'
-          : 'var(--fg-grid-weekend, #f9fafb)';
-      const rect = el(
-        'rect',
-        { class: 'fg-timeline__grid-cell', x, y: 0, width: col.width, height: totalHeight },
-        { fill },
-      );
-      g.append(rect);
-    }
-    const line = el(
-      'line',
-      { class: 'fg-timeline__grid-line', x1: x, x2: x, y1: 0, y2: totalHeight },
-      { stroke: 'var(--fg-grid-line, #e5e7eb)' },
-    );
-    g.append(line);
-  }
-  return g;
-}
-
-function renderHeader(tiers: HeaderTiers, offsetX: number, timelineWidth: number): SVGGElement {
-  const g = el('g', { class: 'fg-timeline__header' });
-
-  const bg = el('rect', { x: offsetX, y: 0, width: timelineWidth, height: HEADER_HEIGHT }, {
-    fill: 'var(--fg-bg-subtle, #f3f4f6)',
-  });
-  g.append(bg);
-
-  [tiers.upper, tiers.lower].forEach((tier, row) => {
-    for (const l of tier) {
-      // Inline style (not presentation attributes): a host `text { font-size }` rule beats an
-      // attribute but never an inline style, and `exportSvg` clones keep it. Family is pinned
-      // too (unlike row labels, which inherit the host font) because the label-fit estimator
-      // is only conservative for system-ui metrics. The label is Temporal/Intl-formatted (never
-      // user input) but still goes through a text node: no innerHTML policy applies everywhere.
-      const text = el(
-        'text',
-        { class: 'fg-timeline__header-label', x: offsetX + l.x, y: row ? 24 : 8 },
-        {
-          font: `${HEADER_FONT_PX}px system-ui, sans-serif`,
-          'text-anchor': row ? 'middle' : 'start',
-          'dominant-baseline': 'middle',
-          fill: 'var(--fg-fg-muted, #6b6b73)',
-        },
-      );
-      text.append(l.text);
-      g.append(text);
-    }
-  });
-
-  const divider = el(
-    'line',
-    { x1: offsetX, x2: offsetX + timelineWidth, y1: HEADER_HEIGHT - 0.5, y2: HEADER_HEIGHT - 0.5 },
-    { stroke: 'var(--fg-border-strong, #d4d4d8)' },
-  );
-  g.append(divider);
-
-  return g;
 }
