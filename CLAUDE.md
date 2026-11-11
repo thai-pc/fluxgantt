@@ -154,18 +154,6 @@ This file is the context entry point for AI. Details are split into rules under 
 
    Canvas-mode drag (2026-10, rebased onto headroom pass 2 and the SVG render-perf pass) costs the kitchen sink about +45 B (now 24109, 467 B of headroom), `+ withRender + withInteraction` about +40 B (19317), `+ withInteraction + withResponsive` about +55 B (20721) and `+ withEditHooks` about +25 B (16115); the other fixtures moved +0 B. The heavy code (hit-test, recognizers, overlay) sits in the lazy Canvas chunk (~8.5 -> ~11.3 KiB gzip, in no budget). Helper extraction (`badPoint`/`tryCapture`), a window-listener loop and a cached `pointerEventTarget` local each COST bytes under gzip and were not kept.
 
-The 2026-11 keyboard-reveal pass (Home/End/PageUp/PageDown row focus plus `g`, "go to bar", delegated
-to `scrollToTask` through an optional `KeyboardNavOptions.onReveal`; ArrowUp/ArrowDown still never
-write `scrollLeft`) cost, against master 914489b (gzip bytes): `+ withRender + withInteraction`
-19510 -> 19649 (+139, 319 B headroom), `+ withRender + withInteraction + withResponsive` 20951 ->
-21086 (+135, 418 B), kitchen sink 24284 -> 24418 (+134, 158 B of headroom, just over the 150 B
-warning line); the seven fixtures without interaction (incl. `with-edit-hooks`, 159 B) are +0 B.
-Levers: the arrow/Home/End/Page arms share one index-based `handleMove`, which clamps the target
-itself (that single `Math.max/min` replaced the per-caller bounds checks, -11 B); `g` returns
-`scrollToTask`'s boolean so no extra "is viewport composed" check is needed (the key is only
-prevented when something handled it, -6 B). The kitchen sink is now the tightest fixture next to
-`with-edit-hooks`: the next interaction feature has to find its own bytes.
-
 The 2026-10 sticky-label-column pass (the SVG label column pinned on horizontal scroll, plus the
 `div.fg-timeline__layer` wrapper that fixes flex/grid hosts) was paid for by levers, not a limit
 (gzip bytes, against master acaf680): `+ withRender` 14902 -> 14865 after levers, kitchen sink
@@ -176,6 +164,22 @@ The 2026-10 sticky-label-column pass (the SVG label column pinned on horizontal 
 `line()` builder was measured and REJECTED (+30 B). Headroom is now kitchen sink 345 B,
 `+ withRender` 495 B and `with-edit-hooks` 165 B, the tightest and right at the 150 B warning line:
 the next renderer feature has to find its own bytes.
+
+The 2026-11 keyboard-reveal pass (Home/End/PageUp/PageDown row focus plus `g`/`G`, "go to bar", delegated
+to `scrollToTask` through an optional `KeyboardNavOptions.onReveal`; ArrowUp/ArrowDown still never
+write `scrollLeft`) cost, against master 914489b (gzip bytes): `+ withRender + withInteraction`
+19510 -> 19649 (+139, 319 B headroom), `+ withRender + withInteraction + withResponsive` 20951 ->
+21086 (+135, 418 B), kitchen sink 24284 -> 24418 (+134, 158 B of headroom, just over the 150 B
+warning line); the seven fixtures without interaction (incl. `with-edit-hooks`, 159 B) are +0 B.
+Levers: the arrow/Home/End/Page arms share one index-based `handleMove`, which clamps the target
+itself (that single `Math.max/min` replaced the per-caller bounds checks, -11 B); `g` returns
+`scrollToTask`'s boolean so no extra "is viewport composed" check is needed (the key is only
+prevented when something handled it, -6 B). Review follow-ups cost nothing: capital `G` (Caps Lock)
+and the `handleMove` delta form are +0 B. Home/End resolving against stale focus (instead of the
+arrow clamp path) was measured at +16 B (kitchen sink 24434, 142 B) and NOT kept: it would have
+dropped the kitchen sink under the 150 B line, so stale-focus Home/End clamp like the arrows do.
+The kitchen sink (158 B) is now the tightest fixture, just ahead of `with-edit-hooks` (159 B): the
+next interaction feature has to find its own bytes.
 
 Run `pnpm size` from `packages/core` (or `pnpm size` at the root via turbo) to re-measure; the numbers above are its output, converted from its decimal-kB report to KiB. **It needs Node >= 22.19** — that is `size-limit` 14's own declared `engines.node` (`^22.19.0 || ^24.5.0 || >=26.0.0`), and the floor is enforced by the root `engines.node` so a permitted Node cannot be one the repo fails on. Before 14 the practical floor was 22.18, because `size-limit` calls `fs.glob` with `withFileTypes` (added in Node 22.2) and on an older 22.x it dies with an opaque `TypeError: i.isFile is not a function` that looks like a repo misconfiguration but is not. `.nvmrc` pins an exact version for this reason; CI reads it via `node-version-file`.
 6. **Tier-gate correctly** — Pro (resource/baseline/MSProject), Cloud (multiplayer/AI). Don't cram Pro/Cloud code into `core`.
