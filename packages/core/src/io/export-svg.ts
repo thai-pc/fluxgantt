@@ -183,7 +183,7 @@ function bakeComputedStyles(liveEls: NodeListOf<SVGElement>, cloneEls: NodeListO
         cloned.style.setProperty(prop, resolved);
       } else if (!warnedProps.has(prop)) {
         warnedProps.add(prop);
-        console.warn(`exportSvg: unsafe computed "${prop}" skipped`);
+        console.warn(`exportSvg: skipped unsafe "${prop}"`);
       }
     }
   }
