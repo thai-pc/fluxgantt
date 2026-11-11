@@ -314,14 +314,16 @@ test('Tier A: Canvas anchoring keeps the date under the midpoint', async ({ page
   await page.goto('/edit-hooks.html?touch=1&pad=2100');
   await waitCoarse(page);
   await expect(page.locator('canvas.fg-timeline-canvas')).toBeVisible();
-  // Content-x of a date, read through the public `scrollToDate` (centre-aligned, so
-  // content-x = scrollLeft + clientWidth / 2); then place that date at a NON-centre offset `m`
-  // so the centre-anchored zoom alone would be wrong and only midpoint anchoring passes.
+  // Content-x of a date, read through the public `scrollToDate` (centre-aligned inside the free area
+  // right of the pinned label column, so content-x = scrollLeft + (clientWidth + labelW) / 2); then
+  // place that date at a NON-centre offset `m` so the centre-anchored zoom alone would be wrong and
+  // only midpoint anchoring passes.
   const m = await page.evaluate(() => {
     const w = window as never as { __gantt: { scrollToDate(d: string, o: { align: string }): void } };
     const c = document.querySelector('#gantt')!;
     w.__gantt.scrollToDate('2026-08-24', { align: 'center' });
-    (window as never as { __xD0: number }).__xD0 = c.scrollLeft + c.clientWidth / 2;
+    const labelW = c.querySelector('.fg-timeline-canvas-labels')!.getBoundingClientRect().width;
+    (window as never as { __xD0: number }).__xD0 = c.scrollLeft + (c.clientWidth + labelW) / 2;
     const m = c.clientWidth / 2 - 80;
     c.scrollLeft = (window as never as { __xD0: number }).__xD0 - m;
     return m;
@@ -333,7 +335,8 @@ test('Tier A: Canvas anchoring keeps the date under the midpoint', async ({ page
     const c = document.querySelector('#gantt')!;
     const sl = c.scrollLeft;
     w.__gantt.scrollToDate('2026-08-24', { align: 'center' });
-    const xD1 = c.scrollLeft + c.clientWidth / 2;
+    const labelW = c.querySelector('.fg-timeline-canvas-labels')!.getBoundingClientRect().width;
+    const xD1 = c.scrollLeft + (c.clientWidth + labelW) / 2;
     return xD1 - sl - offset;
   }, m);
   expect(Math.abs(drift)).toBeLessThan(4);
