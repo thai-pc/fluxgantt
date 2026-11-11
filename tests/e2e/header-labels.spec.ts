@@ -26,13 +26,13 @@ test('header labels do not intersect with the vi locale', async ({ page }) => {
 test('canvas header band is untouched by rows after a vertical scroll', async ({ page }) => {
   await page.goto('/collapse.html?pad=2100');
   // The Canvas renderer is a lazy chunk: wait for it before zooming and scrolling.
-  await page.locator('#gantt canvas').waitFor();
+  await page.locator('#gantt canvas.fg-timeline-canvas').waitFor();
   await page.evaluate(() => {
     (window as unknown as { __gantt: { zoomTo(m: string): void } }).__gantt.zoomTo('month');
   });
   const readBand = (): Promise<string> =>
     page.evaluate(() => {
-      const canvas = document.querySelector<HTMLCanvasElement>('#gantt canvas')!;
+      const canvas = document.querySelector<HTMLCanvasElement>('#gantt canvas.fg-timeline-canvas')!;
       const dpr = canvas.width / canvas.clientWidth;
       const band = canvas
         .getContext('2d')!
