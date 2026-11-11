@@ -118,7 +118,7 @@ import {
   type TimeScale,
 } from './renderer-base.js';
 import type { PointerDragController } from '../interaction/pointer-drag.js';
-import { applyMirror, fillTextAt, layoutX } from './canvas-mirror.js';
+import { applyMirror, fillTextAt, layoutX, makePin, pinnedDistance } from './canvas-mirror.js';
 import type { BarHit, InteractiveRendererHandle } from './interactive-renderer-handle.js';
 import {
   createCanvasDrag,
@@ -804,13 +804,37 @@ export function createCanvasRenderer(
   canvas.style.position = 'sticky';
   canvas.style.top = '0';
   canvas.style.left = '0';
+  // `block`, not the inline default: an inline canvas leaves a descender gap under it, which would
+  // leave the label canvas below (a few px low at scrollTop 0) once it is pulled up over this one.
+  canvas.style.display = 'block';
   container.appendChild(canvas);
 
+  // The pinned label column: a narrow opaque sticky sibling holding the row labels, toggles, the label
+  // divider and the top-left corner. Compositor-pinned on horizontal scroll (a column painted into the
+  // scrolling bitmap would slide for a frame and snap back). `pointer-events: none` keeps every listener on
+  // `canvas` as before. Inserted right after `canvas` BEFORE any drag overlay exists, so the overlay later
+  // lands between the two and the ghost/handles pass under the column.
+  const labels = document.createElement('canvas');
+  labels.className = 'fg-timeline-canvas-labels';
+  labels.setAttribute('aria-hidden', 'true');
+  Object.assign(labels.style, {
+    position: 'sticky',
+    top: '0',
+    // Logical, not 'left': a RTL scroll container puts the inline start at the right.
+    insetInlineStart: '0',
+    display: 'block',
+    pointerEvents: 'none',
+    background: 'var(--fg-bg,#fff)',
+  });
+  container.appendChild(labels);
+  const lctx = labels.getContext('2d');
+
   const maybeCtx = canvas.getContext('2d');
-  if (maybeCtx === null) {
+  if (maybeCtx === null || lctx === null) {
     // §6 point 4: reject rather than silently no-op — a confusing "nothing rendered, no
     // error" state is itself a defensive-programming/DoS-adjacent failure mode.
     canvas.remove();
+    labels.remove();
     throw new Error('canvas-renderer: 2D context unavailable');
   }
   // Re-bound with a non-nullable declared type (not a narrowing) — TypeScript does not
@@ -818,6 +842,7 @@ export function createCanvasRenderer(
   // closure below, so this must be its own definitely-typed binding, not a relied-upon
   // narrow of `maybeCtx`.
   const ctx: CanvasRenderingContext2D = maybeCtx;
+  const labelCtx: CanvasRenderingContext2D = lctx;
 
   // Gives `container` a real `scrollHeight` beyond the bounded canvas (fix #37, spec §4.1) —
   // a plain, non-positioned, zero-content block whose `style.height` is set to the FULL
@@ -891,15 +916,35 @@ export function createCanvasRenderer(
   // --- Scroll + resize wiring (fix #37, spec §4.5/§4.6) -----------------------------------
   // A single shared rAF-coalescing scheduler: any number of scroll/resize events arriving
   // within one animation frame collapse into exactly one `render()` call, never a pile-up.
+  //
+  // Horizontal-only scrolling needs no repaint: nothing in `renderPixels()` reads `scrollLeft` (the
+  // bitmap is full width, the label column is a compositor-pinned sibling). So the frame callback
+  // repaints only when something else asked for a render (`needFull`) or `scrollTop` moved since the
+  // last paint; otherwise it just refreshes the drag overlay and the WebKit-RTL pin shift.
   let pendingRenderRaf: number | undefined;
-  function scheduleRender(): void {
+  let needFull = false;
+  let paintedScrollTop = Number.NaN;
+  const pinLabels = makePin(labels, container);
+  const syncPin = (): void => pinLabels(state.options.rtl !== true);
+  function scheduleFrame(): void {
     if (pendingRenderRaf !== undefined || destroyed) return;
     pendingRenderRaf = requestAnimationFrame(() => {
       pendingRenderRaf = undefined;
-      if (!destroyed) render();
+      if (destroyed) return;
+      if (needFull || container.scrollTop !== paintedScrollTop) {
+        needFull = false;
+        render();
+      } else {
+        drag?.onRender();
+        syncPin();
+      }
     });
   }
-  container.addEventListener('scroll', scheduleRender, { passive: true });
+  function scheduleRender(): void {
+    needFull = true;
+    scheduleFrame();
+  }
+  container.addEventListener('scroll', scheduleFrame, { passive: true });
 
   // Feature-detected (spec §4.5) — `ResizeObserver` is broadly supported in modern evergreen
   // browsers but not universal on every embedding target; absence degrades gracefully to
@@ -915,8 +960,9 @@ export function createCanvasRenderer(
     // Mirrors the null-2D-context guard above (§5.3 of the fix spec) — leave no half-mounted
     // canvas, spacer, or a11y layer behind on a construction-time failure.
     resizeObserver?.disconnect();
-    container.removeEventListener('scroll', scheduleRender);
+    container.removeEventListener('scroll', scheduleFrame);
     canvas.remove();
+    labels.remove();
     spacerEl.remove();
     a11yLayer.remove();
     throw err;
@@ -958,7 +1004,7 @@ export function createCanvasRenderer(
       destroyed = true;
       a11yLayer.removeEventListener('focusin', handleFocusChange);
       a11yLayer.removeEventListener('focusout', handleFocusChange);
-      container.removeEventListener('scroll', scheduleRender);
+      container.removeEventListener('scroll', scheduleFrame);
       resizeObserver?.disconnect();
       if (pendingRenderRaf !== undefined) {
         cancelAnimationFrame(pendingRenderRaf);
@@ -967,6 +1013,7 @@ export function createCanvasRenderer(
       drag?.dispose();
       drag = undefined;
       canvas.remove();
+      labels.remove();
       spacerEl.remove();
       a11yLayer.remove();
     },
@@ -1002,12 +1049,15 @@ export function createCanvasRenderer(
     },
     getRowAnchor(rowIndex: number): { clientX: number; clientY: number } {
       const rect = canvas.getBoundingClientRect();
+      const box = container.getBoundingClientRect();
       const rowHeight = ROW_HEIGHT[state.options.density ?? DEFAULT_DENSITY];
       const y = HEADER_HEIGHT + rowIndex * rowHeight - container.scrollTop + rowHeight / 2;
+      // The centre of the PINNED column inside the visible box (the canvas itself may be scrolled away).
+      const left = box.left + container.clientLeft;
       return {
         clientX: state.options.rtl
-          ? rect.right - currentLabelColumnWidth / 2
-          : rect.left + currentLabelColumnWidth / 2,
+          ? left + container.clientWidth - currentLabelColumnWidth / 2
+          : left + currentLabelColumnWidth / 2,
         clientY: rect.top + Math.min(Math.max(y, HEADER_HEIGHT), rect.height),
       };
     },
@@ -1065,7 +1115,10 @@ export function createCanvasRenderer(
     clientY: number,
   ): { taskId: TaskId; rowIndex: number; hitToggle: boolean; onBar: boolean; onLabel: boolean } | undefined {
     const rect = canvas.getBoundingClientRect();
-    const x = layoutX(state.options.rtl === true, clientX - rect.left, rect.width);
+    const rtl = state.options.rtl === true;
+    // Inside the pinned column the pointer resolves in LABEL space (never a bar hidden underneath).
+    const pin = pinnedDistance(container, rtl, currentLabelColumnWidth, clientX);
+    const x = pin ?? layoutX(rtl, clientX - rect.left, rect.width);
     const y = clientY - rect.top;
 
     // Same logical/CSS-pixel coordinate space paintRows() already uses internally — no DPR
@@ -1089,7 +1142,7 @@ export function createCanvasRenderer(
     const toggleEnd = toggleStart + TOGGLE_GLYPH_GUTTER_PX;
     const hitToggle = row.hasChildren && x >= toggleStart && x < toggleEnd;
 
-    return { taskId: row.task.id, rowIndex: row.rowIndex, hitToggle, onBar: insideBar(g, x, y), onLabel: x < currentLabelColumnWidth };
+    return { taskId: row.task.id, rowIndex: row.rowIndex, hitToggle, onBar: pin === undefined && insideBar(g, x, y), onLabel: x < currentLabelColumnWidth };
   }
 
   /**
@@ -1314,6 +1367,13 @@ export function createCanvasRenderer(
     // reassignment semantics.
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     if (state.options.rtl) applyMirror(ctx, totalWidth);
+    // The label canvas is sized with the main one (after every throwing guard, so a failed render never
+    // leaves the pair half-updated). Pulled up by its own height so it overlays the first screenful.
+    labels.width = Math.round(offsetX * dpr);
+    labels.height = physicalHeight;
+    labels.style.width = `${offsetX}px`;
+    labels.style.height = `${resolvedViewportHeightPx}px`;
+    labels.style.marginTop = `-${resolvedViewportHeightPx}px`;
 
     // Fresh read, taken AFTER `ensureFocusedRowVisible()` may have just written it above —
     // this is the scroll position this frame actually paints/materializes (spec §4.3).
@@ -1342,7 +1402,6 @@ export function createCanvasRenderer(
       timeScale.totalWidth,
       tokens,
     );
-    paintLabelDivider(ctx, offsetX, resolvedViewportHeightPx, tokens);
 
     // Today marker (spec §9.1) — local/unwindowed for the same reason the three paints above
     // are: it is a VERTICAL rule at a fixed x, so it is scroll-invariant, and its label lives
@@ -1519,6 +1578,7 @@ export function createCanvasRenderer(
         0,
         tokens,
         state.input.rollup,
+        false,
       );
       // Always the LAST paint step (spec §8.2) — drawn on top of everything else, so the ring
       // is never obscured by a bar, dependency arrow, or critical-path dash.
@@ -1527,6 +1587,27 @@ export function createCanvasRenderer(
     } finally {
       ctx.restore();
     }
+
+    // --- Label column (the pinned sibling canvas): divider, then the windowed row labels and toggles,
+    // clipped to the row band so rows never paint into the corner. Mirrored about ITS OWN width.
+    paintedScrollTop = scrollTop;
+    if (offsetX > 0) {
+      labelCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      if (state.options.rtl) applyMirror(labelCtx, offsetX);
+      // Pixel-snapped inside the box so the stroke is not half-clipped at the canvas edge.
+      paintLabelDivider(labelCtx, offsetX - 0.5, resolvedViewportHeightPx, tokens);
+      labelCtx.save();
+      try {
+        labelCtx.beginPath();
+        labelCtx.rect(0, HEADER_HEIGHT, offsetX, resolvedViewportHeightPx - HEADER_HEIGHT);
+        labelCtx.clip();
+        labelCtx.translate(0, HEADER_HEIGHT - scrollTop);
+        paintRowLabels(labelCtx, windowedRows, rowHeight, 0, tokens);
+      } finally {
+        labelCtx.restore();
+      }
+    }
+    syncPin();
     dragTokens = tokens;
     drag?.onRender();
   }
@@ -1669,6 +1750,8 @@ export function paintRows(
   offsetY: number,
   tokens: DesignTokens,
   rollup: ReadonlyMap<TaskId, RolledUpRow> | undefined,
+  // `false` paints bars only: the live Canvas paints labels on the pinned label canvas instead.
+  labels = true,
 ): void {
   for (const row of rows) {
     const bar = barByTaskId.get(row.task.id);
@@ -1678,31 +1761,7 @@ export function paintRows(
     // `cell.appendChild(label)` then `cell.appendChild(renderTaskBar(...))`, though the
     // regions don't spatially overlap so paint order has no visible effect; kept identical
     // purely for call-log/parity consistency with the SVG file's structure).
-    ctx.save();
-    try {
-      ctx.fillStyle = tokens.fg;
-      // COMPILE-TIME CONSTANT — see §6, never built from task data.
-      ctx.font = TASK_LABEL_FONT;
-      ctx.textBaseline = 'middle';
-      ctx.textAlign = 'start';
-      // SECURITY: `task.name` is untrusted host-app data — passed ONLY as fillText's
-      // literal text argument, never concatenated into `ctx.font` or any other property.
-      // (spec-collapse-expand.md §6.1) — uniform gutter reservation applied to EVERY row
-      // (mirrors svg-renderer.ts's identical `TOGGLE_GLYPH_GUTTER_PX` shift), so label text
-      // stays column-aligned across sibling leaf/summary rows at the same depth.
-      fillTextAt(
-        ctx,
-        row.task.name,
-        LABEL_PADDING_PX + row.depth * LABEL_INDENT_PX + TOGGLE_GLYPH_GUTTER_PX,
-        offsetY + row.y + rowHeight / 2,
-      );
-    } finally {
-      ctx.restore();
-    }
-
-    if (row.hasChildren) {
-      paintRowToggle(ctx, row, offsetY, rowHeight, tokens);
-    }
+    if (labels) paintRowLabel(ctx, row, rowHeight, offsetY, tokens);
 
     const isCritical = criticalIds.has(row.task.id);
     const isSelected = selectedIds.has(row.task.id);
@@ -1717,6 +1776,52 @@ export function paintRows(
       tokens,
       rollup?.get(row.task.id),
     );
+  }
+}
+
+/** The label half of `paintRows` for every row: the text and, for a summary row, the toggle glyph.
+ *  Painted on the pinned label canvas; nothing here depends on `offsetX` or on the horizontal scroll. */
+export function paintRowLabels(
+  ctx: CanvasRenderingContext2D,
+  rows: readonly RowLayout[],
+  rowHeight: number,
+  offsetY: number,
+  tokens: DesignTokens,
+): void {
+  for (const row of rows) paintRowLabel(ctx, row, rowHeight, offsetY, tokens);
+}
+
+function paintRowLabel(
+  ctx: CanvasRenderingContext2D,
+  row: RowLayout,
+  rowHeight: number,
+  offsetY: number,
+  tokens: DesignTokens,
+): void {
+  ctx.save();
+  try {
+    ctx.fillStyle = tokens.fg;
+    // COMPILE-TIME CONSTANT — see §6, never built from task data.
+    ctx.font = TASK_LABEL_FONT;
+    ctx.textBaseline = 'middle';
+    ctx.textAlign = 'start';
+    // SECURITY: `task.name` is untrusted host-app data — passed ONLY as fillText's
+    // literal text argument, never concatenated into `ctx.font` or any other property.
+    // (spec-collapse-expand.md §6.1) — uniform gutter reservation applied to EVERY row
+    // (mirrors svg-renderer.ts's identical `TOGGLE_GLYPH_GUTTER_PX` shift), so label text
+    // stays column-aligned across sibling leaf/summary rows at the same depth.
+    fillTextAt(
+      ctx,
+      row.task.name,
+      LABEL_PADDING_PX + row.depth * LABEL_INDENT_PX + TOGGLE_GLYPH_GUTTER_PX,
+      offsetY + row.y + rowHeight / 2,
+    );
+  } finally {
+    ctx.restore();
+  }
+
+  if (row.hasChildren) {
+    paintRowToggle(ctx, row, offsetY, rowHeight, tokens);
   }
 }
 

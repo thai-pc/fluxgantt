@@ -28,7 +28,7 @@ import {
   snapDeltaToDay,
 } from '../internal/drag-math.js';
 import type { Task, TaskId } from '../types.js';
-import { applyMirror, layoutX } from './canvas-mirror.js';
+import { applyMirror, layoutX, makePin, pinnedDistance } from './canvas-mirror.js';
 import type { BarHit, BarZone } from './interactive-renderer-handle.js';
 import {
   anchorOf,
@@ -219,6 +219,8 @@ export function createCanvasDrag(
     ) {
       return undefined;
     }
+    // The pinned label column covers whatever bar lies under it: nothing there is a drag target.
+    if (pinnedDistance(container, host.view().rtl, host.view().offsetX, clientX) !== undefined) return undefined;
     const x = layoutX(host.view().rtl, clientX - rect.left, rect.width);
     const y = clientY - rect.top;
     return x < 0 || x > rect.width || y < host.headerHeight || y > rect.height ? undefined : { x, y };
@@ -262,6 +264,7 @@ export function createCanvasDrag(
       s.display = 'block';
       container.insertBefore(overlay, canvas.nextSibling);
       octx = overlay.getContext('2d');
+      pinOverlay = makePin(overlay, container);
     }
     const dpr = window.devicePixelRatio || 1;
     const w = container.clientWidth;
@@ -288,15 +291,8 @@ export function createCanvasDrag(
     return handleStyle;
   };
 
-  // Horizontal `position: sticky` does not pin inside a RTL scroll container in WebKit (Chromium and
-  // Firefox pin it through `inset-inline-start`): measure where the viewport-wide overlay really is
-  // and translate it back over the visible box. A no-op wherever sticky already did the job.
-  let pinShift = 0;
-  const pinOverlay = (): void => {
-    const box = container.getBoundingClientRect();
-    const dx = box.left + container.clientLeft - overlay!.getBoundingClientRect().left;
-    if (Math.abs(dx) > 0.5) overlay!.style.transform = `translateX(${(pinShift += dx)}px)`;
-  };
+  // WebKit RTL sticky fallback (`makePin`); created with the overlay.
+  let pinOverlay: ((reset?: boolean) => void) | undefined;
 
   const paint = (): void => {
     // Nothing to draw and nothing to clear: skip the (O(rows) on a new state) layout entirely.
@@ -324,7 +320,7 @@ export function createCanvasDrag(
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, overlay.width, overlay.height);
     if (!preview && handles.length === 0) return;
-    if (view.rtl) pinOverlay();
+    if (view.rtl) pinOverlay!();
     // Paint in MAIN-canvas-local coordinates: translate by where the main canvas sits relative to
     // the overlay, so scroll offsets, padding and the sub-pixel inline-baseline gap cannot skew it.
     const cr = canvas.getBoundingClientRect();
