@@ -241,10 +241,10 @@ export function enableKeyboardNav(
 
     switch (event.key) {
       case 'ArrowDown':
-        handleMove(event, rows, currentIndex, currentIndex + 1);
+        handleMove(event, rows, currentIndex, 1);
         return;
       case 'ArrowUp':
-        handleMove(event, rows, currentIndex, currentIndex - 1);
+        handleMove(event, rows, currentIndex, -1);
         return;
       case 'Home':
       case 'End':
@@ -253,20 +253,19 @@ export function enableKeyboardNav(
         if (mod || event.altKey) return;
         const k = event.key;
         // One row of overlap per page; 32 = HEADER_HEIGHT (as in revealFocusedRow).
-        const page = Math.max(1, Math.floor((focusRoot.clientHeight - 32) / ROW_HEIGHT[options.density]) - 1);
+        const page = Math.max(1, (((focusRoot.clientHeight - 32) / ROW_HEIGHT[options.density]) | 0) - 1);
         handleMove(
           event,
           rows,
           currentIndex,
-          k === 'Home' ? 0 : k === 'End' ? rows.length : currentIndex + (k === 'PageUp' ? -page : page),
+          k === 'Home' ? -rows.length : k === 'End' ? rows.length : k === 'PageUp' ? -page : page,
         );
         return;
       }
       case 'g':
       case 'G': {
         const row = rows[currentIndex];
-        if (mod || event.altKey || !row || !options.onReveal) return;
-        if (options.onReveal(row.task.id)) event.preventDefault(); // falsy = nothing handled it
+        if (!mod && !event.altKey && row && options.onReveal?.(row.task.id)) event.preventDefault(); // falsy = nothing handled it
         return;
       }
       case 'ArrowLeft':
@@ -395,19 +394,18 @@ export function enableKeyboardNav(
     event: KeyboardEvent,
     rows: readonly RowLayout[],
     currentIndex: number,
-    target: number,
+    delta: number,
   ): void {
     // Stale/clamping case (spec §4.6): the previously focused task no longer resolves in a
     // fresh layoutRows() call. Clamp to the row at (or nearest to) the same position rather
     // than throwing or silently doing nothing.
-    // Home/End are absolute, so they still resolve against stale focus (when any row exists).
-    if (currentIndex === -1 && !(rows.length && /^(Ho|En)/.test(event.key))) {
+    if (currentIndex < 0) {
       clampFocus(rows);
       return;
     }
 
     // Clamped here for every caller (page/End overshoot); no wraparound (spec §4.4).
-    const nextIndex = Math.max(0, Math.min(rows.length - 1, target));
+    const nextIndex = Math.max(0, Math.min(rows.length - 1, currentIndex + delta));
     if (nextIndex === currentIndex) return;
 
     const next = rows[nextIndex]!.task.id;

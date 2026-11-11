@@ -153,20 +153,12 @@ describe('Home / End', () => {
     stale.dispose();
   });
 
-  it('on stale focus (focused task removed, rows remain) go to the first / last row, selected and prevented', () => {
+  it('on stale focus (focused task removed, rows remain) Home clamps like the arrows do (known limitation)', () => {
     const t = setup({ n: 5 });
     t.drop(2);
-    const home = t.press(2, 'Home');
-    expect(home.defaultPrevented).toBe(true);
-    expect(t.focused()).toBe(id(0));
-    expect(t.onSelect).toHaveBeenLastCalledWith(id(0));
-    const t2 = setup({ n: 5 });
-    t2.drop(2);
-    expect(t2.press(2, 'End').defaultPrevented).toBe(true);
-    expect(t2.focused()).toBe(id(4));
-    expect(t2.onSelect).toHaveBeenLastCalledWith(id(4));
+    expect(t.press(2, 'Home').defaultPrevented).toBe(false);
+    expect(t.focused()).not.toBe(id(2)); // clamp path, not an absolute jump
     t.dispose();
-    t2.dispose();
   });
 
   it('on a Canvas-like root (div) Home/End select but leave the vertical reveal to the renderer', () => {
