@@ -114,7 +114,9 @@ describe('row patch: equality with a full render (T1, T10)', () => {
     const h = createSvgRenderer(container, input([], undefined, 1, { collapsedIds: collapsed }), {});
     const before = rowEls(h);
     expect(() => h.update(input([id('a')], undefined, 1, { collapsedIds: collapsed }))).not.toThrow();
-    expect(rowEls(h)).toEqual(before);
+    const after = rowEls(h);
+    expect(after).toHaveLength(before.length);
+    before.forEach((n, i) => expect(after[i]).toBe(n)); // identity, not structural equality
     expect(h.svg.querySelectorAll('[aria-selected="true"]')).toHaveLength(0);
   });
 });
@@ -193,7 +195,6 @@ describe('row patch: no-op and fallbacks (T3, T4)', () => {
     // Same rev and option values as the failed update: only the cleared patch forces a full render.
     h.update(input(), {});
     expect(defsOf(h)).not.toBe(defs);
-    expect(defsOf(h)).not.toBe(defs);
     expect(rowEls(h)).toHaveLength(tasks.length);
   });
 
@@ -211,7 +212,9 @@ describe('row patch: pinned layers (T5)', () => {
     const pinned = (): Element[] => [...layer.querySelectorAll('[class^="fg-timeline__sticky-"] *')];
     const before = pinned();
     h.update(input([id('c')], id('b')));
-    expect(pinned()).toEqual(before);
+    const after = pinned();
+    expect(after).toHaveLength(before.length);
+    before.forEach((n, i) => expect(after[i]).toBe(n)); // the same nodes, not equal copies
     const clone = layer.querySelector('.fg-timeline__sticky-column .fg-timeline__row-label[data-task-id="c"]') as SVGElement;
     expect(clone.dataset.taskId).toBe('c');
     expect(clone.dataset.rowIndex).toBe('3');

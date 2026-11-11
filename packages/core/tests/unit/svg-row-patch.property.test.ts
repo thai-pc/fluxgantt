@@ -7,6 +7,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import fc from 'fast-check';
 import { createGantt } from '../helpers/create-gantt.js';
+import { getInternal } from '../../src/gantt-internal.js';
 import { withRtl } from '../../src/rtl/mixin.js';
 import { computeRollup } from '../../src/compute/rollup.js';
 import { toTaskId, type ViewMode } from '../../src/types.js';
@@ -101,6 +102,7 @@ function run(p: Project, rtl: boolean): void {
 
   try {
     let counter = 0;
+    let focusMayBeStale = false;
     const live = (i: number) => {
       const all = gantt.getTasks();
       return all[i % all.length];
@@ -147,21 +149,26 @@ function run(p: Project, rtl: boolean): void {
       if (selectionOnly) expect(renderedByOp, `full renders for ${log.join(' ')}`).toBe(0);
 
       const html = container.innerHTML;
+      // Exactly one roving tab stop while the keyboard's focus id is a visible row. Removing or collapsing
+      // can leave a stale focus id, which a full render also paints as zero tab stops (pre-existing), so
+      // from the first such operation on the bound relaxes to "at most one".
+      if (op.k === 'remove' || op.k === 'collapse') focusMayBeStale = true;
       const tabStops = container.querySelectorAll('svg.fg-timeline [role=row][tabindex="0"]').length;
-      expect(tabStops, `tab stops after ${log.join(' ')}`).toBeLessThanOrEqual(1);
+      const hasRows = container.querySelectorAll('svg.fg-timeline [role=row]').length > 0;
+      if (hasRows && !focusMayBeStale) expect(tabStops, `tab stops after ${log.join(' ')}`).toBe(1);
+      else expect(tabStops, `tab stops after ${log.join(' ')}`).toBeLessThanOrEqual(1);
       const rowIds = new Set([...container.querySelectorAll('svg.fg-timeline [role=row]')].map((r) => r.getAttribute('data-task-id')));
       const painted = [...container.querySelectorAll('svg.fg-timeline [role=row][aria-selected="true"]')].map((r) => r.getAttribute('data-task-id')).sort();
       const expected = gantt.getSelection().filter((id) => rowIds.has(id)).sort();
       expect(painted, `selected rows after ${log.join(' ')}`).toEqual(expected);
 
-      gantt.refresh(); // the oracle: a forced full repaint
-      // Pre-existing on master (verified against it): a key press moves the keyboard's own focus without
-      // always changing the selection (Shift+Arrow inside a range, ArrowUp onto the only selected row),
-      // so no repaint follows and the roving `tabindex` lags until the next render. A patch preserves
-      // that on purpose, so the roving `tabindex` is not compared after a key press (the one-tab-stop
-      // bound above still is); every other attribute still is.
-      const norm = (h: string): string => (op.k === 'key' ? h.replace(/ tabindex="-?\d"/g, '') : h);
-      expect(norm(container.innerHTML), `patched DOM differs from a full render after ${log.join(' ')}`).toBe(norm(html));
+      // The oracle: a forced full render of the renderer's CURRENT input (`setOptions` always repaints
+      // fully and does not re-read the keyboard's focus). Everything, `tabindex` included, must be
+      // identical. (A shift/arrow key can leave keyboard-nav's own focus one step ahead of the painted
+      // tab stop on master too; comparing against the same input keeps that out of the comparison
+      // without hiding a patch that rebuilt the wrong row.)
+      getInternal(gantt).mountOf()!.handle.setOptions({});
+      expect(container.innerHTML, `patched DOM differs from a full render after ${log.join(' ')}`).toBe(html);
     }
   } finally {
     appendSpy.mockRestore();
