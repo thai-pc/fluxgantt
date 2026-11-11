@@ -79,6 +79,11 @@ export interface SvgRendererInput {
    *  pre-B2 behavior. `RollupResult` is structurally assignable to `RolledUpRow`, so the map
    *  passes straight through with no adapter (spec-summary-rollup.md Ticket B2). */
   readonly rollup?: ReadonlyMap<TaskId, RolledUpRow>;
+  /** Optional data revision token. Equal tokens across two `update()` calls assert that `tasks`,
+   *  `dependencies`, `criticalPath`, `calendar`, `collapsedIds` and `rollup` are semantically
+   *  unchanged, so only the rows whose selection/focus state changed are rebuilt. Absent = always a
+   *  full render (the safe default). A caller that passes it must bump it on every other change. */
+  readonly rev?: number;
 }
 
 export interface SvgRendererOptions {
@@ -105,8 +110,8 @@ export interface SvgRendererOptions {
   /** Called at the end of every full repaint, after every pinned layer was filled from clones and
    *  before focus restoration, with the chart svg and every pinned svg the renderer owns: the date
    *  axis, the label column and the corner (trailing args may be added). Each root carries its own
-   *  `width` attribute. Synchronous, must not throw. For `withRtl`; do not rely
-   *  on it. */
+   *  `width` attribute. Also called after a row patch, with the chart svg only. Synchronous, must
+   *  not throw, idempotent and cheap. For `withRtl`; do not rely on it. */
   readonly onPaint?: (svg: SVGSVGElement, ...overlays: SVGSVGElement[]) => void;
 }
 
@@ -120,9 +125,12 @@ export interface SvgRendererHandle extends InteractiveRendererHandle {
    *  pointer event on any of them bubbles to one listener target. */
   readonly pointerEventTarget: HTMLElement;
   readonly container: HTMLElement;
-  /** Full repaint (no diff — spec §5.5) with new input. The optional `options` are merged exactly
-   *  like `setOptions()` BEFORE the single repaint, so changing input and options together costs
-   *  one render instead of two. */
+  /** Repaint with new input. The optional `options` are merged exactly like `setOptions()` BEFORE
+   *  the single repaint, so changing input and options together costs one render instead of two.
+   *  Three outcomes: a full render; a no-op (same `input.rev`, same option values, same
+   *  selection and focus); or a row patch (same `input.rev` and options, different selection or
+   *  focus: only the rows that changed are rebuilt). Anything else, including a missing `rev`, is a
+   *  full render. */
   update(input: SvgRendererInput, options?: Partial<SvgRendererOptions>): void;
   /** Change viewMode/density/timeRange/locale/ariaLabel/labelColumnWidth and repaint with the
    *  last input. */
@@ -262,6 +270,9 @@ export function createSvgRenderer(
   // Same contract as `currentTimeScale`: the label-column width the last render actually
   // painted with, so `getLabelColumnWidth()` never has to re-derive the resolution below.
   let currentLabelColumnWidth = LABEL_COLUMN_WIDTH;
+  // Set as the last step of a full render() and cleared as its first, so a render that threw never
+  // leaves a closure over a half-built DOM.
+  let patch: ((ids: readonly TaskId[], focus: TaskId | undefined) => void) | undefined;
 
   // `display:block`: no inline descender gap (kept for the export root). `grid-area:1/1` puts the chart in
   // the layer's single grid cell; `exportSvg` strips it from the clone.
@@ -319,9 +330,15 @@ export function createSvgRenderer(
     container,
     update(nextInput: SvgRendererInput, nextOptions?: Partial<SvgRendererOptions>): void {
       if (destroyed) return;
+      const prev = currentOptions;
+      const prevRev = currentInput.rev;
+      currentOptions = { ...prev, ...nextOptions };
       currentInput = nextInput;
-      currentOptions = { ...currentOptions, ...nextOptions };
-      render();
+      // Same data token and every passed option equal by value (any doubt means a full render).
+      let same = nextInput.rev !== undefined && nextInput.rev === prevRev;
+      for (const k in nextOptions) same &&= nextOptions[k as keyof SvgRendererOptions] === prev[k as keyof SvgRendererOptions];
+      if (same && patch) patch(nextInput.selectedTaskIds ?? [], nextInput.focusedTaskId);
+      else render();
     },
     setOptions(nextOptions: Partial<SvgRendererOptions>): void {
       if (destroyed) return;
@@ -346,11 +363,9 @@ export function createSvgRenderer(
   };
 
   function render(): void {
-    // Captured BEFORE the full repaint below destroys every existing row element (spec
-    // §4.5 point 4) — the gate that prevents this render pass from ever STEALING focus
-    // during a purely programmatic/headless mutation (e.g. a host app calling
-    // `gantt.addTask()` while the Gantt itself isn't focused): focus is only ever
-    // RESTORED, never newly grabbed.
+    patch = undefined;
+    // Captured BEFORE the repaint destroys the row elements: the gate that stops a programmatic
+    // mutation (e.g. `gantt.addTask()` while the Gantt is not focused) from stealing focus.
     const hadFocusInside = svg.contains(document.activeElement);
 
     const calendar = currentInput.calendar ?? DEFAULT_CALENDAR;
@@ -392,7 +407,7 @@ export function createSvgRenderer(
       // Single summary warning per render (spec §11 Q5) — not silent, but not a
       // per-task flood either.
       console.warn(
-        `@fluxgantt/core svg-renderer: ${clampedCount} task(s) have end before start.`,
+        `@fluxgantt/core: ${clampedCount} task(s) have end before start.`,
       );
     }
 
@@ -401,7 +416,7 @@ export function createSvgRenderer(
     const now = getTemporal().Now.zonedDateTimeISO(calendar.timezone);
     const gridColumns = computeGridColumns(timeScale, viewMode, calendar, locale, now);
     const criticalIds = new Set(currentInput.criticalPath?.criticalTaskIds ?? []);
-    const selectedIds = new Set(currentInput.selectedTaskIds ?? []);
+    let selectedIds = new Set(currentInput.selectedTaskIds ?? []);
 
     // Host/mixin-supplied widths are untrusted numeric input (security.md: validate, don't
     // propagate) — a `NaN`, Infinity or negative value would paint `NaN` into every `x`
@@ -442,7 +457,7 @@ export function createSvgRenderer(
     const showLinkHandles = currentOptions.showLinkHandles ?? true;
     // `focusedTaskId` falls back to the FIRST row when unset (spec §4.5 point 3) — before any
     // keyboard interaction has happened, the grid must still be exactly one native Tab stop.
-    const focusedTaskId = currentInput.focusedTaskId ?? rows[0]?.task.id;
+    let focusedTaskId = currentInput.focusedTaskId ?? rows[0]?.task.id;
 
     const defs = el('defs', {});
     defs.append(
@@ -743,12 +758,7 @@ export function createSvgRenderer(
       return rowGroup;
     };
     const rowsGroup = el('g', { class: 'fg-timeline__rows' });
-    const rowEls = new Map<TaskId, SVGGElement>();
-    for (const row of rows) {
-      const e = makeRow(row);
-      rowEls.set(row.task.id, e);
-      rowsGroup.append(e);
-    }
+    for (const row of rows) rowsGroup.append(makeRow(row));
     svg.append(rowsGroup);
     // Today marker (spec §9.1). Appended after the rows so it crosses OVER bars and
     // dependency arrows — document order is z-order — but before the label divider, which must
@@ -797,16 +807,28 @@ export function createSvgRenderer(
     );
     currentOptions.onPaint?.(svg, overlay, column, corner);
 
-    // Focus restoration (spec §4.5 point 4) — MUST run after every element above is already
-    // appended to `svg`, since the target row element is freshly created by renderRows() in
-    // this same synchronous pass. `preventScroll`: a native focus() on a row scrolls the
-    // container itself (measured: Firefox resets BOTH scroll offsets to 0, even for a visible
-    // row; Chromium scrolls vertically only, and only when the row is off screen; WebKit does not
-    // scroll). The keyboard path reveals the row explicitly instead (interaction/keyboard-nav.ts
-    // revealFocusedRow), so pointer focus never scrolls.
-    if (hadFocusInside && focusedTaskId !== undefined) {
-      rowEls.get(focusedTaskId)?.focus({ preventScroll: true });
-    }
+    // Focus restoration (spec §4.5 point 4), after every element is appended: the roving tab stop IS the
+    // focused row, so it is found by its `tabindex` (none for a stale id: nothing is focused). Only ever
+    // restored, never grabbed. `preventScroll`: a native focus() on a row scrolls the container itself
+    // (Firefox resets BOTH offsets to 0, Chromium scrolls vertically when the row is off screen, WebKit
+    // does not); the keyboard path reveals the row explicitly (keyboard-nav `revealFocusedRow`).
+    if (hadFocusInside) svg.querySelector<SVGElement>('[tabindex="0"]')?.focus({ preventScroll: true });
+
+    patch = (ids, focus) => {
+      const had = svg.contains(document.activeElement);
+      selectedIds = new Set(ids);
+      focusedTaskId = focus ?? rows[0]?.task.id; // same fallback as above
+      // Rebuild exactly the rows whose painted selection/focus state differs from the new one. An id
+      // with no row (hidden under a collapsed ancestor, stale) never matches, as in a full render.
+      [...rowsGroup.children].forEach((old, i) => {
+        const { id } = rows[i]!.task;
+        if (`${old.getAttribute('aria-selected')}${old.getAttribute('tabindex')}` !== `${selectedIds.has(id)}${id === focusedTaskId ? 0 : -1}`) {
+          old.replaceWith(makeRow(rows[i]!));
+        }
+      });
+      currentOptions.onPaint?.(svg);
+      if (had) svg.querySelector<SVGElement>('[tabindex="0"]')?.focus({ preventScroll: true });
+    };
   }
 }
 

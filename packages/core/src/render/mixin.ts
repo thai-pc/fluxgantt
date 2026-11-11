@@ -159,7 +159,7 @@ async function mountCanvasAsync(
   } catch (importErr) {
     if (superseded()) return; // superseded — abandon silently
     console.warn(
-      '@fluxgantt/core: Canvas renderer failed to load — falling back to the SVG renderer.',
+      '@fluxgantt/core: Canvas renderer failed to load, using SVG.',
       importErr,
     );
     mountSvg(internal, container, generation, taskCount, 'load-failed');
@@ -186,7 +186,7 @@ async function mountCanvasAsync(
         ? 'dimension-exceeded'
         : 'construction-failed';
     console.warn(
-      `@fluxgantt/core: Canvas renderer initialization failed (${reason}) — falling back to the SVG renderer.`,
+      `@fluxgantt/core: Canvas renderer initialization failed (${reason}), using SVG.`,
       constructErr,
     );
     mountSvg(internal, container, generation, taskCount, reason, memo);
@@ -259,6 +259,7 @@ function finishMount(
     },
     refresh: () => {
       memo.rev = -1; // refresh() is the "recompute everything" escape hatch
+      memo.n++;
       paint();
     },
   };
@@ -328,10 +329,12 @@ interface RenderMemo {
   emit: readonly TaskId[] | undefined;
   /** True from the constructor paint until the effect's first run, which would only repeat it. */
   painted: boolean;
+  /** Bumped by `refresh()` only, so its token differs from the previous paint's. */
+  n: number;
 }
 
 function createMemo(): RenderMemo {
-  return { rev: -1, criticalPath: undefined, rollup: undefined, emit: undefined, painted: true };
+  return { rev: -1, criticalPath: undefined, rollup: undefined, emit: undefined, painted: true, n: 0 };
 }
 
 /** The paint input, recomputing the memoized parts only when the data revision moved. `track`
@@ -343,7 +346,7 @@ function renderInput(internal: GanttInternal, memo: RenderMemo, track: boolean):
   // mutation (coarse — no per-field granularity here). The collapse revision is
   // (spec-collapse-expand.md §9) the single most important integration assertion of that feature.
   read(internal.sel.revision);
-  read(internal.fold.revision);
+  const foldRevision = read(internal.fold.revision);
   const rev = read(internal.tasks.revision) + read(internal.deps.revision);
   const tasks = internal.tasks.all();
   const dependencies = internal.deps.all();
@@ -364,7 +367,7 @@ function renderInput(internal: GanttInternal, memo: RenderMemo, track: boolean):
         // directly, bypassing linkTasks) — the reactive render effect must NEVER throw. Swallow,
         // render without a critical path, warn once per revision.
         console.warn(
-          '@fluxgantt/core: computeCriticalPath failed during reactive render.',
+          '@fluxgantt/core: computeCriticalPath failed.',
           err,
         );
       }
@@ -375,6 +378,10 @@ function renderInput(internal: GanttInternal, memo: RenderMemo, track: boolean):
     tasks,
     dependencies,
     calendar: internal.calendar,
+    // Data revision token (tasks + deps + collapse + refresh): equal tokens let the renderer patch
+    // the selection/focus rows instead of rebuilding. `calendar` is readonly; if it ever becomes
+    // mutable it must bump a revision that feeds this sum.
+    rev: rev + foldRevision + memo.n,
     selectedTaskIds: internal.sel.all(),
     collapsedIds: new Set(internal.fold.all()),
     ...(memo.criticalPath !== undefined ? { criticalPath: memo.criticalPath } : {}),
@@ -469,7 +476,7 @@ function rollupFor(
     return provider(tasks, internal.calendar);
   } catch (err) {
     console.warn(
-      '@fluxgantt/core: the config.rollup provider threw during reactive render.',
+      '@fluxgantt/core: config.rollup threw.',
       err,
     );
     return undefined;
