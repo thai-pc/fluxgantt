@@ -22,8 +22,8 @@ This file is the context entry point for AI. Details are split into rules under 
 
    | Fixture | Measured | Budget |
    |---|---|---|
-   | `createGantt()` only (hello world) | 7.41 KiB | 9 KiB |
-   | `+ withIo` | 12.46 KiB | 14 KiB |
+   | `createGantt()` only (hello world) | 7.40 KiB | 9 KiB |
+   | `+ withIo` | 12.43 KiB | 14 KiB |
    | `+ withRender` | 14.52 KiB | 15 KiB |
    | `+ withRender + withInteraction` | 19.19 KiB | 19.5 KiB |
    | `+ withRender + withTheme` | 15.17 KiB | 16 KiB |
@@ -182,6 +182,22 @@ The kitchen sink (158 B) is now the tightest fixture, just ahead of `with-edit-h
 next interaction feature has to find its own bytes.
 
 The Canvas pinned-label-column pass (a sticky sibling `canvas.fg-timeline-canvas-labels`, 2026-11) lives entirely in the lazy Canvas chunk (~12.1 -> ~12.8 KiB gzip, in no budget) and moved ONE fixture: `+ withRender + withViewport` 15808 -> 15778 B (-30 B), because `viewport/mixin.ts` no longer branches on the renderer (both pin the label column). The other ten fixtures are +0 B; headroom is unchanged for them (kitchen sink 292 B, `with-edit-hooks` 159 B, the tightest). The `+ withRender + withViewport` table row reads 15.41 KiB while this paragraph says -30 B (15808 -> 15778): both are right, the row was already stale before this pass and is now brought in line with the measured 15778 B. Fixing the Canvas toggle click that also selected the row (`interaction/selection.ts`, a Canvas `hitToggle` returns early) cost the kitchen sink +8 B (24284 -> 24292, headroom 292 -> 284 B), `+ withRender + withInteraction` +7 B, `+ withInteraction + withResponsive` +7 B; `with-edit-hooks` has no selection and is +0 B. Rebased onto the keyboard-reveal pass the fixtures read: kitchen sink 24425 / 24576 (151 B, the tightest, right at the 150 B warning line), `+ withRender + withInteraction` 19648, `+ withInteraction + withResponsive` 21087, `with-edit-hooks` 16225 (159 B). The next kitchen-sink feature has to find its own bytes.
+
+The 2026-11 SVG row-patch pass (selection and focus rebuild only the changed rows, `SvgRendererInput.rev`)
+was paid for by levers first, in two commits' worth of order: "commit A" alone, with exported SVG
+byte-identical, took the row builder into a closure over `render()`, inlined the single-caller builders
+(`createArrowheadMarker`, `renderTodayLine`, `renderLabelDivider`, `renderDependencies`, `renderGrid`,
+`renderHeader`) and wrote text with `append(string)` instead of `createTextNode`: `+ withRender`
+14880 -> 14765, kitchen sink 24284 -> 24215, `with-edit-hooks` 16225 -> 16135, hello world / `+ withIo` /
+`+ withConflicts` +0. The patch then cost +105..+145 B per renderer fixture (kitchen sink 24215 -> 24360,
+`with-edit-hooks` 16135 -> 16259), which left `with-edit-hooks` at 125 B, under the 150 B warning line;
+two more levers outside the renderer closed it: the `getInternal()` diagnostic lost its long tail (-24 B on
+every mixin fixture, `has no internal state` kept) and `MountState.stopFx`/`stopUi` became `fx`/`ui`
+(-9 B). Final headroom: kitchen sink 243 B, `with-edit-hooks` 156 B (the tightest), `+ withConflicts` 779 B.
+Not done, on purpose: renaming `RowLayout` members (exported from `@fluxgantt/core/render`) and removing
+`memo.painted` (the Canvas renderer would then paint twice at mount; needs a Canvas-side "same `rev`, same
+selection => no-op" first). A modifier-check hoist in `edit-hooks` and a row-state diff set were measured
+as noise or a loss and dropped.
 
 Run `pnpm size` from `packages/core` (or `pnpm size` at the root via turbo) to re-measure; the numbers above are its output, converted from its decimal-kB report to KiB. **It needs Node >= 22.19** — that is `size-limit` 14's own declared `engines.node` (`^22.19.0 || ^24.5.0 || >=26.0.0`), and the floor is enforced by the root `engines.node` so a permitted Node cannot be one the repo fails on. Before 14 the practical floor was 22.18, because `size-limit` calls `fs.glob` with `withFileTypes` (added in Node 22.2) and on an older 22.x it dies with an opaque `TypeError: i.isFile is not a function` that looks like a repo misconfiguration but is not. `.nvmrc` pins an exact version for this reason; CI reads it via `node-version-file`.
 6. **Tier-gate correctly** — Pro (resource/baseline/MSProject), Cloud (multiplayer/AI). Don't cram Pro/Cloud code into `core`.
