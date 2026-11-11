@@ -67,14 +67,14 @@ const DATE_OPTIONS: Intl.DateTimeFormatOptions = {
 /** Formatted date labels keyed by locale + ISO date. `PlainDate.toLocaleString` builds an
  *  `Intl.DateTimeFormat` internally on every call, which dominated a 2000-task repaint; a project
  *  has a few dozen distinct dates, so the hit rate is ~100%. Bounded: the map is cleared when it
- *  reaches 512 entries and refills with what is in use, so a host cycling locales or dates cannot
+ *  reaches 16384 entries and refills with what is in use, so a host cycling locales or dates cannot
  *  grow it without limit and caching never stops for good. */
 const dateLabels = new Map<string, string>();
 function dateLabel(date: Temporal.PlainDate, locale: string): string {
   const key = `${locale}|${date.toString()}`;
   let label = dateLabels.get(key);
   if (label === undefined) {
-    if (dateLabels.size >= 512) dateLabels.clear();
+    if (dateLabels.size >= 16384) dateLabels.clear();
     dateLabels.set(key, (label = date.toLocaleString(locale, DATE_OPTIONS)));
   }
   return label;

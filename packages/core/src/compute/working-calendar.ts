@@ -121,49 +121,44 @@ export function differenceInWorkingHours(
   const a = normalize(from, cal.timezone, api);
   const b = normalize(to, cal.timezone, api);
   const cmp = api.ZonedDateTime.compare(a, b);
-  if (cmp === 0) return 0;
-  const lo = cmp < 0 ? a : b;
-  const hi = cmp < 0 ? b : a;
+  return cmp === 0 ? 0 : workingHoursMeter(cal, cmp < 0 ? a : b, cmp < 0 ? b : a)(a, b);
+}
 
+/**
+ * A `(from, to) => hours` meter for instants inside `[lo, hi]`: one pass over the days builds the
+ * cumulative working time at each day start, so every later reading costs two day lookups instead
+ * of a walk over the gap (CPM reads ~N slacks over one shared span). Exact, same as a day walk.
+ */
+export function workingHoursMeter(
+  cal: WorkingCalendar,
+  lo: ZDT,
+  hi: ZDT,
+): (from: ZDT, to: ZDT) => number {
+  const api = getTemporal();
   const holidays = holidaySet(cal, api);
-  let totalNs = 0n;
-  let day = lo.toPlainDate();
-  const lastDay = hi.toPlainDate();
+  const before = new Map<string, bigint>();
+  const last = hi.toPlainDate();
+  let total = 0n;
   let guard = 0;
-  while (api.PlainDate.compare(day, lastDay) <= 0) {
+  for (let day = lo.toPlainDate(); api.PlainDate.compare(day, last) <= 0; day = day.add({ days: 1 })) {
     assertProgress(++guard);
-    if (isWorkingPlainDate(day, cal, holidays)) {
-      for (const w of windowsFor(day, cal, api)) {
-        const s = maxZdt(w.start, lo, api);
-        const e = minZdt(w.end, hi, api);
-        if (api.ZonedDateTime.compare(e, s) > 0) totalNs += e.epochNanoseconds - s.epochNanoseconds;
-      }
-    }
-    day = day.add({ days: 1 });
+    before.set(day.toString(), total);
+    total += workingNsUpTo(day, hi.epochNanoseconds, cal, holidays, api); // the last day's total is never read
   }
-  const hours = Number(totalNs) / Number(NS_PER_HOUR);
-  return cmp < 0 ? hours : -hours;
+  const at = (t: ZDT): bigint => {
+    const day = t.toPlainDate();
+    return before.get(day.toString())! + workingNsUpTo(day, t.epochNanoseconds, cal, holidays, api);
+  };
+  return (from, to) => Number(at(to) - at(from)) / Number(NS_PER_HOUR);
 }
 
 // --- Internal (exported for sibling compute modules only; NOT re-exported by the barrel) ----
 
+const WEEKDAYS: readonly WeekdayCode[] = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
+
+/** ISO day of week (1 = Monday .. 7 = Sunday) to its code. */
 export function weekdayCode(dayOfWeek: number): WeekdayCode {
-  switch (dayOfWeek) {
-    case 1:
-      return 'mon';
-    case 2:
-      return 'tue';
-    case 3:
-      return 'wed';
-    case 4:
-      return 'thu';
-    case 5:
-      return 'fri';
-    case 6:
-      return 'sat';
-    default:
-      return 'sun';
-  }
+  return WEEKDAYS[dayOfWeek % 7]!;
 }
 
 export function isWorkingPlainDate(day: PlainDate, cal: WorkingCalendar, holidays: Set<string>): boolean {
@@ -211,12 +206,16 @@ function endOfDay(day: PlainDate, tz: string, api: T): ZDT {
   return day.toZonedDateTime({ timeZone: tz, plainTime: api.PlainTime.from('23:59:59.999999999') });
 }
 
-export function maxZdt(a: ZDT, b: ZDT, api: T): ZDT {
-  return api.ZonedDateTime.compare(a, b) >= 0 ? a : b;
-}
-
-export function minZdt(a: ZDT, b: ZDT, api: T): ZDT {
-  return api.ZonedDateTime.compare(a, b) <= 0 ? a : b;
+/** Working ns on `day` up to instant `now` (epoch ns): each window clipped at `now`. */
+export function workingNsUpTo(day: PlainDate, now: bigint, cal: WorkingCalendar, holidays: Set<string>, api: T): bigint {
+  let ns = 0n;
+  if (isWorkingPlainDate(day, cal, holidays)) {
+    for (const w of windowsFor(day, cal, api)) {
+      const end = now < w.end.epochNanoseconds ? now : w.end.epochNanoseconds;
+      if (end > w.start.epochNanoseconds) ns += end - w.start.epochNanoseconds;
+    }
+  }
+  return ns;
 }
 
 function hoursToNs(hours: number): bigint {
@@ -225,9 +224,7 @@ function hoursToNs(hours: number): bigint {
 
 function assertProgress(guard: number): void {
   if (guard > 1_000_000) {
-    throw new Error(
-      'working-calendar: exceeded max iteration guard — empty workingDays/Hours, or huge duration/lag?',
-    );
+    throw new Error('working-calendar: exceeded max iteration guard');
   }
 }
 
@@ -242,11 +239,13 @@ export function normalize(input: DateInput, tz: string, api: T): ZDT {
 }
 
 function parseString(s: string, tz: string, api: T): ZDT {
+  // A date-only string can never be an absolute instant, and `Instant.from` THROWS on it: with
+  // 2000 date-only tasks that is thousands of exceptions per paint.
+  if (s.length <= 10) return api.PlainDate.from(s).toZonedDateTime({ timeZone: tz });
   try {
     return api.Instant.from(s).toZonedDateTimeISO(tz);
   } catch {
     /* not an absolute instant (missing offset/Z) → try wall-clock */
   }
-  if (s.length <= 10) return api.PlainDate.from(s).toZonedDateTime({ timeZone: tz });
   return api.PlainDateTime.from(s).toZonedDateTime(tz);
 }

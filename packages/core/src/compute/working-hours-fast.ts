@@ -9,13 +9,12 @@ import {
   NS_PER_HOUR,
   holidaySet,
   isWorkingPlainDate,
-  maxZdt,
-  minZdt,
   normalize,
   parseTime,
   startOfDay,
   weekdayCode,
   windowsFor,
+  workingNsUpTo,
 } from './working-calendar.js';
 
 type T = TemporalApi;
@@ -45,13 +44,11 @@ export function differenceInWorkingHoursFast(
 
   const holidays = holidaySet(cal, api);
   let totalNs = 0n;
+  // A window clipped to [lo, hi] is its clip at `hi` minus its clip at `lo`.
   const walk = (day: PlainDate): void => {
-    if (!isWorkingPlainDate(day, cal, holidays)) return;
-    for (const w of windowsFor(day, cal, api)) {
-      const s = maxZdt(w.start, lo, api);
-      const e = minZdt(w.end, hi, api);
-      if (api.ZonedDateTime.compare(e, s) > 0) totalNs += e.epochNanoseconds - s.epochNanoseconds;
-    }
+    totalNs +=
+      workingNsUpTo(day, hi.epochNanoseconds, cal, holidays, api) -
+      workingNsUpTo(day, lo.epochNanoseconds, cal, holidays, api);
   };
 
   const loDay = lo.toPlainDate();
