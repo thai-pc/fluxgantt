@@ -22,17 +22,17 @@ This file is the context entry point for AI. Details are split into rules under 
 
    | Fixture | Measured | Budget |
    |---|---|---|
-   | `createGantt()` only (hello world) | 7.40 KiB | 9 KiB |
-   | `+ withIo` | 12.43 KiB | 14 KiB |
-   | `+ withRender` | 14.52 KiB | 15 KiB |
-   | `+ withRender + withInteraction` | 19.19 KiB | 19.5 KiB |
-   | `+ withRender + withTheme` | 15.17 KiB | 16 KiB |
-   | `+ withRender + withInteraction + withResponsive` | 20.59 KiB | 21 KiB |
-   | `+ withRender + withViewport` | 15.41 KiB | 16 KiB |
-   | `+ withConflicts` (headless) | 9.27 KiB | 10 KiB |
-   | `+ withRender + withEditHooks` (not in the kitchen sink) | 15.84 KiB | 16 KiB |
-   | `+ withRender + withRtl` (not in the kitchen sink) | 14.8 KiB | 15.5 KiB |
-   | kitchen sink (everything = the pre-split facade) | 23.85 KiB | 24 KiB |
+   | `createGantt()` only (hello world) | 7.36 KiB | 9 KiB |
+   | `+ withIo` | 12.38 KiB | 14 KiB |
+   | `+ withRender` | 14.48 KiB | 15 KiB |
+   | `+ withRender + withInteraction` | 19.15 KiB | 19.5 KiB |
+   | `+ withRender + withTheme` | 15.15 KiB | 16 KiB |
+   | `+ withRender + withInteraction + withResponsive` | 20.57 KiB | 21 KiB |
+   | `+ withRender + withViewport` | 15.39 KiB | 16 KiB |
+   | `+ withConflicts` (headless) | 9.20 KiB | 10 KiB |
+   | `+ withRender + withEditHooks` (not in the kitchen sink) | 15.80 KiB | 16 KiB |
+   | `+ withRender + withRtl` (not in the kitchen sink) | 14.92 KiB | 15.5 KiB |
+   | kitchen sink (everything = the pre-split facade) | 23.84 KiB | 24 KiB |
 
    Hello world went 22.3 KiB → 7.41 KiB and the fully-composed instance 34.9 KiB → 23.66 KiB (the old "full core" check measured `dist/index.js` as a plain file, which code-splitting has since hollowed out; the kitchen-sink fixture replaces it). Non-core features are plugins.
 
@@ -193,7 +193,7 @@ byte-identical, took the row builder into a closure over `render()`, inlined the
 `with-edit-hooks` 16135 -> 16259), which left `with-edit-hooks` at 125 B, under the 150 B warning line;
 two more levers outside the renderer closed it: the `getInternal()` diagnostic lost its long tail (-24 B on
 every mixin fixture, `has no internal state` kept) and `MountState.stopFx`/`stopUi` became `fx`/`ui`
-(-9 B). Final headroom: kitchen sink 243 B, `with-edit-hooks` 156 B (the tightest), `+ withConflicts` 779 B.
+(-9 B). Measured before rebasing onto the keyboard-reveal and Canvas-pin passes; after rebasing, three more unasserted diagnostic tails (the calendar iteration guard, `exportPng`'s size limit, the signals flush loop, `computeCriticalPath` and `historyLimit`) were trimmed because the keyboard-reveal pass had left the kitchen sink at 108 B with the patch on top. Final post-rebase headroom (gzip bytes): hello world 1682, `+ withIo` 1656, `+ withRender` 533, `+ withRender + withInteraction` 363, kitchen sink 159 (the tightest), `with-edit-hooks` 203, `+ withConflicts` 824.
 Not done, on purpose: renaming `RowLayout` members (exported from `@fluxgantt/core/render`) and removing
 `memo.painted` (the Canvas renderer would then paint twice at mount; needs a Canvas-side "same `rev`, same
 selection => no-op" first). A modifier-check hoist in `edit-hooks` and a row-state diff set were measured
