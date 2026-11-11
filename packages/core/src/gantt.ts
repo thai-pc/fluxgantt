@@ -659,7 +659,7 @@ class Gantt implements GanttInstance {
       (!Number.isInteger(config.historyLimit) || config.historyLimit < 0)
     ) {
       throw new Error(
-        `createGantt: config.historyLimit must be a non-negative integer, got ${config.historyLimit}`,
+        `createGantt: config.historyLimit must be a non-negative integer`,
       );
     }
     this.#historyLimit = config.historyLimit ?? DEFAULT_HISTORY_LIMIT;
@@ -1176,7 +1176,7 @@ class Gantt implements GanttInstance {
     this.#assertAlive('computeCriticalPath');
     const tasks = this.#taskStore.all();
     if (tasks.length === 0) {
-      throw new Error('gantt.computeCriticalPath: no tasks — add at least one task first');
+      throw new Error('gantt.computeCriticalPath: no tasks');
     }
     // May throw CyclicDependencyError — propagated, not swallowed.
     const result = computeCriticalPathFn(tasks, this.#dependencyStore.all(), this.#calendar);
