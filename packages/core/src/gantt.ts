@@ -1530,8 +1530,8 @@ class Gantt implements GanttInstance {
   #teardownMount(): void {
     const m = this.#mount;
     if (!m) return; // never mounted / already unmounted / headless
-    m.stopFx();
-    m.stopUi();
+    m.fx();
+    m.ui();
     m.handle.destroy();
     this.#mount = undefined;
   }

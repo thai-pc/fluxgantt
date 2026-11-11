@@ -251,8 +251,8 @@ function finishMount(
   const state: MountState = {
     renderer,
     handle: handle,
-    stopFx: disposeEffect,
-    stopUi: disposeInteractions,
+    fx: disposeEffect,
+    ui: disposeInteractions,
     focusedId: getFocusedTaskId,
     anchored: (mutate) => {
       withScrollAnchor(handle, mutate);

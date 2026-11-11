@@ -70,10 +70,10 @@ export type RendererKind = 'svg' | 'canvas';
 export interface MountState {
   readonly renderer: RendererKind;
   readonly handle: SvgRendererHandle | CanvasRendererHandle;
-  readonly stopFx: () => void;
+  readonly fx: () => void;
   /** Interaction teardown, if `withInteraction` was applied before this mount; a no-op
    *  otherwise. */
-  readonly stopUi: () => void;
+  readonly ui: () => void;
   readonly focusedId: () => TaskId | undefined;
   /**
    * Runs `mutate()` (a view-mode write, which synchronously repaints) between a capture and a

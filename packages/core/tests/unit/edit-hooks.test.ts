@@ -751,8 +751,8 @@ describe('withEditHooks — Canvas keyboard path', () => {
     internal.setMount({
       renderer: 'canvas',
       handle,
-      stopFx: () => undefined,
-      stopUi: () => undefined,
+      fx: () => undefined,
+      ui: () => undefined,
     } as unknown as MountState);
     const activated: TaskActivatedPayload[] = [];
     const context: TaskContextRequestedPayload[] = [];
