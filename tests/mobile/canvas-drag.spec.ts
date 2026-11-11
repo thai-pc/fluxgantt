@@ -85,7 +85,8 @@ test.describe('Canvas touch drag', () => {
   });
 
   test('a link drag from a selected bar\'s handle creates the dependency', async ({ page }) => {
-    await scrollTo(page, 250);
+    // 200, not 250: at 250 the bar's middle is parked under the pinned label column (not a bar target)
+    await scrollTo(page, 200);
     const a = await barBox(page, 'a');
     await page.touchscreen.tap(a.x + a.w / 2, a.y + a.h / 2);
     await expect.poll(async () => (await events(page, 'selection:changed')).length).toBeGreaterThan(0);
@@ -96,7 +97,8 @@ test.describe('Canvas touch drag', () => {
   });
 
   test('without selecting first, the end of a bar is a resize edge, not a link handle', async ({ page }) => {
-    await scrollTo(page, 250);
+    // 200, not 250: at 250 the grab point (end - 18 px) is under the pinned label column
+    await scrollTo(page, 200);
     const a = await barBox(page, 'a');
     const e0 = await taskMs(page, 'a', 'end');
     await touchDrag({ x: a.x + a.w - 18, y: a.y + a.h / 2 }, { x: a.x + a.w - 18 + 2 * PX_PER_DAY, y: a.y + a.h / 2 });
