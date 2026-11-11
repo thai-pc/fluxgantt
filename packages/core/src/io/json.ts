@@ -131,7 +131,7 @@ function parseIfString(input: string | object, maxLen: number): unknown {
 
 function unwrapEnvelope(raw: unknown): Record<string, unknown> {
   if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) {
-    throw new IoValidationError('root must be a JSON object', '$');
+    throw new IoValidationError('root must be an object', '$');
   }
   const obj = raw as Record<string, unknown>;
   if ('fluxgantt' in obj) {
@@ -167,7 +167,7 @@ function validateAndBuildTasks(rawTasksIn: unknown, limits: ImportLimits): TaskI
 
     const id = assertNonEmptyString(raw.id, `${path}.id`, limits.maxIdLength);
     if (seenIds.has(id)) {
-      throw new IoValidationError(`duplicate task id "${id}" within import`, `${path}.id`);
+      throw new IoValidationError(`duplicate task id "${id}"`, `${path}.id`);
     }
     seenIds.add(id);
 
