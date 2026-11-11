@@ -161,6 +161,8 @@ function setup(rtl: boolean, attach = true) {
   const W = LABEL + h.getTimeScale().totalWidth;
   vi.spyOn(h.canvas, 'getBoundingClientRect').mockReturnValue(rect(rtl ? VISIBLE_W - W : 0, W));
   vi.spyOn(container, 'getBoundingClientRect').mockReturnValue(rect(0, VISIBLE_W));
+  // The pinned label canvas hugs the inline-start edge of the visible box.
+  vi.spyOn(h.canvas.nextElementSibling!, 'getBoundingClientRect').mockReturnValue(rect(rtl ? VISIBLE_W - LABEL : 0, LABEL));
   Object.defineProperty(container, 'clientWidth', { value: VISIBLE_W, configurable: true });
   Object.defineProperty(container, 'clientHeight', { value: CANVAS_H, configurable: true });
   const moved: Array<{ id: TaskId; start: Temporal.ZonedDateTime }> = [];

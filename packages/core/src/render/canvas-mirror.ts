@@ -38,18 +38,18 @@ export function layoutX(rtl: boolean, x: number, width: number): number {
 }
 
 /** Distance (CSS px) from the pinned column's INLINE-START edge when `clientX` is inside the pinned
- *  zone, else `undefined`. The zone is the visible box (scrollbars excluded) from its inline-start
- *  edge, `offsetX` wide. That distance IS the layout-space x inside the column, so it plugs straight
- *  into the label and toggle hit math. A non-finite `clientX` is outside (comparisons are false). */
+ *  zone, else `undefined`. The zone is the label canvas's OWN box (`labels`, `offsetX` wide), measured
+ *  where it really is: container padding, a scrollbar or the WebKit RTL pin lag all move it, and this
+ *  follows. That distance IS the layout-space x inside the column, so it plugs straight into the label
+ *  and toggle hit math. A non-finite `clientX` is outside (comparisons are false). */
 export function pinnedDistance(
-  container: HTMLElement,
+  labels: HTMLElement,
   rtl: boolean,
   offsetX: number,
   clientX: number,
 ): number | undefined {
-  // `clientLeft` includes an RTL left-hand scrollbar.
-  const left = container.getBoundingClientRect().left + container.clientLeft;
-  const d = rtl ? left + container.clientWidth - clientX : clientX - left;
+  const r = labels.getBoundingClientRect();
+  const d = rtl ? r.right - clientX : clientX - r.left;
   return d >= 0 && d < offsetX ? d : undefined;
 }
 

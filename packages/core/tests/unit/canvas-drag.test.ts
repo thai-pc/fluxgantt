@@ -119,6 +119,11 @@ function setup(
   vi.spyOn(container, 'getBoundingClientRect').mockReturnValue({
     left: 0, top: 0, right: VISIBLE_W, bottom: CANVAS_H, x: 0, y: 0, width: VISIBLE_W, height: CANVAS_H, toJSON: () => ({}),
   });
+  // The pinned label canvas hugs the left edge of the visible box.
+  const lw = opts.options?.labelColumnWidth ?? 160;
+  vi.spyOn(canvas.nextElementSibling!, 'getBoundingClientRect').mockReturnValue({
+    left: 0, top: 0, right: lw, bottom: CANVAS_H, x: 0, y: 0, width: lw, height: CANVAS_H, toJSON: () => ({}),
+  });
   Object.defineProperty(container, 'clientWidth', { value: VISIBLE_W, configurable: true });
   Object.defineProperty(container, 'clientHeight', { value: CANVAS_H, configurable: true });
   const moved: Setup['moved'] = [];

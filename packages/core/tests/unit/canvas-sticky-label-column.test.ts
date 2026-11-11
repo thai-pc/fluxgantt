@@ -64,11 +64,15 @@ function mount(options: Parameters<typeof createCanvasRenderer>[2] = {}, list: T
   return createCanvasRenderer(container, { tasks: list, dependencies: [] }, { viewMode: 'week', viewportHeight: CANVAS_H, ...options });
 }
 /** Stub a scrolled container: visible box at `left`, the canvas scrolled `scroll` px to its left. */
-function scrolled(h: ReturnType<typeof mount>, scroll: number, left = 100): void {
+function scrolled(h: ReturnType<typeof mount>, scroll: number, left = 100, pad = 0, rtl = false): void {
   vi.spyOn(container, 'getBoundingClientRect').mockReturnValue(rect(left, VISIBLE_W));
   Object.defineProperty(container, 'clientWidth', { value: VISIBLE_W, configurable: true });
   Object.defineProperty(container, 'clientHeight', { value: CANVAS_H, configurable: true });
   vi.spyOn(h.canvas, 'getBoundingClientRect').mockReturnValue(rect(left - scroll, 5000));
+  // The pinned label canvas sits at the container's content edge (`pad` in from the padding edge).
+  vi.spyOn(h.canvas.nextElementSibling!, 'getBoundingClientRect').mockReturnValue(
+    rect(rtl ? left + VISIBLE_W - pad - LABEL : left + pad, LABEL),
+  );
 }
 
 beforeEach(() => {
@@ -175,8 +179,9 @@ describe('paint split', () => {
     expect(lab.calls.find((c) => c.name === 'fillText')!.args.slice(1)).toEqual([22, y0]);
     // exactly one toggle (the summary row) => one filled triangle path
     expect(count(lab, 'fill')).toBe(1);
-    // divider snapped inside the box: moveTo(offsetX - 0.5, 0)
-    expect(lab.calls.filter((c) => c.name === 'moveTo')[0]!.args).toEqual([LABEL - 0.5, 0]);
+    // divider snapped inside the box: moveTo(offsetX - 0.5, 0), painted last so a long name cannot overpaint it
+    expect(lab.calls.findLastIndex((c) => c.name === 'stroke')).toBeGreaterThan(lab.calls.findLastIndex((c) => c.name === 'fillText'));
+    expect(lab.calls.filter((c) => c.name === 'moveTo').at(-1)!.args).toEqual([LABEL - 0.5, 0]);
   });
 
   it('clips rows to the band below the header and keeps save/restore balanced', () => {
@@ -353,7 +358,7 @@ describe('hit-testing inside the pinned column', () => {
 
   it('RTL mirrors the zone to the visible right edge', () => {
     const h = mount({ rtl: true });
-    scrolled(h, 0);
+    scrolled(h, 0, 100, 0, true);
     const right = 100 + VISIBLE_W;
     expect(h.hitTestRow(right - 40, HEADER + 16)).toMatchObject({ taskId: 'p', onLabel: true, onBar: false });
   });
@@ -363,8 +368,23 @@ describe('hit-testing inside the pinned column', () => {
     scrolled(h, 400);
     expect(h.getRowAnchor(0).clientX).toBe(100 + LABEL / 2);
     const rtl = mount({ rtl: true });
-    scrolled(rtl, 400);
+    scrolled(rtl, 400, 100, 0, true);
     expect(rtl.getRowAnchor(0).clientX).toBe(100 + VISIBLE_W - LABEL / 2);
+  });
+
+  it('a padded container: the zone, the toggle and the anchor follow the label canvas', () => {
+    const PAD = 16;
+    const h = mount();
+    scrolled(h, 400, 100, PAD);
+    const y = HEADER + 16;
+    // the toggle gutter is [6, 18) in label space, i.e. client [100+PAD+6, 100+PAD+18)
+    expect(h.hitTestRow(100 + PAD + 10, y)).toMatchObject({ taskId: 'p', hitToggle: true, onBar: false });
+    // the strip left of the column (inside the padding) is chart content, not label
+    expect(h.hitTestRow(100 + 4, y)?.onLabel).toBe(false);
+    // the last column pixel is still label; the first pixel right of it is not
+    expect(h.hitTestRow(100 + PAD + LABEL - 1, y)?.onLabel).toBe(true);
+    expect(h.hitTestRow(100 + PAD + LABEL, y)?.onLabel).toBe(false);
+    expect(h.getRowAnchor(0).clientX).toBe(100 + PAD + LABEL / 2);
   });
 
   it('at scrollLeft 0 the column hit equals the old content-space result', () => {
@@ -376,16 +396,15 @@ describe('hit-testing inside the pinned column', () => {
 });
 
 describe('pinnedDistance', () => {
-  const box = (left: number, clientWidth: number, clientLeft = 0): HTMLElement => {
+  // The label canvas's own box: left edge `left`, `width` wide.
+  const box = (left: number, width: number): HTMLElement => {
     const el = document.createElement('div');
-    vi.spyOn(el, 'getBoundingClientRect').mockReturnValue(rect(left, clientWidth + clientLeft));
-    Object.defineProperty(el, 'clientWidth', { value: clientWidth });
-    Object.defineProperty(el, 'clientLeft', { value: clientLeft });
+    vi.spyOn(el, 'getBoundingClientRect').mockReturnValue(rect(left, width));
     return el;
   };
 
   it('LTR: distance from the left edge, boundary excluded', () => {
-    const el = box(100, 500);
+    const el = box(100, 160);
     expect(pinnedDistance(el, false, 160, 100)).toBe(0);
     expect(pinnedDistance(el, false, 160, 259.5)).toBe(159.5);
     expect(pinnedDistance(el, false, 160, 260)).toBeUndefined();
@@ -393,20 +412,22 @@ describe('pinnedDistance', () => {
   });
 
   it('RTL: distance from the right edge', () => {
-    const el = box(100, 500);
-    expect(pinnedDistance(el, true, 160, 600)).toBe(0);
-    expect(pinnedDistance(el, true, 160, 441)).toBe(159);
-    expect(pinnedDistance(el, true, 160, 440)).toBeUndefined();
+    const el = box(100, 160);
+    expect(pinnedDistance(el, true, 160, 260)).toBe(0);
+    expect(pinnedDistance(el, true, 160, 101)).toBe(159);
+    expect(pinnedDistance(el, true, 160, 100)).toBeUndefined();
   });
 
-  it('honours clientLeft and a column wider than the box', () => {
-    expect(pinnedDistance(box(100, 400, 10), false, 160, 109)).toBeUndefined();
-    expect(pinnedDistance(box(100, 400, 10), false, 160, 115)).toBe(5);
-    expect(pinnedDistance(box(0, 100), false, 160, 99)).toBe(99);
+  it('follows the label canvas, not the container: a padded container shifts the zone', () => {
+    const el = box(116, 160); // container at 100 with padding 16
+    expect(pinnedDistance(el, false, 160, 110)).toBeUndefined();
+    expect(pinnedDistance(el, false, 160, 120)).toBe(4);
+    expect(pinnedDistance(el, false, 160, 275)).toBe(159);
+    expect(pinnedDistance(el, false, 160, 276)).toBeUndefined();
   });
 
   it('non-finite coordinates are outside', () => {
-    const el = box(0, 500);
+    const el = box(0, 160);
     for (const x of [Number.NaN, Infinity, -Infinity]) expect(pinnedDistance(el, false, 160, x)).toBeUndefined();
   });
 
@@ -418,9 +439,9 @@ describe('pinnedDistance', () => {
         fc.integer({ min: 0, max: 400 }),
         fc.integer({ min: -1000, max: 3000 }),
         fc.boolean(),
-        (left, w, offsetX, x, rtl) => {
-          const d = pinnedDistance(box(left, w), rtl, offsetX, x);
-          const dist = rtl ? left + w - x : x - left;
+        (left, _w, offsetX, x, rtl) => {
+          const d = pinnedDistance(box(left, offsetX), rtl, offsetX, x);
+          const dist = rtl ? left + offsetX - x : x - left;
           if (dist >= 0 && dist < offsetX) expect(d).toBe(dist);
           else expect(d).toBeUndefined();
         },

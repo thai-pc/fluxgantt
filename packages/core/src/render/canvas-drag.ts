@@ -28,7 +28,7 @@ import {
   snapDeltaToDay,
 } from '../internal/drag-math.js';
 import type { Task, TaskId } from '../types.js';
-import { applyMirror, layoutX, makePin, pinnedDistance } from './canvas-mirror.js';
+import { applyMirror, layoutX, makePin } from './canvas-mirror.js';
 import type { BarHit, BarZone } from './interactive-renderer-handle.js';
 import {
   anchorOf,
@@ -65,6 +65,8 @@ export interface CanvasDragHost {
   readonly container: HTMLElement;
   readonly headerHeight: number;
   view(): DragView;
+  /** Distance into the pinned label column when `clientX` is over it, else `undefined`. */
+  pinned(clientX: number): number | undefined;
   selectedCount(): number;
   viewportHeight(): number;
   tokens(): DragTokens;
@@ -220,7 +222,7 @@ export function createCanvasDrag(
       return undefined;
     }
     // The pinned label column covers whatever bar lies under it: nothing there is a drag target.
-    if (pinnedDistance(container, host.view().rtl, host.view().offsetX, clientX) !== undefined) return undefined;
+    if (host.pinned(clientX) !== undefined) return undefined;
     const x = layoutX(host.view().rtl, clientX - rect.left, rect.width);
     const y = clientY - rect.top;
     return x < 0 || x > rect.width || y < host.headerHeight || y > rect.height ? undefined : { x, y };

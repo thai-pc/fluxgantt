@@ -788,7 +788,7 @@ export function createCanvasRenderer(
   let dragTokens: DesignTokens | undefined;
   // Tracks the resolved `focusedTaskId` (`state.input.focusedTaskId ?? rows[0]?.task.id`) as of
   // the END of the PREVIOUS `renderPixels()` call (fix #37 follow-up, spec §5.2). `render()` runs
-  // on every scroll/resize event, not just on a `focusedTaskId`-changing `update()` — unconditionally
+  // on every vertical scroll or resize (not horizontal scroll), not just on a `focusedTaskId`-changing `update()` — unconditionally
   // re-running `ensureFocusedRowVisible()` on EVERY render would immediately undo a plain user
   // scroll (mouse wheel, scrollbar drag, or a programmatic `container.scrollTop` write) back to
   // whichever row is currently considered "focused", which defaults to row 0 whenever no task has
@@ -1043,6 +1043,7 @@ export function createCanvasRenderer(
         container,
         headerHeight: HEADER_HEIGHT,
         view: dragView,
+        pinned: (clientX) => pinnedDistance(labels, state.options.rtl === true, currentLabelColumnWidth, clientX),
         selectedCount: () => state.input.selectedTaskIds?.length ?? 0,
         viewportHeight: () => resolveViewportHeightPx(state.options),
         tokens: () => (dragTokens ??= resolveDesignTokens(container)),
@@ -1058,15 +1059,12 @@ export function createCanvasRenderer(
     },
     getRowAnchor(rowIndex: number): { clientX: number; clientY: number } {
       const rect = canvas.getBoundingClientRect();
-      const box = container.getBoundingClientRect();
+      const lr = labels.getBoundingClientRect();
       const rowHeight = ROW_HEIGHT[state.options.density ?? DEFAULT_DENSITY];
       const y = HEADER_HEIGHT + rowIndex * rowHeight - container.scrollTop + rowHeight / 2;
-      // The centre of the PINNED column inside the visible box (the canvas itself may be scrolled away).
-      const left = box.left + container.clientLeft;
+      // The centre of the PINNED label canvas, where it really is (the chart canvas may be scrolled away).
       return {
-        clientX: state.options.rtl
-          ? left + container.clientWidth - currentLabelColumnWidth / 2
-          : left + currentLabelColumnWidth / 2,
+        clientX: (lr.left + lr.right) / 2,
         clientY: rect.top + Math.min(Math.max(y, HEADER_HEIGHT), rect.height),
       };
     },
@@ -1126,7 +1124,7 @@ export function createCanvasRenderer(
     const rect = canvas.getBoundingClientRect();
     const rtl = state.options.rtl === true;
     // Inside the pinned column the pointer resolves in LABEL space (never a bar hidden underneath).
-    const pin = pinnedDistance(container, rtl, currentLabelColumnWidth, clientX);
+    const pin = pinnedDistance(labels, rtl, currentLabelColumnWidth, clientX);
     const x = pin ?? layoutX(rtl, clientX - rect.left, rect.width);
     const y = clientY - rect.top;
 
@@ -1597,14 +1595,13 @@ export function createCanvasRenderer(
       ctx.restore();
     }
 
-    // --- Label column (the pinned sibling canvas): divider, then the windowed row labels and toggles,
-    // clipped to the row band so rows never paint into the corner. Mirrored about ITS OWN width.
+    // --- Label column (the pinned sibling canvas): the windowed row labels and toggles, clipped to the
+    // row band so rows never paint into the corner, then the divider on top so a long name cannot
+    // overpaint it. Mirrored about ITS OWN width.
     paintedScrollTop = scrollTop;
     if (offsetX > 0) {
       labelCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
       if (state.options.rtl) applyMirror(labelCtx, offsetX);
-      // Pixel-snapped inside the box so the stroke is not half-clipped at the canvas edge.
-      paintLabelDivider(labelCtx, offsetX - 0.5, resolvedViewportHeightPx, tokens);
       labelCtx.save();
       try {
         labelCtx.beginPath();
@@ -1615,6 +1612,8 @@ export function createCanvasRenderer(
       } finally {
         labelCtx.restore();
       }
+      // Pixel-snapped inside the box so the stroke is not half-clipped at the canvas edge.
+      paintLabelDivider(labelCtx, offsetX - 0.5, resolvedViewportHeightPx, tokens);
     }
     syncPin();
     dragTokens = tokens;
