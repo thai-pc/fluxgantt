@@ -6,7 +6,7 @@
 //
 // SECURITY (security.md, spec §8 — read before touching this file): `task.name` is the
 // only free-form string rendered as text in v1, and it is ALWAYS written as a string through
-// `Element.append(string)` (which creates a Text node and never parses markup) — never
+// `Element.append(String(...))` (which creates a Text node and never parses markup) — never
 // `innerHTML`, never a template string assembled into markup. `task.color` is only ever used after `validateTaskColor()` accepts it.
 // `<marker>` ids are compile-time constants, never derived from task/user data.
 import { getTemporal } from '../internal/temporal.js';
@@ -80,7 +80,10 @@ export interface SvgRendererInput {
   /** Optional data revision token. Equal tokens across two `update()` calls assert that `tasks`,
    *  `dependencies`, `criticalPath`, `calendar`, `collapsedIds` and `rollup` are semantically
    *  unchanged, so only the rows whose selection/focus state changed are rebuilt. Absent = always a
-   *  full render (the safe default). A caller that passes it must bump it on every other change. */
+   *  full render (the safe default). A caller that passes it must bump it on every other change.
+   *  A selection or focus change no longer repaints the rest of the chart, so mutating a task object
+   *  in place, or the clock crossing local midnight (the today wash and rule), shows only after the
+   *  next full render: call `refresh()`. */
   readonly rev?: number;
 }
 
@@ -628,7 +631,7 @@ export function createSvgRenderer(
         },
         { 'dominant-baseline': 'middle', fill: 'var(--fg-fg, #18181b)' },
       );
-      label.append(task.name);
+      label.append(String(task.name)); // String(): a non-string name must never insert a live node
       cell.append(label);
 
       // Whitelist `task.type` before folding it into a class token (review N3): fall back to
@@ -785,8 +788,8 @@ export function createSvgRenderer(
     svg.append(divider);
     // Pinned layers. The band replicates what crosses the header in the chart (the today rule, which
     // `overflow` trims to the band); the column replicates the divider and every label/toggle, tagged
-    // with their row's dataset so a click on a clone resolves exactly like one on the original. Full
-    // renders are the only path today; a future selection-only row patch need not touch either.
+    // with their row's dataset so a click on a clone resolves exactly like one on the original. The row
+    // patch does not touch either (asserted by the outerHTML tests in svg-row-patch.test.ts).
     setAttrs(overlay, { width: totalWidth, height: HEADER_HEIGHT });
     setAttrs(corner, { width: offsetX, height: HEADER_HEIGHT });
     setAttrs(column, { width: offsetX, height: totalHeight });
