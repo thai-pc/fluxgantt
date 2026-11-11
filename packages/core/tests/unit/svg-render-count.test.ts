@@ -82,15 +82,15 @@ describe('render count: one render per operation', () => {
     expect(container.querySelectorAll('.fg-task--critical').length).toBeGreaterThan(0);
   });
 
-  it('an initially selected row (focus differs from the painted first row) still gets its repaint', () => {
+  it('an initially selected row (focus differs from the painted first row) gets a two-row patch, not a second full render', () => {
     const gantt = createGantt({ tasks });
     gantt.select(id('c'));
     gantt.mount(container);
-    expect(renders).toBe(2);
+    expect(renders).toBe(1);
     expect(container.querySelector('[data-task-id="c"].fg-timeline__row')?.getAttribute('tabindex')).toBe('0');
   });
 
-  it('zoomTo, collapse, expand and select each repaint once and never recompute the critical path', () => {
+  it('zoomTo, collapse and expand repaint once each; select and selectAll patch rows (no full render); the critical path is never recomputed', () => {
     const gantt = mounted();
     renders = 0;
     gantt.zoomTo('month');
@@ -100,9 +100,9 @@ describe('render count: one render per operation', () => {
     gantt.toggleCollapse(id('p'));
     expect(renders).toBe(3);
     gantt.select(id('c'));
-    expect(renders).toBe(4);
+    expect(renders).toBe(3); // spec-svg-row-patch.md: selection rebuilds the changed rows in place
     gantt.selectAll();
-    expect(renders).toBe(5);
+    expect(renders).toBe(3);
     expect(cpmCalls()).toBe(1); // the mount's, nothing since
   });
 
