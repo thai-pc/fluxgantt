@@ -1,5 +1,9 @@
 // Interaction layer — roving-tabindex keyboard navigation (spec-keyboard-nav.md §4).
 // Arrow Up/Down move focus (select-follows-focus), Shift+Arrow extends a range selection,
+// Home/End jump to the first/last row and PageUp/PageDown move a page of rows (same selection
+// semantics, Shift extends; ignored with Ctrl/Cmd/Alt). The arrows scroll vertically only; the bare
+// key `g` is the explicit horizontal "go to bar" (delegated to `onReveal`, see spec-keyboard-
+// horizontal-reveal.md; a no-op without it),
 // Space toggles the focused row's selection membership, Delete/Backspace removes every
 // selected task. Ctrl/Cmd+Z undoes the most recent history entry, Ctrl/Cmd+Shift+Z redoes
 // it — both gated by `isReadOnly()` like Delete/Backspace. Ctrl/Cmd+D duplicates every
@@ -55,6 +59,9 @@ export interface KeyboardNavOptions {
   /** Ctrl/Cmd + Minus (`'-'`, Shift-independent): step the view one level toward `'year'`. Same
    *  never-gated posture as `onZoomIn`. */
   onZoomOut: () => void;
+  /** `g` (no Ctrl/Cmd/Alt): scroll the focused row's bar into view. Optional; absent = `g` is inert
+   *  (not prevented). Moves neither focus nor selection. */
+  onReveal?: (id: TaskId) => void;
   /** Read-only tasks accessor — same contract as `enableClickSelect`'s `getTasks`: full
    *  `Task[]`, re-read fresh on every keydown (never cached), and fed straight into
    *  `layoutRows` for row-order resolution. */
@@ -231,11 +238,34 @@ export function enableKeyboardNav(
 
     switch (event.key) {
       case 'ArrowDown':
-        handleArrow(event, rows, currentIndex, 1);
+        handleMove(event, rows, currentIndex, currentIndex + 1);
         return;
       case 'ArrowUp':
-        handleArrow(event, rows, currentIndex, -1);
+        handleMove(event, rows, currentIndex, currentIndex - 1);
         return;
+      case 'Home':
+      case 'End':
+      case 'PageUp':
+      case 'PageDown': {
+        if (mod || event.altKey) return;
+        const k = event.key;
+        // One row of overlap per page; 32 = HEADER_HEIGHT (as in revealFocusedRow).
+        const page = Math.max(1, Math.floor((focusRoot.clientHeight - 32) / ROW_HEIGHT[options.density]) - 1);
+        handleMove(
+          event,
+          rows,
+          currentIndex,
+          k === 'Home' ? 0 : k === 'End' ? rows.length : currentIndex + (k === 'PageUp' ? -page : page),
+        );
+        return;
+      }
+      case 'g': {
+        const row = rows[currentIndex];
+        if (mod || event.altKey || !row || !options.onReveal) return;
+        event.preventDefault();
+        options.onReveal(row.task.id);
+        return;
+      }
       case 'ArrowLeft':
       case 'ArrowRight':
         // No-op, `preventDefault()` NOT called (reserved for future horizontal/cell nav —
@@ -358,11 +388,11 @@ export function enableKeyboardNav(
     options.onDeleteSelected();
   }
 
-  function handleArrow(
+  function handleMove(
     event: KeyboardEvent,
     rows: readonly RowLayout[],
     currentIndex: number,
-    direction: 1 | -1,
+    target: number,
   ): void {
     // Stale/clamping case (spec §4.6): the previously focused task no longer resolves in a
     // fresh layoutRows() call. Clamp to the row at (or nearest to) the same position rather
@@ -372,8 +402,9 @@ export function enableKeyboardNav(
       return;
     }
 
-    const nextIndex = currentIndex + direction;
-    if (nextIndex < 0 || nextIndex >= rows.length) return; // no wraparound (spec §4.4)
+    // Clamped here for every caller (page/End overshoot); no wraparound (spec §4.4).
+    const nextIndex = Math.max(0, Math.min(rows.length - 1, target));
+    if (nextIndex === currentIndex) return;
 
     const next = rows[nextIndex]!.task.id;
     event.preventDefault();
