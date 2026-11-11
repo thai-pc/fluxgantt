@@ -2649,8 +2649,9 @@ describe('createCanvasRenderer — getRowAnchor()', () => {
     installMockContext(createMockContext2D());
     const h = createCanvasRenderer(container, { tasks: buildFlatTasks(60), dependencies: [] }, { labelColumnWidth: 120 });
     h.canvas.getBoundingClientRect = () => new DOMRect(50, 200, 800, 600);
-    // the visible box starts at 50 too (jsdom's container rect is all zeros otherwise)
-    container.getBoundingClientRect = () => new DOMRect(50, 200, 800, 600);
+    // The anchor is the centre of the pinned label canvas (jsdom's rects are all zeros otherwise).
+    const labels = container.querySelector<HTMLCanvasElement>('canvas.fg-timeline-canvas-labels')!;
+    labels.getBoundingClientRect = () => new DOMRect(50, 200, 120, 600);
     const a = h.getRowAnchor(3);
     expect(a.clientX).toBe(50 + 60);
     expect(a.clientY).toBe(200 + 32 + 3 * 32 + 16);
