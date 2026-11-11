@@ -28,7 +28,7 @@ This file is the context entry point for AI. Details are split into rules under 
    | `+ withRender + withInteraction` | 19.19 KiB | 19.5 KiB |
    | `+ withRender + withTheme` | 15.17 KiB | 16 KiB |
    | `+ withRender + withInteraction + withResponsive` | 20.59 KiB | 21 KiB |
-   | `+ withRender + withViewport` | 15.39 KiB | 16 KiB |
+   | `+ withRender + withViewport` | 15.41 KiB | 16 KiB |
    | `+ withConflicts` (headless) | 9.27 KiB | 10 KiB |
    | `+ withRender + withEditHooks` (not in the kitchen sink) | 15.84 KiB | 16 KiB |
    | `+ withRender + withRtl` (not in the kitchen sink) | 14.8 KiB | 15.5 KiB |
@@ -180,6 +180,8 @@ arrow clamp path) was measured at +16 B (kitchen sink 24434, 142 B) and NOT kept
 dropped the kitchen sink under the 150 B line, so stale-focus Home/End clamp like the arrows do.
 The kitchen sink (158 B) is now the tightest fixture, just ahead of `with-edit-hooks` (159 B): the
 next interaction feature has to find its own bytes.
+
+The Canvas pinned-label-column pass (a sticky sibling `canvas.fg-timeline-canvas-labels`, 2026-11) lives entirely in the lazy Canvas chunk (~12.1 -> ~12.8 KiB gzip, in no budget) and moved ONE fixture: `+ withRender + withViewport` 15808 -> 15778 B (-30 B), because `viewport/mixin.ts` no longer branches on the renderer (both pin the label column). The other ten fixtures are +0 B; headroom is unchanged for them (kitchen sink 292 B, `with-edit-hooks` 159 B, the tightest).
 
 Run `pnpm size` from `packages/core` (or `pnpm size` at the root via turbo) to re-measure; the numbers above are its output, converted from its decimal-kB report to KiB. **It needs Node >= 22.19** — that is `size-limit` 14's own declared `engines.node` (`^22.19.0 || ^24.5.0 || >=26.0.0`), and the floor is enforced by the root `engines.node` so a permitted Node cannot be one the repo fails on. Before 14 the practical floor was 22.18, because `size-limit` calls `fs.glob` with `withFileTypes` (added in Node 22.2) and on an older 22.x it dies with an opaque `TypeError: i.isFile is not a function` that looks like a repo misconfiguration but is not. `.nvmrc` pins an exact version for this reason; CI reads it via `node-version-file`.
 6. **Tier-gate correctly** — Pro (resource/baseline/MSProject), Cloud (multiplayer/AI). Don't cram Pro/Cloud code into `core`.
