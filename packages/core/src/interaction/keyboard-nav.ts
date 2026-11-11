@@ -59,9 +59,10 @@ export interface KeyboardNavOptions {
   /** Ctrl/Cmd + Minus (`'-'`, Shift-independent): step the view one level toward `'year'`. Same
    *  never-gated posture as `onZoomIn`. */
   onZoomOut: () => void;
-  /** `g` (no Ctrl/Cmd/Alt): scroll the focused row's bar into view. Optional; absent = `g` is inert
-   *  (not prevented). Moves neither focus nor selection. */
-  onReveal?: (id: TaskId) => void;
+  /** `g` (no Ctrl/Cmd/Alt): scroll the focused row's bar into view. Return truthy when handled
+   *  (the key is then `preventDefault()`ed). Optional; absent or falsy = `g` is inert (not
+   *  prevented). Moves neither focus nor selection. */
+  onReveal?: (id: TaskId) => boolean | void;
   /** Read-only tasks accessor — same contract as `enableClickSelect`'s `getTasks`: full
    *  `Task[]`, re-read fresh on every keydown (never cached), and fed straight into
    *  `layoutRows` for row-order resolution. */
@@ -262,8 +263,7 @@ export function enableKeyboardNav(
       case 'g': {
         const row = rows[currentIndex];
         if (mod || event.altKey || !row || !options.onReveal) return;
-        event.preventDefault();
-        options.onReveal(row.task.id);
+        if (options.onReveal(row.task.id)) event.preventDefault(); // falsy = nothing handled it
         return;
       }
       case 'ArrowLeft':

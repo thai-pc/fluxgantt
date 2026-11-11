@@ -57,7 +57,7 @@ function setup(o: {
   document.body.appendChild(container);
   const onSelect = vi.fn();
   const onRangeSelect = vi.fn();
-  const onReveal = vi.fn();
+  const onReveal = vi.fn(() => true);
   const nav = enableKeyboardNav({ interactionRoot: root, container } as unknown as InteractiveRendererHandle, {
     onSelect,
     onToggle: vi.fn(),
@@ -234,6 +234,13 @@ describe('g (reveal)', () => {
     }
     expect(t.press(1, 'G', { shiftKey: true }).defaultPrevented).toBe(false);
     expect(t.onReveal).not.toHaveBeenCalled();
+    t.dispose();
+  });
+
+  it('is not prevented when onReveal reports nothing handled', () => {
+    const t = setup({ n: 5 });
+    t.onReveal.mockReturnValue(false);
+    expect(t.press(1, 'g').defaultPrevented).toBe(false);
     t.dispose();
   });
 
