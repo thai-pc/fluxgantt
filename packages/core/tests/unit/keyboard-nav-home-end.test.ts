@@ -57,7 +57,7 @@ function setup(o: {
   document.body.appendChild(container);
   const onSelect = vi.fn();
   const onRangeSelect = vi.fn();
-  const onReveal = vi.fn(() => true);
+  const onReveal = vi.fn((_id: TaskId) => true);
   const nav = enableKeyboardNav({ interactionRoot: root, container } as unknown as InteractiveRendererHandle, {
     onSelect,
     onToggle: vi.fn(),
