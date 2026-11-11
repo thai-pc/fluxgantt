@@ -262,7 +262,7 @@ describe('scrollToTask (Canvas coordinate model)', () => {
     expect(geo.top).toBe(61 * ROW_HEIGHT.default - 300);
   });
 
-  it('keeps the label column in the horizontal coordinates: Canvas does not pin it', () => {
+  it('pins the label column in the horizontal coordinates, exactly like SVG', () => {
     const g = withViewport(createGantt({ tasks: manyTasks(3) }));
     const geo = stubGeometry(container, 800, 332);
     const handle = {
@@ -273,11 +273,26 @@ describe('scrollToTask (Canvas coordinate model)', () => {
     };
     getInternal(g).setMount({ renderer: 'canvas', handle } as unknown as MountState);
     g.scrollToTask(toTaskId('t1'), { align: 'start' });
-    expect(geo.left).toBe(LABEL_W + 1000); // content x = labelW + d, full viewport width
+    expect(geo.left).toBe(1000); // a bar at content x = labelW + d parks right of the column: scrollLeft = d
     g.scrollToTask(toTaskId('t1'), { align: 'end' });
-    expect(geo.left).toBe(LABEL_W + 1100 - 800);
+    expect(geo.left).toBe(1100 - (800 - LABEL_W)); // the window is the container minus the pinned column
     g.scrollToDate('2026-01-05', { align: 'start' });
-    expect(geo.left).toBe(LABEL_W + 1000);
+    expect(geo.left).toBe(1000);
+  });
+
+  it('writes no horizontal offset when the pinned column covers the whole visible width', () => {
+    const g = withViewport(createGantt({ tasks: manyTasks(3) }));
+    const geo = stubGeometry(container, LABEL_W, 332);
+    const handle = {
+      container,
+      getLabelColumnWidth: () => LABEL_W,
+      getTimeScale: () => ({ dateToX: () => 1000, totalWidth: 5000 }),
+      setOptions: vi.fn(),
+    };
+    getInternal(g).setMount({ renderer: 'canvas', handle } as unknown as MountState);
+    g.scrollToTask(toTaskId('t1'), { align: 'start' });
+    g.scrollToDate('2026-01-05', { align: 'start' });
+    expect(geo.left).toBe(0);
   });
 });
 

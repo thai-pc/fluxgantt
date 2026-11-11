@@ -161,6 +161,8 @@ function setup(rtl: boolean, attach = true) {
   const W = LABEL + h.getTimeScale().totalWidth;
   vi.spyOn(h.canvas, 'getBoundingClientRect').mockReturnValue(rect(rtl ? VISIBLE_W - W : 0, W));
   vi.spyOn(container, 'getBoundingClientRect').mockReturnValue(rect(0, VISIBLE_W));
+  // The pinned label canvas hugs the inline-start edge of the visible box.
+  vi.spyOn(h.canvas.nextElementSibling!, 'getBoundingClientRect').mockReturnValue(rect(rtl ? VISIBLE_W - LABEL : 0, LABEL));
   Object.defineProperty(container, 'clientWidth', { value: VISIBLE_W, configurable: true });
   Object.defineProperty(container, 'clientHeight', { value: CANVAS_H, configurable: true });
   const moved: Array<{ id: TaskId; start: Temporal.ZonedDateTime }> = [];
@@ -236,13 +238,12 @@ describe('hit testing and anchors with rtl (AC6, spec 6.3)', () => {
     expect(h.hitTestRow(100 + 10, y)).toMatchObject({ taskId: 'p', hitToggle: false });
   });
 
-  it('getRowAnchor sits in the middle of the label column at the RIGHT edge', () => {
-    const { h, W } = setup(true);
-    vi.spyOn(h.canvas, 'getBoundingClientRect').mockReturnValue(rect(50, W));
-    expect(h.getRowAnchor(0).clientX).toBe(50 + W - LABEL / 2);
+  it('getRowAnchor sits in the middle of the PINNED label column, at the RIGHT edge in RTL', () => {
+    const { h } = setup(true);
+    // Anchored on the visible box, not on the canvas: the canvas may be scrolled away.
+    expect(h.getRowAnchor(0).clientX).toBe(VISIBLE_W - LABEL / 2);
     const ltr = setup(false);
-    vi.spyOn(ltr.h.canvas, 'getBoundingClientRect').mockReturnValue(rect(50, ltr.W));
-    expect(ltr.h.getRowAnchor(0).clientX).toBe(50 + LABEL / 2);
+    expect(ltr.h.getRowAnchor(0).clientX).toBe(LABEL / 2);
   });
 
   it('hitTestBar finds the bar at its mirrored position and agrees with the painted geometry', () => {

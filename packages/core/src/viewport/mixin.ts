@@ -63,7 +63,8 @@ export interface ScrollToDateOptions {
  * renderer does not make its container scrollable (Canvas mode sets `overflow-y: auto` itself); on a
  * non-scrollable container the browser ignores the offsets, yet the methods still return `true`
  * because the return value reports that the target exists and an offset was written, not that the
- * container moved.
+ * container moved. Canvas mode pins the same label column (a sticky sibling canvas), so the horizontal
+ * numerics are identical in both renderers.
  */
 export interface ViewportCapability {
   /** Scrolls the task's row and bar into view. Returns `true` when the task's row exists and a
@@ -171,11 +172,10 @@ export function withViewport<T extends GanttInstance>(instance: T): T & Viewport
       // and the visible row band is the container minus the header.
       const itemTop = row.y;
       const viewH = container.clientHeight - HEADER_HEIGHT;
-      // SVG pins the label column, so the horizontal window is the container minus the column and a bar
-      // sits at `d` (dateToX) in that window; Canvas still scrolls the column away (`pinned` 0).
-      const pinned = mount.renderer === 'svg' ? labelW : 0;
-      let x0 = labelW - pinned + scale.dateToX(task.start);
-      let x1 = Math.max(x0, labelW - pinned + scale.dateToX(task.end));
+      // Both renderers pin the label column, so the horizontal window is the container minus the column
+      // and a bar sits at `d` (dateToX) in that window.
+      let x0 = scale.dateToX(task.start);
+      let x1 = Math.max(x0, scale.dateToX(task.end));
       if (task.type === 'milestone') {
         // A milestone is a point in time but is painted as a rotated square (side = rowHeight *
         // 0.6, see layoutTaskBar), so its visible half-extent is the half-diagonal. Using the
@@ -190,7 +190,7 @@ export function withViewport<T extends GanttInstance>(instance: T): T & Viewport
         viewH > 0
           ? resolveAxis(itemTop, itemTop + ROW_HEIGHT[density], container.scrollTop, viewH, align)
           : undefined;
-      const viewW = container.clientWidth - pinned;
+      const viewW = container.clientWidth - labelW;
       const left = viewW > 0 ? resolveAxis(x0, x1, k * container.scrollLeft, viewW, align) : undefined;
       applyScroll(container, left, top, options.behavior, k);
       return true;
@@ -206,13 +206,11 @@ export function withViewport<T extends GanttInstance>(instance: T): T & Viewport
       const rel = scale.dateToX(date); // throws on an unparseable date
       if (!Number.isFinite(rel)) throw new Error('gantt.scrollToDate: invalid date');
       const labelW = handle.getLabelColumnWidth();
-      const pinned = mount.renderer === 'svg' ? labelW : 0;
-      const x = labelW - pinned + rel;
       const k = handle.mirrorX ? -1 : 1;
-      const viewW = container.clientWidth - pinned;
+      const viewW = container.clientWidth - labelW;
       const left =
         viewW > 0
-          ? resolveAxis(x, x, k * container.scrollLeft, viewW, options.align ?? 'center')
+          ? resolveAxis(rel, rel, k * container.scrollLeft, viewW, options.align ?? 'center')
           : undefined;
       applyScroll(container, left, undefined, options.behavior, k);
       return rel >= 0 && rel <= scale.totalWidth;

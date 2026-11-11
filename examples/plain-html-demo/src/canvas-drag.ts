@@ -13,6 +13,7 @@
 //   ?edithooks=1  also compose `withEditHooks()`
 //   ?responsive=1 also compose `withResponsive()` (touch arbitration + coarse zones)
 //   ?theme=dark   also compose `withTheme()` and select the dark theme (overlay colour checks)
+//   ?longnames=1  long task names (the pinned label column cuts them at its edge)
 //
 // `window.__fx.barBox(id)` returns a bar's rectangle in VIEWPORT coordinates, computed with the
 // renderer's own exported layout functions: a Canvas bar has no DOM node to measure.
@@ -45,8 +46,9 @@ const leaf = (id: string, name: string, start: string, end: string, extra: Parti
   type: 'task',
   ...extra,
 });
+const longNames = params.get('longnames') === '1';
 const named: TaskInput[] = [
-  leaf('a', 'Alpha', '2026-08-03', '2026-08-07'),
+  leaf('a', longNames ? 'Alpha with a very long name that overflows the label column' : 'Alpha', '2026-08-03', '2026-08-07'),
   leaf('b', 'Bravo', '2026-08-10', '2026-08-14'),
   leaf('c', 'Charlie', '2026-08-17', '2026-08-21'),
   leaf('d', 'Delta', '2026-08-24', '2026-08-28'),

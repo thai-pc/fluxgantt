@@ -216,8 +216,15 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+/** Call log of the pinned label canvas (`canvas.fg-timeline-canvas-labels`) for the last installed
+ *  mock; the chart canvas keeps logging into the mock the test passed in, so every assertion about the
+ *  chart's own paint calls is unaffected by the label column living on a second canvas. */
+let labelMock: MockContext2D = createMockContext2D();
 function installMockContext(mock: MockContext2D): void {
-  vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockImplementation(() => mock.ctx);
+  labelMock = createMockContext2D();
+  vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockImplementation(function (this: HTMLCanvasElement) {
+    return this.className === 'fg-timeline-canvas-labels' ? labelMock.ctx : mock.ctx;
+  } as never);
 }
 
 function setDpr(value: number): void {
@@ -1365,7 +1372,8 @@ describe('SECURITY — task.name never reaches ctx.font', () => {
     const t = task('x', '2026-01-05T09:00', '2026-01-07T17:00', { name: evilName });
     createCanvasRenderer(container, { tasks: [t], dependencies: [] });
 
-    const fontSets = mock.calls.filter((c) => c.op === 'set' && c.prop === 'font');
+    // The label text is painted on the pinned label canvas: check both canvases.
+    const fontSets = [...mock.calls, ...labelMock.calls].filter((c) => c.op === 'set' && c.prop === 'font');
     expect(fontSets.length).toBeGreaterThan(0);
     for (const call of fontSets) {
       expect(String(call.args[0])).not.toContain(evilName);
@@ -1373,7 +1381,7 @@ describe('SECURITY — task.name never reaches ctx.font', () => {
     }
 
     // The name IS passed as fillText's literal text argument (injection-safe by construction).
-    const fillTextCalls = mock.calls.filter((c) => c.op === 'fillText');
+    const fillTextCalls = labelMock.calls.filter((c) => c.op === 'fillText');
     expect(fillTextCalls.some((c) => c.args[0] === evilName)).toBe(true);
   });
 });
@@ -2637,10 +2645,13 @@ describe('canvas renderer — design tokens re-resolve per render (theming)', ()
 
 // --- getRowAnchor (T4 edit hooks: keyboard anchor from the painted geometry) ---------------
 describe('createCanvasRenderer — getRowAnchor()', () => {
-  it('anchors on the painted row: canvas rect + label column / 2, header + row centre - scrollTop', () => {
+  it('anchors on the painted row: pinned column centre, header + row centre - scrollTop', () => {
     installMockContext(createMockContext2D());
     const h = createCanvasRenderer(container, { tasks: buildFlatTasks(60), dependencies: [] }, { labelColumnWidth: 120 });
     h.canvas.getBoundingClientRect = () => new DOMRect(50, 200, 800, 600);
+    // The anchor is the centre of the pinned label canvas (jsdom's rects are all zeros otherwise).
+    const labels = container.querySelector<HTMLCanvasElement>('canvas.fg-timeline-canvas-labels')!;
+    labels.getBoundingClientRect = () => new DOMRect(50, 200, 120, 600);
     const a = h.getRowAnchor(3);
     expect(a.clientX).toBe(50 + 60);
     expect(a.clientY).toBe(200 + 32 + 3 * 32 + 16);

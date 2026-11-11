@@ -36,3 +36,37 @@ export function fillTextAt(ctx: CanvasRenderingContext2D, text: string, x: numbe
 export function layoutX(rtl: boolean, x: number, width: number): number {
   return rtl ? width - x : x;
 }
+
+/** Distance (CSS px) from the pinned column's INLINE-START edge when `clientX` is inside the pinned
+ *  zone, else `undefined`. The zone is the label canvas's OWN box (`labels`, `offsetX` wide), measured
+ *  where it really is: container padding, a scrollbar or the WebKit RTL pin lag all move it, and this
+ *  follows. That distance IS the layout-space x inside the column, so it plugs straight into the label
+ *  and toggle hit math. A non-finite `clientX` is outside (comparisons are false). */
+export function pinnedDistance(
+  labels: HTMLElement,
+  rtl: boolean,
+  offsetX: number,
+  clientX: number,
+): number | undefined {
+  const r = labels.getBoundingClientRect();
+  const d = rtl ? r.right - clientX : clientX - r.left;
+  return d >= 0 && d < offsetX ? d : undefined;
+}
+
+/** Horizontal `position: sticky` does not pin inside a RTL scroll container in WebKit (Chromium and
+ *  Firefox pin it through `inset-inline-start`). Returns a function that measures where `el` really
+ *  is and translates it back over the visible inline-start (right) edge of `container`; it is a no-op
+ *  wherever sticky already did the job. `reset` drops the translation (RTL turned off). */
+export function makePin(el: HTMLElement, container: HTMLElement): (reset?: boolean) => void {
+  let shift = 0;
+  return (reset) => {
+    if (reset) {
+      if (shift !== 0) el.style.transform = '';
+      shift = 0;
+      return;
+    }
+    const box = container.getBoundingClientRect();
+    const dx = box.left + container.clientLeft + container.clientWidth - el.getBoundingClientRect().right;
+    if (Math.abs(dx) > 0.5) el.style.transform = `translateX(${(shift += dx)}px)`;
+  };
+}
