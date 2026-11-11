@@ -34,15 +34,17 @@ const PATCH_OPS: readonly Op[] = ['select', 'focus', 'arrowDown'];
 // p75 of 20 fresh-page samples x ~1.8-2x (quiet-machine p75, ms): zoom 530, density ~500, collapse
 // 850, select 600, selectAll 650, updateTask 950, cold mount 870. Before the fix the same operations
 // measured ~2300 (zoom/collapse/select/selectAll/updateTask) and 3500 (mount) on the same machine.
+// select/focus/arrowDown are row patches (spec-svg-row-patch.md): quiet-machine p75 of 20 fresh pages
+// 42 / 38 / 56 ms in Chromium, budgets are ~10x that because CI is a loaded linux runner.
 const BUDGET_MS: Record<Op, number> = {
   zoom: 1000,
   density: 1000,
   collapse: 1600,
-  select: 1200,
+  select: 500,
   selectAll: 1400,
   updateTask: 1900,
-  focus: 1200,
-  arrowDown: 1200,
+  focus: 500,
+  arrowDown: 600,
 };
 const MOUNT_BUDGET_MS = 1700;
 
