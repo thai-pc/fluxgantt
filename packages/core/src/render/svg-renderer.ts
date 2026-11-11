@@ -247,7 +247,7 @@ const FOCUS_RING_OFFSET_PX = 5;
 // so the default UA outline on it is suppressed (the ring is the `.fg-task__focus-ring` rect).
 const FOCUS_STYLE_TEXT =
   '.fg-timeline__row:focus-visible{outline:none}' +
-  '.fg-task__focus-ring{fill:none;stroke:none;pointer-events:none}' +
+  '.fg-task__focus-ring{stroke:none;pointer-events:none}' +
   '.fg-timeline__row:focus-visible .fg-task__focus-ring{stroke:var(--fg-task-focus,#0ea5e9);stroke-width:var(--fg-task-focus-width,2px)}';
 
 
@@ -330,13 +330,11 @@ export function createSvgRenderer(
     container,
     update(nextInput: SvgRendererInput, nextOptions?: Partial<SvgRendererOptions>): void {
       if (destroyed) return;
-      const prev = currentOptions;
-      const prevRev = currentInput.rev;
-      currentOptions = { ...prev, ...nextOptions };
-      currentInput = nextInput;
       // Same data token and every passed option equal by value (any doubt means a full render).
-      let same = nextInput.rev !== undefined && nextInput.rev === prevRev;
-      for (const k in nextOptions) same &&= nextOptions[k as keyof SvgRendererOptions] === prev[k as keyof SvgRendererOptions];
+      let same = nextInput.rev !== undefined && nextInput.rev === currentInput.rev;
+      for (const k in nextOptions) same &&= nextOptions[k as keyof SvgRendererOptions] === currentOptions[k as keyof SvgRendererOptions];
+      currentOptions = { ...currentOptions, ...nextOptions };
+      currentInput = nextInput;
       if (same && patch) patch(nextInput.selectedTaskIds ?? [], nextInput.focusedTaskId);
       else render();
     },
@@ -587,7 +585,7 @@ export function createSvgRenderer(
         'data-row-index': row.rowIndex,
         'data-task-id': task.id,
         'aria-rowindex': row.rowIndex + 1,
-        'aria-selected': isSelected ? 'true' : 'false',
+        'aria-selected': String(isSelected),
         tabindex: task.id === focusedTaskId ? '0' : '-1',
         // Omitted entirely on a leaf row, per WAI-ARIA (a non-expandable node must not carry
         // `aria-expanded="false"`). `aria-level` goes on EVERY row of a `treegrid` (leaves
@@ -638,9 +636,7 @@ export function createSvgRenderer(
       // Whitelist `task.type` before folding it into a class token (review N3): fall back to
       // the `task` modifier for any value that isn't a known TaskKind, so untrusted data can't
       // inject an arbitrary extra class (CSS-token spoofing).
-      const classNames = ['fg-task', `fg-task--${isKnownTaskKind(task.type) ? task.type : 'task'}`];
-      if (isCritical) classNames.push('fg-task--critical');
-      if (isSelected) classNames.push('fg-task--selected');
+      const kind = isKnownTaskKind(task.type) ? task.type : 'task';
       // `data-rolled-up` marks a bar whose geometry came from `computeRollup` (spec-summary-rollup.md
       // Ticket B2): the ONLY channel by which the interaction layer learns that, and it makes
       // drag-move/drag-resize decline such a bar (a rolled-up span is derived on read, so there is
@@ -648,7 +644,7 @@ export function createSvgRenderer(
       // milestone is drawn at its authored `start`, so it is NOT rolled up and stays draggable.
       // `task.id` is a branded TaskId (developer-controlled), safe as an attribute value.
       const wrapper = el('g', {
-        class: classNames.join(' '),
+        class: `fg-task fg-task--${kind}${isCritical ? ' fg-task--critical' : ''}${isSelected ? ' fg-task--selected' : ''}`,
         'data-task-id': task.id,
         ...(rolled !== undefined && task.type !== 'milestone' ? { 'data-rolled-up': 'true' } : {}),
         'aria-label': buildTaskAriaLabel(task, isCritical, isSelected, calendar, locale, rolled, messages),
@@ -820,10 +816,11 @@ export function createSvgRenderer(
       focusedTaskId = focus ?? rows[0]?.task.id; // same fallback as above
       // Rebuild exactly the rows whose painted selection/focus state differs from the new one. An id
       // with no row (hidden under a collapsed ancestor, stale) never matches, as in a full render.
-      [...rowsGroup.children].forEach((old, i) => {
-        const { id } = rows[i]!.task;
-        if (`${old.getAttribute('aria-selected')}${old.getAttribute('tabindex')}` !== `${selectedIds.has(id)}${id === focusedTaskId ? 0 : -1}`) {
-          old.replaceWith(makeRow(rows[i]!));
+      rows.forEach((row, i) => {
+        const old = rowsGroup.children[i] as SVGElement;
+        const { id } = row.task;
+        if (`${old.getAttribute('aria-selected')}${old.tabIndex}` !== `${selectedIds.has(id)}${id === focusedTaskId ? 0 : -1}`) {
+          old.replaceWith(makeRow(row));
         }
       });
       currentOptions.onPaint?.(svg);

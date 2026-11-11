@@ -34,7 +34,6 @@ const deps: Dependency[] = [
 
 let container: HTMLElement;
 beforeEach(() => {
-  vi.useFakeTimers();
   // Far outside the derived range: no today rule, so a re-render at a later instant cannot differ.
   vi.setSystemTime(new Date('2035-01-01T00:00:00Z'));
   container = document.createElement('div');
