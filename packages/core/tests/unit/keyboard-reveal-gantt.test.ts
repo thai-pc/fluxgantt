@@ -2,7 +2,7 @@
 //
 // `g` (go to bar) through a full instance (spec-keyboard-horizontal-reveal.md §7): the key is
 // delegated to `scrollToTask`, so it needs `withViewport`; arrows never scroll horizontally.
-import { describe, it, expect, afterEach, beforeEach } from 'vitest';
+import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
 import { createGantt } from '../../src/gantt.js';
 import { withRender } from '../../src/render/mixin.js';
 import { withInteraction } from '../../src/interaction/mixin.js';
@@ -149,15 +149,23 @@ describe.each<Order>(['viewport-first', 'interaction-first'])('g with withViewpo
     expect(Math.abs(r.left())).toBe(want);
   });
 
-  it('reduced motion: scrollTo is never asked to smooth-scroll', () => {
-    const g = chart(order);
-    g.mount(container);
-    stub(container, 800);
-    const calls: unknown[] = [];
-    (container as unknown as { scrollTo: (o: unknown) => void }).scrollTo = (o) => calls.push(o);
-    focus('far');
-    press('far', 'g');
-    expect(JSON.stringify(calls)).not.toContain('smooth');
+  it('reduced motion: matchMedia(reduce) stubbed, the key never requests smooth scrolling', () => {
+    const mm = vi.fn((q: string) => ({ matches: q.includes('reduce'), media: q }));
+    vi.stubGlobal('matchMedia', mm);
+    try {
+      const g = chart(order);
+      g.mount(container);
+      const s = stub(container, 800);
+      const calls: unknown[] = [];
+      (container as unknown as { scrollTo: (o: unknown) => void }).scrollTo = (o) => calls.push(o);
+      focus('far');
+      press('far', 'g');
+      expect(JSON.stringify(calls)).not.toContain('smooth');
+      // The reveal itself still happened.
+      expect(calls.length > 0 || s.left() > 0).toBe(true);
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it('ArrowUp/ArrowDown never write scrollLeft', () => {

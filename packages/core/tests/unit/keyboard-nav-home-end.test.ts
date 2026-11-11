@@ -92,6 +92,7 @@ function setup(o: {
     top,
     left,
     removeAll: () => (tasks = []),
+    drop: (i: number) => (tasks = tasks.filter((t) => t.id !== `t${i}`)),
     dispose: () => {
       nav.dispose();
       container.remove();
@@ -150,6 +151,33 @@ describe('Home / End', () => {
     expect(() => stale.press(2, 'Home')).not.toThrow();
     expect(stale.focused()).toBeUndefined();
     stale.dispose();
+  });
+
+  it('on stale focus (focused task removed, rows remain) go to the first / last row, selected and prevented', () => {
+    const t = setup({ n: 5 });
+    t.drop(2);
+    const home = t.press(2, 'Home');
+    expect(home.defaultPrevented).toBe(true);
+    expect(t.focused()).toBe(id(0));
+    expect(t.onSelect).toHaveBeenLastCalledWith(id(0));
+    const t2 = setup({ n: 5 });
+    t2.drop(2);
+    expect(t2.press(2, 'End').defaultPrevented).toBe(true);
+    expect(t2.focused()).toBe(id(4));
+    expect(t2.onSelect).toHaveBeenLastCalledWith(id(4));
+    t.dispose();
+    t2.dispose();
+  });
+
+  it('on a Canvas-like root (div) Home/End select but leave the vertical reveal to the renderer', () => {
+    const t = setup({ n: 50, clientHeight: 232, tag: 'div' });
+    t.press(10, 'End');
+    expect(t.focused()).toBe(id(49));
+    expect(t.onSelect).toHaveBeenLastCalledWith(id(49));
+    t.press(49, 'Home');
+    expect(t.focused()).toBe(id(0));
+    expect(t.top).toEqual([]);
+    t.dispose();
   });
 
   it('skip collapsed rows (the layout is the visible rows)', () => {
@@ -227,13 +255,29 @@ describe('g (reveal)', () => {
     t.dispose();
   });
 
-  it('is ignored with Ctrl/Meta/Alt and for the capital G', () => {
+  it('is ignored with Ctrl/Meta/Alt', () => {
     const t = setup({ n: 5 });
     for (const m of ['ctrlKey', 'metaKey', 'altKey'] as const) {
       expect(t.press(1, 'g', { [m]: true }).defaultPrevented).toBe(false);
     }
-    expect(t.press(1, 'G', { shiftKey: true }).defaultPrevented).toBe(false);
     expect(t.onReveal).not.toHaveBeenCalled();
+    t.dispose();
+  });
+
+  it('capital G (Caps Lock or Shift) reveals too: Shift is ignored', () => {
+    const t = setup({ n: 5 });
+    expect(t.press(1, 'G').defaultPrevented).toBe(true);
+    expect(t.press(2, 'G', { shiftKey: true }).defaultPrevented).toBe(true);
+    expect(t.press(3, 'g', { shiftKey: true }).defaultPrevented).toBe(true);
+    expect(t.onReveal.mock.calls.map((c) => c[0])).toEqual([id(1), id(2), id(3)]);
+    t.dispose();
+  });
+
+  it('reaches onReveal on a Canvas-like root (div, ARIA-layer rows)', () => {
+    const t = setup({ n: 5, tag: 'div' });
+    expect(t.press(2, 'g').defaultPrevented).toBe(true);
+    expect(t.onReveal).toHaveBeenCalledWith(id(2));
+    expect(t.left).toEqual([]);
     t.dispose();
   });
 

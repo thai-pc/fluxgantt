@@ -3,7 +3,7 @@
 // Home/End jump to the first/last row and PageUp/PageDown move a page of rows (same selection
 // semantics, Shift extends; ignored with Ctrl/Cmd/Alt). The arrows scroll vertically only; the bare
 // key `g` is the explicit horizontal "go to bar" (delegated to `onReveal`, see spec-keyboard-
-// horizontal-reveal.md; a no-op without it),
+// horizontal-reveal.md; a no-op without it).
 // Space toggles the focused row's selection membership, Delete/Backspace removes every
 // selected task. Ctrl/Cmd+Z undoes the most recent history entry, Ctrl/Cmd+Shift+Z redoes
 // it — both gated by `isReadOnly()` like Delete/Backspace. Ctrl/Cmd+D duplicates every
@@ -59,9 +59,11 @@ export interface KeyboardNavOptions {
   /** Ctrl/Cmd + Minus (`'-'`, Shift-independent): step the view one level toward `'year'`. Same
    *  never-gated posture as `onZoomIn`. */
   onZoomOut: () => void;
-  /** `g` (no Ctrl/Cmd/Alt): scroll the focused row's bar into view. Return truthy when handled
-   *  (the key is then `preventDefault()`ed). Optional; absent or falsy = `g` is inert (not
-   *  prevented). Moves neither focus nor selection. */
+  /** `g` / `G` (no Ctrl/Cmd/Alt, Shift-independent): scroll the focused row's bar into view.
+   *  Return `true` when handled (the key is then `preventDefault()`ed); `false`/`undefined`
+   *  (e.g. a braced arrow function that returns nothing) leaves the key unprevented, though a
+   *  scroll you performed still happened. Optional; absent = `g` is inert. Moves neither focus
+   *  nor selection. */
   onReveal?: (id: TaskId) => boolean | void;
   /** Read-only tasks accessor — same contract as `enableClickSelect`'s `getTasks`: full
    *  `Task[]`, re-read fresh on every keydown (never cached), and fed straight into
@@ -260,7 +262,8 @@ export function enableKeyboardNav(
         );
         return;
       }
-      case 'g': {
+      case 'g':
+      case 'G': {
         const row = rows[currentIndex];
         if (mod || event.altKey || !row || !options.onReveal) return;
         if (options.onReveal(row.task.id)) event.preventDefault(); // falsy = nothing handled it
@@ -397,7 +400,8 @@ export function enableKeyboardNav(
     // Stale/clamping case (spec §4.6): the previously focused task no longer resolves in a
     // fresh layoutRows() call. Clamp to the row at (or nearest to) the same position rather
     // than throwing or silently doing nothing.
-    if (currentIndex === -1) {
+    // Home/End are absolute, so they still resolve against stale focus (when any row exists).
+    if (currentIndex === -1 && !(rows.length && /^(Ho|En)/.test(event.key))) {
       clampFocus(rows);
       return;
     }
