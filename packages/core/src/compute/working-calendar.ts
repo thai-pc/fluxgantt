@@ -57,13 +57,13 @@ export function addWorkingHours(start: DateInput, hours: number, cal: WorkingCal
     assertProgress(++guard);
     const day = cur.toPlainDate();
     if (!isWorkingPlainDate(day, cal, holidays)) {
-      cur = startOfDay(day.add({ days: 1 }), cal.timezone, api);
+      cur = dayAt(day.add({ days: 1 }), cal.timezone, '00:00', api);
       continue;
     }
     const windows = windowsFor(day, cal, api);
     const w = windows.find((win) => api.ZonedDateTime.compare(cur, win.end) < 0);
     if (!w) {
-      cur = startOfDay(day.add({ days: 1 }), cal.timezone, api);
+      cur = dayAt(day.add({ days: 1 }), cal.timezone, '00:00', api);
       continue;
     }
     if (api.ZonedDateTime.compare(cur, w.start) < 0) cur = w.start;
@@ -91,13 +91,13 @@ export function subtractWorkingHours(start: DateInput, hours: number, cal: Worki
     assertProgress(++guard);
     const day = cur.toPlainDate();
     if (!isWorkingPlainDate(day, cal, holidays)) {
-      cur = endOfDay(day.subtract({ days: 1 }), cal.timezone, api);
+      cur = dayAt(day.subtract({ days: 1 }), cal.timezone, '23:59:59.999999999', api);
       continue;
     }
     const windows = windowsFor(day, cal, api);
     const w = [...windows].reverse().find((win) => api.ZonedDateTime.compare(win.start, cur) < 0);
     if (!w) {
-      cur = endOfDay(day.subtract({ days: 1 }), cal.timezone, api);
+      cur = dayAt(day.subtract({ days: 1 }), cal.timezone, '23:59:59.999999999', api);
       continue;
     }
     if (api.ZonedDateTime.compare(cur, w.end) > 0) cur = w.end;
@@ -120,8 +120,8 @@ export function differenceInWorkingHours(
   const api = getTemporal();
   const a = normalize(from, cal.timezone, api);
   const b = normalize(to, cal.timezone, api);
-  const cmp = api.ZonedDateTime.compare(a, b);
-  return cmp === 0 ? 0 : workingHoursMeter(cal, cmp < 0 ? a : b, cmp < 0 ? b : a)(a, b);
+  const asc = api.ZonedDateTime.compare(a, b) <= 0;
+  return workingHoursMeter(cal, asc ? a : b, asc ? b : a)(a, b);
 }
 
 /**
@@ -198,12 +198,9 @@ export function parseTime(hhmm: string, api: T): Temporal.PlainTime {
   return api.PlainTime.from({ hour: Number(m[1]), minute: Number(m[2]) });
 }
 
-export function startOfDay(day: PlainDate, tz: string, api: T): ZDT {
-  return day.toZonedDateTime({ timeZone: tz, plainTime: api.PlainTime.from('00:00') });
-}
-
-function endOfDay(day: PlainDate, tz: string, api: T): ZDT {
-  return day.toZonedDateTime({ timeZone: tz, plainTime: api.PlainTime.from('23:59:59.999999999') });
+/** `day` at wall-clock `time` ("00:00" = start of day, "23:59:59.999999999" = end) in `tz`. */
+export function dayAt(day: PlainDate, tz: string, time: string, api: T): ZDT {
+  return day.toZonedDateTime({ timeZone: tz, plainTime: api.PlainTime.from(time) });
 }
 
 /** Working ns on `day` up to instant `now` (epoch ns): each window clipped at `now`. */
@@ -224,7 +221,7 @@ function hoursToNs(hours: number): bigint {
 
 function assertProgress(guard: number): void {
   if (guard > 1_000_000) {
-    throw new Error('working-calendar: exceeded max iteration guard');
+    throw new Error('working-calendar: exceeded max iteration guard (empty workingDays?)');
   }
 }
 

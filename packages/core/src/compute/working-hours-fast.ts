@@ -7,11 +7,11 @@ import type { Temporal } from '@js-temporal/polyfill';
 import type { DateInput, WorkingCalendar } from '../types.js';
 import {
   NS_PER_HOUR,
+  dayAt,
   holidaySet,
   isWorkingPlainDate,
   normalize,
   parseTime,
-  startOfDay,
   weekdayCode,
   windowsFor,
   workingNsUpTo,
@@ -109,8 +109,8 @@ function wholeWeeksNs(
   }
 
   // Days containing an offset transition: real window length vs nominal.
-  const startZdt = startOfDay(start, cal.timezone, api);
-  const endZdt = startOfDay(end, cal.timezone, api);
+  const startZdt = dayAt(start, cal.timezone, '00:00', api);
+  const endZdt = dayAt(end, cal.timezone, '00:00', api);
   const seen = new Set<string>();
   let z = startZdt;
   for (;;) {
