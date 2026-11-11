@@ -5,9 +5,9 @@
 // date/calendar fact comes from `compute/working-calendar.ts`.
 //
 // SECURITY (security.md, spec §8 — read before touching this file): `task.name` is the
-// only free-form string rendered as text in v1, and it is ALWAYS written via
-// `document.createTextNode` — never `innerHTML`, never a template string assembled into
-// markup. `task.color` is only ever used after `validateTaskColor()` accepts it.
+// only free-form string rendered as text in v1, and it is ALWAYS written as a string through
+// `Element.append(string)` (which creates a Text node and never parses markup) — never
+// `innerHTML`, never a template string assembled into markup. `task.color` is only ever used after `validateTaskColor()` accepts it.
 // `<marker>` ids are compile-time constants, never derived from task/user data.
 import { getTemporal } from '../internal/temporal.js';
 import { DEFAULT_CALENDAR, normalizeDate } from '../compute/working-calendar.js';
@@ -460,23 +460,204 @@ export function createSvgRenderer(
     svg.append(
       renderDependencies(currentInput.dependencies, barByTaskId, rowHeight, offsetX, offsetY),
     );
-    svg.append(
-      renderRows(
-        rows,
-        barByTaskId,
-        criticalIds,
-        selectedIds,
-        focusedTaskId,
-        rowHeight,
-        calendar,
-        locale,
-        offsetX,
-        offsetY,
-        showLinkHandles,
-        currentInput.rollup,
-        messages,
-      ),
-    );
+    // One row `<g role=row>` (+ its gridcell, toggle, label and bar). A closure over this render's
+    // locals so the row builder takes no parameter list.
+    const makeRow = (row: RowLayout): SVGGElement => {
+      const { task } = row;
+      const bar = barByTaskId.get(task.id)!;
+      const isSelected = selectedIds.has(task.id);
+      const isCritical = criticalIds.has(task.id);
+      const rolled = currentInput.rollup?.get(task.id);
+
+      // ARIA grid row (spec-keyboard-nav.md §3.2 point 2): `role="row"`, 1-based
+      // `aria-rowindex` (distinct from the existing 0-based `data-row-index`, an internal
+      // implementation detail), `data-task-id` (promoted up from the nested `.fg-task` `<g>`
+      // — see §3.3), `aria-selected`, and roving `tabindex` (exactly one row is `0`, the rest
+      // `-1`).
+      const rowGroup = el('g', {
+        class: 'fg-timeline__row',
+        role: 'row',
+        'data-row-index': row.rowIndex,
+        'data-task-id': task.id,
+        'aria-rowindex': row.rowIndex + 1,
+        'aria-selected': isSelected ? 'true' : 'false',
+        tabindex: task.id === focusedTaskId ? '0' : '-1',
+        // Omitted entirely on a leaf row, per WAI-ARIA (a non-expandable node must not carry
+        // `aria-expanded="false"`). `aria-level` goes on EVERY row of a `treegrid` (leaves
+        // included: a leaf still has a real depth) and on none of a plain `grid`, where axe's
+        // `invalidTableRowAttrs` would flag it (same gating as `aria-expanded`).
+        ...(row.hasChildren ? { 'aria-expanded': String(!row.isCollapsed) } : {}),
+        ...(isTree ? { 'aria-level': row.depth + 1 } : {}),
+      });
+      // Single-column v1 (spec §3.2 point 3): exactly one `role="gridcell"` wrapper per row,
+      // a pure ARIA/structural `<g>` with no `transform` of its own — zero rendering diff
+      // versus the pre-keyboard-nav DOM shape.
+      const cell = el('g', { class: 'fg-timeline__row-cell', role: 'gridcell' });
+
+      const cy = offsetY + row.y + rowHeight / 2;
+      // Collapse/expand glyph (spec-collapse-expand.md §6): a right-pointing triangle, rotated to point
+      // down when expanded. `aria-hidden`: the row already carries `aria-expanded`. No task-derived text.
+      if (row.hasChildren) {
+        const half = TOGGLE_GLYPH_SIZE_PX / 2;
+        const cx = LABEL_PADDING_PX + row.depth * LABEL_INDENT_PX + half;
+        cell.append(
+          el(
+            'path',
+            {
+              class: 'fg-timeline__row-toggle',
+              d: `M ${cx - half} ${cy - half} L ${cx + half} ${cy} L ${cx - half} ${cy + half} Z`,
+              'aria-hidden': 'true',
+              ...(row.isCollapsed ? {} : { transform: `rotate(90 ${cx} ${cy})` }),
+            },
+            { fill: 'var(--fg-fg-muted, #6b6b73)' },
+          ),
+        );
+      }
+
+      // SECURITY: `task.name` is untrusted host-app data — written as a string through
+      // `append()`, which makes a Text node and never parses markup (security.md §1, spec §8).
+      const label = el(
+        'text',
+        {
+          class: 'fg-timeline__row-label',
+          x: LABEL_PADDING_PX + row.depth * LABEL_INDENT_PX + TOGGLE_GLYPH_GUTTER_PX,
+          y: cy,
+        },
+        { 'dominant-baseline': 'middle', fill: 'var(--fg-fg, #18181b)' },
+      );
+      label.append(task.name);
+      cell.append(label);
+
+      // Whitelist `task.type` before folding it into a class token (review N3): fall back to
+      // the `task` modifier for any value that isn't a known TaskKind, so untrusted data can't
+      // inject an arbitrary extra class (CSS-token spoofing).
+      const classNames = ['fg-task', `fg-task--${isKnownTaskKind(task.type) ? task.type : 'task'}`];
+      if (isCritical) classNames.push('fg-task--critical');
+      if (isSelected) classNames.push('fg-task--selected');
+      // `data-rolled-up` marks a bar whose geometry came from `computeRollup` (spec-summary-rollup.md
+      // Ticket B2): the ONLY channel by which the interaction layer learns that, and it makes
+      // drag-move/drag-resize decline such a bar (a rolled-up span is derived on read, so there is
+      // no authored value under the cursor). Gated like `layoutTaskBar`'s rollup branch: a
+      // milestone is drawn at its authored `start`, so it is NOT rolled up and stays draggable.
+      // `task.id` is a branded TaskId (developer-controlled), safe as an attribute value.
+      const wrapper = el('g', {
+        class: classNames.join(' '),
+        'data-task-id': task.id,
+        ...(rolled !== undefined && task.type !== 'milestone' ? { 'data-rolled-up': 'true' } : {}),
+        'aria-label': buildTaskAriaLabel(task, isCritical, isSelected, calendar, locale, rolled, messages),
+      });
+
+      const x = bar.x + offsetX;
+      const y = bar.y + offsetY;
+      const isMilestone = task.type === 'milestone';
+      // SECURITY: only a whitelist-validated color (or the hardcoded fallback token) ever
+      // reaches `style.setProperty` — never the raw `task.color` string (security.md, spec §8).
+      const fill =
+        validateTaskColor(task.color) ??
+        (isMilestone ? 'var(--fg-task-milestone, #f59e0b)' : 'var(--fg-task-default, #6366f1)');
+      wrapper.append(
+        el(
+          'rect',
+          {
+            class: 'fg-task__bar',
+            x,
+            y,
+            width: bar.width,
+            height: bar.height,
+            ...(isMilestone
+              ? { transform: `rotate(45 ${x + bar.width / 2} ${y + bar.height / 2})` }
+              : { rx: 3 }),
+          },
+          {
+            fill,
+            // A11y (spec §7): critical path is distinguished WITHOUT relying on color alone —
+            // dashed stroke, set via CSSOM property (never a string-interpolated style attribute).
+            ...(isCritical
+              ? {
+                  stroke: 'var(--fg-task-critical, #ef4444)',
+                  'stroke-dasharray': 'var(--fg-task-critical-dash, 4 2)',
+                  'stroke-width': 'var(--fg-task-critical-stroke-width, 2px)',
+                }
+              : {}),
+          },
+        ),
+      );
+
+      // Completed portion (`.fg-task__progress`), painted over the bar; appended after the bar and
+      // before the focus ring and link handles because SVG paints in document order. The fill is an
+      // inline CSSOM property, NOT a CSS rule: `exportSvg()` strips every `<style>` and bakes only
+      // inline values. NOT `fg-task__bar`: `interaction/drag-resize.ts` resolves the bar by that
+      // exact selector.
+      const progressWidth = progressFillWidth(task, bar, rolled);
+      if (progressWidth > 0) {
+        wrapper.append(
+          el(
+            'rect',
+            { class: 'fg-task__progress', x, y, width: progressWidth, height: bar.height, rx: 3 },
+            { fill: 'var(--fg-task-completed, #10b981)' },
+          ),
+        );
+      }
+
+      // Keyboard-focus ring (spec-keyboard-nav.md §5.2, see `FOCUS_STYLE_TEXT`): a purpose-built
+      // `<rect>` sibling of the bar, offset outward by `FOCUS_RING_OFFSET_PX`, present on every task
+      // but inert (`stroke: none`) unless `.fg-timeline__row:focus-visible` matches. Axis-aligned
+      // even for a rotated milestone. `fill` is inline because an SVG rect defaults to BLACK and
+      // `exportSvg()` strips the `<style>` that would otherwise supply `fill:none`.
+      wrapper.append(
+        el(
+          'rect',
+          {
+            class: 'fg-task__focus-ring',
+            x: x - FOCUS_RING_OFFSET_PX,
+            y: y - FOCUS_RING_OFFSET_PX,
+            width: bar.width + FOCUS_RING_OFFSET_PX * 2,
+            height: bar.height + FOCUS_RING_OFFSET_PX * 2,
+            rx: 3,
+            'aria-hidden': 'true',
+          },
+          { fill: 'none' },
+        ),
+      );
+
+      // Connector handles for drag-create-dependency (spec-drag-create-dependency.md §4.1), at the exact
+      // anchor a resulting FS/SS/FF/SF arrow would attach. Hidden by default, revealed on `.fg-task:hover`
+      // by the injected `<style>`. `aria-hidden`: no keyboard-reachable equivalent exists yet.
+      if (showLinkHandles) {
+        for (const edge of ['start', 'end'] as const) {
+          const anchor = anchorOf(bar, edge);
+          wrapper.append(
+            el(
+              'circle',
+              {
+                class: 'fg-task__link-handle',
+                'data-handle-end': edge,
+                cx: anchor.x + offsetX,
+                cy: anchor.y + offsetY,
+                'aria-hidden': 'true',
+              },
+              {
+                r: 'var(--fg-link-handle-radius, 4px)',
+                fill: 'var(--fg-link-handle-fill, #ffffff)',
+                stroke: 'var(--fg-link-handle-stroke, #6366f1)',
+                'stroke-width': 'var(--fg-link-handle-stroke-width, 1.5px)',
+              },
+            ),
+          );
+        }
+      }
+      cell.append(wrapper);
+      rowGroup.append(cell);
+      return rowGroup;
+    };
+    const rowsGroup = el('g', { class: 'fg-timeline__rows' });
+    const rowEls = new Map<TaskId, SVGGElement>();
+    for (const row of rows) {
+      const e = makeRow(row);
+      rowEls.set(row.task.id, e);
+      rowsGroup.append(e);
+    }
+    svg.append(rowsGroup);
     // Today marker (spec §9.1). Appended after the rows so it crosses OVER bars and
     // dependency arrows — document order is z-order — but before the label divider, which must
     // stay the topmost thing along the label column's own edge.
@@ -511,10 +692,7 @@ export function createSvgRenderer(
     // scroll). The keyboard path reveals the row explicitly instead (interaction/keyboard-nav.ts
     // revealFocusedRow), so pointer focus never scrolls.
     if (hadFocusInside && focusedTaskId !== undefined) {
-      const rowEl = [...svg.querySelectorAll<SVGElement>('.fg-timeline__row')].find(
-        (row) => row.getAttribute('data-task-id') === focusedTaskId,
-      );
-      rowEl?.focus({ preventScroll: true });
+      rowEls.get(focusedTaskId)?.focus({ preventScroll: true });
     }
   }
 }
@@ -599,7 +777,7 @@ function renderHeader(tiers: HeaderTiers, offsetX: number, timelineWidth: number
       // attribute but never an inline style, and `exportSvg` clones keep it. Family is pinned
       // too (unlike row labels, which inherit the host font) because the label-fit estimator
       // is only conservative for system-ui metrics. The label is Temporal/Intl-formatted (never
-      // user input) but still goes through createTextNode: no innerHTML policy applies everywhere.
+      // user input) but still goes through a text node: no innerHTML policy applies everywhere.
       const text = el(
         'text',
         { class: 'fg-timeline__header-label', x: offsetX + l.x, y: row ? 24 : 8 },
@@ -610,7 +788,7 @@ function renderHeader(tiers: HeaderTiers, offsetX: number, timelineWidth: number
           fill: 'var(--fg-fg-muted, #6b6b73)',
         },
       );
-      text.append(document.createTextNode(l.text));
+      text.append(l.text);
       g.append(text);
     }
   });
@@ -669,253 +847,6 @@ function renderLabelDivider(offsetX: number, totalHeight: number): SVGLineElemen
     { class: 'fg-timeline__label-divider', x1: offsetX - 0.5, x2: offsetX - 0.5, y1: 0, y2: totalHeight },
     { stroke: 'var(--fg-border, #e5e7eb)' },
   );
-}
-
-function renderRows(
-  rows: readonly RowLayout[],
-  barByTaskId: ReadonlyMap<TaskId, TaskBarLayout>,
-  criticalIds: ReadonlySet<TaskId>,
-  selectedIds: ReadonlySet<TaskId>,
-  focusedTaskId: TaskId | undefined,
-  rowHeight: number,
-  calendar: WorkingCalendar,
-  locale: string,
-  offsetX: number,
-  offsetY: number,
-  showLinkHandles: boolean,
-  rollup: ReadonlyMap<TaskId, RolledUpRow> | undefined,
-  messages: GanttMessages | undefined,
-): SVGGElement {
-  const g = el('g', { class: 'fg-timeline__rows' });
-
-  // Same predicate the root `role` is chosen from — see `isTreeLayout`.
-  const isTree = isTreeLayout(rows);
-
-  for (const row of rows) {
-    const bar = barByTaskId.get(row.task.id);
-    if (!bar) continue;
-
-    const isSelected = selectedIds.has(row.task.id);
-
-    // ARIA grid row (spec-keyboard-nav.md §3.2 point 2): `role="row"`, 1-based
-    // `aria-rowindex` (distinct from the existing 0-based `data-row-index`, an internal
-    // implementation detail), `data-task-id` (promoted up from the nested `.fg-task` `<g>`
-    // — see §3.3), `aria-selected`, and roving `tabindex` (exactly one row is `0`, the rest
-    // `-1`).
-    const rowGroup = el('g', {
-      class: 'fg-timeline__row',
-      role: 'row',
-      'data-row-index': row.rowIndex,
-      'data-task-id': row.task.id,
-      'aria-rowindex': row.rowIndex + 1,
-      'aria-selected': isSelected ? 'true' : 'false',
-      tabindex: row.task.id === focusedTaskId ? '0' : '-1',
-      // Omitted entirely on a leaf row, per WAI-ARIA (a non-expandable node must not carry
-      // `aria-expanded="false"`). `aria-level` goes on EVERY row of a `treegrid` (leaves
-      // included: a leaf still has a real depth) and on none of a plain `grid`, where axe's
-      // `invalidTableRowAttrs` would flag it (same gating as `aria-expanded`).
-      ...(row.hasChildren ? { 'aria-expanded': String(!row.isCollapsed) } : {}),
-      ...(isTree ? { 'aria-level': row.depth + 1 } : {}),
-    });
-    // Single-column v1 (spec §3.2 point 3): exactly one `role="gridcell"` wrapper per row,
-    // a pure ARIA/structural `<g>` with no `transform` of its own — zero rendering diff
-    // versus the pre-keyboard-nav DOM shape.
-    const cell = el('g', { class: 'fg-timeline__row-cell', role: 'gridcell' });
-
-    const cy = offsetY + row.y + rowHeight / 2;
-    // Collapse/expand glyph (spec-collapse-expand.md §6): a right-pointing triangle, rotated to point
-    // down when expanded. `aria-hidden`: the row already carries `aria-expanded`. No task-derived text.
-    if (row.hasChildren) {
-      const half = TOGGLE_GLYPH_SIZE_PX / 2;
-      const cx = LABEL_PADDING_PX + row.depth * LABEL_INDENT_PX + half;
-      cell.append(
-        el(
-          'path',
-          {
-            class: 'fg-timeline__row-toggle',
-            d: `M ${cx - half} ${cy - half} L ${cx + half} ${cy} L ${cx - half} ${cy + half} Z`,
-            'aria-hidden': 'true',
-            ...(row.isCollapsed ? {} : { transform: `rotate(90 ${cx} ${cy})` }),
-          },
-          { fill: 'var(--fg-fg-muted, #6b6b73)' },
-        ),
-      );
-    }
-
-    const label = el(
-      'text',
-      {
-        class: 'fg-timeline__row-label',
-        x: LABEL_PADDING_PX + row.depth * LABEL_INDENT_PX + TOGGLE_GLYPH_GUTTER_PX,
-        y: cy,
-      },
-      { 'dominant-baseline': 'middle', fill: 'var(--fg-fg, #18181b)' },
-    );
-    // SECURITY: `task.name` is untrusted host-app data — text node only, never innerHTML
-    // or a template string assembled into markup (security.md §1, spec §8).
-    label.append(document.createTextNode(row.task.name));
-    cell.append(label);
-
-    const isCritical = criticalIds.has(row.task.id);
-    cell.append(
-      renderTaskBar(row.task, bar, offsetX, offsetY, isCritical, isSelected, calendar, locale, showLinkHandles, rollup?.get(row.task.id), messages),
-    );
-
-    rowGroup.append(cell);
-    g.append(rowGroup);
-  }
-
-  return g;
-}
-
-function renderTaskBar(
-  task: Task,
-  bar: TaskBarLayout,
-  offsetX: number,
-  offsetY: number,
-  isCritical: boolean,
-  isSelected: boolean,
-  calendar: WorkingCalendar,
-  locale: string,
-  showLinkHandles: boolean,
-  rolled: RolledUpRow | undefined,
-  messages: GanttMessages | undefined,
-): SVGGElement {
-  // Whitelist `task.type` before folding it into a class token (review N3): fall back to
-  // the `task` modifier for any value that isn't a known TaskKind, so untrusted data can't
-  // inject an arbitrary extra class (CSS-token spoofing).
-  const kindClass = isKnownTaskKind(task.type) ? task.type : 'task';
-  const classNames = ['fg-task', `fg-task--${kindClass}`];
-  if (isCritical) classNames.push('fg-task--critical');
-  if (isSelected) classNames.push('fg-task--selected');
-  // `data-rolled-up` marks a bar whose geometry came from `computeRollup` (spec-summary-rollup.md
-  // Ticket B2): the ONLY channel by which the interaction layer learns that, and it makes
-  // drag-move/drag-resize decline such a bar (a rolled-up span is derived on read, so there is
-  // no authored value under the cursor). Gated like `layoutTaskBar`'s rollup branch: a
-  // milestone is drawn at its authored `start`, so it is NOT rolled up and stays draggable.
-  // `task.id` is a branded TaskId (developer-controlled), safe as an attribute value.
-  const wrapper = el('g', {
-    class: classNames.join(' '),
-    'data-task-id': task.id,
-    ...(rolled !== undefined && task.type !== 'milestone' ? { 'data-rolled-up': 'true' } : {}),
-    'aria-label': buildTaskAriaLabel(task, isCritical, isSelected, calendar, locale, rolled, messages),
-  });
-
-  const x = bar.x + offsetX;
-  const y = bar.y + offsetY;
-
-  const defaultFill =
-    task.type === 'milestone' ? 'var(--fg-task-milestone, #f59e0b)' : 'var(--fg-task-default, #6366f1)';
-  // SECURITY: only a whitelist-validated color (or the hardcoded fallback token) ever
-  // reaches `style.setProperty` — never the raw `task.color` string (security.md, spec §8).
-  const fill = validateTaskColor(task.color) ?? defaultFill;
-
-  const isMilestone = task.type === 'milestone';
-  const shape = el(
-    'rect',
-    {
-      class: 'fg-task__bar',
-      x,
-      y,
-      width: bar.width,
-      height: bar.height,
-      ...(isMilestone
-        ? { transform: `rotate(45 ${x + bar.width / 2} ${y + bar.height / 2})` }
-        : { rx: 3 }),
-    },
-    {
-      fill,
-      // A11y (spec §7): critical path is distinguished WITHOUT relying on color alone —
-      // dashed stroke, set via CSSOM property (never a string-interpolated style attribute).
-      ...(isCritical
-        ? {
-            stroke: 'var(--fg-task-critical, #ef4444)',
-            'stroke-dasharray': 'var(--fg-task-critical-dash, 4 2)',
-            'stroke-width': 'var(--fg-task-critical-stroke-width, 2px)',
-          }
-        : {}),
-    },
-  );
-
-  wrapper.append(shape);
-
-  // Completed portion (`.fg-task__progress`), painted over the bar. Appended here — after the
-  // bar, before the focus ring and link handles — because SVG paints in document order, so the
-  // z-order falls out of the append order with no explicit stacking.
-  //
-  // SECURITY/EXPORT: the fill is an inline CSSOM property, NOT a CSS rule. `exportSvg()` strips
-  // every `<style>` element from its clone and bakes only inline/computed values for
-  // `BAKED_STYLE_PROPERTIES`, so a rule-based fill would export as SVG's default black.
-  // The value is a host-CSS design token — a different trust boundary from `task.color`, which
-  // alone needs `validateTaskColor`.
-  //
-  // The class is deliberately NOT `fg-task__bar`: `interaction/drag-resize.ts` resolves the bar
-  // by that exact selector and must keep matching the bar itself.
-  const progressWidth = progressFillWidth(task, bar, rolled);
-  if (progressWidth > 0) {
-    const progressShape = el(
-      'rect',
-      { class: 'fg-task__progress', x, y, width: progressWidth, height: bar.height, rx: 3 },
-      { fill: 'var(--fg-task-completed, #10b981)' },
-    );
-    wrapper.append(progressShape);
-  }
-
-  // Keyboard-focus ring (spec-keyboard-nav.md §5.2, mechanism corrected — see
-  // `FOCUS_STYLE_TEXT`'s doc comment): a purpose-built `<rect>` sibling of the bar, offset
-  // outward by `FOCUS_RING_OFFSET_PX` on every edge, rendered unconditionally (every task,
-  // every render) but visually inert (`stroke: none`) unless `.fg-timeline__row:focus-visible`
-  // matches — pure CSS toggling, no JS visibility branching needed here. Milestone bars are
-  // rotated 45° via a `transform` on `.fg-task__bar` itself; the ring intentionally does NOT
-  // copy that rotation — an axis-aligned ring around a diamond still unambiguously indicates
-  // "this row", and matching the diamond's rotated bounding box exactly is unnecessary
-  // precision for a focus indicator.
-  // `fill` MUST be set inline (not left to the `<style>` block's `.fg-task__focus-ring` rule):
-  // an SVG `<rect>`'s default `fill` is BLACK (unlike `stroke`, already `none`), so when
-  // `exportSvg()` strips every `<style>` element the ring would otherwise export as a solid
-  // black box over the bar. `stroke` is safely left to the CSS rule.
-  const focusRing = el(
-    'rect',
-    {
-      class: 'fg-task__focus-ring',
-      x: x - FOCUS_RING_OFFSET_PX,
-      y: y - FOCUS_RING_OFFSET_PX,
-      width: bar.width + FOCUS_RING_OFFSET_PX * 2,
-      height: bar.height + FOCUS_RING_OFFSET_PX * 2,
-      rx: 3,
-      'aria-hidden': 'true',
-    },
-    { fill: 'none' },
-  );
-  wrapper.append(focusRing);
-
-  // Connector handles for drag-create-dependency (spec-drag-create-dependency.md §4.1), at the exact
-  // anchor a resulting FS/SS/FF/SF arrow would attach. Hidden by default, revealed on `.fg-task:hover`
-  // by the injected `<style>`. `aria-hidden`: no keyboard-reachable equivalent exists yet.
-  if (showLinkHandles) {
-    for (const edge of ['start', 'end'] as const) {
-      const anchor = anchorOf(bar, edge);
-      wrapper.append(
-        el(
-          'circle',
-          {
-            class: 'fg-task__link-handle',
-            'data-handle-end': edge,
-            cx: anchor.x + offsetX,
-            cy: anchor.y + offsetY,
-            'aria-hidden': 'true',
-          },
-          {
-            r: 'var(--fg-link-handle-radius, 4px)',
-            fill: 'var(--fg-link-handle-fill, #ffffff)',
-            stroke: 'var(--fg-link-handle-stroke, #6366f1)',
-            'stroke-width': 'var(--fg-link-handle-stroke-width, 1.5px)',
-          },
-        ),
-      );
-    }
-  }
-  return wrapper;
 }
 
 function renderDependencies(
