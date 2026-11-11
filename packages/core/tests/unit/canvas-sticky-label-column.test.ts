@@ -180,7 +180,8 @@ describe('paint split', () => {
     // exactly one toggle (the summary row) => one filled triangle path
     expect(count(lab, 'fill')).toBe(1);
     // divider snapped inside the box: moveTo(offsetX - 0.5, 0), painted last so a long name cannot overpaint it
-    expect(lab.calls.findLastIndex((c) => c.name === 'stroke')).toBeGreaterThan(lab.calls.findLastIndex((c) => c.name === 'fillText'));
+    const lastAt = (n: string): number => lab.calls.map((c) => c.name).lastIndexOf(n);
+    expect(lastAt('stroke')).toBeGreaterThan(lastAt('fillText'));
     expect(lab.calls.filter((c) => c.name === 'moveTo').at(-1)!.args).toEqual([LABEL - 0.5, 0]);
   });
 
