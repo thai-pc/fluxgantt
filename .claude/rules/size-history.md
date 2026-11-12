@@ -272,3 +272,11 @@ alternating no-break space so repeated announcements are re-read) cost +164 B (`
 now 20841, 919 B left), +172 B (kitchen sink 25630, 1250 B left) and +174 B (`+ withResponsive` 22334); other
 fixtures +0. Total against master after #127: +909 / +899 / +938. A hidden-anchor "cannot link" announcement was
 not built (it would need a third `onLink` outcome across the keyboard-nav boundary); it is documented instead.
+
+The 2026-11 TaskStore index pass (`#kids` parent -> children index, `#pos` insertion counter so `children()` keeps
+global insertion order, iterative single-bump `remove`, iterative `#collectWithDescendants`; `mutation-batching` PR 2) is
+a performance + stack-safety fix and spends hard-gate headroom under the exemption rule. Cost against master 5b7bed3
+(gzip bytes): hello world 7830 -> 8027 (+197, 421 B left), `+ withRender + withInteraction` 20840 -> 21042 (+202,
+718 B left), kitchen sink 25629 -> 25823 (+194, 1057 B left); soft fixtures +189..+204. About twice the spec's
++60..+110 B estimate: the sorted `children()` and the cycle-safe iterative `remove` are the cost of preserving
+`task:removed` / history op order.

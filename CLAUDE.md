@@ -27,19 +27,19 @@ This file is the context entry point for AI. Details are split into rules under 
 
    | Fixture | Tier | Measured (B / KiB) | Limit |
    |---|---|---|---|
-   | `createGantt()` only (hello world) | **hard** | 7830 / 7.65 | 8.25 KiB |
-   | `+ withRender + withInteraction` | **hard** | 20841 / 20.35 | 21.25 KiB |
-   | kitchen sink (everything) | **hard** | 25630 / 25.03 | 26.25 KiB |
-   | `+ withIo` | soft | 12973 / 12.67 | 14 KiB |
-   | `+ withRender` | soft | 15158 / 14.80 | 15 KiB |
-   | `+ withRender + withTheme` | soft | 15848 / 15.48 | 16 KiB |
-   | `+ withRender + withInteraction + withResponsive` | soft | 22334 / 21.81 | 21 KiB |
-   | `+ withRender + withViewport` | soft | 16079 / 15.70 | 16 KiB |
-   | `+ withConflicts` (headless) | soft | 9752 / 9.52 | 10 KiB |
-   | `+ withRender + withEditHooks` | soft | 16524 / 16.14 | 16 KiB |
-   | `+ withRender + withRtl` | soft | 15603 / 15.24 | 15.5 KiB |
+   | `createGantt()` only (hello world) | **hard** | 8027 / 7.84 | 8.25 KiB |
+   | `+ withRender + withInteraction` | **hard** | 21042 / 20.55 | 21.25 KiB |
+   | kitchen sink (everything) | **hard** | 25823 / 25.22 | 26.25 KiB |
+   | `+ withIo` | soft | 13177 / 12.87 | 14 KiB |
+   | `+ withRender` | soft | 15347 / 14.99 | 15 KiB |
+   | `+ withRender + withTheme` | soft | 16038 / 15.66 | 16 KiB |
+   | `+ withRender + withInteraction + withResponsive` | soft | 22537 / 22.01 | 21 KiB |
+   | `+ withRender + withViewport` | soft | 16269 / 15.89 | 16 KiB |
+   | `+ withConflicts` (headless) | soft | 9956 / 9.72 | 10 KiB |
+   | `+ withRender + withEditHooks` | soft | 16716 / 16.32 | 16 KiB |
+   | `+ withRender + withRtl` | soft | 15792 / 15.42 | 15.5 KiB |
 
-   Measured after the keyboard move/resize/link PR on top of #127. Soft fixtures over their reference limit now (warnings only): `+ withResponsive` (22334 vs 21504 B) and `+ withEditHooks` (16524 vs 16384 B); the second was already over on master.
+   Measured after the TaskStore index PR (`perf/store-indexes`, +189..+205 B on every fixture, spent under the exemption rule) on top of the keyboard move/resize/link PR. Soft fixtures over their reference limit now (warnings only): `+ withResponsive` (22537 vs 21504 B) and `+ withEditHooks` (16716 vs 16384 B); the second was already over on master.
 
    **Exemption rule.** A correctness, security, accessibility or performance fix MAY consume hard-gate headroom; state the byte cost in the PR. New features must still find their own bytes: "change the shape, not the budget" stays the default for features (see `.claude/rules/size-history.md` for which levers win under gzip). **Raising a hard limit again requires an explicit owner decision recorded here**, with the date and reason. Do not raise a limit to fit a feature.
 
