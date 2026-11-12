@@ -14,7 +14,7 @@ a minor bump may change an exported type or an event name.
 - **{/*sz:hello.2*/}7.35{/*/sz*/} KiB gzip for the engine.** Rendering, interaction, IO, theming and responsive behaviour
   are opt-in imports on separate subpaths, so you download what you compose — an editable chart is
   {/*sz:editable.2*/}19.16{/*/sz*/} KiB, everything composed is {/*sz:kitchen.2*/}23.85{/*/sz*/} KiB. Budgets are enforced on every pull request. These sizes exclude the Temporal polyfill (~45.8 KiB gzip), which runtimes without native Temporal (Node 22/24, older browsers) need.
-  See [Comparison](/docs/comparison) for how that lands against dhtmlx and Frappe.
+  See [Comparison](/docs/comparison) for how that lands against dhtmlx, Bryntum, SVAR and Frappe.
 - **Headless engine.** State + compute (critical path, working calendar, cascade) run without
   a DOM. The render layer is a separate concern you can swap or server-side-render around.
 - **Zero required host CSS.** The SVG renderer bakes every visual property inline with a
@@ -88,7 +88,7 @@ Using React or Vue instead? See the [React guide](/docs/frameworks/react) and
 | Bundle (gzip, incl. required CSS) | **{/*sz:editable.2*/}19.16{/*/sz*/} KiB** editable · {/*sz:hello.2*/}7.35{/*/sz*/} KiB headless | 226.18 KiB | 14.89 KiB |
 | Language | TypeScript-first, branded IDs | JavaScript | JavaScript, no types shipped |
 | Dependency types | FS / SS / FF / SF (+ lag/lead) | all four | FS only |
-| Critical path (CPM) | Built in, color-independent marker | Yes | No |
+| Critical path (CPM) | Built in, color-independent marker | No (PRO only) | No |
 | Working calendar | Temporal-based, DST-correct | Yes | No |
 | Headless (runs without a DOM) | Yes | No | No |
 | React / Vue wrappers | First-class | No | No |
@@ -101,11 +101,11 @@ Bryntum still win, how every number was measured, and the script that re-measure
 
 | Tier | Price | Includes |
 |---|---|---|
-| **Core** (MIT) | Free | Rendering, dependencies (FS/SS/FF/SF), hierarchy, critical path, React/Vue, export PNG/SVG/JSON/CSV |
-| **Pro** (one-time) | $299/dev | Resource view + leveling, baselines, constraints, MS Project XML I/O, PDF, custom columns, Svelte/Angular |
-| **Cloud** (subscription) | from $29/month | Multiplayer (Yjs), comment/@mention, AI auto-schedule, risk forecast, integrations |
+| **Core** (MIT) | Free | Rendering, dependencies (FS/SS/FF/SF), hierarchy, critical path, React/Vue (Svelte/Angular planned), export PNG/SVG/JSON/CSV |
+| **Pro** (perpetual) | About $600–800/dev, **planned, not yet on sale** | Resource view + leveling, baselines, constraints, MS Project XML I/O, PDF branding. 12 months of updates, optional renewal. Use in SaaS products allowed, no OEM surcharge |
 
-Only the **Core** tier is documented here — it is the only tier that exists today.
+Only the **Core** tier is documented here — it is the only tier that exists today. There is no
+hosted Cloud plan on the roadmap.
 
 ## Run the examples
 
