@@ -121,13 +121,20 @@ export function differenceInWorkingHours(
   const a = normalize(from, cal.timezone, api);
   const b = normalize(to, cal.timezone, api);
   const asc = api.ZonedDateTime.compare(a, b) <= 0;
-  return workingHoursMeter(cal, asc ? a : b, asc ? b : a)(a, b);
+  const [lo, hi] = asc ? [a, b] : [b, a];
+  const hours = workingHoursMeter(cal, lo!, hi!)(lo!, hi!);
+  return asc ? hours : -hours; // keeps `-0` for a backward span with no working time
 }
 
 /**
- * A `(from, to) => hours` meter for instants inside `[lo, hi]`: one pass over the days builds the
- * cumulative working time at each day start, so every later reading costs two day lookups instead
- * of a walk over the gap (CPM reads ~N slacks over one shared span). Exact, same as a day walk.
+ * A `(from, to) => hours` meter. One pass over the calendar days of `lo..hi` (taken in
+ * `cal.timezone`, ISO calendar) builds the cumulative working time at each day start, so every later
+ * reading costs two day lookups instead of a walk over the gap (CPM reads ~N slacks over one shared
+ * span). Contract: a reading's instants may be in any zone or calendar, but each must fall on a day
+ * of `lo..hi` in `cal.timezone`, otherwise it throws a `RangeError`. Equal to a day walk, with one
+ * known divergence: on a day a zone skipped entirely (Pacific/Apia, 2011-12-30) the phantom day's
+ * windows resolve onto the next day and the table counts them there too, so a reading spanning it
+ * can differ from the one-shot `differenceInWorkingHours` (which clips at the reading, not at `hi`).
  */
 export function workingHoursMeter(
   cal: WorkingCalendar,
@@ -136,18 +143,21 @@ export function workingHoursMeter(
 ): (from: ZDT, to: ZDT) => number {
   const api = getTemporal();
   const holidays = holidaySet(cal, api);
+  const dayOf = (t: ZDT): PlainDate => t.withTimeZone(cal.timezone).toPlainDate().withCalendar('iso8601');
   const before = new Map<string, bigint>();
-  const last = hi.toPlainDate();
+  const last = dayOf(hi);
   let total = 0n;
   let guard = 0;
-  for (let day = lo.toPlainDate(); api.PlainDate.compare(day, last) <= 0; day = day.add({ days: 1 })) {
+  for (let day = dayOf(lo); api.PlainDate.compare(day, last) <= 0; day = day.add({ days: 1 })) {
     assertProgress(++guard);
     before.set(day.toString(), total);
     total += workingNsUpTo(day, hi.epochNanoseconds, cal, holidays, api); // the last day's total is never read
   }
   const at = (t: ZDT): bigint => {
-    const day = t.toPlainDate();
-    return before.get(day.toString())! + workingNsUpTo(day, t.epochNanoseconds, cal, holidays, api);
+    const day = dayOf(t);
+    const base = before.get(day.toString());
+    if (base === undefined) throw new RangeError(`working-hours meter: ${day} is outside the table`);
+    return base + workingNsUpTo(day, t.epochNanoseconds, cal, holidays, api);
   };
   return (from, to) => Number(at(to) - at(from)) / Number(NS_PER_HOUR);
 }
