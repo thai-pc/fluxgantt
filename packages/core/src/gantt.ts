@@ -765,10 +765,8 @@ class Gantt implements GanttInstance {
       }
       taskStore.add(t); // stamps id (if absent)/createdAt/updatedAt, no event emitted
     }
-    for (const d of dependencies) {
-      // May throw (self-link / duplicate pair / cycle) — DependencyLinkError, propagated as-is.
-      dependencyStore.link(d.from, d.to, d.type ?? 'FS', d.lag === undefined ? {} : { lag: d.lag });
-    }
+    // May throw (self-link / duplicate pair / cycle) — DependencyLinkError, propagated as-is.
+    dependencyStore.linkAll(dependencies);
   }
 
   /**

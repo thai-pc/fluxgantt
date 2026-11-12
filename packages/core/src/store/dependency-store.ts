@@ -30,11 +30,17 @@ const newDependencyId = (): DependencyId => toDependencyId(`dep-${globalThis.cry
 
 export class DependencyStore {
   readonly #deps = new Map<DependencyId, Dependency>();
+  // from -> to -> dependency, and to -> from -> dependency. At most one dependency per pair.
+  readonly #out = new Map<TaskId, Map<TaskId, Dependency>>();
+  readonly #in = new Map<TaskId, Map<TaskId, Dependency>>();
+  // Insertion counter per dependency, so of() keeps global insertion order.
+  readonly #seq = new Map<DependencyId, number>();
+  #n = 0;
   readonly #rev = signal(0);
 
   constructor(initial?: readonly Dependency[]) {
     if (initial) {
-      for (const d of initial) this.#deps.set(d.id, { ...d });
+      for (const d of initial) this.#put({ ...d });
     }
   }
 
@@ -63,16 +69,58 @@ export class DependencyStore {
     if (from === to) {
       throw new DependencyLinkError(`DependencyStore.link: cannot self-link task ${from}`);
     }
-    if (this.#findByPair(from, to)) {
+    if (this.#out.get(from)?.has(to)) {
       throw new DependencyLinkError(`DependencyStore.link: link ${from} → ${to} already exists`);
     }
     if (!options.allowCycle && this.#canReach(to, from)) {
       throw new DependencyLinkError(`DependencyStore.link: link ${from} → ${to} would create a cycle`);
     }
     const dep: Dependency = { id: newDependencyId(), from, to, type, lag: options.lag ?? 0 };
-    this.#deps.set(dep.id, dep);
+    this.#put(dep);
     this.#bump();
     return dep;
+  }
+
+  /**
+   * Bulk `link()` for loading a whole dataset (constructor, import staging), all-or-nothing and
+   * linear: one pass checks self-links and duplicate pairs, then ONE Kahn pass checks for cycles
+   * (O(V + E) total, independent of edge order). Throws the same {@link DependencyLinkError}
+   * class as sequential `link()`; for input that is invalid in more than one way the message may
+   * name a different edge (a self-link or duplicate anywhere is reported before a cycle, and a
+   * cycle is reported as the first input edge whose endpoints are both on or downstream of it).
+   * On a throw nothing is added. Does not honour `allowCycle`.
+   *
+   * @internal Loader plumbing, not part of the stable API.
+   */
+  linkAll(
+    inputs: readonly { from: TaskId; to: TaskId; type?: DependencyType; lag?: number }[],
+  ): Dependency[] {
+    const made: Dependency[] = [];
+    try {
+      for (const { from, to, type, lag } of inputs) {
+        if (from === to) {
+          throw new DependencyLinkError(`DependencyStore.link: cannot self-link task ${from}`);
+        }
+        if (this.#out.get(from)?.has(to)) {
+          throw new DependencyLinkError(`DependencyStore.link: link ${from} → ${to} already exists`);
+        }
+        const dep: Dependency = { id: newDependencyId(), from, to, type: type ?? 'FS', lag: lag ?? 0 };
+        this.#put(dep);
+        made.push(dep);
+      }
+      const stuck = this.#cyclic();
+      if (stuck.size > 0) {
+        const bad = inputs.find((d) => stuck.has(d.from) && stuck.has(d.to)) ?? inputs[0]!;
+        throw new DependencyLinkError(
+          `DependencyStore.link: link ${bad.from} → ${bad.to} would create a cycle`,
+        );
+      }
+    } catch (e) {
+      for (const d of made) this.#drop(d);
+      throw e;
+    }
+    if (made.length > 0) this.#bump();
+    return made;
   }
 
   /**
@@ -89,42 +137,41 @@ export class DependencyStore {
    * ALREADY validly in at the exact moment of the original mutation.
    */
   restore(dependency: Dependency): Dependency {
-    this.#deps.set(dependency.id, dependency);
+    this.#put(dependency);
     this.#bump();
     return dependency;
   }
 
   /** Remove the link(s) for a from/to pair (any type). */
   unlink(from: TaskId, to: TaskId): void {
-    let removed = false;
-    for (const [id, d] of this.#deps) {
-      if (d.from === from && d.to === to) {
-        this.#deps.delete(id);
-        removed = true;
-      }
+    const dep = this.#out.get(from)?.get(to);
+    if (dep) {
+      this.#drop(dep);
+      this.#bump();
     }
-    if (removed) this.#bump();
   }
 
   remove(id: DependencyId): void {
-    if (this.#deps.delete(id)) this.#bump();
+    const dep = this.#deps.get(id);
+    if (dep) {
+      this.#drop(dep);
+      this.#bump();
+    }
   }
 
   /** Remove every link that references a task (called when a task is deleted). */
   removeForTask(taskId: TaskId): void {
-    let removed = false;
-    for (const [id, d] of this.#deps) {
-      if (d.from === taskId || d.to === taskId) {
-        this.#deps.delete(id);
-        removed = true;
-      }
-    }
-    if (removed) this.#bump();
+    const touching = this.#touching(taskId);
+    for (const d of touching) this.#drop(d);
+    if (touching.size > 0) this.#bump();
   }
 
   clear(): void {
     if (this.#deps.size === 0) return;
     this.#deps.clear();
+    this.#out.clear();
+    this.#in.clear();
+    this.#seq.clear();
     this.#bump();
   }
 
@@ -148,24 +195,24 @@ export class DependencyStore {
   /** Every link touching a task (incoming or outgoing). */
   of(taskId: TaskId): Dependency[] {
     this.#track();
-    return [...this.#deps.values()].filter((d) => d.from === taskId || d.to === taskId);
+    return [...this.#touching(taskId)].sort((a, b) => this.#seq.get(a.id)! - this.#seq.get(b.id)!);
   }
 
   /** Links into a task (the task is `to`) — i.e. the task's predecessors. */
   predecessors(taskId: TaskId): Dependency[] {
     this.#track();
-    return [...this.#deps.values()].filter((d) => d.to === taskId);
+    return [...(this.#in.get(taskId)?.values() ?? [])];
   }
 
   /** Links out of a task (the task is `from`) — i.e. the task's successors. */
   successors(taskId: TaskId): Dependency[] {
     this.#track();
-    return [...this.#deps.values()].filter((d) => d.from === taskId);
+    return [...(this.#out.get(taskId)?.values() ?? [])];
   }
 
   linkExists(from: TaskId, to: TaskId): boolean {
     this.#track();
-    return this.#findByPair(from, to) !== undefined;
+    return this.#out.get(from)?.has(to) === true;
   }
 
   /** Whether a `from → to` link would create a cycle (edge not yet added). */
@@ -174,66 +221,74 @@ export class DependencyStore {
     return from === to || this.#canReach(to, from);
   }
 
-  /** Whether the current graph has a cycle (3-color DFS). */
+  /** Whether the current graph has a cycle (iterative Kahn, O(V + E), no recursion). */
   hasCycle(): boolean {
     this.#track();
-    const adj = this.#successorMap();
-    const WHITE = 0;
-    const GRAY = 1;
-    const BLACK = 2;
-    const color = new Map<TaskId, number>();
-    const nodes = new Set<TaskId>();
-    for (const d of this.#deps.values()) {
-      nodes.add(d.from);
-      nodes.add(d.to);
-    }
-    const visit = (n: TaskId): boolean => {
-      color.set(n, GRAY);
-      for (const m of adj.get(n) ?? []) {
-        const c = color.get(m) ?? WHITE;
-        if (c === GRAY) return true;
-        if (c === WHITE && visit(m)) return true;
-      }
-      color.set(n, BLACK);
-      return false;
-    };
-    for (const n of nodes) {
-      if ((color.get(n) ?? WHITE) === WHITE && visit(n)) return true;
-    }
-    return false;
+    return this.#cyclic().size > 0;
   }
 
   // --- Internal ------------------------------------------------------------
 
-  #findByPair(from: TaskId, to: TaskId): Dependency | undefined {
-    for (const d of this.#deps.values()) {
-      if (d.from === from && d.to === to) return d;
-    }
-    return undefined;
+  /** Every dependency touching a task, each once (a stored self-loop would otherwise repeat). */
+  #touching(taskId: TaskId): Set<Dependency> {
+    return new Set([...(this.#out.get(taskId)?.values() ?? []), ...(this.#in.get(taskId)?.values() ?? [])]);
   }
 
-  #successorMap(): Map<TaskId, TaskId[]> {
-    const map = new Map<TaskId, TaskId[]>();
-    for (const d of this.#deps.values()) {
-      const arr = map.get(d.from);
-      if (arr) arr.push(d.to);
-      else map.set(d.from, [d.to]);
+  /** Insert or replace a dependency, keeping the pair indices and insertion order in step. */
+  #put(dep: Dependency): void {
+    const prev = this.#deps.get(dep.id);
+    if (prev) {
+      if (prev.from !== dep.from || prev.to !== dep.to) this.#unindex(prev);
+    } else this.#seq.set(dep.id, this.#n++);
+    const holder = this.#out.get(dep.from)?.get(dep.to);
+    if (holder && holder.id !== dep.id) this.#drop(holder); // pair slot taken: displace it
+    this.#deps.set(dep.id, dep);
+    for (const [m, a, b] of [[this.#out, dep.from, dep.to], [this.#in, dep.to, dep.from]] as const) {
+      const inner = m.get(a);
+      if (inner) inner.set(b, dep);
+      else m.set(a, new Map([[b, dep]]));
     }
-    return map;
+  }
+
+  #drop(dep: Dependency): void {
+    this.#deps.delete(dep.id);
+    this.#seq.delete(dep.id);
+    this.#unindex(dep);
+  }
+
+  #unindex(dep: Dependency): void {
+    for (const [m, a, b] of [[this.#out, dep.from, dep.to], [this.#in, dep.to, dep.from]] as const) {
+      const inner = m.get(a);
+      if (inner?.delete(b) && inner.size === 0) m.delete(a);
+    }
+  }
+
+  /** Kahn's algorithm: the nodes that never reach in-degree zero (on a cycle or downstream of one). */
+  #cyclic(): Set<TaskId> {
+    const degree = new Map<TaskId, number>();
+    for (const [n, from] of this.#in) degree.set(n, from.size);
+    const queue = [...this.#out.keys()].filter((n) => !degree.has(n));
+    for (let i = 0; i < queue.length; i++) {
+      for (const next of this.#out.get(queue[i]!)?.keys() ?? []) {
+        const d = degree.get(next)! - 1;
+        degree.set(next, d);
+        if (d === 0) queue.push(next);
+      }
+    }
+    const stuck = new Set<TaskId>();
+    for (const [n, d] of degree) if (d > 0) stuck.add(n);
+    return stuck;
   }
 
   /** Whether a path `start → ... → target` exists following from→to edges. */
   #canReach(start: TaskId, target: TaskId): boolean {
-    const adj = this.#successorMap();
     const seen = new Set<TaskId>();
     const stack: TaskId[] = [start];
-    while (stack.length > 0) {
-      const node = stack.pop();
-      if (node === undefined) break;
+    for (let node = stack.pop(); node !== undefined; node = stack.pop()) {
       if (node === target) return true;
       if (seen.has(node)) continue;
       seen.add(node);
-      for (const next of adj.get(node) ?? []) stack.push(next);
+      for (const next of this.#out.get(node)?.keys() ?? []) stack.push(next);
     }
     return false;
   }

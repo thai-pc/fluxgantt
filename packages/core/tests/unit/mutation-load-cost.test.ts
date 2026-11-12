@@ -1,10 +1,7 @@
-// Load-cost harness (spec-mutation-batching.md §8 item 3, PR 0). Counts Map/Set/array work —
-// not wall-clock — for loading tasks + dependencies at N and 4N edges, for the four graph shapes
-// the spec calls out. On master 0109f02 `DependencyStore.link()` rescans every dependency (pair
-// check), rebuilds the whole successor map and runs a DFS per call, so the cost is Theta(E^2):
-// 4x the edges costs ~16x the operations. These tests document that loosely (a band around 16x),
-// NOT as a goal. TODO(spec-mutation-batching §6, PR 3): after `DependencyStore.linkAll` lands the
-// ratio flips to < 4.5 (linear) and `QUADRATIC_BAND` becomes `LINEAR_MAX`.
+// Load-cost harness (spec-mutation-batching.md §8 item 3). Counts Map/Set/array work, not
+// wall-clock, for loading tasks + dependencies at N and 4N edges, for the four graph shapes the
+// spec calls out. Before `DependencyStore.linkAll` the sequential `link()` loader rescanned every
+// dependency per edge (Theta(E^2): 4x the edges cost ~16x the operations); now it is linear.
 import { describe, it, expect } from 'vitest';
 import { createGantt } from '../../src/gantt.js';
 import { withIo } from '../../src/io/mixin.js';
@@ -61,8 +58,8 @@ const SHAPES: Record<string, (e: number) => Dataset> = {
 
 const N = 250;
 const FOUR_N = 4 * N;
-/** 4x data costs 16x ops for a Theta(E^2) loader; allow for the linear terms around it. */
-const QUADRATIC_BAND = { min: 10, max: 20 };
+/** A linear loader costs ~4x ops for 4x data (the old sequential loader cost ~16x). */
+const LINEAR_MAX = 4.5;
 
 const viaConstructor = (d: Dataset): (() => unknown) => () => createGantt({ tasks: d.tasks, dependencies: d.dependencies });
 const viaImportJson = (d: Dataset): (() => unknown) => () =>
@@ -72,19 +69,18 @@ const viaImportJson = (d: Dataset): (() => unknown) => () =>
     dependencies: d.dependencies,
   });
 
-describe('load-cost harness: operation counts at N and 4N dependencies (documents the quadratic load)', () => {
+describe('load-cost harness: operation counts at N and 4N dependencies (linear load)', () => {
   for (const [shapeName, build] of Object.entries(SHAPES)) {
     for (const [entry, run] of [
       ['createGantt({ dependencies })', viaConstructor],
       ['importJson', viaImportJson],
     ] as const) {
-      it(`${shapeName} via ${entry}: ops(4N)/ops(N) is ~16x`, () => {
+      it(`${shapeName} via ${entry}: ops(4N)/ops(N) is linear (< 4.5)`, () => {
         const small = countOps(run(build(N))).ops;
         const large = countOps(run(build(FOUR_N))).ops;
         const ratio = large / small;
         expect(small).toBeGreaterThan(N); // the counter really sees the load
-        expect(ratio).toBeGreaterThan(QUADRATIC_BAND.min);
-        expect(ratio).toBeLessThan(QUADRATIC_BAND.max);
+        expect(ratio).toBeLessThan(LINEAR_MAX);
       });
     }
   }
