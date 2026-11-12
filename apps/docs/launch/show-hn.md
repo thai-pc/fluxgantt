@@ -6,8 +6,9 @@ repo so it can be reviewed and edited like anything else.
 **Send only when all three are true:**
 
 1. ~~`@fluxgantt/core` is published to npm.~~ **Done** — `0.2.0` on npm since 2026-09-24.
-2. The docs site is deployed at a public URL. Still open: Pages is not enabled, so every docs link
-   in this draft resolves to nothing.
+2. The docs site is deployed at a public URL (`https://fluxgantt.thai-pc.com`). Still open until the
+   owner connects the Cloudflare Pages project (`RELEASING.md` → Docs site); until then every docs
+   link in this draft resolves to nothing.
 3. ~~The three demo GIFs exist.~~ **Done** — `apps/docs/launch/assets/*.gif`. A Gantt library submitted without a moving picture of a bar being
    dragged will be ignored.
 

@@ -4,7 +4,7 @@ The headless engine behind [FluxGantt](https://github.com/thai-pc/fluxgantt) —
 MIT-licensed Gantt chart library. State, scheduling and compute run without a DOM; rendering,
 interaction and IO are opt-in mixins on their own subpath exports, so you only ship what you use.
 
-- **Docs:** https://thai-pc.github.io/fluxgantt
+- **Docs:** https://fluxgantt.thai-pc.com
 - **Repository:** https://github.com/thai-pc/fluxgantt
 
 ## Install
@@ -95,7 +95,7 @@ is a function, not a prototype method:
 ## Built in, no extra import
 
 The base instance — `createGantt()` alone, before any mixin — already carries these. Each is
-documented in full in the [API reference](https://thai-pc.github.io/fluxgantt/docs/api).
+documented in full in the [API reference](https://fluxgantt.thai-pc.com/docs/api).
 
 ```ts
 // Undo/redo. One entry per gesture, not per internal write: a cascading drag or a

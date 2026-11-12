@@ -4,7 +4,7 @@ Captured media for the Product Hunt and Show HN launches (spec §9.1 Week 8, §1
 [`../product-hunt.md`](../product-hunt.md); nothing here has been posted anywhere.
 
 **Why here and not `apps/docs/public/`:** these files are uploaded to Product Hunt / Hacker News /
-X by hand and are never referenced by a docs page, so serving them from the GitHub Pages site would
+X by hand and are never referenced by a docs page, so serving them from the docs site would
 only add ~1.7 MB to every deploy. They live next to the copy that specifies them. If a docs page
 ever needs one, copy it into `apps/docs/public/` at that point rather than moving the source.
 
