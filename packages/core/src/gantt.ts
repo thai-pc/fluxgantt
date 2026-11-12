@@ -14,12 +14,7 @@
 // via `computeCascade` — opt-in via `GanttConfig.schedulingMode: 'auto'`. Default remains
 // `'manual'` (= v1's original single-task-only behavior, unchanged) — see `#maybeCascade`.
 import { batch, signal, type Signal } from './signals.js';
-import {
-  INTERNAL,
-  type GanttInternal,
-  type MountState,
-  type InteractionHooks,
-} from './gantt-internal.js';
+import { INTERNAL, type GanttInternal, type MountState, type InteractionHooks } from './gantt-internal.js';
 import { TaskStore, DependencyStore, SelectionStore, CollapseStore } from './store/index.js';
 import type { TaskInput, TaskPatch } from './store/index.js';
 import {
@@ -675,22 +670,14 @@ class Gantt implements GanttInstance {
     // May throw (duplicate id / self-link / duplicate pair / cycle) — construction fails
     // atomically; no partial state is observable (the whole `createGantt()` call throws, no
     // instance is ever returned).
-    this.#loadDataset(
-      config.tasks ?? [],
-      config.dependencies ?? [],
-      this.#taskStore,
-      this.#dependencyStore,
-      'createGantt',
-    );
+    this.#loadDataset(config.tasks ?? [], config.dependencies ?? [], this.#taskStore, this.#dependencyStore, 'createGantt');
 
     // `initialCollapsed` (spec-collapse-expand.md §3.3) — applied AFTER `#taskStore` is
     // populated (needs `children()` to resolve), using the exact same "must currently have a
     // child" filter as `collapseAll()`. Does NOT emit `collapse:changed` — construction-time
     // state, not a runtime mutation.
     if (config.initialCollapsed && config.initialCollapsed.length > 0) {
-      const withChildren = config.initialCollapsed.filter(
-        (id) => this.#taskStore.children(id).length > 0,
-      );
+      const withChildren = config.initialCollapsed.filter((id) => this.#taskStore.children(id).length > 0);
       this.#collapseStore.replace(withChildren);
     }
 
@@ -725,18 +712,12 @@ class Gantt implements GanttInstance {
         this.#interactionHooks = hooks;
       },
       reschedule: (id, patch, cascade) => this.#commitScheduleChange(id, patch, cascade),
-      shift: (id, start, end) => {
-        this.#applyCascadeShift(id, start, end);
-      },
       run: (fn, group) => this.#run(fn, group),
-      record: (op) => this.#recordOp(op),
-      recordAll: (ops) => this.#recordOps(ops),
       applySel: (ids) => {
         this.#applySelection(ids);
       },
       withKids: (ids) => this.#expandWithDescendants(ids),
-      load: (tasks, dependencies, format) =>
-        this.#run(() => this.#commitImport(tasks, dependencies, format)),
+      load: (tasks, dependencies, format) => this.#run(() => this.#commitImport(tasks, dependencies, format)),
       requireMount: (method) => this.#assertMounted(method),
       noteCrit: (ids) => {
         if (this.#sameCriticalIds(ids)) return false;
@@ -831,17 +812,13 @@ class Gantt implements GanttInstance {
     this.#dependencyStore.clear();
     for (const d of stagingDependencies.all()) this.#dependencyStore.restore(d);
     this.#applySelection([]); // explicit clear — emits selection:changed iff the selection
-    // was non-empty.
+    // was non-empty; safe/no-op-suppressed inside batch() same as anywhere else.
 
     this.#undoStack.length = 0;
     this.#redoStack.length = 0;
     if (hadHistory) this.#emitHistoryChanged(); // suppressed when both stacks were already empty
 
-    const summary: ImportSummary = {
-      format,
-      taskCount: tasks.length,
-      dependencyCount: dependencies.length,
-    };
+    const summary: ImportSummary = { format, taskCount: tasks.length, dependencyCount: dependencies.length };
     this.#emit('data:imported', summary);
     return summary;
   }
@@ -850,19 +827,16 @@ class Gantt implements GanttInstance {
 
   addTask(input: TaskInput): Task {
     this.#assertAlive('addTask');
-    return this.#run(() => {
-      const task = this.#taskStore.add(input);
-      this.#recordOp({ kind: 'task-add', task });
-      this.#emit('task:added', task);
-      return task;
-    });
+    const task = this.#taskStore.add(input);
+    this.#recordOp({ kind: 'task-add', task });
+    this.#emit('task:added', task);
+    return task;
   }
 
   updateTask(id: TaskId, patch: TaskPatch): Task {
     this.#assertAlive('updateTask');
     this.#requireTask(id, 'updateTask');
-    const cascades =
-      patch.start !== undefined || patch.end !== undefined || patch.duration !== undefined;
+    const cascades = patch.start !== undefined || patch.end !== undefined || patch.duration !== undefined;
     return this.#commitScheduleChange(id, patch, cascades);
   }
 
@@ -888,9 +862,7 @@ class Gantt implements GanttInstance {
     this.#assertAlive('resizeTask');
     const prev = this.#requireTask(id, 'resizeTask');
     if (!Number.isFinite(newDuration) || newDuration < 0) {
-      throw new Error(
-        `gantt.resizeTask: invalid duration (${newDuration}) — must be a finite number >= 0`,
-      );
+      throw new Error(`gantt.resizeTask: invalid duration (${newDuration}) — must be a finite number >= 0`);
     }
     // Sets BOTH `end` (so the rendered bar — whose width comes from start/end, not
     // `duration` — actually resizes) AND explicit `duration` (authoritative for
@@ -908,7 +880,7 @@ class Gantt implements GanttInstance {
     if (!Number.isFinite(progress) || progress < 0 || progress > 1) {
       throw new Error(`gantt.setProgress: invalid progress (${progress}) — must be in [0, 1]`);
     }
-    return this.#run(() => this.#applyPatch(id, { progress }));
+    return this.#applyPatch(id, { progress });
   }
 
   duplicateTask(taskId?: TaskId): Task[] {
@@ -933,14 +905,7 @@ class Gantt implements GanttInstance {
 
         // Omit id/createdAt/updatedAt/start/end from the spread — id/timestamps are
         // store-owned (addTask mints/stamps them), start/end are explicitly recomputed below.
-        const {
-          id: _id,
-          createdAt: _createdAt,
-          updatedAt: _updatedAt,
-          start: _start,
-          end: _end,
-          ...rest
-        } = source;
+        const { id: _id, createdAt: _createdAt, updatedAt: _updatedAt, start: _start, end: _end, ...rest } = source;
 
         const sourceEnd = normalizeDate(source.end, tz);
         const durationHours =
@@ -989,9 +954,7 @@ class Gantt implements GanttInstance {
       //     deps before tasks (matches this method's own emit order below); undo() (LIFO/
       //     reverse) re-adds tasks before the dependencies that reference them.
       this.#recordOps([
-        ...[...depsToRemove.values()].map(
-          (dependency) => ({ kind: 'dependency-remove', dependency }) as const,
-        ),
+        ...[...depsToRemove.values()].map((dependency) => ({ kind: 'dependency-remove', dependency }) as const),
         ...removedTasks.map((task) => ({ kind: 'task-remove', task }) as const),
       ]);
 
@@ -1033,25 +996,19 @@ class Gantt implements GanttInstance {
   linkTasks(from: TaskId, to: TaskId, type: DependencyType = 'FS', lag?: number): Dependency {
     this.#assertAlive('linkTasks');
     // may throw — no event on throw
-    return this.#run(() => {
-      const dep = this.#dependencyStore.link(from, to, type, lag === undefined ? {} : { lag });
-      this.#recordOp({ kind: 'dependency-add', dependency: dep });
-      this.#emit('dependency:added', dep);
-      return dep;
-    });
+    const dep = this.#dependencyStore.link(from, to, type, lag === undefined ? {} : { lag });
+    this.#recordOp({ kind: 'dependency-add', dependency: dep });
+    this.#emit('dependency:added', dep);
+    return dep;
   }
 
   unlinkTasks(from: TaskId, to: TaskId): void {
     this.#assertAlive('unlinkTasks');
-    this.#run(() => {
-      const matches = this.#dependencyStore.all().filter((d) => d.from === from && d.to === to);
-      if (matches.length === 0) return;
-      this.#dependencyStore.unlink(from, to);
-      this.#recordOps(
-        matches.map((dependency) => ({ kind: 'dependency-remove', dependency }) as const),
-      );
-      for (const d of matches) this.#emit('dependency:removed', d.id);
-    });
+    const matches = this.#dependencyStore.all().filter((d) => d.from === from && d.to === to);
+    if (matches.length === 0) return;
+    this.#dependencyStore.unlink(from, to);
+    this.#recordOps(matches.map((dependency) => ({ kind: 'dependency-remove', dependency }) as const));
+    for (const d of matches) this.#emit('dependency:removed', d.id);
   }
 
   getDependencies(): Dependency[] {
@@ -1230,10 +1187,7 @@ class Gantt implements GanttInstance {
 
   // --- Events ----------------------------------------------------------------------------------
 
-  on<E extends GanttEventName>(
-    event: E,
-    callback: (...args: GanttEventMap[E]) => void,
-  ): UnsubscribeFn {
+  on<E extends GanttEventName>(event: E, callback: (...args: GanttEventMap[E]) => void): UnsubscribeFn {
     if (this.#destroyed) return () => {}; // nothing will ever fire again — true no-op
     let set = this.#listeners.get(event);
     if (!set) {
@@ -1265,6 +1219,7 @@ class Gantt implements GanttInstance {
     this.#listeners.clear();
     this.#destroyed = true;
   }
+
 
   // --- Private: mutation → split-event pipeline (Q3 + Q6) ---------------------------------
 
@@ -1343,16 +1298,11 @@ class Gantt implements GanttInstance {
   /** Instant span (end − start) in nanoseconds — translation-invariant, so a move (both
    *  ends shifted by the same delta) preserves it. */
   #spanNs(task: Task, timezone: string): bigint {
-    return (
-      normalizeDate(task.end, timezone).epochNanoseconds -
-      normalizeDate(task.start, timezone).epochNanoseconds
-    );
+    return normalizeDate(task.end, timezone).epochNanoseconds - normalizeDate(task.start, timezone).epochNanoseconds;
   }
 
   #sameInstant(a: DateInput, b: DateInput, timezone: string): boolean {
-    return (
-      normalizeDate(a, timezone).epochNanoseconds === normalizeDate(b, timezone).epochNanoseconds
-    );
+    return normalizeDate(a, timezone).epochNanoseconds === normalizeDate(b, timezone).epochNanoseconds;
   }
 
   /** True when `next` equals the last-emitted critical set element-wise. `criticalTaskIds`
@@ -1396,10 +1346,7 @@ class Gantt implements GanttInstance {
   }
 
   #emitHistoryChanged(): void {
-    this.#emit('history:changed', {
-      canUndo: this.#undoStack.length > 0,
-      canRedo: this.#redoStack.length > 0,
-    });
+    this.#emit('history:changed', { canUndo: this.#undoStack.length > 0, canRedo: this.#redoStack.length > 0 });
   }
 
   #beginTransaction(): void {
@@ -1452,10 +1399,7 @@ class Gantt implements GanttInstance {
 
   /** Replaces the collapsed set and emits `collapse:changed` iff it actually changed. */
   #replaceCollapsed(ids: readonly TaskId[]): void {
-    this.#run(() => {
-      if (this.#collapseStore.replace(ids))
-        this.#emit('collapse:changed', this.#collapseStore.all());
-    });
+    if (this.#collapseStore.replace(ids)) this.#emit('collapse:changed', this.#collapseStore.all());
   }
 
   /** Selection hygiene: `undo()`/`redo()` can remove a task from the store (undoing an
@@ -1511,16 +1455,20 @@ class Gantt implements GanttInstance {
   // --- Private: event bus -----------------------------------------------------------------
 
   /**
-   * The ONE command path (spec-mutation-batching.md §3). Every mutating public method runs its
+   * The ONE command path (spec-mutation-batching.md §3). Every multi-write public method runs its
    * writes through here: (a) inside a signal `batch()`, so a mounted chart repaints ONCE per
    * command; (b) with every `#emit` and `onTaskChange` call queued in `#outbox`; (c) the outbox
    * drains FIFO AFTER the batch flushed its effects, so listeners observe the final state.
    * A nested command joins the outer one. A throwing `fn` still announces what it committed,
-   * then rethrows. `group` additionally wraps the writes in ONE history entry.
+   * then rethrows ITS error; a hook error raised alongside it is logged, not rethrown.
+   * `group` additionally wraps the writes in ONE history entry.
    */
   #run<T>(fn: () => T, group?: boolean): T {
     const outer = !this.#cmd;
-    const out = this.#outbox;
+    // Fresh array per outer command: a command started by a listener during the flush below must
+    // not see (and re-drain) this command's queue.
+    const out = outer ? (this.#outbox = []) : this.#outbox;
+    let failed = false;
     this.#cmd = true;
     try {
       return batch(() => {
@@ -1532,10 +1480,11 @@ class Gantt implements GanttInstance {
           if (outer) this.#cmd = false; // before the flush: effect-emitted events go out directly
         }
       });
+    } catch (err) {
+      failed = true;
+      throw err;
     } finally {
       if (outer) {
-        this.#cmd = false;
-        this.#outbox = []; // `out` is drained below; a command started by a listener fills the fresh array
         const errs: unknown[] = [];
         for (const f of out) {
           try {
@@ -1544,7 +1493,11 @@ class Gantt implements GanttInstance {
             errs.push(err);
           }
         }
-        if (errs.length) throw errs[0]; // eslint-disable-line no-unsafe-finally -- announce first, then surface the first hook error
+        if (errs.length) {
+          // The command's own error wins; a hook error raised alongside it is reported, not lost.
+          if (failed) console.error('@fluxgantt/core: onTaskChange threw', errs[0]);
+          else throw errs[0]; // eslint-disable-line no-unsafe-finally -- announce first, then surface the first hook error
+        }
       }
     }
   }
@@ -1611,12 +1564,7 @@ class Gantt implements GanttInstance {
    */
   #maybeCascade(changedId: TaskId): void {
     if (this.#config.schedulingMode !== 'auto') return;
-    const result = computeCascade(
-      this.#taskStore.all(),
-      this.#dependencyStore.all(),
-      this.#calendar,
-      [changedId],
-    );
+    const result = computeCascade(this.#taskStore.all(), this.#dependencyStore.all(), this.#calendar, [changedId]);
     for (const shift of result.shifts) {
       // Cascade shifts are pure moves (duration preserved) → emit only `task:moved`, never a
       // spurious `task:resized` from an instant-span change across weekends (review finding).
