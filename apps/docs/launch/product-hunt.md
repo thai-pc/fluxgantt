@@ -58,8 +58,9 @@ Post this yourself in the first minutes; it is the thing people actually read.
 > Hi Product Hunt 👋
 >
 > I built FluxGantt because every time I needed a Gantt chart in a product, the options were: pay
-> $600–1,600 per developer per year for dhtmlx or Bryntum, pull in a 226 KiB MIT monolith, use
-> something with no TypeScript types and no critical path, or spend two months building one. None of
+> $699–1,100 per developer for dhtmlx PRO or Bryntum (plus an OEM licence if you ship SaaS), pull in
+> a 226 KiB MIT edition that keeps the critical path behind the paywall, use something with no
+> TypeScript types and no critical path, or spend two months building one. None of
 > those felt like they should be the whole menu in 2026.
 >
 > The decision the whole library hangs on is that the **engine is headless**. `createGantt()` imports
@@ -79,8 +80,8 @@ Post this yourself in the first minutes; it is the thing people actually read.
 > **Zero required CSS.** Every visual property is written inline with a custom-property fallback, so
 > the chart paints correctly with no stylesheet at all and you add CSS only to override.
 >
-> It's MIT and stays MIT. Resource leveling, baselines and MS Project import are planned as a
-> one-time-purchase Pro tier — one-time, because paying annual rent for a library is miserable.
+> It's MIT and stays MIT, critical path included. Resource leveling, baselines and MS Project import
+> are planned as a perpetual Pro licence that you can use in a SaaS product with no OEM surcharge.
 >
 > Honest caveats: it's pre-1.0, there's no Svelte or Angular wrapper yet, and if you need resource
 > leveling today dhtmlx or Bryntum will serve you better. I'd genuinely rather hear that from you now
@@ -129,7 +130,7 @@ Capture at 1200×675, ≤8 seconds each, ≤5 MB, looping, no cursor trails.
 | Critical path | `/` | Drag a bar until the dashed-red critical path visibly re-routes through a different chain. |
 
 Spec §15.1 lists the third GIF as "AI scheduling". **Substitute critical path.** AI scheduling is
-Wave 3 and does not exist; a GIF of it would be a fabrication.
+not on the roadmap (it was Wave 3) and does not exist; a GIF of it would be a fabrication.
 
 ### Video — optional, 60–90 seconds — not produced (a silent [`demo-teaser.mp4`](./assets/demo-teaser.mp4) exists instead)
 
@@ -148,9 +149,10 @@ smaller, 14.9 KiB against <!--sz:editable.1-->19.2<!--/sz--> KiB. Link the compa
 **"Why should I trust a pre-1.0 library?"** — Point at CI: unit, e2e, visual-regression, a11y, mobile
 and performance suites plus enforced size budgets, all public.
 
-**"Will the free version get crippled?"** — No. Everything MIT today stays MIT. Pro adds resource
-leveling, baselines, constraints and MS Project XML — features that do not exist in the free tier
-today and so cannot be taken out of it.
+**"Will the free version get crippled?"** — No. Everything MIT today stays MIT, and the Svelte and
+Angular wrappers will be MIT too. Pro adds resource leveling, baselines, constraints, MS Project XML
+and PDF branding — features that do not exist in the free tier today and so cannot be taken out of
+it.
 
 **"Does it do resource management?"** — Not yet; that's the Pro tier and it isn't built. If you need
 it today, dhtmlx Community ships MS Project I/O for free and Bryntum has the most complete resource

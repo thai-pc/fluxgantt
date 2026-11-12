@@ -29,7 +29,7 @@ Recommend the first. The number is the differentiator and putting it in the titl
 comparison argument before anyone clicks.
 
 **Do not** use the phrasing suggested in spec §15.2 — *"MIT-licensed Gantt chart library with AI
-scheduling"*. AI scheduling is Wave 3 and does not exist yet; leading with it would be a false
+scheduling"*. AI scheduling is not on the roadmap and does not exist; leading with it would be a false
 claim on the one post where credibility matters most. Spec §2.2 already concluded that AI is no
 longer a differentiator anyway.
 
@@ -43,9 +43,11 @@ their own; they will not click through *to* docs.
 Hi HN — I'm the author.
 
 Every project-management app eventually needs a Gantt chart, and the existing options are all
-uncomfortable. dhtmlx PRO and Bryntum are mature and good, at $599–1,599 and $850+ per developer
-per year. The MIT options are lighter on your wallet and heavier on your bundle: dhtmlx's new
-Community edition is 226 KiB gzip once you include its required stylesheet. Frappe Gantt is a
+uncomfortable. dhtmlx PRO and Bryntum are mature and good, from $799 perpetual and $699–1,100 per
+developer per year (Bryntum wants an OEM licence on top if you ship it inside a SaaS product). Their
+new MIT editions are lighter on your wallet, but they keep the critical path behind the paywall and
+they are heavier on your bundle: dhtmlx's Community edition is 226 KiB gzip once you include its
+required stylesheet. Frappe Gantt is a
 genuinely small 15 KiB, but it has no critical path, only finish-to-start dependencies, and no
 TypeScript types at all. So the third option is what a lot of teams actually do: spend two months
 building one.
@@ -86,7 +88,8 @@ import-export, and React and Vue wrappers. Canvas takes over from SVG automatica
 tasks.
 
 What it doesn't: resource leveling, baselines, task constraints and MS Project XML are planned for a
-paid Pro tier — worth saying plainly, since dhtmlx Community ships MS Project I/O for free today.
+paid Pro tier (a perpetual licence that allows SaaS use; planned, not on sale) — worth saying
+plainly, since dhtmlx Community ships MS Project I/O for free today.
 No Svelte or Angular wrapper yet. No pinch-to-zoom. The core is and stays MIT.
 
 I'd particularly like to hear from anyone who has embedded a Gantt in a product and hit the limits
@@ -122,9 +125,10 @@ bundle is behind a login, so there's nothing anyone can independently re-measure
 **"Why not just use a charting library?"** — A Gantt is a scheduler that happens to draw bars. The
 hard part is CPM, cascade, working-calendar arithmetic and DST, none of which a charting library has.
 
-**"Is the licensing a bait-and-switch?"** — The core is MIT and stays MIT. Pro is a one-time
-purchase, not a subscription, precisely because paying rent for a library is miserable. Nothing
-currently MIT will move behind the paywall.
+**"Is the licensing a bait-and-switch?"** — The core is MIT and stays MIT, critical path included.
+Pro is planned as a perpetual licence, not a subscription: the version you buy keeps working, with
+12 months of updates and an optional renewal. It allows use in SaaS products with no OEM surcharge.
+Nothing currently MIT will move behind the paywall, and the Svelte/Angular wrappers will be MIT too.
 
 **"Pre-1.0 — will you maintain it?"** — Point at the CI: unit, e2e, visual-regression, a11y, mobile
 and performance suites, plus the size budgets. Don't promise a roadmap date you can't hit.
