@@ -466,6 +466,20 @@ persistence hook:
   So a listener firing means something genuinely changed.
 - **One fire per gesture, never per internal write.** `history:changed` fires once for a whole
   cascade-grouped drag; an import fires `data:imported` once instead of `task:added` × N.
+- **Event timing: listeners see the final state.** A mutation that writes more than once (a
+  `moveTask` that cascades in `schedulingMode: 'auto'`, `removeTask` of a subtree, `undo()`/`redo()`
+  of a grouped step, `duplicateTask`, Delete on a multi-selection, an import) commits ALL of its
+  writes first, repaints a mounted chart ONCE, and only then calls your listeners and
+  `onTaskChange`, in the same order as before. So `gantt.getTask()` or the DOM inside a `task:moved`
+  listener already shows every cascaded shift, and `critical-path:computed` fires at most once,
+  before that mutation's other events, with the final critical set. A listener that starts another
+  mutation runs it immediately, as its own command, nested inside that listener call, so the
+  remaining queued events of the outer mutation can carry snapshots older than the store at
+  delivery time. If an `onTaskChange` hook throws, the remaining events still fire and the first
+  error is rethrown afterwards (unless the mutation itself threw: that error wins and the hook error
+  is logged). The one exception to "repaints first": a mutation made inside your own
+  `signals.batch()` emits its events before the repaint, because effects are deferred to the end of
+  your batch.
 
 The five task/dependency events take an optional third argument,
 `meta?: { source: 'undo' | 'redo' }`, present only when the change came from a replay — see

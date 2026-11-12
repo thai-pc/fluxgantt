@@ -149,13 +149,23 @@ class EffectImpl extends ReactiveNode {
 
 function flush(): void {
   // Loop until stable (an effect may trigger further effects).
+  // One throwing effect must not drop the rest of the pending list: run them all, then
+  // rethrow the first error.
   let guard = 0;
+  const errs: unknown[] = [];
   while (pending.size > 0) {
     if (++guard > 10_000) throw new Error('signals: flush did not converge');
     const batchList = [...pending];
     pending.clear();
-    for (const e of batchList) e._run();
+    for (const e of batchList) {
+      try {
+        e._run();
+      } catch (err) {
+        errs.push(err);
+      }
+    }
   }
+  if (errs.length) throw errs[0];
 }
 
 /** Create a reactive signal that can be read/written through `.value`. */
@@ -177,11 +187,21 @@ export function effect(fn: () => void): () => void {
 /** Batch multiple writes into a single effect flush. */
 export function batch<T>(fn: () => T): T {
   batchDepth++;
+  let ok = false;
   try {
-    return fn();
+    const result = fn();
+    ok = true;
+    return result;
   } finally {
     batchDepth--;
-    if (batchDepth === 0) flush();
+    if (batchDepth === 0) {
+      try {
+        flush();
+      } catch (err) {
+        if (ok) throw err; // eslint-disable-line no-unsafe-finally -- fn's own error wins
+        console.error(err);
+      }
+    }
   }
 }
 

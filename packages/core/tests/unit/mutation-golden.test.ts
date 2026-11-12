@@ -2,7 +2,7 @@
 // item 1, PR 0). Each test records the EXACT sequence of events + `onTaskChange` calls the
 // mutation produces TODAY and asserts it. They are characterization tests: the later PRs of the
 // mutation-batching task must keep them green, except where spec §4 lists an intentional change.
-// Those spots carry a `TODO(spec-mutation-batching §4 ...)` marker.
+// Those spots were updated by PR 1 (batched `#run`) and say so in a comment.
 //
 // Headless (node environment). Mounted variants + Delete-selected live in
 // mutation-golden-mounted.test.ts.
@@ -162,8 +162,7 @@ describe("golden event log: cascade in schedulingMode 'auto'", () => {
   it('moveTask cascades through the graph: task:moved + onTaskChange per shift, history:changed once at the end', () => {
     const { gantt, rec } = setup(auto);
     gantt.moveTask(id('a2'), '2026-01-19T09:00');
-    // TODO(spec-mutation-batching §4 item 1, PR 1): onTaskChange (and listeners) will observe
-    // the final committed state, but the ORDER of entries below must not change.
+    // PR 1: onTaskChange (and listeners) observe the final committed state; the ORDER is unchanged.
     expect(rec.log).toMatchInlineSnapshot(`
       [
         "task:moved a2[2026-01-19T09:00..2026-01-20T17:00 p=0 parent=a] prevStart=2026-01-05T09:00",
@@ -377,7 +376,7 @@ describe('golden event log: undo / redo', () => {
     gantt.undo();
     rec.note('redo');
     gantt.redo();
-    // TODO(spec-mutation-batching §4 item 1, PR 1): listeners will see the final state; order stays.
+    // PR 1: listeners see the final state; the order is unchanged.
     expect(rec.log).toMatchInlineSnapshot(`
       [
         "task:moved d[2026-01-13T09:00..2026-01-14T17:00 p=0] prevStart=2026-01-21T13:00 {"source":"undo"}",
@@ -544,8 +543,8 @@ describe('golden event log: import', () => {
   });
 });
 
-describe('golden: listener-visible state (documents today; changes in PR 1)', () => {
-  it("a 'task:moved' listener for the mover runs BEFORE the cascade shifts are written", () => {
+describe('golden: listener-visible state (final state since PR 1)', () => {
+  it("a 'task:moved' listener for the mover sees the cascade shifts already written", () => {
     const { gantt } = setup(auto);
     const seenAtMover: string[] = [];
     gantt.on('task:moved', (task) => {
@@ -553,13 +552,13 @@ describe('golden: listener-visible state (documents today; changes in PR 1)', ()
     });
     const before = String(gantt.getTask(id('c'))!.start);
     gantt.moveTask(id('a2'), '2026-01-19T09:00');
-    // TODO(spec-mutation-batching §4 item 1): after PR 1 the mover's listener sees c ALREADY
-    // shifted (final state), so this equality flips to `not.toBe(before)`.
-    expect(seenAtMover).toEqual([before]);
+    expect(seenAtMover).toHaveLength(1);
+    expect(seenAtMover[0]).not.toBe(before);
+    expect(seenAtMover[0]).toBe(String(gantt.getTask(id('c'))!.start));
     expect(String(gantt.getTask(id('c'))!.start)).not.toBe(before);
   });
 
-  it('a throwing onTaskChange aborts the rest of the mutation today (cascade stops part-way)', () => {
+  it('a throwing onTaskChange does not abort the cascade: every write commits, the first error is rethrown', () => {
     const calls: string[] = [];
     const { gantt } = setup({
       ...auto,
@@ -570,9 +569,8 @@ describe('golden: listener-visible state (documents today; changes in PR 1)', ()
     });
     const dBefore = String(gantt.getTask(id('d'))!.start);
     expect(() => gantt.moveTask(id('b'), '2026-01-19T09:00')).toThrow('boom');
-    // TODO(spec-mutation-batching §4 item 3): after PR 1 onTaskChange is queued, the remaining
-    // events still fire and the first error is rethrown at the end.
-    expect(calls).toEqual(['b', 'c']);
-    expect(String(gantt.getTask(id('d'))!.start)).toBe(dBefore);
+    // onTaskChange is queued, so the remaining hooks still run and the first error is rethrown last.
+    expect(calls).toEqual(['b', 'c', 'd']);
+    expect(String(gantt.getTask(id('d'))!.start)).not.toBe(dBefore);
   });
 });

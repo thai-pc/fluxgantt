@@ -350,12 +350,9 @@ function commitDeleteSelected(instance: GanttInstance, internal: GanttInternal):
   if (internal.config.readOnly) return; // defense in depth — enableKeyboardNav's own isReadOnly() gate already prevents this call
   const ids = internal.sel.all();
   if (ids.length === 0) return;
-  internal.begin();
-  try {
+  internal.run(() => {
     for (const id of ids) instance.removeTask(id);
-  } finally {
-    internal.end();
-  }
+  }, true);
 }
 
 function commitClearSelection(internal: GanttInternal): void {

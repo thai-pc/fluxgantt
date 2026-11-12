@@ -635,6 +635,9 @@ class Gantt implements GanttInstance {
   /** Depth counter so `#beginTransaction`/`#endTransaction` calls compose safely if a
    *  transaction-wrapped method calls another transaction-wrapped method. */
   #transactionDepth = 0;
+  /** True while the outermost `#run` is executing its writes; `#defer` queues into `#outbox`. */
+  #cmd = false;
+  #outbox: Array<() => void> = [];
 
   /** Internal "friend" surface handed to the opt-in mixins (`withIo`/`withRender`/
    *  `withInteraction`) — see `gantt-internal.ts` and spec-facade-split.md §2.1. Present on
@@ -709,18 +712,12 @@ class Gantt implements GanttInstance {
         this.#interactionHooks = hooks;
       },
       reschedule: (id, patch, cascade) => this.#commitScheduleChange(id, patch, cascade),
-      shift: (id, start, end) => {
-        this.#applyCascadeShift(id, start, end);
-      },
-      begin: () => this.#beginTransaction(),
-      end: () => this.#endTransaction(),
-      record: (op) => this.#recordOp(op),
-      recordAll: (ops) => this.#recordOps(ops),
+      run: (fn, group) => this.#run(fn, group),
       applySel: (ids) => {
         this.#applySelection(ids);
       },
       withKids: (ids) => this.#expandWithDescendants(ids),
-      load: (tasks, dependencies, format) => this.#commitImport(tasks, dependencies, format),
+      load: (tasks, dependencies, format) => this.#run(() => this.#commitImport(tasks, dependencies, format)),
       requireMount: (method) => this.#assertMounted(method),
       noteCrit: (ids) => {
         if (this.#sameCriticalIds(ids)) return false;
@@ -803,21 +800,19 @@ class Gantt implements GanttInstance {
     // undo()/redo()'s own "don't fire history:changed on an empty-stack no-op" posture).
     const hadHistory = this.#undoStack.length > 0 || this.#redoStack.length > 0;
 
-    // Single batch(): the live-store swap below performs `clear()` + N×`restore()` per store
+    // Single command: the live-store swap below performs `clear()` + N×`restore()` per store
     // plus a selection clear — each an independent revision bump. Without batching, a
     // MOUNTED chart's reactive render effect (subscribed to all three revisions) would
-    // re-run on EVERY one of those bumps. `batch()` coalesces every bump inside this block
-    // into exactly ONE effect flush after the block exits.
-    batch(() => {
-      this.#taskStore.clear();
-      for (const t of stagingTasks.all()) this.#taskStore.restore(t); // preserves the ids/
-      // createdAt/updatedAt minted during staging — restore(), not add(), so nothing is
-      // re-stamped a second time on the live commit.
-      this.#dependencyStore.clear();
-      for (const d of stagingDependencies.all()) this.#dependencyStore.restore(d);
-      this.#applySelection([]); // explicit clear — emits selection:changed iff the selection
-      // was non-empty; safe/no-op-suppressed inside batch() same as anywhere else.
-    });
+    // re-run on EVERY one of those bumps. `#run` batches every bump into exactly ONE effect
+    // flush, then drains the queued events.
+    this.#taskStore.clear();
+    for (const t of stagingTasks.all()) this.#taskStore.restore(t); // preserves the ids/
+    // createdAt/updatedAt minted during staging — restore(), not add(), so nothing is
+    // re-stamped a second time on the live commit.
+    this.#dependencyStore.clear();
+    for (const d of stagingDependencies.all()) this.#dependencyStore.restore(d);
+    this.#applySelection([]); // explicit clear — emits selection:changed iff the selection
+    // was non-empty; safe/no-op-suppressed inside batch() same as anywhere else.
 
     this.#undoStack.length = 0;
     this.#redoStack.length = 0;
@@ -900,8 +895,7 @@ class Gantt implements GanttInstance {
     const tz = this.#calendar.timezone;
     const copies: Task[] = [];
 
-    this.#beginTransaction();
-    try {
+    this.#run(() => {
       for (const id of sourceIds) {
         const source = this.#taskStore.get(id);
         if (!source) continue; // defensive: a task:added listener earlier in THIS loop could
@@ -928,9 +922,7 @@ class Gantt implements GanttInstance {
 
         copies.push(this.addTask(input)); // fresh id, createdAt/updatedAt, task:added, undo op
       }
-    } finally {
-      this.#endTransaction(); // commits ONE history entry regardless of copies.length (0, 1, or N)
-    }
+    }, true); // ONE history entry regardless of copies.length (0, 1, or N)
 
     return copies;
   }
@@ -939,47 +931,49 @@ class Gantt implements GanttInstance {
     this.#assertAlive('removeTask');
     if (!this.#taskStore.has(id)) return; // no-op, matches TaskStore.remove's own posture
 
-    // 1. Compute the FULL set of tasks about to disappear (target + all hierarchy
-    //    descendants) BEFORE mutating — TaskStore.remove() cascades internally, but
-    //    doesn't report what it removed.
-    const removedIds = this.#collectWithDescendants(id);
+    this.#run(() => {
+      // 1. Compute the FULL set of tasks about to disappear (target + all hierarchy
+      //    descendants) BEFORE mutating — TaskStore.remove() cascades internally, but
+      //    doesn't report what it removed.
+      const removedIds = this.#collectWithDescendants(id);
 
-    // 1b. Snapshot the actual Task objects BEFORE mutating — needed for history (§4.1).
-    const removedTasks = removedIds.map((tid) => this.#taskStore.get(tid)!);
+      // 1b. Snapshot the actual Task objects BEFORE mutating — needed for history (§4.1).
+      const removedTasks = removedIds.map((tid) => this.#taskStore.get(tid)!);
 
-    // 2. Snapshot every dependency link touching any of those tasks BEFORE mutating.
-    const depsToRemove = new Map<DependencyId, Dependency>();
-    for (const tid of removedIds) {
-      for (const dep of this.#dependencyStore.of(tid)) depsToRemove.set(dep.id, dep);
-    }
+      // 2. Snapshot every dependency link touching any of those tasks BEFORE mutating.
+      const depsToRemove = new Map<DependencyId, Dependency>();
+      for (const tid of removedIds) {
+        for (const dep of this.#dependencyStore.of(tid)) depsToRemove.set(dep.id, dep);
+      }
 
-    // 3. Mutate.
-    this.#taskStore.remove(id); // cascades descendants internally
-    for (const tid of removedIds) this.#dependencyStore.removeForTask(tid);
+      // 3. Mutate.
+      this.#taskStore.remove(id); // cascades descendants internally
+      for (const tid of removedIds) this.#dependencyStore.removeForTask(tid);
 
-    // 3b. Record — dependency ops before task ops (§5.2 ordering): redo() (forward) removes
-    //     deps before tasks (matches this method's own emit order below); undo() (LIFO/
-    //     reverse) re-adds tasks before the dependencies that reference them.
-    this.#recordOps([
-      ...[...depsToRemove.values()].map((dependency) => ({ kind: 'dependency-remove', dependency }) as const),
-      ...removedTasks.map((task) => ({ kind: 'task-remove', task }) as const),
-    ]);
+      // 3b. Record — dependency ops before task ops (§5.2 ordering): redo() (forward) removes
+      //     deps before tasks (matches this method's own emit order below); undo() (LIFO/
+      //     reverse) re-adds tasks before the dependencies that reference them.
+      this.#recordOps([
+        ...[...depsToRemove.values()].map((dependency) => ({ kind: 'dependency-remove', dependency }) as const),
+        ...removedTasks.map((task) => ({ kind: 'task-remove', task }) as const),
+      ]);
 
-    // 4. Emit — dependency:removed first (cleaning up "references" before announcing the
-    //    referenced node is gone), then task:removed, deepest descendant first / target
-    //    last (mirrors TaskStore.remove's own recursion order).
-    for (const dep of depsToRemove.values()) this.#emit('dependency:removed', dep.id);
-    for (const tid of removedIds) this.#emit('task:removed', tid);
+      // 4. Emit — dependency:removed first (cleaning up "references" before announcing the
+      //    referenced node is gone), then task:removed, deepest descendant first / target
+      //    last (mirrors TaskStore.remove's own recursion order).
+      for (const dep of depsToRemove.values()) this.#emit('dependency:removed', dep.id);
+      for (const tid of removedIds) this.#emit('task:removed', tid);
 
-    // 5. Prune the selection of any removed id — correctness: getSelection() must never
-    //    reference a task that no longer exists (spec-selection.md §6).
-    this.#pruneSelectionOfMissingTasks();
+      // 5. Prune the selection of any removed id — correctness: getSelection() must never
+      //    reference a task that no longer exists (spec-selection.md §6).
+      this.#pruneSelectionOfMissingTasks();
 
-    // 6. Prune the collapse state of any removed id (spec-collapse-expand.md §0/§8) — scoped
-    //    to removeTask() only (not undo()/redo()): a stale collapsed-id left dangling there is
-    //    harmless since isCollapsed() re-checks children() live, but a hard prune here keeps
-    //    CollapseStore.size() from growing unboundedly across add/remove churn.
-    this.#pruneCollapseOfMissingTasks(removedIds);
+      // 6. Prune the collapse state of any removed id (spec-collapse-expand.md §0/§8) — scoped
+      //    to removeTask() only (not undo()/redo()): a stale collapsed-id left dangling there is
+      //    harmless since isCollapsed() re-checks children() live, but a hard prune here keeps
+      //    CollapseStore.size() from growing unboundedly across add/remove churn.
+      this.#pruneCollapseOfMissingTasks(removedIds);
+    });
   }
 
   getTask(id: TaskId): Task | undefined {
@@ -1090,26 +1084,30 @@ class Gantt implements GanttInstance {
 
   undo(): boolean {
     this.#assertAlive('undo');
-    const entry = this.#undoStack.pop();
-    if (!entry) return false;
-    for (let i = entry.ops.length - 1; i >= 0; i--) this.#applyOp(entry.ops[i]!, false);
-    this.#redoStack.push(entry);
-    if (this.#redoStack.length > this.#historyLimit) this.#redoStack.shift(); // defensive; see #commitEntry
-    this.#pruneSelectionOfMissingTasks();
-    this.#emitHistoryChanged();
-    return true;
+    return this.#run(() => {
+      const entry = this.#undoStack.pop();
+      if (!entry) return false;
+      for (let i = entry.ops.length - 1; i >= 0; i--) this.#applyOp(entry.ops[i]!, false);
+      this.#redoStack.push(entry);
+      if (this.#redoStack.length > this.#historyLimit) this.#redoStack.shift(); // defensive; see #commitEntry
+      this.#pruneSelectionOfMissingTasks();
+      this.#emitHistoryChanged();
+      return true;
+    });
   }
 
   redo(): boolean {
     this.#assertAlive('redo');
-    const entry = this.#redoStack.pop();
-    if (!entry) return false;
-    for (const op of entry.ops) this.#applyOp(op, true);
-    this.#undoStack.push(entry);
-    if (this.#undoStack.length > this.#historyLimit) this.#undoStack.shift(); // defensive; see #commitEntry
-    this.#pruneSelectionOfMissingTasks();
-    this.#emitHistoryChanged();
-    return true;
+    return this.#run(() => {
+      const entry = this.#redoStack.pop();
+      if (!entry) return false;
+      for (const op of entry.ops) this.#applyOp(op, true);
+      this.#undoStack.push(entry);
+      if (this.#undoStack.length > this.#historyLimit) this.#undoStack.shift(); // defensive; see #commitEntry
+      this.#pruneSelectionOfMissingTasks();
+      this.#emitHistoryChanged();
+      return true;
+    });
   }
 
   canUndo(): boolean {
@@ -1230,7 +1228,7 @@ class Gantt implements GanttInstance {
     const next = this.#taskStore.update(id, patch);
     this.#recordOp({ kind: 'task-update', id, prev, next });
     this.#diffAndEmit(prev, next);
-    this.#config.onTaskChange?.(next, prev);
+    this.#changed(next, prev);
     return next;
   }
 
@@ -1243,14 +1241,11 @@ class Gantt implements GanttInstance {
    * begin/end pair, not four independent ones.
    */
   #commitScheduleChange(id: TaskId, patch: TaskPatch, cascade: boolean): Task {
-    this.#beginTransaction();
-    try {
+    return this.#run(() => {
       const next = this.#applyPatch(id, patch);
       if (cascade) this.#maybeCascade(id);
       return next;
-    } finally {
-      this.#endTransaction();
-    }
+    }, true);
   }
 
   /**
@@ -1270,7 +1265,7 @@ class Gantt implements GanttInstance {
     if (!this.#sameInstant(prev.start, next.start, this.#calendar.timezone)) {
       this.#emit('task:moved', next, prev.start);
     }
-    this.#config.onTaskChange?.(next, prev);
+    this.#changed(next, prev);
   }
 
   #diffAndEmit(prev: Task, next: Task, source?: 'undo' | 'redo'): void {
@@ -1378,7 +1373,7 @@ class Gantt implements GanttInstance {
         const [from, to] = redo ? [op.prev, op.next] : [op.next, op.prev];
         this.#taskStore.restore(to);
         this.#diffAndEmit(from, to, meta.source); // "before" = from (current), "after" = to (target)
-        this.#config.onTaskChange?.(to, from);
+        this.#changed(to, from);
         break;
       }
       case 'task-add':
@@ -1459,7 +1454,68 @@ class Gantt implements GanttInstance {
 
   // --- Private: event bus -----------------------------------------------------------------
 
+  /**
+   * The ONE command path (spec-mutation-batching.md §3). Every multi-write public method runs its
+   * writes through here: (a) inside a signal `batch()`, so a mounted chart repaints ONCE per
+   * command; (b) with every `#emit` and `onTaskChange` call queued in `#outbox`; (c) the outbox
+   * drains FIFO AFTER the batch flushed its effects, so listeners observe the final state.
+   * A nested command joins the outer one. A throwing `fn` still announces what it committed,
+   * then rethrows ITS error; a hook error raised alongside it is logged, not rethrown.
+   * `group` additionally wraps the writes in ONE history entry.
+   */
+  #run<T>(fn: () => T, group?: boolean): T {
+    const outer = !this.#cmd;
+    // Fresh array per outer command: a command started by a listener during the flush below must
+    // not see (and re-drain) this command's queue.
+    const out = outer ? (this.#outbox = []) : this.#outbox;
+    let failed = false;
+    this.#cmd = true;
+    try {
+      return batch(() => {
+        if (group) this.#beginTransaction();
+        try {
+          return fn();
+        } finally {
+          if (group) this.#endTransaction();
+          if (outer) this.#cmd = false; // before the flush: effect-emitted events go out directly
+        }
+      });
+    } catch (err) {
+      failed = true;
+      throw err;
+    } finally {
+      if (outer) {
+        const errs: unknown[] = [];
+        for (const f of out) {
+          try {
+            f();
+          } catch (err) {
+            errs.push(err);
+          }
+        }
+        if (errs.length) {
+          // The command's own error wins; a hook error raised alongside it is reported, not lost.
+          if (failed) console.error('@fluxgantt/core: onTaskChange threw', errs[0]);
+          else throw errs[0]; // eslint-disable-line no-unsafe-finally -- announce first, then surface the first hook error
+        }
+      }
+    }
+  }
+
+  #defer(f: () => void): void {
+    if (this.#cmd) this.#outbox.push(f);
+    else f();
+  }
+
+  #changed(next: Task, prev: Task): void {
+    this.#defer(() => this.#config.onTaskChange?.(next, prev));
+  }
+
   #emit<E extends GanttEventName>(event: E, ...args: GanttEventMap[E]): void {
+    this.#defer(() => this.#dispatch(event, ...args));
+  }
+
+  #dispatch<E extends GanttEventName>(event: E, ...args: GanttEventMap[E]): void {
     const set = this.#listeners.get(event);
     if (!set || set.size === 0) return;
     // Snapshot before iterating: a listener added DURING this emit is not called until the

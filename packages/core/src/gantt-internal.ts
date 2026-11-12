@@ -30,7 +30,6 @@ import type {
 import type { CanvasRendererHandle } from './render/canvas-renderer.js';
 import type { SvgRendererHandle } from './render/svg-renderer.js';
 import type {
-  DateInput,
   Dependency,
   Density,
   Task,
@@ -165,11 +164,8 @@ export interface GanttInternal {
 
   // --- Mutation commit primitives (shared with interaction's gesture commit points) ---
   reschedule(id: TaskId, patch: TaskPatch, cascade: boolean): Task;
-  shift(id: TaskId, start: DateInput, end: DateInput): void;
-  begin(): void;
-  end(): void;
-  record(op: HistoryOp): void;
-  recordAll(ops: readonly HistoryOp[]): void;
+  /** The single command path: batches writes, defers events/`onTaskChange` until effects flushed. */
+  run<T>(fn: () => T, group?: boolean): T;
   applySel(ids: readonly TaskId[]): void;
   withKids(ids: readonly TaskId[]): TaskId[];
 

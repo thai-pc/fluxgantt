@@ -99,12 +99,11 @@ describe('mounted golden event log (adds critical-path:computed from the render 
     const { gantt, rec } = setup();
     const warns = vi.spyOn(console, 'warn').mockImplementation(() => {});
     gantt.removeTask(id('p'));
-    // Today each intermediate write repaints a store where a task is gone but its dependencies
-    // are not yet: computeCriticalPath throws "references a task that does not exist" and the
-    // render effect logs it. Batching (PR 1) removes these transient states, so this count
-    // drops to 0. TODO(spec-mutation-batching §0 row 5 / §3): assert `toHaveBeenCalledTimes(0)`.
-    expect(warns.mock.calls.length).toBeGreaterThan(0);
-    // TODO(spec-mutation-batching §4 item 2, PR 1): at most one critical-path:computed, before the events.
+    // Before PR 1 each intermediate write repainted a store where a task was gone but its
+    // dependencies were not yet (CPM threw "references a task that does not exist" and the render
+    // effect logged it). The batched command paints only the final state.
+    expect(warns).toHaveBeenCalledTimes(0);
+    // At most one critical-path:computed, before the queued events.
     expect(rec.log).toMatchInlineSnapshot(`
       [
         "critical-path:computed ["c","d"]",
@@ -155,14 +154,13 @@ describe('mounted golden event log (adds critical-path:computed from the render 
     gantt.select([id('c'), id('d')]);
     rec.clear();
     gantt.duplicateTask();
-    // TODO(spec-mutation-batching §4 item 2, PR 1): ONE critical-path:computed with the final
-    // set, ahead of the queued task:added events (today it fires per copy with an intermediate set).
+    // ONE critical-path:computed with the final set, ahead of the queued task:added events.
+    // (Placeholder numbering is by first appearance, so the last copy is task-#1.)
     expect(rec.log).toMatchInlineSnapshot(`
       [
-        "critical-path:computed ["a","b","c","d","task-#1"]",
-        "task:added task-#1[2026-01-12T17:00..2026-01-14T17:00 p=0]",
-        "critical-path:computed ["task-#2"]",
-        "task:added task-#2[2026-01-14T17:00..2026-01-16T17:00 p=0]",
+        "critical-path:computed ["task-#1"]",
+        "task:added task-#2[2026-01-12T17:00..2026-01-14T17:00 p=0]",
+        "task:added task-#1[2026-01-14T17:00..2026-01-16T17:00 p=0]",
         "history:changed {"canUndo":true,"canRedo":false}",
       ]
     `);
@@ -173,15 +171,14 @@ describe('mounted golden event log (adds critical-path:computed from the render 
     gantt.select([id('a'), id('c')]);
     rec.clear();
     pressDelete('a');
-    // TODO(spec-mutation-batching §4 item 2, PR 1): ONE critical-path:computed (final set) before the events.
+    // ONE critical-path:computed (the final set) before the events.
     expect(gantt.getTasks().map((x) => x.id)).toEqual([id('p'), id('b'), id('d')]);
     expect(rec.log).toMatchInlineSnapshot(`
       [
-        "critical-path:computed ["b","c","d"]",
+        "critical-path:computed ["d"]",
         "dependency:removed a>b FS lag=0",
         "task:removed a",
         "selection:changed ["c"]",
-        "critical-path:computed ["d"]",
         "dependency:removed b>c FS lag=0",
         "dependency:removed c>d FS lag=0",
         "task:removed c",
@@ -206,8 +203,8 @@ describe('mounted golden event log (adds critical-path:computed from the render 
     });
     expect(rec.log).toMatchInlineSnapshot(`
       [
-        "selection:changed []",
         "critical-path:computed ["x1","x2"]",
+        "selection:changed []",
         "history:changed {"canUndo":false,"canRedo":false}",
         "data:imported {"format":"json","taskCount":2,"dependencyCount":1}",
       ]
