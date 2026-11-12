@@ -890,7 +890,7 @@ let patch: ((ids: readonly TaskId[], focus: TaskId | undefined) => void) | undef
       }),
       // Own element, not a clone of the chart's: only as wide as the column (clipped at the divider, so
       // open on that side) instead of a `totalWidth` rect overflowing a 160 px svg.
-      frame(offsetX + 1),
+      frame(offsetX - 2),
     );
     currentOptions.onPaint?.(svg, overlay, column, corner);
 
