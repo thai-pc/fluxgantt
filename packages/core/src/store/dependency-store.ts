@@ -100,7 +100,20 @@ export class DependencyStore {
       }
       const stuck = this.#cyclic();
       if (stuck.size > 0) {
-        const bad = inputs.find((d) => stuck.has(d.from) && stuck.has(d.to)) ?? inputs[0]!;
+        // Name an edge that really lies on a cycle: walk back through stuck predecessors until a
+        // node repeats (every stuck node has one), keep the repeating part, and take the LAST
+        // input edge inside it, which is the edge sequential link() would have rejected. Linear,
+        // error path only. (Both ends on one cycle means the edge closes a cycle.)
+        const seen = new Set<TaskId>();
+        let n: TaskId | undefined = stuck.values().next().value;
+        while (n !== undefined && !seen.has(n)) {
+          seen.add(n);
+          n = [...this.#in.get(n)!.keys()].find((p) => stuck.has(p));
+        }
+        const cycle = new Set<TaskId>(); // the repeating tail of the walk, starting at n
+        for (let m = n; m !== undefined && !cycle.has(m); m = [...this.#in.get(m)!.keys()].find((p) => stuck.has(p))) cycle.add(m);
+        let bad = inputs[0]!;
+        for (const d of inputs) if (cycle.has(d.from) && cycle.has(d.to)) bad = d;
         throw new DependencyLinkError(
           `DependencyStore.link: link ${bad.from} → ${bad.to} would create a cycle`,
         );

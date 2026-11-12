@@ -176,3 +176,41 @@ describe('DependencyStore.linkAll vs sequential link', () => {
     expect(() => new DependencyStore().linkAll([...chain, { from: n(100_000), to: n(0) }])).toThrow(DependencyLinkError);
   });
 });
+
+describe('DependencyStore.linkAll cycle message names an edge on a cycle', () => {
+  const [a, b, c] = ids as [TaskId, TaskId, TaskId];
+
+  it('[b->c, a->b, b->a] names b -> a, like sequential link (c is only downstream of the cycle)', () => {
+    const input = [{ from: b, to: c }, { from: a, to: b }, { from: b, to: a }];
+    expect(() => new DependencyStore().linkAll(input)).toThrow(/link t1 → t0 would create a cycle/);
+    const seq = new DependencyStore();
+    expect(() => input.forEach((e) => seq.link(e.from, e.to))).toThrow(/link t1 → t0 would create a cycle/);
+  });
+
+  it('property: the edge named in a cycle error lies on a cycle of the input graph', () => {
+    fc.assert(
+      fc.property(fc.array(fc.record({ from: pick, to: pick }), { maxLength: 14 }), (edges) => {
+        const inputs = edges.map((e) => ({ from: ids[e.from]!, to: ids[e.to]! }));
+        try {
+          new DependencyStore().linkAll(inputs);
+        } catch (e) {
+          const m = /link (t\d+) → (t\d+) would create a cycle/.exec((e as Error).message);
+          if (!m) return; // self-link / duplicate
+          const graph = inputs.map((d, i) => ({ id: `d${i}`, ...d, type: 'FS', lag: 0 }) as unknown as Dependency);
+          expect(reach(graph, toTaskId(m[2]!), toTaskId(m[1]!))).toBe(true);
+        }
+      }),
+      { numRuns: 500 },
+    );
+  });
+
+  it('a 100k-edge downstream chain listed before the cycle stays linear in time', () => {
+    const n = (i: number) => toTaskId(`n${i}`);
+    const down = Array.from({ length: 100_000 }, (_, i) => ({ from: n(i + 2), to: n(i + 3) })) // n2 -> n3 -> ... downstream of the cycle;
+    const t0 = performance.now();
+    expect(() =>
+      new DependencyStore().linkAll([...down, { from: n(1), to: n(2) }, { from: n(2), to: n(1) }]),
+    ).toThrow(/link n2 → n1 would create a cycle/);
+    expect(performance.now() - t0).toBeLessThan(5000);
+  });
+});
