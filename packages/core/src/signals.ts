@@ -152,8 +152,7 @@ function flush(): void {
   // One throwing effect must not drop the rest of the pending list: run them all, then
   // rethrow the first error.
   let guard = 0;
-  let failed = false;
-  let error: unknown;
+  const errs: unknown[] = [];
   while (pending.size > 0) {
     if (++guard > 10_000) throw new Error('signals: flush did not converge');
     const batchList = [...pending];
@@ -162,11 +161,11 @@ function flush(): void {
       try {
         e._run();
       } catch (err) {
-        if (!failed) [failed, error] = [true, err];
+        errs.push(err);
       }
     }
   }
-  if (failed) throw error;
+  if (errs.length) throw errs[0];
 }
 
 /** Create a reactive signal that can be read/written through `.value`. */

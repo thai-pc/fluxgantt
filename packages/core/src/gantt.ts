@@ -1519,38 +1519,33 @@ class Gantt implements GanttInstance {
    * then rethrows. `group` additionally wraps the writes in ONE history entry.
    */
   #run<T>(fn: () => T, group?: boolean): T {
-    const body = (): T => {
-      if (group) this.#beginTransaction();
-      try {
-        return fn();
-      } finally {
-        if (group) this.#endTransaction();
-      }
-    };
-    if (this.#cmd) return body();
-    this.#cmd = true;
+    const outer = !this.#cmd;
     const out = this.#outbox;
-    let failed = false;
-    let error: unknown;
+    this.#cmd = true;
     try {
       return batch(() => {
+        if (group) this.#beginTransaction();
         try {
-          return body();
+          return fn();
         } finally {
-          this.#cmd = false; // before the flush: effect-emitted events go out directly
+          if (group) this.#endTransaction();
+          if (outer) this.#cmd = false; // before the flush: effect-emitted events go out directly
         }
       });
     } finally {
-      this.#cmd = false;
-      this.#outbox = []; // fresh array: `out` is drained below, a nested command refills the new one
-      for (const f of out) {
-        try {
-          f();
-        } catch (err) {
-          if (!failed) [failed, error] = [true, err];
+      if (outer) {
+        this.#cmd = false;
+        this.#outbox = []; // `out` is drained below; a command started by a listener fills the fresh array
+        const errs: unknown[] = [];
+        for (const f of out) {
+          try {
+            f();
+          } catch (err) {
+            errs.push(err);
+          }
         }
+        if (errs.length) throw errs[0]; // eslint-disable-line no-unsafe-finally -- announce first, then surface the first hook error
       }
-      if (failed) throw error; // eslint-disable-line no-unsafe-finally -- announce first, then surface the first listener-hook error
     }
   }
 
