@@ -1,7 +1,7 @@
 /* Optional page chrome only. The chart itself needs ZERO host CSS: @fluxgantt/core's SVG
    renderer bakes every visual property inline with a --fg-* custom-property fallback, so it
    renders correctly with none of the rules below. These style the surrounding page, not the
-   chart. The --fg-* values mirror the design tokens in apps/docs/fluxgantt-spec.md §8.2.
+   chart. The --fg-* values mirror the design tokens in docs/fluxgantt-spec.md §8.2.
 
    Dark mode: `withTheme` handles the CHART by redefining --fg-* on the mount container. The page
    around it is the host's job, so main.ts mirrors the resolved theme onto <html data-theme> and

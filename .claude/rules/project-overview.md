@@ -45,4 +45,4 @@ The hosted **Cloud subscription** (multiplayer, comments/@mention, activity feed
 - Comparison reference point: DHTMLX Community and SVAR (MIT). Win on the wedge above, not on feature breadth.
 
 ## Source of truth
-Full spec: `apps/docs/fluxgantt-spec.md`. When the spec and code conflict, ask — the spec is a living document.
+Full spec: `docs/fluxgantt-spec.md`. When the spec and code conflict, ask — the spec is a living document.

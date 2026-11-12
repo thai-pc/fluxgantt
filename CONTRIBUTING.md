@@ -35,8 +35,10 @@ Node >= 22.19 (see `.nvmrc` for the exact pinned version), pnpm 10+.
 1. Branch off `master`.
 2. Write code + tests. Run `pnpm lint && pnpm typecheck && pnpm test`.
 3. `pnpm changeset` — describe the change (version bump + changelog are automated). Changes
-   scoped entirely to `apps/*` or `examples/*` (docs site, example apps) need **no changeset** —
-   those packages are `"private": true` and never published.
+   scoped entirely to `apps/*`, `examples/*` or `docs/` (example apps, the spec and launch
+   drafts) need **no changeset** — none of it is published. The docs **site** is not in this repo
+   any more: a change to documented behaviour needs a matching PR in the docs-site repository
+   (`RELEASING.md` → Docs site).
    Examples are copied to the `stackblitz` branch at release time by
    `tooling/scripts/build-stackblitz-examples.mjs`. An example may import only **published**
    `@fluxgantt/*` entry points plus packages declared in its own `package.json` (react, vue,

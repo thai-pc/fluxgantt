@@ -16,7 +16,7 @@ diff: a trade-off taken, an alternative rejected, a constraint that forced the s
 - [ ] Tests added or updated (`.claude/rules/testing.md` — the compute layer is the priority).
 - [ ] `pnpm lint && pnpm typecheck && pnpm test` pass locally.
 - [ ] **Changeset added** (`pnpm changeset`) if a published package changed. Changes scoped
-      entirely to `apps/*`, `examples/*` or tooling need none.
+      entirely to `apps/*`, `examples/*`, `docs/` or tooling need none.
 - [ ] **Bundle budgets** (`pnpm size`) if this touches `packages/core`: the three hard gates
       must pass; soft-fixture warnings are fine but note them. A correctness/security/a11y/perf
       fix may spend hard headroom (state the byte cost here); a feature must find its own bytes.
@@ -25,4 +25,5 @@ diff: a trade-off taken, an alternative rejected, a constraint that forced the s
       cloud/AI (`.claude/rules/security.md`): no user string interpolated into markup, imports
       schema-validated, no secret in code or logs.
 - [ ] Visual baselines unchanged, or the change is intended and explained.
-- [ ] Docs updated (`apps/docs/pages/`, and the spec if the public API changed).
+- [ ] Docs updated: the spec (`docs/fluxgantt-spec.md`) if the public API changed, and a matching
+      PR in the docs-site repository if documented behaviour changed (`RELEASING.md` → Docs site).

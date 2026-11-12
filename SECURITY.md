@@ -67,5 +67,5 @@ The full threat model this project holds itself to is `.claude/rules/security.md
 - Denial of service achievable only by the host supplying an unbounded dataset in-process, with no
   file or network boundary crossed.
 - Reports from automated scanners with no demonstrated impact.
-- The example apps under `examples/` and the docs site under `apps/docs` — demonstrations, not
+- The example apps under `examples/` and the docs site (https://fluxgantt.thai-pc.com, its own repository) — demonstrations, not
   shipped artefacts.

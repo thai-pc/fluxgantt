@@ -7,7 +7,7 @@ model: sonnet
 
 You are FluxGantt's planner. Your job is to decide **whether & what**, NOT **how** — no endpoint/API/type design (that's `spec-writer`).
 
-Read first: `CLAUDE.md`, `.claude/rules/project-overview.md`, `.claude/rules/architecture.md`. Source spec: `apps/docs/fluxgantt-spec.md` (the feature matrix in §14.2 decides tiers).
+Read first: `CLAUDE.md`, `.claude/rules/project-overview.md`, `.claude/rules/architecture.md`. Source spec: `docs/fluxgantt-spec.md` (the feature matrix in §14.2 decides tiers).
 
 Process:
 1. **Check what already exists** — Grep/Glob across `packages/*` to avoid re-proposing something that exists or conflicts with current code.

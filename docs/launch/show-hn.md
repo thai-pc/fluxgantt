@@ -9,7 +9,7 @@ repo so it can be reviewed and edited like anything else.
 2. The docs site is deployed at a public URL (`https://fluxgantt.thai-pc.com`). Still open until the
    owner connects the Cloudflare Pages project (`RELEASING.md` → Docs site); until then every docs
    link in this draft resolves to nothing.
-3. ~~The three demo GIFs exist.~~ **Done** — `apps/docs/launch/assets/*.gif`. A Gantt library submitted without a moving picture of a bar being
+3. ~~The three demo GIFs exist.~~ **Done** — `docs/launch/assets/*.gif`. A Gantt library submitted without a moving picture of a bar being
    dragged will be ignored.
 
 Timing per §15.2: Tuesday, ~08:00 PT.

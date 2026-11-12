@@ -333,7 +333,7 @@ export function enableKeyboardNav(
         // browsers (notably Firefox, in some configurations) do not allow preventDefault() to
         // suppress this specific reserved shortcut — an accepted, unfixable-from-userland v1
         // gap, not a bug (spec-duplicate-keybinding.md §1). Do not swap this key combo to dodge
-        // the collision — apps/docs/fluxgantt-spec.md §8.4 mandates exactly Ctrl/Cmd+D.
+        // the collision — docs/fluxgantt-spec.md §8.4 mandates exactly Ctrl/Cmd+D.
         if (!mod) return; // plain 'd'/'D', no modifier — not this binding's concern
         if (options.isReadOnly()) return; // no-op, event not prevented (mirrors Delete/z-Z's gate exactly)
         event.preventDefault();

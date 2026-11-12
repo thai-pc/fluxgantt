@@ -3,10 +3,10 @@
 Captured media for the Product Hunt and Show HN launches (spec §9.1 Week 8, §15.1). Specified in
 [`../product-hunt.md`](../product-hunt.md); nothing here has been posted anywhere.
 
-**Why here and not `apps/docs/public/`:** these files are uploaded to Product Hunt / Hacker News /
+**Why here and not in the docs site's `public/`:** these files are uploaded to Product Hunt / Hacker News /
 X by hand and are never referenced by a docs page, so serving them from the docs site would
 only add ~1.7 MB to every deploy. They live next to the copy that specifies them. If a docs page
-ever needs one, copy it into `apps/docs/public/` at that point rather than moving the source.
+ever needs one, copy it into the docs repository's `public/` at that point rather than moving the source.
 
 | File | Size | What it is |
 |---|---|---|
@@ -49,11 +49,13 @@ gallery-5 caption) and the copy. Prose carries invisible markers that the script
 Markdown: <!--sz:editable.2-->19.02<!--/sz-->     MDX: {/*sz:editable.2*/}19.02{/*/sz*/}      (key.decimals)
 ```
 
-Files synced: `README.md`, `apps/docs/pages/index.mdx`, `apps/docs/pages/docs/{comparison,examples}.mdx`,
-`apps/docs/launch/{product-hunt,show-hn}.md`. "- N chars" candidate lines are re-counted. The two competitor
+Files synced: `README.md` and `docs/launch/{product-hunt,show-hn}.md`. "- N chars" candidate lines
+are re-counted. **The docs site is not synced any more**: it moved to its own repository, and its
+`sz` markers (`pages/index.mdx`, `pages/docs/{comparison,examples}.mdx`) are updated by hand at
+release (`RELEASING.md` → Docs site). The two competitor
 figures (dhtmlx 226.18, Frappe 14.89 KiB) are constants in the script, from
 `tooling/scripts/measure-competitor-bundles.mjs`. **Not synced:** literals inside code blocks (the
-`// 7.50 KiB, no renderer` comment in `comparison.mdx`) and the "254 characters" line under the
+`// 7.50 KiB, no renderer` comment in the docs site's `comparison.mdx`) and the "254 characters" line under the
 Product Hunt description; re-check both by hand after a size change.
 
 ### How the GIFs are produced

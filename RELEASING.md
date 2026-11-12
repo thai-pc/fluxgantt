@@ -14,7 +14,7 @@ your PR (with a changeset)  ->  master  ->  bot opens "chore: version packages" 
 
 1. **Every PR that changes a published package carries a changeset.** `pnpm changeset` — pick the
    packages, pick patch/minor/major, write the line that will appear in the changelog. Changes
-   scoped entirely to `apps/*`, `examples/*` or tooling need none (see `CONTRIBUTING.md`).
+   scoped entirely to `apps/*`, `examples/*`, `docs/` or tooling need none (see `CONTRIBUTING.md`).
 2. **On merge to `master`,** `.github/workflows/release.yml` runs `changesets/action`. With
    changesets pending it opens — or updates — a PR titled `chore: version packages`. That PR
    consumes the changeset files, bumps versions, and writes each `CHANGELOG.md`. **It publishes
@@ -45,9 +45,10 @@ the repo is ever recreated:
       — deliberately leaving the token at `read`, because `release.yml` declares the write
       permissions it needs itself.
 - [ ] **The docs site is connected on Cloudflare Pages** and serves
-      `https://fluxgantt.thai-pc.com`. Still outstanding; the exact settings are in
-      [Docs site (Cloudflare Pages)](#docs-site-cloudflare-pages) below. (GitHub Pages is disabled
-      on the repo and its `docs-deploy.yml` workflow is gone; it was never run.)
+      `https://fluxgantt.thai-pc.com`. Still outstanding; the site now lives in its own repository
+      and its README holds the exact settings (see
+      [Docs site (Cloudflare Pages)](#docs-site-cloudflare-pages) below). (GitHub Pages is disabled
+      on this repo and its `docs-deploy.yml` workflow is gone; it was never run.)
 
 ### A note on the bot's version PR
 
@@ -70,51 +71,42 @@ whether a publish worked; check the registry afterwards to confirm what consumer
 
 ## Docs site (Cloudflare Pages)
 
-Production is `https://fluxgantt.thai-pc.com`, served by Cloudflare Pages from this repo through
-its Git integration. Nothing in `.github/workflows/` deploys the site; `ci.yml`'s `pnpm build`
-still builds `apps/docs`, so a broken docs build fails the PR before Cloudflare ever sees it.
+**Where it lives.** The docs + landing site (Vocs) is **not in this repository**. It was split out
+of `apps/docs` in 2026-11 with `git subtree split`, so its page history is preserved, and now
+lives in its own repository (local checkout `fluxgantt-docs`; GitHub remote expected at
+`thai-pc/fluxgantt-docs`, created by the owner). It deploys to **`https://fluxgantt.thai-pc.com`**
+through Cloudflare Pages' Git integration on that repository: a push to its `main` deploys, its
+PRs get `*.pages.dev` previews. The exact dashboard settings (build command, output directory,
+environment variables) are in that repository's README → Deploy.
 
-1. Cloudflare **Workers & Pages → Create → Pages → Connect to Git** → `thai-pc/fluxgantt`.
-2. Build settings:
-   - Production branch: `master`
-   - Framework preset: **None**
-   - Root directory: `/` (the repo root; the workspace packages must be built first)
-   - Build command:
-     `pnpm install --frozen-lockfile --force && pnpm build --filter=@fluxgantt/core --filter=@fluxgantt/react --filter=@fluxgantt/vue && pnpm --filter docs build`
-   - Build output directory: `apps/docs/dist/public`
-   - Environment variables (Production **and** Preview):
-     - `PNPM_VERSION` = `10.2.1`
-     - `SKIP_DEPENDENCY_INSTALL` = `1`
-     - Do **not** set `NODE_VERSION`: the build image reads `.nvmrc` (`22.23.2`), the same file CI
-       and local dev use, so the three cannot drift. Only if the build log shows a different Node
-       should `NODE_VERSION` be set, and then to the value in `.nvmrc`.
-3. **Custom domains** → `fluxgantt.thai-pc.com` (Cloudflare creates the proxied CNAME and the
-   certificate).
-4. Every push to `master` deploys; every PR gets a preview URL on `*.pages.dev`.
+What stayed here: the product spec (`docs/fluxgantt-spec.md`) and the launch drafts and media
+(`docs/launch/`). Neither is a site page.
 
-Why the variables and the flags:
+**After each release** (once the "Version Packages" PR has published), open a PR in the docs repo:
 
-- **`PNPM_VERSION`.** The build image installs its own default pnpm (10.11.1 at the time of
-  writing); it is not documented to honour the `packageManager` field in `package.json`. Pinning
-  the same `10.2.1` that `packageManager` and every CI workflow use keeps the install identical to
-  CI's.
-- **`SKIP_DEPENDENCY_INSTALL=1` and `--force`.** Without the skip, the image runs its own install
-  (with its own flags) before the build command's, so the build command's install becomes a
-  second pass over an existing `node_modules`. Under this repo's `node-linker=hoisted`, a repeat
-  `pnpm install --frozen-lockfile` on pnpm 10.2.1 does not leave the tree as a clean install does
-  (locally it reports `Packages: -238`), plausibly the same pnpm 10.2.1 linking bug `ci.yml`'s
-  `--force` works around for the `@rolldown/binding-*` native addon. From a clean checkout a
-  single install works **without** `--force` (verified on macOS and in a Linux container), so the
-  flag is not strictly required with the skip in place; it is kept for parity with every CI
-  workflow and so a future image or cache change cannot reintroduce the bug. Its only cost is a
-  slower install (it ignores the pnpm store cache).
-- **No browser.** The build needs no Playwright browser (verified in a clean `node:22.23.2`
-  Debian container with pnpm 10.2.1 and no `~/.cache/ms-playwright`). Playwright is only used
-  by the test scripts, which this build command does not run.
+1. Bump its exact pins of `@fluxgantt/core`, `@fluxgantt/react` and `@fluxgantt/vue` to the
+   versions just published (`npm view @fluxgantt/core version`, likewise for `react` and `vue`;
+   see [Registry propagation](#registry-propagation-is-not-instant)), then `npm install` there so
+   its lockfile follows. Its CI (`npm run check:imports`) fails if a page's snippet imports a
+   subpath or name the pinned release does not export.
+2. **Size and other numeric figures on the site are updated by hand.** `pnpm
+   capture:launch-assets` used to rewrite the `sz` markers in the site's pages; it can no longer
+   see them and now syncs only this repo's README and `docs/launch/`. Run `pnpm --filter
+   @fluxgantt/core size` here and copy the KiB figures into the markers in the docs repo
+   (`grep -rn 'sz:' pages` there lists every one: `index.mdx`, `docs/comparison.mdx`,
+   `docs/examples.mdx`). Competitor figures come from
+   `node tooling/scripts/measure-competitor-bundles.mjs`, as before.
+3. The site's `/docs/quick-start` snippet is no longer covered by `check-snippet-sync.mjs` (which
+   now checks the two READMEs only). If the `#region quickstart` block in
+   `examples/plain-html-demo/src/main.ts` changed in the release, copy it over by hand.
+4. Likewise the site's examples page carries the same StackBlitz links as this README;
+   `check-stackblitz-links.mjs` now checks only the README, so a change to the generator's
+   folders or start files needs the same edit there.
 
-The build ends with `tooling/scripts/finalize-pages-build.mjs`, which fails it if there is no
-HTML, if `vocs.config.ts` sets a `basePath`, if a page carries an absolute `<base href>`, or if a
-referenced `/assets/...` file is missing. Previewing locally: `apps/docs/README.md` → Deploy.
+**Feature PRs.** A PR here that adds or changes documented behaviour needs a **matching docs-repo
+PR**, merged when the feature is published (the site documents released versions, and its import
+check runs against npm, so an unreleased API fails its CI until the release lands). The PR
+template has a checkbox for it.
 
 ## Checking a release before it happens
 
@@ -198,7 +190,7 @@ touch), so run it by hand before a release that touches `withResponsive()`:
 
 ## StackBlitz examples
 
-The docs' examples page and the README link four StackBlitz projects (vanilla, React, Vue,
+The README (and the docs site's examples page, in its own repository) link four StackBlitz projects (vanilla, React, Vue,
 headless) at `https://stackblitz.com/github/thai-pc/fluxgantt/tree/stackblitz/<dir>`. StackBlitz
 imports only that folder and installs it with npm, so it cannot open `examples/*` directly
 (`workspace:*`, a tsconfig that `extends` outside the folder, Playwright harness pages). Instead:
@@ -234,14 +226,14 @@ imports only that folder and installs it with npm, so it cannot open `examples/*
   group: a newer run replaces a pending one. That is harmless, because the decision is state-based
   and the next run catches up.
 - **Not bootstrapped (decided 2026-10-15).** The branch does not exist yet, so **every
-  StackBlitz link in the docs and README returns a 404 until the next release.** The examples
+  StackBlitz link in the README and on the docs site returns a 404 until the next release.** The examples
   now import `@fluxgantt/core/viewport`, which `core@0.2.1` does not export, so the generator
   refuses to build them against the current npm versions; the next release publishes that subpath
   and its run populates the branch. Until the branch exists, only a version-bump commit or a
   dispatch creates it (an ordinary master push is a no-op), so the runs stay green meanwhile.
 - **PR-time check:** the `stackblitz-examples` job in `ci.yml` does the same clean-room install,
   typecheck and build against `pnpm pack` tarballs of the PR's packages, and `check-stackblitz-links.mjs`
-  asserts every link targets the `stackblitz` branch, a generated folder and a generated `?file=`.
+  asserts every README link targets the `stackblitz` branch, a generated folder and a generated `?file=`.
 
 Reproduce locally (outside the repo, since npm must not see the workspace):
 
