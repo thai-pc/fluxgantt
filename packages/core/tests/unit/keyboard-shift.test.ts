@@ -378,6 +378,7 @@ describe('property', () => {
 
 describe('live region', () => {
   const live = () => container.querySelector('[aria-live="polite"]') as HTMLElement;
+  const said = () => live().textContent!.replace(/\u00A0$/, '');
 
   it('exists once per mount, hidden, and is removed on unmount', () => {
     const g = chart([t('a', '2026-01-05T09:00', '2026-01-06T09:00')]);
@@ -389,23 +390,32 @@ describe('live region', () => {
   it('announces a move with the new start and end including times', () => {
     chart([t('a', '2026-01-05T09:00', '2026-01-06T17:00')]);
     key(row('a'), 'ArrowRight', ALT);
-    expect(live().textContent).toBe('a moved: Jan 6, 2026, 9:00 AM to Jan 7, 2026, 5:00 PM');
+    expect(said()).toBe('a moved: Jan 6, 2026, 9:00 AM to Jan 7, 2026, 5:00 PM');
   });
 
   it('announces a resize whose date label would not change (time of day only)', () => {
     chart([t('a', '2026-01-05T09:00', '2026-01-07T09:00')]);
     key(row('a'), 'ArrowRight', ALT_SHIFT);
-    expect(live().textContent).toBe('a resized: Jan 5, 2026, 9:00 AM to Jan 7, 2026, 5:00 PM');
+    expect(said()).toBe('a resized: Jan 5, 2026, 9:00 AM to Jan 7, 2026, 5:00 PM');
   });
 
   it('announces a created link and a rejected one', () => {
     const g = chart([t('a', '2026-01-05T09:00', '2026-01-06T09:00'), t('b', '2026-01-06T09:00', '2026-01-07T09:00')]);
     key(row('a'), 'ArrowDown', { shiftKey: true });
     key(row('b'), 'Enter', ALT);
-    expect(live().textContent).toBe('Linked a to b');
+    expect(said()).toBe('Linked a to b');
     key(row('b'), 'Enter', ALT); // duplicate
-    expect(live().textContent).toBe('Link not created from a to b');
+    expect(said()).toBe('Link not created from a to b');
     expect(g.getDependencies()).toHaveLength(1);
+  });
+
+  it('resize, move across a weekend, resize: the stale stored duration does not make lengthen shrink', () => {
+    const g = chart([t('a', '2026-01-05T09:00', '2026-01-07T17:00', { duration: 24 })]);
+    for (let i = 0; i < 3; i++) key(row('a'), 'ArrowRight', ALT); // Thu 08 09:00 - Sat 10 17:00, duration 24 is stale
+    key(row('a'), 'ArrowRight', ALT_SHIFT);
+    expect(date(g, 'a', 'end') > '2026-01-10T17:00').toBe(true);
+    key(row('a'), 'ArrowRight', ALT_SHIFT);
+    expect(date(g, 'a', 'end')).toContain('2026-01-13T');
   });
 
   it('uses messages.announce, writes it as text (never HTML), and falls back when it throws', () => {
@@ -419,16 +429,81 @@ describe('live region', () => {
       },
     });
     key(row('a'), 'ArrowRight', ALT);
-    expect(live().textContent).toBe('<img src=x onerror=alert(1)> moved');
+    expect(said()).toBe('<img src=x onerror=alert(1)> moved');
     expect(live().querySelector('img')).toBeNull();
     boom = true;
     key(row('a'), 'ArrowRight', ALT);
-    expect(live().textContent).toContain('a moved:');
+    expect(said()).toContain('a moved:');
   });
 
-  it('does not announce a declined resize (milestone)', () => {
-    chart([t('m', '2026-01-05T09:00', '2026-01-05T09:00', { type: 'milestone' })]);
+  it('announces a declined resize (milestone) and a resize stopped at the floor', () => {
+    const g = chart([t('m', '2026-01-05T09:00', '2026-01-05T09:00', { type: 'milestone' })]);
     key(row('m'), 'ArrowRight', ALT_SHIFT);
-    expect(live().textContent).toBe('');
+    expect(said()).toBe('m: cannot resize');
+    expect(g.canUndo()).toBe(false);
   });
+
+  it('floor: nothing is written and the region says so, not "resized"', () => {
+    const g = chart([t('a', '2026-01-05T09:00', '2026-01-05T17:00')]);
+    key(row('a'), 'ArrowLeft', ALT_SHIFT);
+    expect(said()).toBe('a: cannot resize');
+    expect(g.canUndo()).toBe(false);
+  });
+
+  it('a 45-day holiday shutdown is crossed in one press (bound is 366 steps)', () => {
+    const holidays: string[] = [];
+    for (let d = 0; d < 45; d++) holidays.push(new Date(Date.UTC(2026, 11, 21 + d)).toISOString().slice(0, 10));
+    const g = chart([t('a', '2026-12-16T09:00', '2026-12-18T17:00')], { calendar: { ...DEFAULT_CALENDAR, holidays } });
+    key(row('a'), 'ArrowRight', ALT_SHIFT);
+    expect(date(g, 'a', 'end')).toContain('2027-02-04T17:00'); // first working day after the shutdown
+    expect(said()).toContain('resized');
+  });
+
+  it('consecutive identical announcements still differ as text (trailing no-break space alternates)', () => {
+    chart([t('a', '2026-01-05T09:00', '2026-01-05T17:00')]);
+    key(row('a'), 'ArrowLeft', ALT_SHIFT);
+    const first = live().textContent;
+    key(row('a'), 'ArrowLeft', ALT_SHIFT);
+    expect(live().textContent).not.toBe(first);
+    expect(said()).toBe('a: cannot resize');
+  });
+
+  it('announces the link failure reason and ids to a host announce()', () => {
+    const seen: unknown[] = [];
+    const g = chart([t('a', '2026-01-05T09:00', '2026-01-06T09:00'), t('b', '2026-01-06T09:00', '2026-01-07T09:00')], {
+      messages: { announce: (x) => (seen.push(x), 'x') },
+    });
+    g.linkTasks(toTaskId('b'), toTaskId('a'), 'FS');
+    key(row('a'), 'ArrowDown', { shiftKey: true });
+    key(row('b'), 'Enter', ALT); // a -> b would close a cycle
+    expect(seen[0]).toMatchObject({ kind: 'link-failed', reason: 'cycle', fromId: 'a', toId: 'b' });
+    g.unlinkTasks(toTaskId('b'), toTaskId('a'));
+    key(row('b'), 'Enter', ALT); // links a -> b
+    key(row('b'), 'Enter', ALT); // again: duplicate
+    expect(seen.at(-1)).toMatchObject({ kind: 'link-failed', reason: 'duplicate' });
+  });
+});
+
+describe('Canvas facade: focus that lands on another row (AT cursor) makes THAT task the target', () => {
+  it('Alt+ArrowRight after a programmatic focus on row t2 moves t2, not t0', async () => {
+    const proxy = new Proxy({}, {
+      get: (target: Record<string, unknown>, prop: string) => (prop in target ? target[prop] : () => {}),
+      set: (target: Record<string, unknown>, prop: string, v: unknown) => ((target[prop] = v), true),
+    }) as unknown as CanvasRenderingContext2D;
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockImplementation(() => proxy);
+    const tasks = Array.from({ length: 2001 }, (_, i) => t(`t${i}`, '2026-01-05T09:00', '2026-01-06T09:00'));
+    const g = createGantt({ tasks });
+    const selected = vi.fn();
+    g.on('renderer:selected', selected);
+    g.mount(container);
+    await vi.waitFor(() => expect(selected).toHaveBeenCalled(), { timeout: 30_000 });
+    const canvasRow = (id: string) => container.querySelector(`[role="row"][data-task-id="${id}"]`) as HTMLElement;
+    canvasRow('t0').focus();
+    canvasRow('t2').focus();
+    expect(document.activeElement).toBe(canvasRow('t2'));
+    key(canvasRow('t2'), 'ArrowRight', ALT);
+    expect(date(g, 't2', 'start')).toContain('2026-01-06');
+    expect(date(g, 't0', 'start')).toContain('2026-01-05');
+    expect(document.activeElement).toBe(canvasRow('t2'));
+  }, 60_000);
 });
