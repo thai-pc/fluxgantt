@@ -236,5 +236,6 @@ jobs:
           if-no-files-found: ignore
 
 # NOTE: This workflow build-checks; it never publishes or deploys. Releasing to npm lives in
-# release.yml (changesets opens a "Version Packages" PR; merging it is what publishes), and
-# deploying the docs site to GitHub Pages lives in docs-deploy.yml.
+# release.yml (changesets opens a "Version Packages" PR; merging it is what publishes). The docs
+# site is deployed by Cloudflare Pages' Git integration, outside GitHub Actions (RELEASING.md ->
+# Docs site); the `pnpm build` step above still builds it, so a broken docs build fails the PR.
