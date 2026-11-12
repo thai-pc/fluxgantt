@@ -1,9 +1,0 @@
-{
-  "extends": "../../tooling/tsconfig/library.json",
-  "compilerOptions": {
-    "noEmit": true,
-    "declaration": false,
-    "declarationMap": false
-  },
-  "include": ["vocs.config.ts"]
-}

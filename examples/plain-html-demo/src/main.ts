@@ -1,8 +1,9 @@
 // Canonical FluxGantt quick-start. This is the single source of truth for the identical
-// snippet shown in the root README and in apps/docs `/docs/quick-start` — the region between
-// the `#region quickstart` / `#endregion quickstart` markers below is compared byte-for-byte
-// against those two copies by tooling/scripts/check-snippet-sync.mjs (run in CI). Edit the
-// snippet HERE; the check fails the build if the copies drift.
+// snippet shown in the root README and packages/core/README.md — the region between the
+// `#region quickstart` / `#endregion quickstart` markers below is compared byte-for-byte against
+// those two copies by tooling/scripts/check-snippet-sync.mjs (run in CI). Edit the snippet HERE;
+// the check fails the build if the copies drift. The docs site's `/docs/quick-start` copy lives
+// in the separate docs repository and is re-synced by hand (RELEASING.md -> Docs site).
 // (The `withIo` import below sits outside the region on purpose — it is dev-only plumbing for
 // the e2e specs, not part of the quick-start.)
 // Temporal bootstrap first, outside the region: core needs `globalThis.Temporal`, which only some

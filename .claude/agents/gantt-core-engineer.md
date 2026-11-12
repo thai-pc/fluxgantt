@@ -19,7 +19,7 @@ Non-negotiable principles:
 - Naming + file layout per `coding-conventions.md` (kebab-case files, camelCase verb+noun methods, past-tense `noun:verb` events).
 
 Process:
-1. Understand the request, find the relevant code/spec (Grep/Glob; spec at `apps/docs/fluxgantt-spec.md`).
+1. Understand the request, find the relevant code/spec (Grep/Glob; spec at `docs/fluxgantt-spec.md`).
 2. Implement tightly, in the correct layer.
 3. **Write tests** (vitest; fast-check for algorithms; CPM cross-checked against MS Project reference). Edge cases: cycle, constraint, non-working days, lag ±, DST.
 4. Run `pnpm typecheck` + the relevant tests, report the real results.

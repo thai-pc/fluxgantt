@@ -7,5 +7,5 @@ contact_links:
     url: https://github.com/thai-pc/fluxgantt/discussions
     about: Ask in Discussions rather than opening an issue.
   - name: Documentation
-    url: https://thai-pc.github.io/fluxgantt
+    url: https://fluxgantt.thai-pc.com
     about: API reference, guides and examples.

@@ -1,7 +1,7 @@
 # FluxGantt — AI Context (CLAUDE.md)
 
 > A TypeScript-first, MIT-licensed Gantt chart library. Headless engine decoupled from rendering.
-> Source spec: `apps/docs/fluxgantt-spec.md` (living document, v0.1.0).
+> Source spec: `docs/fluxgantt-spec.md` (living document, v0.1.0).
 
 This file is the context entry point for AI. Details are split into rules under `.claude/rules/`.
 **Before coding, read the relevant rule.**
@@ -60,7 +60,7 @@ Stripe (Pro checkout) · Vocs (docs). Yjs only for the on-demand sync adapter. T
 
 ## Repo layout
 `packages/*` (core, react, vue, svelte, angular, ai, msproject, cloud-sdk) ·
-`examples/*` · `apps/*` (docs, landing, playground) · `tooling/*` · `tests/*` (e2e/visual/a11y/performance) · `.changeset/`.
+`examples/*` · `apps/*` (landing, playground placeholders) · `docs/` (spec, launch drafts) · `tooling/*` · `tests/*` (e2e/visual/a11y/performance) · `.changeset/`.
 
 ## Common commands (after setup)
 ```bash
@@ -84,10 +84,12 @@ drag, dependencies, critical path, React/Vue wrappers, export, docs. Also landed
 facade/mixin split, theming, i18n scaffold, responsive/touch, and the size budgets.
 
 Releases are now routine: land a changeset, and merging the bot's "Version Packages" PR publishes.
-`docs-deploy.yml` exists but the docs site is **not deployed yet** — its first run is a
-`workflow_dispatch` and remains the owner's explicit go/no-go, so every `thai-pc.github.io/fluxgantt`
-link in the repo (including the `homepage` field of all three published packages) is currently
-dead. See `RELEASING.md`. No Pro yet unless explicitly requested.
+The docs site is **its own repository** (split out of `apps/docs` with history, 2026-11) and is
+hosted on **Cloudflare Pages at `https://fluxgantt.thai-pc.com` once the owner connects the
+project** (Git integration on that repo: push to its `main` deploys, PRs get previews). A feature
+PR that changes documented behaviour needs a matching docs-repo PR. Until the site is live
+every link to it in the repo (including the `homepage` field of all three published packages) is
+dead. See `RELEASING.md` → Docs site. No Pro yet unless explicitly requested.
 
 **2026-11 strategy revision** (owner-approved, from `.claude/work/audit-architecture-fable.md` S1/S3/S4):
 the MIT-tier rivals are DHTMLX Gantt 10 Community, SVAR Gantt and Bryntum 8 Community, not Frappe;

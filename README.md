@@ -141,7 +141,7 @@ calendar and no types. Those figures come from
 [`tooling/scripts/measure-competitor-bundles.mjs`](./tooling/scripts/measure-competitor-bundles.mjs),
 which packs each library from npm at a pinned version and gzips its own entry point, so you can
 re-run them. The full breakdown, including where FluxGantt loses, is in
-[`apps/docs/pages/docs/comparison.mdx`](./apps/docs/pages/docs/comparison.mdx).
+the docs site's [comparison page](https://fluxgantt.thai-pc.com/docs/comparison).
 
 ## Tiers
 
@@ -158,7 +158,8 @@ core. There is no hosted Cloud plan on the roadmap.
 ```
 packages/    core, react, vue, svelte, angular, ai, msproject, cloud-sdk
 examples/    demos per framework + feature (plain-html, react-vite, vue-vite)
-apps/        docs (Vocs), landing, playground
+apps/        landing, playground (placeholders)
+docs/        product spec, launch drafts + assets (the docs SITE has its own repository)
 tooling/     eslint-config, tsconfig, scripts
 tests/       e2e, visual, a11y, mobile, performance (Playwright)
 ```
@@ -177,19 +178,20 @@ Requirements: Node >= 22.19 (see `.nvmrc` for the exact pinned version), pnpm 10
 
 ## Links
 
-- **Docs site** — built from [`apps/docs`](./apps/docs) (Vocs). Run `pnpm --filter docs dev`.
-  (The hosted URL will be linked here once deployed.)
+- **Docs site** — https://fluxgantt.thai-pc.com (Vocs; live once the Cloudflare Pages project is
+  connected). Its source lives in a separate repository; see
+  [`RELEASING.md`](./RELEASING.md#docs-site-cloudflare-pages).
 - **Examples** — [`examples/plain-html-demo`](./examples/plain-html-demo) (six pages: editable,
   read-only, selection, collapse, i18n, responsive) ·
   [`examples/react-vite-demo`](./examples/react-vite-demo) ·
   [`examples/vue-vite-demo`](./examples/vue-vite-demo). Each runs with
-  `pnpm --filter <name> dev`; the catalogue is in
-  [`apps/docs/pages/docs/examples.mdx`](./apps/docs/pages/docs/examples.mdx).
+  `pnpm --filter <name> dev`; the catalogue is on the docs site's
+  [examples page](https://fluxgantt.thai-pc.com/docs/examples).
   Open on StackBlitz, built from the latest npm release:
   [vanilla](https://stackblitz.com/github/thai-pc/fluxgantt/tree/stackblitz/vanilla?file=src%2Fmain.ts&title=FluxGantt%20vanilla) · [React](https://stackblitz.com/github/thai-pc/fluxgantt/tree/stackblitz/react?file=src%2FApp.tsx&title=FluxGantt%20React) · [Vue](https://stackblitz.com/github/thai-pc/fluxgantt/tree/stackblitz/vue?file=src%2FApp.vue&title=FluxGantt%20Vue) · [headless](https://stackblitz.com/github/thai-pc/fluxgantt/tree/stackblitz/headless?file=index.mjs&title=FluxGantt%20headless).
   (The `stackblitz` branch these open is created by the next release; until then they 404.)
 - **Comparison** vs dhtmlx, Bryntum, SVAR and Frappe —
-  [`apps/docs/pages/docs/comparison.mdx`](./apps/docs/pages/docs/comparison.mdx)
+  [https://fluxgantt.thai-pc.com/docs/comparison](https://fluxgantt.thai-pc.com/docs/comparison)
 
 ## Docs for AI / contributors
 
