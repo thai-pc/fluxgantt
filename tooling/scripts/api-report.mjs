@@ -8,47 +8,14 @@
 // The entry list is DRIVEN BY each package's `exports` map (`import.types`), so a new subpath
 // with no committed report fails `--check` instead of silently escaping the lock. Reports are
 // built from `dist/**/*.d.ts`, so run `pnpm build` first (`pnpm api:update` does).
-import { existsSync, mkdirSync, readFileSync, readdirSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Extractor, ExtractorConfig } from '@microsoft/api-extractor';
+import { listEntries } from '../api-report/entries.mjs';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const base = JSON.parse(readFileSync(join(repoRoot, 'tooling/api-report/api-extractor.base.json'), 'utf8'));
-
-/** `.` -> `core`, `./edit-hooks` -> `core-edit-hooks`. `pkgName` is the unscoped package name. */
-export function reportName(pkgName, exportKey) {
-  return exportKey === '.' ? pkgName : `${pkgName}-${exportKey.slice(2).replaceAll('/', '-')}`;
-}
-
-/** The d.ts a consumer's `import` resolves to for an exports-map entry. */
-function typesOf(condition) {
-  if (typeof condition === 'string') return undefined;
-  return condition.import?.types ?? condition.types;
-}
-
-export function listEntries() {
-  const entries = [];
-  for (const dir of readdirSync(join(repoRoot, 'packages'), { withFileTypes: true })) {
-    if (!dir.isDirectory()) continue;
-    const pkgDir = join(repoRoot, 'packages', dir.name);
-    const pkgPath = join(pkgDir, 'package.json');
-    if (!existsSync(pkgPath)) continue;
-    const pkg = JSON.parse(readFileSync(pkgPath, 'utf8'));
-    if (pkg.private === true || !pkg.exports) continue;
-    for (const [key, condition] of Object.entries(pkg.exports)) {
-      const types = typesOf(condition);
-      if (!types) continue; // e.g. "./package.json"
-      entries.push({
-        pkgDir,
-        pkgPath,
-        name: reportName(pkg.name.split('/').pop(), key),
-        dts: resolve(pkgDir, types),
-      });
-    }
-  }
-  return entries;
-}
 
 function run(mode) {
   const local = mode === 'update';
