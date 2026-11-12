@@ -27,9 +27,9 @@ launch pointing at an uninstallable package converts nothing.
 
 **Tagline** (60 characters max — this is the hard one):
 
-> The MIT Gantt library with a <!--sz:hello.1-->7.4<!--/sz--> KiB headless core — 50 chars
+> The MIT Gantt library with a <!--sz:hello.1-->7.3<!--/sz--> KiB headless core — 50 chars
 
-> TypeScript-first Gantt charts. MIT. <!--sz:hello.1-->7.4<!--/sz--> KiB headless core. — 58 chars
+> TypeScript-first Gantt charts. MIT. <!--sz:hello.1-->7.3<!--/sz--> KiB headless core. — 58 chars
 
 > Open-source Gantt charts for developers who count bytes — 55 chars
 
@@ -43,7 +43,7 @@ Recommend the first.
 
 ## Description (260 characters max)
 
-> An MIT-licensed Gantt chart library for TypeScript apps. The scheduling engine is headless — <!--sz:hello.1-->7.4<!--/sz--> KiB
+> An MIT-licensed Gantt chart library for TypeScript apps. The scheduling engine is headless — <!--sz:hello.1-->7.3<!--/sz--> KiB
 > gzip, runs in Node — and rendering, drag, theming and export are opt-in. FS/SS/FF/SF dependencies,
 > critical path, DST-correct dates. No per-seat license.
 
@@ -64,10 +64,11 @@ Post this yourself in the first minutes; it is the thing people actually read.
 >
 > The decision the whole library hangs on is that the **engine is headless**. `createGantt()` imports
 > no DOM API — it's the task store, the dependency graph, the working-calendar math and the
-> critical-path solver, and nothing else. That's <!--sz:hello.1-->7.4<!--/sz--> KiB gzip and it runs on your server. Rendering,
+> critical-path solver, and nothing else. That's <!--sz:hello.1-->7.3<!--/sz--> KiB gzip and it runs on your server. Rendering,
 > drag interactions, theming, touch adaptation and import/export are separate opt-in imports, so you
-> download what you compose. An editable chart is <!--sz:editable.1-->19.1<!--/sz--> KiB; everything composed is <!--sz:kitchen.1-->23.7<!--/sz--> KiB. Those are
-> CI-enforced budgets, not aspirations.
+> download what you compose. An editable chart is <!--sz:editable.1-->19.2<!--/sz--> KiB; everything composed is <!--sz:kitchen.1-->23.8<!--/sz--> KiB. Those are
+> CI-enforced budgets, not aspirations, and they exclude the Temporal polyfill (~45.8 KiB gzip) that
+> runtimes without native Temporal (Node 22/24, older browsers) need.
 >
 > Two details I'm oddly proud of:
 >
@@ -106,7 +107,7 @@ size it is actually shown at in the feed.
    populated project with visible hierarchy, dependency arrows and a dashed-red critical path. No
    browser chrome, no devtools.
 2. **The bundle-size table.** The comparison page's size table as a clean screenshot, or a rendered
-   bar chart of <!--sz:hello.1-->7.4<!--/sz--> / <!--sz:editable.1-->19.1<!--/sz--> / <!--sz:kitchen.1-->23.7<!--/sz--> KiB against 226 KiB (dhtmlx) and 14.9 KiB (Frappe). **Include the
+   bar chart of <!--sz:hello.1-->7.3<!--/sz--> / <!--sz:editable.1-->19.2<!--/sz--> / <!--sz:kitchen.1-->23.8<!--/sz--> KiB against 226 KiB (dhtmlx) and 14.9 KiB (Frappe). **Include the
    Frappe bar.** Omitting the one competitor that beats a FluxGantt row is the kind of thing a
    developer audience catches and punishes.
 3. **TypeScript DX.** An editor screenshot of the branded-ID compile error from the comparison page —
@@ -142,7 +143,7 @@ with the cascade → the CI size-budget check going green. End on the install co
 
 **"How is this different from Frappe Gantt?"** — Critical path, all four dependency types, working
 calendar, TypeScript types, React/Vue wrappers, Canvas at scale. And say the other half: Frappe is
-smaller, 14.9 KiB against <!--sz:editable.1-->19.1<!--/sz--> KiB. Link the comparison page.
+smaller, 14.9 KiB against <!--sz:editable.1-->19.2<!--/sz--> KiB. Link the comparison page.
 
 **"Why should I trust a pre-1.0 library?"** — Point at CI: unit, e2e, visual-regression, a11y, mobile
 and performance suites plus enforced size budgets, all public.

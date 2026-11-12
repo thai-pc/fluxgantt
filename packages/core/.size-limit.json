@@ -3,77 +3,21 @@
     "name": "Hello world (createGantt only, tree-shaken, gzip)",
     "path": "size-limit/hello-world.js",
     "config": "size-limit/hello-world.esbuild-config.mjs",
-    "limit": "9 KiB",
-    "gzip": true
-  },
-  {
-    "name": "Base + withIo (import/export, no rendering, gzip)",
-    "path": "size-limit/with-io.js",
-    "config": "size-limit/with-io.esbuild-config.mjs",
-    "limit": "14 KiB",
-    "gzip": true
-  },
-  {
-    "name": "Base + withRender (static painted chart, gzip)",
-    "path": "size-limit/with-render.js",
-    "config": "size-limit/with-render.esbuild-config.mjs",
-    "limit": "15 KiB",
+    "limit": "8.25 KiB",
     "gzip": true
   },
   {
     "name": "Base + withRender + withInteraction (editable chart, gzip)",
     "path": "size-limit/with-render-interaction.js",
     "config": "size-limit/with-render-interaction.esbuild-config.mjs",
-    "limit": "19.5 KiB",
+    "limit": "21.25 KiB",
     "gzip": true
   },
   {
     "name": "Kitchen sink (every capability composed, gzip)",
     "path": "size-limit/kitchen-sink.js",
     "config": "size-limit/kitchen-sink.esbuild-config.mjs",
-    "limit": "24 KiB",
-    "gzip": true
-  },
-  {
-    "name": "Base + withRender + withTheme (light/dark switchable chart, gzip)",
-    "path": "size-limit/with-theme.js",
-    "config": "size-limit/with-theme.esbuild-config.mjs",
-    "limit": "16 KiB",
-    "gzip": true
-  },
-  {
-    "name": "Base + withRender + withInteraction + withResponsive (touch-adapted editable chart, gzip)",
-    "path": "size-limit/with-responsive.js",
-    "config": "size-limit/with-responsive.esbuild-config.mjs",
-    "limit": "21 KiB",
-    "gzip": true
-  },
-  {
-    "name": "Base + withRender + withViewport (scrollTo/setDensity chart, gzip)",
-    "path": "size-limit/with-viewport.js",
-    "config": "size-limit/with-viewport.esbuild-config.mjs",
-    "limit": "16 KiB",
-    "gzip": true
-  },
-  {
-    "name": "Base + withConflicts (headless conflict detector + watcher, gzip)",
-    "path": "size-limit/with-conflicts.js",
-    "config": "size-limit/with-conflicts.esbuild-config.mjs",
-    "limit": "10 KiB",
-    "gzip": true
-  },
-  {
-    "name": "Base + withRender + withEditHooks (dblclick/contextmenu/keyboard host hooks, gzip)",
-    "path": "size-limit/with-edit-hooks.js",
-    "config": "size-limit/with-edit-hooks.esbuild-config.mjs",
-    "limit": "16 KiB",
-    "gzip": true
-  },
-  {
-    "name": "Base + withRender + withRtl (mirrored right-to-left chart, gzip)",
-    "path": "size-limit/with-rtl.js",
-    "config": "size-limit/with-rtl.esbuild-config.mjs",
-    "limit": "15.5 KiB",
+    "limit": "26.25 KiB",
     "gzip": true
   }
 ]

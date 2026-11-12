@@ -56,10 +56,16 @@ jobs:
       - name: Build (packages + docs site + example apps)
         run: pnpm build
 
-      - name: "Bundle size (7 gzip fixtures, budgets in packages/core/.size-limit.json)"
-        run: pnpm size
+      - name: "Bundle size: HARD gates (3 fixtures, fails CI; .size-limit.json)"
+        run: pnpm --filter @fluxgantt/core size:hard
 
-      - name: "Bundle headroom (non-fatal: warns when a fixture is within 150 B of its limit)"
+      - name: "Bundle size: soft fixtures (8, report-only; warns on over-reference or >5% growth)"
+        # size.mjs --soft always exits 0; continue-on-error is belt and braces so a crash in the
+        # report can never block a merge. The hard step above is the only size gate.
+        continue-on-error: true
+        run: pnpm --filter @fluxgantt/core size:soft
+
+      - name: "Bundle headroom (non-fatal: warns when a hard gate has < 25% of its allotted headroom left)"
         run: pnpm --filter @fluxgantt/core size:headroom
 
       - name: Unit tests

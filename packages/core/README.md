@@ -30,7 +30,7 @@ import { Temporal } from '@js-temporal/polyfill';
 (globalThis as unknown as { Temporal?: typeof Temporal }).Temporal ??= Temporal;
 ```
 
-Not every browser ships Temporal natively yet (Safari does not at the time of writing), and
+Not every browser ships Temporal natively yet (check your target browsers), and
 neither do Node 22 and 24.
 
 It is optional **at runtime only** — the bundle contains no polyfill code, and `getTemporal()`
@@ -124,14 +124,19 @@ With `withInteraction()` and a mounted chart, the same operations are bound to
 
 ## Bundle size
 
-Measured gzip, enforced in CI against real fixtures:
+Measured gzip against real fixtures in CI (the first, third and fourth rows are hard budgets that
+fail CI; `+ withRender()` is tracked report-only):
 
 | Composition | gzip |
 |---|---|
-| `createGantt()` alone | 7.50 KiB |
-| `+ withRender()` | 13.86 KiB |
-| `+ withRender() + withInteraction()` | 18.40 KiB |
-| everything | 23.16 KiB |
+| `createGantt()` alone | 7.35 KiB |
+| `+ withRender()` | 14.49 KiB |
+| `+ withRender() + withInteraction()` | 19.16 KiB |
+| everything | 23.85 KiB |
+
+These figures **exclude the Temporal polyfill**: core bundles none and reads `globalThis.Temporal`.
+Runtimes without native Temporal (Node 22/24, older browsers) need `@js-temporal/polyfill`, about **45.8 KiB gzip**
+(`0.5.1` with `jsbi`, minified), on top of the table; runtimes with native Temporal pay nothing.
 
 ## Framework wrappers
 

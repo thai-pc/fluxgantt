@@ -70,8 +70,8 @@ gantt.on('task:moved', (task, prevStart) => {
 gantt.mount(document.getElementById('gantt')!);
 ```
 
-Core needs `globalThis.Temporal`. In a browser without native Temporal (Safari, at the time of
-writing) or in Node 22/24, `pnpm add @js-temporal/polyfill` and run this once, before the code
+Core needs `globalThis.Temporal`. In a browser without native Temporal (check your
+targets) or in Node 22/24, `pnpm add @js-temporal/polyfill` and run this once, before the code
 above (the examples do it in `src/temporal.ts`):
 
 ```ts
@@ -110,17 +110,25 @@ The StackBlitz links go live with the next release and return a 404 until then.
 
 Rendering, interaction, IO, theming and responsive behaviour are **opt-in mixins on separate
 subpath exports**, so you download what you compose and nothing else. Measured with `pnpm size`
-(gzip, ESM bundler output), enforced as a budget on every pull request:
+(gzip, ESM bundler output, **excluding the Temporal polyfill** — see below). The `createGantt()`,
+`+ withRender + withInteraction` and every-capability rows are hard budgets that fail CI; the others
+are tracked report-only:
 
 | What you compose | gzip |
 |---|---|
-| `createGantt()` — headless engine only | **<!--sz:hello.2-->7.41<!--/sz--> KiB** |
-| `+ withIo` | <!--sz:io.2-->12.46<!--/sz--> KiB |
-| `+ withRender` — a painted chart | <!--sz:render.2-->14.53<!--/sz--> KiB |
-| `+ withRender + withInteraction` — a fully editable chart | **<!--sz:editable.2-->19.05<!--/sz--> KiB** |
-| `+ withRender + withTheme` | <!--sz:theme.2-->15.18<!--/sz--> KiB |
-| `+ withRender + withInteraction + withResponsive` | <!--sz:responsive.2-->20.46<!--/sz--> KiB |
-| Every capability composed | <!--sz:kitchen.2-->23.71<!--/sz--> KiB |
+| `createGantt()` — headless engine only | **<!--sz:hello.2-->7.35<!--/sz--> KiB** |
+| `+ withIo` | <!--sz:io.2-->12.38<!--/sz--> KiB |
+| `+ withRender` — a painted chart | <!--sz:render.2-->14.49<!--/sz--> KiB |
+| `+ withRender + withInteraction` — a fully editable chart | **<!--sz:editable.2-->19.16<!--/sz--> KiB** |
+| `+ withRender + withTheme` | <!--sz:theme.2-->15.16<!--/sz--> KiB |
+| `+ withRender + withInteraction + withResponsive` | <!--sz:responsive.2-->20.58<!--/sz--> KiB |
+| Every capability composed | <!--sz:kitchen.2-->23.85<!--/sz--> KiB |
+
+**These figures exclude the Temporal polyfill.** Core reads `globalThis.Temporal` and ships no
+polyfill. Runtimes without native Temporal (Node 22/24, older browsers) need `@js-temporal/polyfill`, about **45.8 KiB gzip**
+(`0.5.1` with its `jsbi` dependency, minified), so on those runtimes add that to every row above
+(an editable chart is then ~65 KiB). Runtimes with native Temporal pay nothing.
+The install is shown in the setup section above.
 
 Required host CSS: **none** — every visual property is written inline with a `--fg-*` token
 fallback, so a stylesheet is only needed to *override* defaults.

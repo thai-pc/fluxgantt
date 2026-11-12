@@ -1,0 +1,17 @@
+{
+  "hard": {
+    "Hello world (createGantt only, tree-shaken, gzip)": 7526,
+    "Base + withRender + withInteraction (editable chart, gzip)": 19616,
+    "Kitchen sink (every capability composed, gzip)": 24421
+  },
+  "soft": {
+    "Base + withIo (import/export, no rendering, gzip)": 12678,
+    "Base + withRender (static painted chart, gzip)": 14837,
+    "Base + withRender + withTheme (light/dark switchable chart, gzip)": 15523,
+    "Base + withRender + withInteraction + withResponsive (touch-adapted editable chart, gzip)": 21075,
+    "Base + withRender + withViewport (scrollTo/setDensity chart, gzip)": 15757,
+    "Base + withConflicts (headless conflict detector + watcher, gzip)": 9423,
+    "Base + withRender + withEditHooks (dblclick/contextmenu/keyboard host hooks, gzip)": 16194,
+    "Base + withRender + withRtl (mirrored right-to-left chart, gzip)": 15284
+  }
+}

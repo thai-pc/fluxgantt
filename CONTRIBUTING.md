@@ -21,9 +21,10 @@ Node >= 22.19 (see `.nvmrc` for the exact pinned version), pnpm 10+.
 - **TypeScript strict**, branded IDs, no `any`.
 - **Tree-shakable** — no top-level side effects; respect the per-capability bundle budgets.
   There is no single "core" budget any more: the facade is a base plus opt-in mixins on their
-  own subpath exports, each measured against its own fixture (`createGantt()` alone 9 KiB gzip
-  up to the kitchen sink at 24 KiB). Run `pnpm size` for the current numbers; the full table is
-  in CLAUDE.md golden rule 5. The old `core <36kb` / `hello-world <22kb` pair was retired with
+  own subpath exports, each measured against its own fixture. Three are hard CI gates (`createGantt()` alone
+  8.25 KiB gzip, an editable chart 21.25 KiB, the kitchen sink 26.25 KiB); the other eight only
+  warn. Sizes exclude the Temporal polyfill. Run `pnpm size` for the current numbers; the policy and
+  full table are in CLAUDE.md golden rule 5. The old `core <36kb` / `hello-world <22kb` pair was retired with
   the split — it measured `dist/index.js` as a plain file, which code-splitting has hollowed out.
 - **Every new feature ships with tests** (see `.claude/rules/testing.md`).
 - **Security** — validate every external input (see `.claude/rules/security.md`).

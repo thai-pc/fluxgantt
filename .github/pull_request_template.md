@@ -17,8 +17,10 @@ diff: a trade-off taken, an alternative rejected, a constraint that forced the s
 - [ ] `pnpm lint && pnpm typecheck && pnpm test` pass locally.
 - [ ] **Changeset added** (`pnpm changeset`) if a published package changed. Changes scoped
       entirely to `apps/*`, `examples/*` or tooling need none.
-- [ ] **Bundle budgets** still green (`pnpm size`) if this touches `packages/core`. Prefer
-      changing the shape over raising a budget — see CLAUDE.md golden rule 5.
+- [ ] **Bundle budgets** (`pnpm size`) if this touches `packages/core`: the three hard gates
+      must pass; soft-fixture warnings are fine but note them. A correctness/security/a11y/perf
+      fix may spend hard headroom (state the byte cost here); a feature must find its own bytes.
+      Raising a hard limit needs an owner decision — see CLAUDE.md golden rule 5.
 - [ ] **Security** reviewed if this touches IO, parsing, rendering of host data, or anything
       cloud/AI (`.claude/rules/security.md`): no user string interpolated into markup, imports
       schema-validated, no secret in code or logs.

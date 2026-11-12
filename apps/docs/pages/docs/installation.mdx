@@ -55,7 +55,7 @@ import { Temporal } from '@js-temporal/polyfill';
 
 Put it in its own module (the example apps use `src/temporal.ts`) and import that module first,
 so it runs before your chart code. The cast goes through `unknown` because TypeScript 6 with
-`lib: ["ESNext"]` declares its own global `Temporal`, whose types do not overlap the polyfill's. Not every browser ships Temporal natively yet (Safari does not
+`lib: ["ESNext"]` declares its own global `Temporal`, whose types do not overlap the polyfill's. Not every browser ships Temporal natively yet (check your targets; older Safari does not
 at the time of writing), and neither do Node 22 and 24, so a public site or a Node script needs
 this line. The example apps and the StackBlitz projects all do it.
 

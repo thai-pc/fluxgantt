@@ -96,7 +96,10 @@
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "clean": "rimraf dist .turbo",
-    "size": "size-limit",
+    "size": "node scripts/size.mjs",
+    "size:hard": "size-limit",
+    "size:soft": "node scripts/size.mjs --soft",
+    "size:baseline": "node scripts/size.mjs --update-baseline",
     "size:headroom": "node scripts/size-headroom.mjs"
   },
   "devDependencies": {
