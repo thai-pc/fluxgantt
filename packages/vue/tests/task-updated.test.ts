@@ -52,11 +52,11 @@ describe('task-updated emit (@beta)', () => {
     const first = vi.fn();
     const second = vi.fn();
     const wrapper = mount(FluxGantt, {
-      props: { tasks: A, onTaskUpdated: first },
+      props: { tasks: A, 'onTask-updated': first },
       attachTo: document.body,
     });
     const instance = wrapper.vm as unknown as GanttInstance;
-    await wrapper.setProps({ onTaskUpdated: second });
+    await wrapper.setProps({ 'onTask-updated': second });
     instance.updateTask(toTaskId('a'), { name: 'x' });
     expect(first).not.toHaveBeenCalled();
     expect(second).toHaveBeenCalledTimes(1);
