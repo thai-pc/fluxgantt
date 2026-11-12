@@ -9,19 +9,17 @@ import { defineConfig } from 'vocs/config';
 export default defineConfig({
   rootDir: '.',
   srcDir: '.',
-  // Deployment target is GitHub Pages at https://thai-pc.github.io/fluxgantt.
-  // `renderStrategy: 'full-static'` is what makes the build emit real HTML (the default,
-  // 'dynamic', emits none — it expects a Node server), and `basePath` prefixes every asset and
-  // internal link with the repository sub-path Pages serves from.
+  // Deployment target is Cloudflare Pages at https://fluxgantt.thai-pc.com, served from the
+  // domain root (no `basePath`; Vocs' default is `/`). `renderStrategy: 'full-static'` is what
+  // makes the build emit real HTML (the default, 'dynamic', emits none — it expects a Node
+  // server).
   renderStrategy: 'full-static',
-  basePath: '/fluxgantt',
-  // Origin only: Vocs composes canonicals as `baseUrl + basePath + pathname`
-  // (vocs/react/Head.tsx), so including the sub-path here would double it.
-  baseUrl: 'https://thai-pc.github.io',
-  // Off on purpose. Vocs' sitemap uses `siteUrl + pagePath` (vocs/internal/vite-plugins.ts),
-  // which omits `basePath` — under a sub-path deployment it would emit URLs that 404, and a
-  // wrong sitemap is worse than none. Re-enable once the two agree.
-  sitemap: false,
+  // Canonicals, `og:url` and the sitemap are composed from this origin.
+  baseUrl: 'https://fluxgantt.thai-pc.com',
+  // Vocs' sitemap is `baseUrl + pagePath` (vocs/internal/vite-plugins.ts). That ignores
+  // `basePath`, which is why it stayed off while the site was meant for a GitHub Pages sub-path;
+  // at the domain root the two agree, so it is left at its default (on; it also emits
+  // robots.txt).
   title: 'FluxGantt',
   description: 'The Modern MIT-Licensed Gantt Chart Library — TypeScript-first, headless, framework-agnostic.',
   titleTemplate: '%s · FluxGantt',

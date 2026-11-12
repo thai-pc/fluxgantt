@@ -1,130 +1,103 @@
 #!/usr/bin/env node
-// Post-processes the Vocs static build for GitHub Pages. Runs as part of `pnpm --filter docs
-// build`; a no-op anywhere else.
+// Validates the Vocs static build that Cloudflare Pages serves from the root of
+// https://fluxgantt.thai-pc.com. Runs as part of `pnpm --filter docs build`; it only reads
+// `apps/docs/dist/public` and fails the build when that output would deploy broken.
 //
-// Two things Pages needs that `vocs build` does not emit:
+// 1. The site is laid out for the domain root: `vocs.config.ts` must not set a `basePath`.
+//    The site used to target a GitHub Pages sub-path (`/fluxgantt`), and Vocs leaves three
+//    kinds of output without the prefix even when one is set (the WCAG skip link, `llms.txt` /
+//    `llms-full.txt`, and `assets/md/**.md`), so a sub-path deploy needs a rewrite pass this
+//    script no longer has (see its git history). Refuse the combination instead of shipping
+//    links that 404.
 //
-// 1. `.nojekyll` — Pages runs Jekyll over the artifact by default, and Jekyll silently drops
-//    every path whose name starts with `_`. Waku's `encodeRscPath()` emits exactly such paths
-//    (`RSC/R/_root.txt`, `RSC/R/__root.d.txt`, and the `_root.d/` HTML directory), so without
-//    this file client-side navigation 404s on a live deploy while working fine locally.
+// 2. The build actually produced HTML. `renderStrategy` defaults to 'dynamic', which emits a
+//    Node server and zero HTML — a silent, deploy-a-blank-site failure. If a future config
+//    change flips it back, fail here instead. `index.html` must exist too: it is the home page.
 //
-// 2. A hard assertion that the build actually produced HTML. `renderStrategy` defaults to
-//    'dynamic', which emits a Node server and zero HTML — a silent, deploy-a-blank-site
-//    failure. If a future config change flips it back, fail the build here instead.
+// 3. Every root-relative `/assets/...` URL the HTML references exists in the output. That is
+//    the class of breakage a wrong base path produces (scripts and styles 404, the page renders
+//    unstyled and never hydrates), so check it directly rather than trusting the config.
 //
-// 3. `basePath` on the outputs Vocs does not prefix. `basePath: '/fluxgantt'` reaches every
-//    asset URL and every router link, but three classes of output are assembled without it and
-//    so emit links that 404 on the live sub-path deploy:
-//      - the WCAG skip link (`href="/docs/x#vocs-content"`), which is the FIRST thing a
-//        keyboard or screen-reader user hits on every page;
-//      - `llms.txt` / `llms-full.txt`, built in `vocs/dist/internal/llms.js` from raw `page.path`
-//        (`nav.push(\`- [${title}](${path})\`)`) — the same file computes a basePath for the MCP
-//        URL a few lines below, so the omission is specific to these link lists, not a config
-//        mistake on our side;
-//      - `assets/md/**.md`, the per-page Markdown, which carries the authored root-relative
-//        links through verbatim.
-//    Rewriting here rather than in the sources is deliberate: the sources must keep working
-//    under `vocs dev`, which serves at `/`. Prefixing is done with an anchored pattern and
-//    skips anything already prefixed, so it is idempotent.
-import { readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+// No `.nojekyll` any more: it only existed because GitHub Pages runs Jekyll, which drops waku's
+// `_`-prefixed RSC paths. Cloudflare Pages serves the directory as-is.
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, resolve } from 'node:path';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const publicDir = resolve(repoRoot, 'apps/docs/dist/public');
 
-// Read straight from the config so the two can never drift apart.
+const fail = (message) => {
+  console.error(`\n✗ finalize-pages-build: ${message}\n`);
+  process.exit(1);
+};
+
+// --- 1. no basePath ---------------------------------------------------------------------------
 const configSource = readFileSync(resolve(repoRoot, 'apps/docs/vocs.config.ts'), 'utf8');
 const basePathMatch = configSource.match(/^\s*basePath:\s*'([^']*)'/m);
-if (!basePathMatch) {
-  console.error(
-    '\n\u2717 finalize-pages-build: could not read `basePath` from apps/docs/vocs.config.ts.\n' +
-      '  It is needed to prefix the skip links and llms.txt. Refusing to emit a half-prefixed\n' +
-      '  build that would 404 for keyboard users.\n',
+if (basePathMatch && basePathMatch[1].replace(/\/+$/, '') !== '') {
+  fail(
+    `apps/docs/vocs.config.ts sets basePath '${basePathMatch[1]}', but the site is served from\n` +
+      '  the domain root. Remove it, or restore the sub-path rewrite pass from git history.',
   );
-  process.exit(1);
 }
-const basePath = (basePathMatch[1] ?? '').replace(/\/+$/, '');
 
-function countHtml(dir) {
-  let n = 0;
+// --- 2. HTML exists ---------------------------------------------------------------------------
+const htmlFiles = [];
+const walk = (dir) => {
   for (const entry of readdirSync(dir)) {
     const full = join(dir, entry);
-    if (statSync(full).isDirectory()) n += countHtml(full);
-    else if (entry.endsWith('.html')) n += 1;
-  }
-  return n;
-}
-
-let htmlCount = 0;
-try {
-  htmlCount = countHtml(publicDir);
-} catch {
-  console.error(
-    `\n✗ finalize-pages-build: ${publicDir} does not exist.\n` +
-      `  Expected a static build. Check \`renderStrategy\` in apps/docs/vocs.config.ts.\n`,
-  );
-  process.exit(1);
-}
-
-if (htmlCount === 0) {
-  console.error(
-    '\n✗ finalize-pages-build: the build emitted zero HTML files.\n' +
-      "  This happens when `renderStrategy` is not 'full-static' — the site would deploy blank.\n" +
-      '  Fix apps/docs/vocs.config.ts.\n',
-  );
-  process.exit(1);
-}
-
-// --- basePath the outputs Vocs leaves unprefixed ------------------------------------------
-// One regex per output kind. Each requires a `/` that is NOT already followed by the basePath
-// segment, so re-running over a finished build changes nothing.
-const prefixed = (pattern, text) =>
-  basePath === '' ? text : text.replace(pattern, (_m, lead, path) => `${lead}${basePath}${path}`);
-
-const escaped = basePath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-// `href="/docs/x#vocs-content"` and `href="/#vocs-content"` — the skip link only. Every other
-// internal href in the HTML is router-generated and already carries the prefix.
-const skipLink = new RegExp(`(href=")(?!${escaped}/)(/[^"]*#vocs-content)`, 'g');
-// `](/docs/x)` in Markdown and the llms lists. An absolute URL starts with a scheme and a
-// fragment-only link starts with `#`, so neither matches.
-const mdLink = new RegExp(`(\\]\\()(?!${escaped}/)(/[^)]*)`, 'g');
-
-let rewritten = 0;
-const rewriteTree = (dir) => {
-  for (const entry of readdirSync(dir)) {
-    const full = join(dir, entry);
-    if (statSync(full).isDirectory()) {
-      rewriteTree(full);
-      continue;
-    }
-    const isHtml = entry.endsWith('.html');
-    const isMarkdownish = entry.endsWith('.md') || entry === 'llms.txt' || entry === 'llms-full.txt';
-    if (!isHtml && !isMarkdownish) continue;
-    const before = readFileSync(full, 'utf8');
-    const after = isHtml ? prefixed(skipLink, before) : prefixed(mdLink, before);
-    if (after !== before) {
-      writeFileSync(full, after);
-      rewritten += 1;
-    }
+    if (statSync(full).isDirectory()) walk(full);
+    else if (entry.endsWith('.html')) htmlFiles.push(full);
   }
 };
-rewriteTree(publicDir);
-
-// A static build always has skip links, so zero rewrites means the pattern stopped matching —
-// most likely because Vocs started prefixing them itself (good) or renamed the anchor (bad).
-// Say so rather than silently shipping whatever we produced.
-if (basePath !== '' && rewritten === 0) {
-  console.log(
-    `ℹ finalize-pages-build: nothing needed the "${basePath}" prefix. Either Vocs now\n` +
-      '  applies basePath to skip links and llms.txt itself, or the markup changed — verify a\n' +
-      "  page's skip link and llms.txt before trusting this.",
+try {
+  walk(publicDir);
+} catch {
+  fail(
+    `${publicDir} does not exist.\n` +
+      '  Expected a static build. Check `renderStrategy` in apps/docs/vocs.config.ts.',
   );
 }
+if (htmlFiles.length === 0) {
+  fail(
+    'the build emitted zero HTML files.\n' +
+      "  This happens when `renderStrategy` is not 'full-static' — the site would deploy blank.\n" +
+      '  Fix apps/docs/vocs.config.ts.',
+  );
+}
+if (!existsSync(join(publicDir, 'index.html'))) fail('the build has no index.html (home page).');
 
-writeFileSync(join(publicDir, '.nojekyll'), '');
+// --- 3. every referenced /assets/ file exists -------------------------------------------------
+// `src="/assets/x.js"`, `href="/assets/x.css"`, and the `"/assets/x"` strings in inline module
+// preload / RSC payloads. Query strings and fragments are not part of the file name.
+const assetRef = /["'(](\/assets\/[^"')?#\s\\]+)/g;
+const missing = new Map();
+let refs = 0;
+for (const file of htmlFiles) {
+  const html = readFileSync(file, 'utf8');
+  for (const [, url] of html.matchAll(assetRef)) {
+    refs += 1;
+    let path = url;
+    try {
+      path = decodeURIComponent(url);
+    } catch {
+      // A malformed escape cannot name a real file; check it verbatim and let it fail.
+    }
+    if (!existsSync(join(publicDir, path))) missing.set(url, file.slice(publicDir.length + 1));
+  }
+}
+if (refs === 0) {
+  fail(
+    'no HTML file references /assets/. Either Vocs changed its output layout or the assets\n' +
+      '  are prefixed with a path the site is not served from — check a built page.',
+  );
+}
+if (missing.size > 0) {
+  const list = [...missing].slice(0, 10).map(([url, from]) => `    ${url}  (in ${from})`);
+  fail(`${missing.size} referenced asset(s) are missing from the build:\n${list.join('\n')}`);
+}
+
 console.log(
-  `✓ finalize-pages-build: ${htmlCount} HTML files, ${rewritten} basePath-prefixed, ` +
-    '.nojekyll written',
+  `✓ finalize-pages-build: ${htmlFiles.length} HTML files, ${refs} /assets/ references, all present`,
 );
