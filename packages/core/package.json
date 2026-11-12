@@ -33,54 +33,104 @@
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js",
-      "require": "./dist/index.cjs"
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
     },
     "./io": {
-      "types": "./dist/io/index.d.ts",
-      "import": "./dist/io/index.js",
-      "require": "./dist/io/index.cjs"
+      "import": {
+        "types": "./dist/io/index.d.ts",
+        "default": "./dist/io/index.js"
+      },
+      "require": {
+        "types": "./dist/io/index.d.cts",
+        "default": "./dist/io/index.cjs"
+      }
     },
     "./render": {
-      "types": "./dist/render/index.d.ts",
-      "import": "./dist/render/index.js",
-      "require": "./dist/render/index.cjs"
+      "import": {
+        "types": "./dist/render/index.d.ts",
+        "default": "./dist/render/index.js"
+      },
+      "require": {
+        "types": "./dist/render/index.d.cts",
+        "default": "./dist/render/index.cjs"
+      }
     },
     "./interaction": {
-      "types": "./dist/interaction/index.d.ts",
-      "import": "./dist/interaction/index.js",
-      "require": "./dist/interaction/index.cjs"
+      "import": {
+        "types": "./dist/interaction/index.d.ts",
+        "default": "./dist/interaction/index.js"
+      },
+      "require": {
+        "types": "./dist/interaction/index.d.cts",
+        "default": "./dist/interaction/index.cjs"
+      }
     },
     "./theme": {
-      "types": "./dist/theme/index.d.ts",
-      "import": "./dist/theme/index.js",
-      "require": "./dist/theme/index.cjs"
+      "import": {
+        "types": "./dist/theme/index.d.ts",
+        "default": "./dist/theme/index.js"
+      },
+      "require": {
+        "types": "./dist/theme/index.d.cts",
+        "default": "./dist/theme/index.cjs"
+      }
     },
     "./responsive": {
-      "types": "./dist/responsive/index.d.ts",
-      "import": "./dist/responsive/index.js",
-      "require": "./dist/responsive/index.cjs"
+      "import": {
+        "types": "./dist/responsive/index.d.ts",
+        "default": "./dist/responsive/index.js"
+      },
+      "require": {
+        "types": "./dist/responsive/index.d.cts",
+        "default": "./dist/responsive/index.cjs"
+      }
     },
     "./viewport": {
-      "types": "./dist/viewport/index.d.ts",
-      "import": "./dist/viewport/index.js",
-      "require": "./dist/viewport/index.cjs"
+      "import": {
+        "types": "./dist/viewport/index.d.ts",
+        "default": "./dist/viewport/index.js"
+      },
+      "require": {
+        "types": "./dist/viewport/index.d.cts",
+        "default": "./dist/viewport/index.cjs"
+      }
     },
     "./edit-hooks": {
-      "types": "./dist/edit-hooks/index.d.ts",
-      "import": "./dist/edit-hooks/index.js",
-      "require": "./dist/edit-hooks/index.cjs"
+      "import": {
+        "types": "./dist/edit-hooks/index.d.ts",
+        "default": "./dist/edit-hooks/index.js"
+      },
+      "require": {
+        "types": "./dist/edit-hooks/index.d.cts",
+        "default": "./dist/edit-hooks/index.cjs"
+      }
     },
     "./rtl": {
-      "types": "./dist/rtl/index.d.ts",
-      "import": "./dist/rtl/index.js",
-      "require": "./dist/rtl/index.cjs"
+      "import": {
+        "types": "./dist/rtl/index.d.ts",
+        "default": "./dist/rtl/index.js"
+      },
+      "require": {
+        "types": "./dist/rtl/index.d.cts",
+        "default": "./dist/rtl/index.cjs"
+      }
     },
     "./conflicts": {
-      "types": "./dist/conflicts/index.d.ts",
-      "import": "./dist/conflicts/index.js",
-      "require": "./dist/conflicts/index.cjs"
+      "import": {
+        "types": "./dist/conflicts/index.d.ts",
+        "default": "./dist/conflicts/index.js"
+      },
+      "require": {
+        "types": "./dist/conflicts/index.d.cts",
+        "default": "./dist/conflicts/index.cjs"
+      }
     }
   },
   "files": [
