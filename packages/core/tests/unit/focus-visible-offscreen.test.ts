@@ -128,6 +128,21 @@ describe('row focus frame: row patch', () => {
     obs.disconnect();
   });
 
+  it('follows DOM focus that moves without a render (AT cursor, host .focus()) and mutates nothing else', () => {
+    const h = createSvgRenderer(container, input(id('a')), {});
+    const defs = h.svg.querySelector('defs');
+    const rows = [...h.svg.querySelectorAll<SVGElement>('.fg-timeline__row')];
+    const expectedY = frames(createSvgRenderer(document.createElement('div'), input(id('c')), {}))[0]!.getAttribute('y');
+    rows[2]!.focus();
+    expect(frames(h).map((f) => f.getAttribute('y'))).toEqual([expectedY, expectedY]);
+    expect(h.svg.querySelector('defs')).toBe(defs); // no render
+    const obs = new MutationObserver(() => {});
+    obs.observe(layerOf(h), { subtree: true, attributes: true, childList: true });
+    rows[2]!.dispatchEvent(new FocusEvent('focusin', { bubbles: true })); // same row again: guarded no-op
+    expect(obs.takeRecords()).toHaveLength(0);
+    obs.disconnect();
+  });
+
   it('a stale focus id keeps the frame (inert) and does not throw', () => {
     const h = createSvgRenderer(container, input(id('a')), {});
     expect(() => h.update(input(id('gone')))).not.toThrow();

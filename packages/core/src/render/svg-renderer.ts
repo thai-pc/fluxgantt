@@ -305,11 +305,18 @@ export function createSvgRenderer(
   let currentLabelColumnWidth = LABEL_COLUMN_WIDTH;
   // Set as the last step of a full render() and cleared as its first, so a render that threw never
   // leaves a closure over a half-built DOM.
-  let patch: ((ids: readonly TaskId[], focus: TaskId | undefined) => void) | undefined;
+  // Moves the row focus frame (to `id`'s row, default the rendered focus); set by every full render.
+let place: ((id?: TaskId) => void) | undefined;
+let patch: ((ids: readonly TaskId[], focus: TaskId | undefined) => void) | undefined;
 
   // `display:block`: no inline descender gap (kept for the export root). `grid-area:1/1` puts the chart in
   // the layer's single grid cell; `exportSvg` strips it from the clone.
   const svg = el('svg', { class: 'fg-timeline' });
+  // DOM focus can move without a render (AT cursor, host `.focus()`): the frame follows it.
+  svg.addEventListener('focusin', (e) => {
+    const id = (e.target as Element).closest('[data-task-id]')?.getAttribute('data-task-id');
+    if (id) place?.(id as TaskId);
+  });
   svg.style.cssText = 'display:block;grid-area:1/1';
   // `role`/`aria-rowcount`/`aria-multiselectable` are set INSIDE render() (spec-keyboard-nav.md
   // §3.2 point 1) — `aria-rowcount` depends on the row count, which isn't known until the
@@ -401,7 +408,7 @@ export function createSvgRenderer(
   };
 
   function render(): void {
-    patch = undefined;
+    patch = place = undefined;
     // Captured BEFORE the repaint destroys the row elements: the gate that stops a programmatic
     // mutation (e.g. `gantt.addTask()` while the Gantt is not focused) from stealing focus.
     const hadFocusInside = svg.contains(document.activeElement);
@@ -812,7 +819,7 @@ export function createSvgRenderer(
     svg.append(rowsGroup);
     // Row focus frame: inset 1px in the focused row's band. An absent/stale id resolves to row 0 but
     // then no row is `:focus-visible`, so it stays inert. `aria-hidden` for the same reason as the today line.
-    const fy = () => offsetY + (rows.find((r) => r.task.id === focusedTaskId)?.y ?? 0) + 1;
+    const fy = (id = focusedTaskId) => offsetY + (rows.find((r) => r.task.id === id)?.y ?? 0) + 1;
     svg.append(
       el(
         'rect',
@@ -891,6 +898,13 @@ export function createSvgRenderer(
     if (hadFocusInside)
       svg.querySelector<SVGElement>('[tabindex="0"]')?.focus({ preventScroll: true });
 
+    // Guarded: an identical setAttribute still queues a MutationObserver record.
+    place = (id) => {
+      const y = String(fy(id));
+      layer.querySelectorAll('.fg-timeline__focus-row').forEach((m) => {
+        if (m.getAttribute('y') !== y) m.setAttribute('y', y);
+      });
+    };
     patch = (ids, focus) => {
       const had = svg.contains(document.activeElement);
       selectedIds = new Set(ids);
@@ -907,11 +921,7 @@ export function createSvgRenderer(
           old.replaceWith(makeRow(row));
         }
       });
-      // Guarded: an identical setAttribute still queues a MutationObserver record.
-      const y = String(fy());
-      layer.querySelectorAll('.fg-timeline__focus-row').forEach((m) => {
-        if (m.getAttribute('y') !== y) m.setAttribute('y', y);
-      });
+      place!();
       currentOptions.onPaint?.(svg);
       if (had) svg.querySelector<SVGElement>('[tabindex="0"]')?.focus({ preventScroll: true });
     };

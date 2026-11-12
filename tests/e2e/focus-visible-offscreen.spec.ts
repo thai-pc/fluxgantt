@@ -89,6 +89,15 @@ test.describe('svg specifics', () => {
     expect(r.map((f) => f.inColumn).sort()).toEqual([false, true]);
   });
 
+  test('the frame follows a programmatic focus() that triggers no render', async ({ page }) => {
+    await page.evaluate(() => document.querySelector<SVGElement>('.fg-timeline__row[data-row-index="4"]')!.focus());
+    const ys = await page.evaluate(() => [...document.querySelectorAll('.fg-timeline__focus-row')].map((e) => Number(e.getAttribute('y'))));
+    expect(ys).toEqual([HEADER + 4 * ROW + 1, HEADER + 4 * ROW + 1]);
+    // And it is the row that really has focus, with the frame visible on it.
+    const c = await containerBox(page);
+    expect(await accentShare(page, { x: c.left + 8, y: c.top + HEADER + 4 * ROW - c.scrollTop, width: LABEL_W - 40, height: 2 })).toBeGreaterThan(0.5);
+  });
+
   test('the column copy sits inside the sticky column box and below the header', async ({ page }) => {
     const m = await page.evaluate(() => {
       const f = document.querySelector('.fg-timeline__sticky-column .fg-timeline__focus-row')!.getBoundingClientRect();
