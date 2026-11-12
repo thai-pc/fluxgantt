@@ -48,7 +48,7 @@ This file is the context entry point for AI. Details are split into rules under 
    **Headline sizes EXCLUDE the Temporal polyfill.** Core reads `globalThis.Temporal` and bundles no polyfill. Runtimes without native Temporal need `@js-temporal/polyfill` (peer dependency, optional at runtime): Node 22/24 and older browsers (checked 2026-11-12: Playwright Chromium 153, Firefox 155 and WebKit 26.6 all expose `Temporal` natively, Node 24.21 does not; re-check before each release). The polyfill is ~45.8 KiB gzip (46,863 B: `@js-temporal/polyfill@0.5.1` plus its `jsbi` dependency, esbuild-minified ESM, gzip -9), so on such a runtime the "7.35 KiB" hello world is ~53 KiB in total, and an editable chart ~65 KiB. Any size claim in the README, docs or launch copy must say "excluding the Temporal polyfill" and give that figure. The competitor figures (dhtmlx, Frappe) do not need a polyfill.
 
    History, the measured lever passes and the lessons (including the template-literal CSS trap) are in `.claude/rules/size-history.md`; read it before trying to shave bytes.
-6. **Tier-gate correctly** — Pro (resource/baseline/MSProject), Cloud (multiplayer/AI). Don't cram Pro/Cloud code into `core`.
+6. **Tier-gate correctly** — MIT core keeps critical path, all wrappers (React/Vue/Svelte/Angular) and basic/custom grid columns. Pro (perpetual, planned, not yet on sale) = resources/leveling, baselines, constraints, MS Project XML, PDF branding. No watermark. Don't cram Pro code into `core`. The hosted Cloud tier (multiplayer/AI auto-schedule) is **not committed** since the 2026-11 strategy revision — see `.claude/rules/project-overview.md`.
 7. **Every new feature ships with tests.** See `.claude/rules/testing.md`.
 8. **Security**: validate every external input (file import, share link, API). See `.claude/rules/security.md`.
 9. **Language**: chat with the user in **Vietnamese**; but **all code, comments, identifiers, docs, commit messages, and PRs are written in English** (professional international OSS standard). Don't back-translate old files unless asked.
@@ -56,7 +56,7 @@ This file is the context entry point for AI. Details are split into rules under 
 ## Locked tech stack
 TypeScript 6 strict · ESM-first (tsup dual) · ES2022 · pnpm workspaces + turbo · changesets ·
 vitest (unit) · playwright (e2e/visual) · @testing-library (wrappers) · Temporal polyfill ·
-Yjs (Pro/Cloud) · Hono + Postgres + Drizzle + Better-Auth (Cloud) · Stripe · Vocs (docs).
+Stripe (Pro checkout) · Vocs (docs). Yjs only for the on-demand sync adapter. The former Cloud backend stack (Hono + Postgres + Drizzle + Better-Auth, Stripe subscriptions) is exploratory, not locked (2026-11 strategy revision).
 
 ## Repo layout
 `packages/*` (core, react, vue, svelte, angular, ai, msproject, cloud-sdk) ·
@@ -86,7 +86,14 @@ Releases are now routine: land a changeset, and merging the bot's "Version Packa
 `docs-deploy.yml` exists but the docs site is **not deployed yet** — its first run is a
 `workflow_dispatch` and remains the owner's explicit go/no-go, so every `thai-pc.github.io/fluxgantt`
 link in the repo (including the `homepage` field of all three published packages) is currently
-dead. See `RELEASING.md`. No Pro/Cloud yet unless explicitly requested.
+dead. See `RELEASING.md`. No Pro yet unless explicitly requested.
+
+**2026-11 strategy revision** (owner-approved, from `.claude/work/audit-architecture-fable.md` S1/S3/S4):
+the MIT-tier rivals are DHTMLX Gantt 10 Community, SVAR Gantt and Bryntum 8 Community, not Frappe;
+Pro is planned as a ~$600–800/dev perpetual licence that allows SaaS use with no OEM surcharge (not
+on sale); the hosted Cloud tier is off the committed roadmap, replaced by an MIT MCP server +
+`llms.txt` and a Yjs sync adapter built only on pre-sold demand. Details in
+`.claude/rules/project-overview.md`.
 
 Consequence for anything you write here: the published surface is now a **compatibility
 commitment**. A change to an exported type, an event name or a subpath export needs a changeset

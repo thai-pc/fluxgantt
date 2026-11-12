@@ -14,9 +14,10 @@ TypeScript-first · headless · framework-agnostic
 
 ---
 
-FluxGantt is a TypeScript-first, MIT-licensed Gantt chart library targeting the gap between
-expensive commercial offerings (dhtmlx, Bryntum) and weak open-source ones (Frappe Gantt,
-jsGantt). Its headless core is fully decoupled from rendering, renders to SVG (Canvas fallback
+FluxGantt is a TypeScript-first, MIT-licensed Gantt chart library for developers who embed a Gantt
+in their own product. Its MIT core includes the critical path (which the MIT editions of dhtmlx,
+Bryntum and SVAR keep behind their paid tiers), and its licence never charges extra for SaaS use.
+Its headless core is fully decoupled from rendering, renders to SVG (Canvas fallback
 above 2000 tasks), and does all date/time math with the Temporal API.
 
 > [!NOTE]
@@ -146,11 +147,11 @@ re-run them. The full breakdown, including where FluxGantt loses, is in
 
 | Tier | Price | Includes |
 |---|---|---|
-| **Core** (MIT) | Free | Rendering, dependencies (FS/SS/FF/SF), hierarchy, critical path, React/Vue, export PNG/SVG/JSON/CSV |
-| **Pro** (one-time) | $299/dev | Resource view + leveling, baselines, constraints, MS Project XML I/O, PDF, custom columns, Svelte/Angular |
-| **Cloud** (subscription) | from $29/month | Multiplayer (Yjs), comment/@mention, AI auto-schedule, risk forecast, integrations |
+| **Core** (MIT) | Free | Rendering, dependencies (FS/SS/FF/SF), hierarchy, critical path, React/Vue (Svelte/Angular planned), export PNG/SVG/JSON/CSV |
+| **Pro** (perpetual) | About $600–800/dev, **planned, not yet on sale** | Resource view + leveling, baselines, constraints, MS Project XML I/O, PDF branding. 12 months of updates, optional renewal. Use in SaaS products allowed, no OEM surcharge |
 
-Only the **Core** tier exists today.
+Only the **Core** tier exists today. Svelte and Angular wrappers are planned as part of the MIT
+core. There is no hosted Cloud plan on the roadmap.
 
 ## Repo layout (monorepo — pnpm + turbo)
 
@@ -187,7 +188,7 @@ Requirements: Node >= 22.19 (see `.nvmrc` for the exact pinned version), pnpm 10
   Open on StackBlitz, built from the latest npm release:
   [vanilla](https://stackblitz.com/github/thai-pc/fluxgantt/tree/stackblitz/vanilla?file=src%2Fmain.ts&title=FluxGantt%20vanilla) · [React](https://stackblitz.com/github/thai-pc/fluxgantt/tree/stackblitz/react?file=src%2FApp.tsx&title=FluxGantt%20React) · [Vue](https://stackblitz.com/github/thai-pc/fluxgantt/tree/stackblitz/vue?file=src%2FApp.vue&title=FluxGantt%20Vue) · [headless](https://stackblitz.com/github/thai-pc/fluxgantt/tree/stackblitz/headless?file=index.mjs&title=FluxGantt%20headless).
   (The `stackblitz` branch these open is created by the next release; until then they 404.)
-- **Comparison** vs dhtmlx, Bryntum and Frappe —
+- **Comparison** vs dhtmlx, Bryntum, SVAR and Frappe —
   [`apps/docs/pages/docs/comparison.mdx`](./apps/docs/pages/docs/comparison.mdx)
 
 ## Docs for AI / contributors
@@ -199,4 +200,4 @@ Requirements: Node >= 22.19 (see `.nvmrc` for the exact pinned version), pnpm 10
 
 ## License
 
-Core: [MIT](./LICENSE). Pro & Cloud under a separate commercial license.
+Core: [MIT](./LICENSE). Pro (planned) under a separate commercial license.

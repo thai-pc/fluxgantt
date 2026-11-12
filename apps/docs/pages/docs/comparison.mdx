@@ -1,4 +1,4 @@
-# FluxGantt vs dhtmlx, Bryntum, Frappe
+# FluxGantt vs dhtmlx, Bryntum, SVAR, Frappe
 
 Every number about FluxGantt on this page comes from `pnpm size` in CI. Every number about
 another library comes from `node tooling/scripts/measure-competitor-bundles.mjs`, which downloads
@@ -7,11 +7,14 @@ in the repo; both are re-runnable. If a figure here is stale, that script is how
 
 ## The short version
 
-If you need resource leveling, baselines and MS Project round-tripping **today**, buy dhtmlx PRO
-or Bryntum. They are mature products and FluxGantt's Pro tier does not exist yet.
+If you need resource leveling, baselines and MS Project round-tripping **today**, buy dhtmlx PRO,
+Bryntum or SVAR PRO. They are mature products and FluxGantt's Pro tier does not exist yet.
 
-If you want a Gantt you can embed in a TypeScript app without shipping a quarter of a megabyte of
-JavaScript, and without a per-developer annual invoice, that is the gap FluxGantt is built for.
+"MIT" alone no longer sets FluxGantt apart: dhtmlx Gantt 10, Bryntum 8 and SVAR all have MIT
+editions now. What none of those MIT editions includes is a **critical path**, and FluxGantt's does.
+Add a headless engine that runs in Node and Workers, a small tree-shakable bundle, WCAG 2.1 AA
+checked with axe in CI, and a licence that never charges extra for SaaS use. That combination is
+the gap FluxGantt is built for. The details are in [Licences and pricing](#licences-and-pricing-november-2026).
 
 And if you are choosing purely on bundle size, read the Frappe row honestly: **Frappe Gantt is
 smaller than a fully-interactive FluxGantt chart.** It is smaller because it does considerably
@@ -121,7 +124,7 @@ up), and its only touch listener is a double-tap detector in `bar.js`, not a dra
 | | FluxGantt (MIT) | dhtmlx Community (MIT) | dhtmlx PRO | Bryntum | Frappe (MIT) |
 |---|---|---|---|---|---|
 | Dependency types | FS / SS / FF / SF + lag/lead | all four | all four | all four | **FS only** |
-| Critical path | ✅ CPM | ✅ | ✅ | ✅ | ❌ |
+| Critical path | ✅ CPM | ❌ PRO only¹ | ✅ | ✅ | ❌ |
 | Hierarchy + summary rollup | ✅ | ✅ | ✅ | ✅ | ❌ |
 | Working calendar | ✅ Temporal, DST-correct | ✅ | ✅ | ✅ | ❌ |
 | Headless / runs in Node | ✅ | ❌ DOM-coupled | ❌ | ❌ | ❌ |
@@ -134,17 +137,40 @@ up), and its only touch listener is a double-tap detector in `bar.js`, not a dra
 | Resource view + leveling | Pro (not yet shipped) | ❌ | ✅ | ✅ | ❌ |
 | Baselines | Pro (not yet shipped) | ❌ | ✅ | ✅ | ❌ |
 | MS Project XML I/O | Pro (not yet shipped) | ✅ | ✅ | ✅ | ❌ |
-| Price | **$0, MIT** | $0, MIT | $599–1,599/dev/yr | $850+/dev/yr | $0, MIT |
+| Price (list, 2026-11) | **$0, MIT** | $0, MIT | from $799 perpetual² | $699 / $1,100 per dev per year² | $0, MIT |
+
+¹ dhtmlx Gantt 10 moved the Community edition to MIT but keeps auto-scheduling, critical path and
+resource planning in PRO ([DHTMLX Gantt 10.0](https://dhtmlx.com/blog/dhtmlx-gantt-10-0/), 2026-06).
+This cell previously read ✅.
+² See [Licences and pricing](#licences-and-pricing-november-2026) for tiers, SaaS terms and sources.
+
+## Licences and pricing (November 2026)
+
+List prices read on 2026-11-11 and 2026-11-12. Vendors change these often, so check the linked
+page before you rely on a figure.
+
+| | Free edition | Paid entry price | Model | SaaS use |
+|---|---|---|---|---|
+| **FluxGantt** | MIT, includes critical path | Pro: about $600–800 per developer (**planned, not yet on sale**) | Perpetual, 12 months of updates, optional renewal | Allowed in MIT; the Pro licence will allow it with no OEM surcharge |
+| [dhtmlx Gantt](https://dhtmlx.com/docs/products/dhtmlxGantt/#licensing) | MIT Community since v10 (2026-06-11), no critical path | PRO from $799 (1 dev, 1 project) | Perpetual + 1 year of updates | "Upon request for a fee" |
+| [Bryntum Gantt](https://bryntum.com/store/gantt/) | MIT Community since 8.0.0 (2026-11-03); critical path, baselines, MS Project import and PDF export are Enterprise ([changelog](https://bryntum.com/products/gantt/changelog/)) | Business $699, Enterprise $1,100 per dev per year | Perpetual licence, support renews at the original price | Requires an OEM licence (quoted) |
+| [SVAR Gantt](https://svar.dev/react/gantt/pricing) | MIT core, no critical path | PRO from $749 (1 dev) | Perpetual + 1 year, renewal 70–80% | Not in the $749 tier; from the $1,899 Application tier |
+| [Syncfusion Gantt](https://www.syncfusion.com/sales/pricing) | Community License (under $1M revenue, up to 5 devs) | $959 per dev per year | Subscription | — |
+
+The pattern across the paid tiers: critical path and auto-scheduling sit behind the paywall, and
+using the chart inside a SaaS product costs extra. FluxGantt's MIT core includes the critical path,
+and its planned Pro licence is meant to remove the SaaS surcharge.
 
 ### Where FluxGantt genuinely loses
 
 - **Maturity.** dhtmlx has shipped for over a decade against thousands of production apps.
-  FluxGantt is pre-1.0 and pre-npm.
+  FluxGantt is pre-1.0 (on npm since 2026-09).
 - **Pro-tier features do not exist yet.** Resource leveling, baselines, constraints and MS Project
   XML are Wave 2. If you need them now, dhtmlx Community already ships MS Project I/O — for free.
 - **Frappe is smaller and simpler.** If all you need is bars and FS arrows, it is less library to
   own.
-- **No Svelte or Angular wrapper yet.** React and Vue only.
+- **No Svelte or Angular wrapper yet.** React and Vue only. Svelte and Angular are planned as
+  part of the MIT core, not as paid add-ons. SVAR already ships React, Svelte and Vue.
 
 ### Where the difference is architectural rather than a feature row
 

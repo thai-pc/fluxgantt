@@ -9,11 +9,11 @@ Framework Wrapper Layer  (@fluxgantt/react, /vue, ...)  — idiomatic per framew
 Core Engine (@fluxgantt/core)
    ├─ Public API     createGantt(), mount(), on()
    ├─ State Layer    TaskStore, DependencyStore, ResourceStore(Pro), BaselineStore(Pro), ViewportStore
-   ├─ Compute Layer  critical-path (CPM), resource-leveling(Pro), auto-schedule(Cloud/AI), working-calendar, cascade
+   ├─ Compute Layer  critical-path (CPM, MIT), resource-leveling(Pro), working-calendar, cascade
    ├─ Render Layer   SVG (<2000 tasks) | Canvas fallback (≥2000), switches automatically by task count
    ├─ Interaction    drag-move, drag-resize, drag-create-dep, keyboard-nav, selection, touch
    ├─ IO Layer       json, csv, export-png/svg/pdf, msproject(Pro)
-   └─ Sync Layer     Yjs adapter, presence, conflict resolution (Cloud ONLY)
+   └─ Sync Layer     Yjs adapter (separate package, customer-run backend; built only on pre-sold demand)
 ```
 
 ## 7 design principles (DO NOT violate)
@@ -44,7 +44,8 @@ A reactive store built on a **hand-rolled signal** (Preact-Signals-like semantic
 ## Core algorithms
 - **Critical Path (CPM)**: topological sort → forward pass (ES/EF) → backward pass (LS/LF) → slack=0. Handles cycle (throw), constraint, working calendar, lag/lead. Full pseudocode in Appendix B of the spec.
 - **Resource Leveling (Pro)**: heuristic; shift tasks with high slack / low priority to resolve over-allocation without breaking dependencies.
-- **AI Auto-Schedule (Cloud)**: an LLM (claude-sonnet) extracts tasks/deps from natural language → applies constraints → topo sort → level → validate. AI "suggests", doesn't "decide"; always shows reasoning, easy to revert.
+- **AI integration (MIT)**: an MCP server exposing the headless engine as tools, plus `llms.txt`, so AI assistants can find and drive FluxGantt.
+- **AI Auto-Schedule (not committed / exploratory, was Cloud)**: an LLM extracts tasks/deps from natural language → applies constraints → topo sort → level → validate. Removed from the committed roadmap in the 2026-11 strategy revision; if it is ever built, AI "suggests", doesn't "decide" (always show reasoning, easy to revert) and `.claude/rules/security.md` §3 applies.
 
 ## When adding a new package
 Follow the `@fluxgantt/*` NPM scope. Separate tiers clearly. A wrapper depends only on `@fluxgantt/core` + its framework.
