@@ -25,6 +25,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          # Full history: the API-changeset gate below diffs against the PR base (`base...HEAD`).
+          fetch-depth: 0
 
       - uses: pnpm/action-setup@v6
         with:
@@ -55,6 +58,20 @@ jobs:
 
       - name: Build (packages + docs site + example apps)
         run: pnpm build
+
+      - name: "Public API reports (committed etc/*.api.md must match the build)"
+        # Built from dist/, so it must run after Build. A failure means: run `pnpm api:update` and
+        # commit packages/*/etc/*.api.md (CONTRIBUTING.md, "Changing the public API").
+        run: pnpm api:check
+
+      - name: "Public API changeset gate (a changed report needs a minor+ changeset naming the package)"
+        # PR-only. The release PR is skipped: it consumes changesets instead of adding them, and it
+        # cannot change a report (VERSION is typed `string`).
+        if: github.event_name == 'pull_request' && github.head_ref != 'changeset-release/master'
+        run: pnpm api:changeset
+
+      - name: "Package types (attw: .d.ts / .d.cts resolve for ESM and CJS consumers)"
+        run: pnpm attw
 
       - name: "Bundle size: HARD gates (3 fixtures, fails CI; .size-limit.json)"
         run: pnpm --filter @fluxgantt/core size:hard

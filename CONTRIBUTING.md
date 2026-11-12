@@ -43,11 +43,35 @@ Node >= 22.19 (see `.nvmrc` for the exact pinned version), pnpm 10+.
    `@js-temporal/polyfill`, ...), and no relative path outside its folder; otherwise the generated
    copy fails CI. Each entry imports `./temporal.js` first, so the examples also run in browsers
    without native Temporal.
-4. Open a PR. CI must be green (lint, typecheck, test, e2e, size-limit, publish-readiness, and
+4. Open a PR. CI must be green (lint, typecheck, test, e2e, size-limit, API reports, publish-readiness, and
    the StackBlitz clean-room build of the examples).
 
 Merging a PR never publishes anything. See [`RELEASING.md`](./RELEASING.md) for how a changeset
 becomes an npm release.
+
+## Changing the public API
+
+The exported surface of `@fluxgantt/core` (every entry point), `@fluxgantt/react` and
+`@fluxgantt/vue` is recorded in committed [API Extractor](https://api-extractor.com/) reports:
+`packages/*/etc/*.api.md`, one per entry in each package's `exports` map. CI fails when a report is
+stale.
+
+```bash
+pnpm api:update   # builds, then regenerates every report; commit the result
+pnpm api:check    # what CI runs (needs a fresh build): fails on a stale or missing report
+```
+
+Rules when a report changes (enforced on PRs by `pnpm api:changeset`):
+
+- The PR must add a changeset that **names the package** with at least a **minor** bump. A patch
+  release never changes a report. Doc-comment-only edits do not appear in the reports.
+- If the diff **removes or alters** a line, the changeset body needs a line starting `BREAKING:`
+  (stable API) or `Beta:` (experimental API) saying so.
+- Reports are generated from `dist/`, never from a stale build: always go through `pnpm api:update`.
+- A new `exports` subpath needs its report committed, or `api:check` fails.
+- `pnpm attw` checks the packed packages with
+  [`@arethetypeswrong/cli`](https://github.com/arethetypeswrong/arethetypeswrong.github.io) so
+  ESM and CommonJS consumers both resolve types (`.d.ts` for `import`, `.d.cts` for `require`).
 
 ## Code style
 
