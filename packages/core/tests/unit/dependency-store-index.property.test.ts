@@ -71,7 +71,7 @@ describe('DependencyStore indices vs brute force', () => {
             if (d && !store.get(d.id) && !store.linkExists(d.from, d.to)) store.restore(d);
             // Re-restore of an EXISTING id with the same endpoints (new type/lag): replaced in place.
             const live = store.all()[op.n % Math.max(store.size, 1)];
-            if (live) store.restore({ ...live, lag: live.lag + 1 });
+            if (live) store.restore({ ...live, lag: (live.lag ?? 0) + 1 });
           } else store.clear();
 
           const all = store.all();

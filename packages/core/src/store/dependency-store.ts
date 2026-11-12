@@ -154,13 +154,14 @@ export class DependencyStore {
     return dependency;
   }
 
-  /** Remove the link(s) for a from/to pair (any type). */
-  unlink(from: TaskId, to: TaskId): void {
+  /** Remove the link for a from/to pair (any type); returns it, or `undefined` when none existed. */
+  unlink(from: TaskId, to: TaskId): Dependency | undefined {
     const dep = this.#out.get(from)?.get(to);
     if (dep) {
       this.#drop(dep);
       this.#bump();
     }
+    return dep;
   }
 
   remove(id: DependencyId): void {

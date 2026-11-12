@@ -732,7 +732,7 @@ class Gantt implements GanttInstance {
 
   /**
    * Shared load pipeline: duplicate-id-check + `TaskStore.add()` loop +
-   * `DependencyStore.link()` loop. The ONE validated path for "load a whole
+   * one bulk `DependencyStore.linkAll()`. The ONE validated path for "load a whole
    * `{tasks, dependencies}` set into a store pair" — used by the constructor (against the
    * live, freshly-constructed `#taskStore`/`#dependencyStore` — a throw here means
    * `createGantt()` itself throws, no instance is ever returned, atomic for free) AND by
@@ -1002,11 +1002,10 @@ class Gantt implements GanttInstance {
 
   unlinkTasks(from: TaskId, to: TaskId): void {
     this.#assertAlive('unlinkTasks');
-    const matches = this.#dependencyStore.all().filter((d) => d.from === from && d.to === to);
-    if (matches.length === 0) return;
-    this.#dependencyStore.unlink(from, to);
-    this.#recordOps(matches.map((dependency) => ({ kind: 'dependency-remove', dependency }) as const));
-    for (const d of matches) this.#emit('dependency:removed', d.id);
+    const dependency = this.#dependencyStore.unlink(from, to); // at most one per pair
+    if (!dependency) return;
+    this.#recordOp({ kind: 'dependency-remove', dependency });
+    this.#emit('dependency:removed', dependency.id);
   }
 
   getDependencies(): Dependency[] {
