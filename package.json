@@ -23,7 +23,7 @@
     "typecheck": "turbo run typecheck",
     "size": "turbo run size",
     "api:check": "node tooling/scripts/api-report.mjs --check",
-    "api:update": "pnpm build && node tooling/scripts/api-report.mjs --update",
+    "api:update": "turbo run build --filter=@fluxgantt/core --filter=@fluxgantt/react --filter=@fluxgantt/vue && node tooling/scripts/api-report.mjs --update",
     "api:changeset": "node tooling/scripts/check-api-changeset.mjs",
     "attw": "node tooling/scripts/check-package-types.mjs",
     "capture:launch-assets": "node tooling/scripts/capture-launch-assets.mjs",
