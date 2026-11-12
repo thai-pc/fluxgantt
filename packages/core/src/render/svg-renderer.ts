@@ -820,20 +820,13 @@ let patch: ((ids: readonly TaskId[], focus: TaskId | undefined) => void) | undef
     // Row focus frame: inset 1px in the focused row's band. An absent/stale id resolves to row 0 but
     // then no row is `:focus-visible`, so it stays inert. `aria-hidden` for the same reason as the today line.
     const fy = (id = focusedTaskId) => offsetY + (rows.find((r) => r.task.id === id)?.y ?? 0) + 1;
-    svg.append(
+    const frame = (width: number) =>
       el(
         'rect',
-        {
-          class: 'fg-timeline__focus-row',
-          'aria-hidden': 'true',
-          x: 1,
-          y: fy(),
-          width: totalWidth - 2,
-          height: rowHeight - 2,
-        },
+        { class: 'fg-timeline__focus-row', 'aria-hidden': 'true', x: 1, y: fy(), width, height: rowHeight - 2 },
         { fill: 'none' },
-      ),
-    );
+      );
+    svg.append(frame(totalWidth - 2));
     // Today marker (spec §9.1). Appended after the rows so it crosses OVER bars and
     // dependency arrows — document order is z-order — but before the label divider, which must
     // stay the topmost thing along the label column's own edge.
@@ -881,12 +874,15 @@ let patch: ((ids: readonly TaskId[], focus: TaskId | undefined) => void) | undef
     column.replaceChildren(
       ...[
         divider,
-        ...svg.querySelectorAll<SVGElement>('.fg-timeline__row-toggle,.fg-timeline__row-label,.fg-timeline__focus-row'),
+        ...svg.querySelectorAll<SVGElement>('.fg-timeline__row-toggle,.fg-timeline__row-label'),
       ].map((n) => {
         const c = n.cloneNode(true) as SVGElement;
         Object.assign(c.dataset, n.closest<SVGElement>('[data-row-index]')?.dataset);
         return c;
       }),
+      // Own element, not a clone of the chart's: only as wide as the column (clipped at the divider, so
+      // open on that side) instead of a `totalWidth` rect overflowing a 160 px svg.
+      frame(offsetX + 1),
     );
     currentOptions.onPaint?.(svg, overlay, column, corner);
 
