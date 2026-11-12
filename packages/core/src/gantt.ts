@@ -1427,13 +1427,16 @@ class Gantt implements GanttInstance {
   }
 
   #collectWithDescendants(id: TaskId): TaskId[] {
-    const out: TaskId[] = [];
-    const visit = (tid: TaskId): void => {
-      for (const child of this.#taskStore.children(tid)) visit(child.id);
-      out.push(tid);
-    };
-    visit(id);
-    return out;
+    // Iterative: node then children right-to-left, reversed = children left-to-right, each
+    // subtree post-order, node last (deepest first), without recursion depth limits.
+    const out = new Set<TaskId>();
+    const stack = [id];
+    for (let n = stack.pop(); n !== undefined; n = stack.pop()) {
+      if (out.has(n)) continue; // a host-made parent cycle must not loop forever
+      out.add(n);
+      for (const child of this.#taskStore.children(n)) stack.push(child.id);
+    }
+    return [...out].reverse();
   }
 
   /**

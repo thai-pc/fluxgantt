@@ -35,8 +35,7 @@ describe('recursion hazards (documented, fixed by the indexed-store PRs)', () =>
 
   // TaskStore.remove() recurses once per hierarchy level (the constructor path has no depth
   // limit; import caps depth at 100).
-  // TODO(spec-mutation-batching §5, PR 2): turn into a plain `it` once remove() is iterative.
-  it.fails('TaskStore.remove() of a 15k-deep parent chain does not throw RangeError', () => {
+  it('TaskStore.remove() of a 15k-deep parent chain does not throw RangeError', () => {
     const tasks: Task[] = Array.from({ length: 15_000 }, (_, i) => ({
       id: toTaskId(`t${i}`),
       name: `t${i}`,
