@@ -118,6 +118,7 @@ import {
   isKnownTaskKind,
   isKnownDependencyType,
   buildTaskAriaLabel,
+  retainDateLabels,
   type GanttMessages,
   type GridColumn,
   type HeaderTiers,
@@ -759,6 +760,7 @@ export function createCanvasRenderer(
   // `getLabelColumnWidth()` never reports a width that was never painted.
   let currentLabelColumnWidth = LABEL_COLUMN_WIDTH;
   let destroyed = false;
+  const releaseDateLabels = retainDateLabels();
   let drag: CanvasDrag | undefined;
   // One entry per `RenderState` object (replaced by `update()`/`setOptions()`, kept by scroll
   // renders): O(rows) layout runs once per state, not once per hover/press. A failed render rolls
@@ -1011,6 +1013,7 @@ export function createCanvasRenderer(
     destroy(): void {
       if (destroyed) return;
       destroyed = true;
+      releaseDateLabels();
       a11yLayer.removeEventListener('focusin', handleFocusChange);
       a11yLayer.removeEventListener('focusout', handleFocusChange);
       container.removeEventListener('scroll', scheduleFrame);

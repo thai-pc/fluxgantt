@@ -232,3 +232,25 @@ selection => no-op" first). A modifier-check hoist in `edit-hooks` and a row-sta
 as noise or a loss and dropped.
 
 Run `pnpm size` from `packages/core` (or `pnpm size` at the root via turbo) to re-measure; the numbers above are its output, converted from its decimal-kB report to KiB. **It needs Node >= 22.19** — that is `size-limit` 14's own declared `engines.node` (`^22.19.0 || ^24.5.0 || >=26.0.0`), and the floor is enforced by the root `engines.node` so a permitted Node cannot be one the repo fails on. Before 14 the practical floor was 22.18, because `size-limit` calls `fs.glob` with `withFileTypes` (added in Node 22.2) and on an older 22.x it dies with an opaque `TypeError: i.isFile is not a function` that looks like a repo misconfiguration but is not. `.nvmrc` pins an exact version for this reason; CI reads it via `node-version-file`.
+
+The 2026-11 first-edit-cost pass (CPM slack read from one shared working-hours table, `workingHoursMeter` in
+`compute/working-calendar.ts`; investigation V) is a performance fix and spends hard-gate headroom under the
+exemption rule. Cost against the #124 re-base figures (gzip bytes): hello world 7526 -> 7553 (+27),
+`+ withRender + withInteraction` 19616 -> 19645 (+29), kitchen sink 24421 -> 24451 (+30); soft fixtures +15..+29
+(`+ withConflicts` +60). Remaining hard-gate headroom: 895 B, 2115 B, 2429 B. Clean, behavior-neutral levers
+kept: `weekdayCode` as a seven-entry table (-30 B), one shared `workingNsUpTo` clip that `working-hours-fast.ts`
+reuses (-43 B on `+ withConflicts`; `maxZdt`/`minZdt` deleted), one `dayAt` for `startOfDay`/`endOfDay`, and no
+same-instant early return in `differenceInWorkingHours`. Dropped: trimming the working-calendar iteration-guard
+message (-23 B, but "empty workingDays" is the useful hint) and the `successor ${succId}` id in an internal
+invariant message. Measured and rejected: a merged duration/lag validator (+14 B), a local `upTo` closure
+(+12 B), `new ZonedDateTime(ns, tz)` (+-0 B). The `parseString` date-only fast path and the `dateLabel` cap
+512 -> 16384 are +0 B. Effect for one `updateTask` at 2000 tasks / 520-day span / 20 holidays (Chromium CPU):
+~8.4 s -> ~0.7 s.
+
+The PR #125 review fixes (meter day keys normalized to the calendar zone and ISO calendar, a clear `RangeError`
+outside the table, `-0` kept, the `dateLabel` memo released with the last renderer and capped at 4096) cost
+more than the first pass. Final gzip bytes against the #124 re-base: hello world 7526 -> 7645 (+119),
+`+ withRender + withInteraction` 19616 -> 19770 (+154), kitchen sink 24421 -> 24565 (+144); soft fixtures
++93..+160 B, `+ withRender + withEditHooks` 16347 (37 B under its 16 KiB reference, so it will warn first).
+Spent under the exemption rule as a correctness + performance fix (one `updateTask` at 2000 tasks / 520 days:
+~8.4 s -> ~0.7 s CPU).

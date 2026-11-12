@@ -31,6 +31,7 @@ import {
   isKnownDependencyType,
   anchorOf,
   buildTaskAriaLabel,
+  retainDateLabels,
   type GanttMessages,
   type RolledUpRow,
   type RowLayout,
@@ -265,6 +266,7 @@ export function createSvgRenderer(
   let currentInput = input;
   let currentOptions: SvgRendererOptions = { ...options };
   let destroyed = false;
+  const releaseDateLabels = retainDateLabels();
   // Assigned inside render(), which always runs synchronously below before the handle is
   // returned — never read while unassigned (definite-assignment asserted).
   let currentTimeScale!: TimeScale;
@@ -347,6 +349,7 @@ export function createSvgRenderer(
     destroy(): void {
       if (destroyed) return;
       destroyed = true;
+      releaseDateLabels();
       layer.remove();
       container.style.scrollPaddingTop = priorScrollPaddingTop;
     },

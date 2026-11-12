@@ -11,7 +11,7 @@
 // (spec-cascade.md §1/§2) — this file re-exports `MAX_CPM_HOURS`/`CyclicDependencyError`
 // so existing import paths (`'../../src/compute/critical-path.js'`) keep working.
 import type { Temporal } from '@js-temporal/polyfill';
-import { addWorkingHours, subtractWorkingHours, differenceInWorkingHours } from './working-calendar.js';
+import { addWorkingHours, subtractWorkingHours, workingHoursMeter } from './working-calendar.js';
 import {
   MAX_CPM_HOURS,
   CyclicDependencyError,
@@ -143,6 +143,11 @@ export function computeCriticalPath(
   const schedule = new Map<TaskId, TaskSchedule>();
   const criticalTaskIds: TaskId[] = [];
 
+  // One day-table over every ES and LS (LS can precede ES under negative lag): slack is then two
+  // lookups per task instead of a day walk over the gap.
+  const bounds = [...es.values(), ...ls.values()];
+  const meter = workingHoursMeter(calendar, bounds.reduce(earlierOf), bounds.reduce(laterOf));
+
   for (const task of tasks) {
     const earlyStart = es.get(task.id)!;
     const earlyFinish = ef.get(task.id)!;
@@ -150,7 +155,7 @@ export function computeCriticalPath(
     const lateFinish = lf.get(task.id)!;
     // from=ES, to=LS → positive slack. (Appendix B has the arguments swapped; that is a
     // pseudocode bug, not intentional — see spec-critical-path.md §5.4.)
-    const slackHours = differenceInWorkingHours(earlyStart, lateStart, calendar);
+    const slackHours = meter(earlyStart, lateStart);
     const isCritical = slackHours <= CRITICAL_SLACK_EPSILON_HOURS;
 
     schedule.set(task.id, {

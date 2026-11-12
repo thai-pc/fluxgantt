@@ -57,13 +57,13 @@ export function addWorkingHours(start: DateInput, hours: number, cal: WorkingCal
     assertProgress(++guard);
     const day = cur.toPlainDate();
     if (!isWorkingPlainDate(day, cal, holidays)) {
-      cur = startOfDay(day.add({ days: 1 }), cal.timezone, api);
+      cur = dayAt(day.add({ days: 1 }), cal.timezone, '00:00', api);
       continue;
     }
     const windows = windowsFor(day, cal, api);
     const w = windows.find((win) => api.ZonedDateTime.compare(cur, win.end) < 0);
     if (!w) {
-      cur = startOfDay(day.add({ days: 1 }), cal.timezone, api);
+      cur = dayAt(day.add({ days: 1 }), cal.timezone, '00:00', api);
       continue;
     }
     if (api.ZonedDateTime.compare(cur, w.start) < 0) cur = w.start;
@@ -91,13 +91,13 @@ export function subtractWorkingHours(start: DateInput, hours: number, cal: Worki
     assertProgress(++guard);
     const day = cur.toPlainDate();
     if (!isWorkingPlainDate(day, cal, holidays)) {
-      cur = endOfDay(day.subtract({ days: 1 }), cal.timezone, api);
+      cur = dayAt(day.subtract({ days: 1 }), cal.timezone, '23:59:59.999999999', api);
       continue;
     }
     const windows = windowsFor(day, cal, api);
     const w = [...windows].reverse().find((win) => api.ZonedDateTime.compare(win.start, cur) < 0);
     if (!w) {
-      cur = endOfDay(day.subtract({ days: 1 }), cal.timezone, api);
+      cur = dayAt(day.subtract({ days: 1 }), cal.timezone, '23:59:59.999999999', api);
       continue;
     }
     if (api.ZonedDateTime.compare(cur, w.end) > 0) cur = w.end;
@@ -120,50 +120,55 @@ export function differenceInWorkingHours(
   const api = getTemporal();
   const a = normalize(from, cal.timezone, api);
   const b = normalize(to, cal.timezone, api);
-  const cmp = api.ZonedDateTime.compare(a, b);
-  if (cmp === 0) return 0;
-  const lo = cmp < 0 ? a : b;
-  const hi = cmp < 0 ? b : a;
+  const asc = api.ZonedDateTime.compare(a, b) <= 0;
+  const [lo, hi] = asc ? [a, b] : [b, a];
+  const hours = workingHoursMeter(cal, lo!, hi!)(lo!, hi!);
+  return asc ? hours : -hours; // keeps `-0` for a backward span with no working time
+}
 
+/**
+ * A `(from, to) => hours` meter. One pass over the calendar days of `lo..hi` (taken in
+ * `cal.timezone`, ISO calendar) builds the cumulative working time at each day start, so every later
+ * reading costs two day lookups instead of a walk over the gap (CPM reads ~N slacks over one shared
+ * span). Contract: a reading's instants may be in any zone or calendar, but each must fall on a day
+ * of `lo..hi` in `cal.timezone`, otherwise it throws a `RangeError`. Equal to a day walk, with one
+ * known divergence: on a day a zone skipped entirely (Pacific/Apia, 2011-12-30) the phantom day's
+ * windows resolve onto the next day and the table counts them there too, so a reading spanning it
+ * can differ from the one-shot `differenceInWorkingHours` (which clips at the reading, not at `hi`).
+ */
+export function workingHoursMeter(
+  cal: WorkingCalendar,
+  lo: ZDT,
+  hi: ZDT,
+): (from: ZDT, to: ZDT) => number {
+  const api = getTemporal();
   const holidays = holidaySet(cal, api);
-  let totalNs = 0n;
-  let day = lo.toPlainDate();
-  const lastDay = hi.toPlainDate();
+  const dayOf = (t: ZDT): PlainDate => t.withTimeZone(cal.timezone).toPlainDate().withCalendar('iso8601');
+  const before = new Map<string, bigint>();
+  const last = dayOf(hi);
+  let total = 0n;
   let guard = 0;
-  while (api.PlainDate.compare(day, lastDay) <= 0) {
+  for (let day = dayOf(lo); api.PlainDate.compare(day, last) <= 0; day = day.add({ days: 1 })) {
     assertProgress(++guard);
-    if (isWorkingPlainDate(day, cal, holidays)) {
-      for (const w of windowsFor(day, cal, api)) {
-        const s = maxZdt(w.start, lo, api);
-        const e = minZdt(w.end, hi, api);
-        if (api.ZonedDateTime.compare(e, s) > 0) totalNs += e.epochNanoseconds - s.epochNanoseconds;
-      }
-    }
-    day = day.add({ days: 1 });
+    before.set(day.toString(), total);
+    total += workingNsUpTo(day, hi.epochNanoseconds, cal, holidays, api); // the last day's total is never read
   }
-  const hours = Number(totalNs) / Number(NS_PER_HOUR);
-  return cmp < 0 ? hours : -hours;
+  const at = (t: ZDT): bigint => {
+    const day = dayOf(t);
+    const base = before.get(day.toString());
+    if (base === undefined) throw new RangeError(`working-hours meter: ${day} is outside the table`);
+    return base + workingNsUpTo(day, t.epochNanoseconds, cal, holidays, api);
+  };
+  return (from, to) => Number(at(to) - at(from)) / Number(NS_PER_HOUR);
 }
 
 // --- Internal (exported for sibling compute modules only; NOT re-exported by the barrel) ----
 
+const WEEKDAYS: readonly WeekdayCode[] = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
+
+/** ISO day of week (1 = Monday .. 7 = Sunday) to its code. */
 export function weekdayCode(dayOfWeek: number): WeekdayCode {
-  switch (dayOfWeek) {
-    case 1:
-      return 'mon';
-    case 2:
-      return 'tue';
-    case 3:
-      return 'wed';
-    case 4:
-      return 'thu';
-    case 5:
-      return 'fri';
-    case 6:
-      return 'sat';
-    default:
-      return 'sun';
-  }
+  return WEEKDAYS[dayOfWeek % 7]!;
 }
 
 export function isWorkingPlainDate(day: PlainDate, cal: WorkingCalendar, holidays: Set<string>): boolean {
@@ -203,20 +208,21 @@ export function parseTime(hhmm: string, api: T): Temporal.PlainTime {
   return api.PlainTime.from({ hour: Number(m[1]), minute: Number(m[2]) });
 }
 
-export function startOfDay(day: PlainDate, tz: string, api: T): ZDT {
-  return day.toZonedDateTime({ timeZone: tz, plainTime: api.PlainTime.from('00:00') });
+/** `day` at wall-clock `time` ("00:00" = start of day, "23:59:59.999999999" = end) in `tz`. */
+export function dayAt(day: PlainDate, tz: string, time: string, api: T): ZDT {
+  return day.toZonedDateTime({ timeZone: tz, plainTime: api.PlainTime.from(time) });
 }
 
-function endOfDay(day: PlainDate, tz: string, api: T): ZDT {
-  return day.toZonedDateTime({ timeZone: tz, plainTime: api.PlainTime.from('23:59:59.999999999') });
-}
-
-export function maxZdt(a: ZDT, b: ZDT, api: T): ZDT {
-  return api.ZonedDateTime.compare(a, b) >= 0 ? a : b;
-}
-
-export function minZdt(a: ZDT, b: ZDT, api: T): ZDT {
-  return api.ZonedDateTime.compare(a, b) <= 0 ? a : b;
+/** Working ns on `day` up to instant `now` (epoch ns): each window clipped at `now`. */
+export function workingNsUpTo(day: PlainDate, now: bigint, cal: WorkingCalendar, holidays: Set<string>, api: T): bigint {
+  let ns = 0n;
+  if (isWorkingPlainDate(day, cal, holidays)) {
+    for (const w of windowsFor(day, cal, api)) {
+      const end = now < w.end.epochNanoseconds ? now : w.end.epochNanoseconds;
+      if (end > w.start.epochNanoseconds) ns += end - w.start.epochNanoseconds;
+    }
+  }
+  return ns;
 }
 
 function hoursToNs(hours: number): bigint {
@@ -242,11 +248,13 @@ export function normalize(input: DateInput, tz: string, api: T): ZDT {
 }
 
 function parseString(s: string, tz: string, api: T): ZDT {
+  // A date-only string can never be an absolute instant, and `Instant.from` THROWS on it: with
+  // 2000 date-only tasks that is thousands of exceptions per paint.
+  if (s.length <= 10) return api.PlainDate.from(s).toZonedDateTime({ timeZone: tz });
   try {
     return api.Instant.from(s).toZonedDateTimeISO(tz);
   } catch {
     /* not an absolute instant (missing offset/Z) → try wall-clock */
   }
-  if (s.length <= 10) return api.PlainDate.from(s).toZonedDateTime({ timeZone: tz });
   return api.PlainDateTime.from(s).toZonedDateTime(tz);
 }

@@ -65,16 +65,27 @@ const DATE_OPTIONS: Intl.DateTimeFormatOptions = {
 };
 
 /** Formatted date labels keyed by locale + ISO date. `PlainDate.toLocaleString` builds an
- *  `Intl.DateTimeFormat` internally on every call, which dominated a 2000-task repaint; a project
- *  has a few dozen distinct dates, so the hit rate is ~100%. Bounded: the map is cleared when it
- *  reaches 512 entries and refills with what is in use, so a host cycling locales or dates cannot
- *  grow it without limit and caching never stops for good. */
+ *  `Intl.DateTimeFormat` internally on every call, which dominated a 2000-task repaint. A paint
+ *  touches one start and one end per task, so a long range holds about one distinct date per day
+ *  (~1000 at a 520-day span): the cap must sit above that or the clear fires mid-paint and the hit
+ *  rate falls to ~0. Bounded twice: the map is cleared at 4096 entries and refills with what is in
+ *  use, and it is emptied when the last live renderer is destroyed (`retainDateLabels`), so nothing
+ *  outlives the charts. Shared by the charts on a page, not kept per chart. */
 const dateLabels = new Map<string, string>();
+let liveRenderers = 0;
+/** Called once per renderer; the returned function (call it on destroy) frees the cache when the
+ *  last renderer is gone. */
+export function retainDateLabels(): () => void {
+  liveRenderers++;
+  return () => {
+    if (--liveRenderers === 0) dateLabels.clear();
+  };
+}
 function dateLabel(date: Temporal.PlainDate, locale: string): string {
   const key = `${locale}|${date.toString()}`;
   let label = dateLabels.get(key);
   if (label === undefined) {
-    if (dateLabels.size >= 512) dateLabels.clear();
+    if (dateLabels.size >= 4096) dateLabels.clear();
     dateLabels.set(key, (label = date.toLocaleString(locale, DATE_OPTIONS)));
   }
   return label;

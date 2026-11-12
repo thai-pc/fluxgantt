@@ -7,15 +7,14 @@ import type { Temporal } from '@js-temporal/polyfill';
 import type { DateInput, WorkingCalendar } from '../types.js';
 import {
   NS_PER_HOUR,
+  dayAt,
   holidaySet,
   isWorkingPlainDate,
-  maxZdt,
-  minZdt,
   normalize,
   parseTime,
-  startOfDay,
   weekdayCode,
   windowsFor,
+  workingNsUpTo,
 } from './working-calendar.js';
 
 type T = TemporalApi;
@@ -45,13 +44,11 @@ export function differenceInWorkingHoursFast(
 
   const holidays = holidaySet(cal, api);
   let totalNs = 0n;
+  // A window clipped to [lo, hi] is its clip at `hi` minus its clip at `lo`.
   const walk = (day: PlainDate): void => {
-    if (!isWorkingPlainDate(day, cal, holidays)) return;
-    for (const w of windowsFor(day, cal, api)) {
-      const s = maxZdt(w.start, lo, api);
-      const e = minZdt(w.end, hi, api);
-      if (api.ZonedDateTime.compare(e, s) > 0) totalNs += e.epochNanoseconds - s.epochNanoseconds;
-    }
+    totalNs +=
+      workingNsUpTo(day, hi.epochNanoseconds, cal, holidays, api) -
+      workingNsUpTo(day, lo.epochNanoseconds, cal, holidays, api);
   };
 
   const loDay = lo.toPlainDate();
@@ -112,8 +109,8 @@ function wholeWeeksNs(
   }
 
   // Days containing an offset transition: real window length vs nominal.
-  const startZdt = startOfDay(start, cal.timezone, api);
-  const endZdt = startOfDay(end, cal.timezone, api);
+  const startZdt = dayAt(start, cal.timezone, '00:00', api);
+  const endZdt = dayAt(end, cal.timezone, '00:00', api);
   const seen = new Set<string>();
   let z = startZdt;
   for (;;) {

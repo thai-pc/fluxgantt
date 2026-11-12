@@ -16,6 +16,7 @@ import {
   isKnownTaskKind,
   isKnownDependencyType,
   buildTaskAriaLabel,
+  retainDateLabels,
   type RolledUpRow,
   type TimeScale,
   type TaskBarLayout,
@@ -597,9 +598,8 @@ describe('buildTaskAriaLabel — date label memo', () => {
     expect(de).toBe(buildTaskAriaLabel(t, false, false, cal, 'de'));
   });
 
-  it('stays correct across the bounded memo clearing, and keeps working afterwards', () => {
+  it('stays correct over many distinct dates, and keeps serving them from the memo', () => {
     const labels: string[] = [];
-    // 600 distinct dates exceeds the 512-entry bound.
     for (let i = 0; i < 600; i++) {
       const day = normalizeDate('2026-01-01T09:00', cal.timezone).add({ days: i });
       const iso = day.toPlainDate().toString();
@@ -617,6 +617,52 @@ describe('buildTaskAriaLabel — date label memo', () => {
     const again = task('x', `${iso}T09:00`, `${iso}T17:00`);
     expect(buildTaskAriaLabel(again, false, false, cal, 'fr')).toBe(labels[599]);
     expect(spy).not.toHaveBeenCalled();
+    spy.mockRestore();
+  });
+});
+
+describe('buildTaskAriaLabel — date label memo on a long range', () => {
+  // Regression: the memo used to be cleared at 512 entries. A paint touches one start and one end
+  // per task, so a 520-day range cycled ~1000 distinct dates in order, the clear fired mid-paint and
+  // EVERY label re-ran `PlainDate.toLocaleString` (which builds an Intl.DateTimeFormat) on every
+  // paint. Order matters: a cyclic scan over more keys than the cap is the worst case for a
+  // clear-on-full cache, so this walks 1500 dates twice.
+  it('a second paint over 1500 distinct dates formats nothing', () => {
+    const day0 = normalizeDate('2030-01-01T09:00', cal.timezone).toPlainDate();
+    const tasks = Array.from({ length: 1500 }, (_, i) => {
+      const iso = day0.add({ days: i }).toString();
+      return task(`long${i}`, `${iso}T09:00`, `${iso}T17:00`);
+    });
+    const paint = (): string[] => tasks.map((t) => buildTaskAriaLabel(t, false, false, cal, 'sv-SE'));
+    const first = paint();
+
+    const proto = Object.getPrototypeOf(day0) as { toLocaleString: (...a: unknown[]) => string };
+    const spy = vi.spyOn(proto, 'toLocaleString');
+    const second = paint();
+    const formatted = spy.mock.calls.length;
+    spy.mockRestore();
+
+    expect(second).toEqual(first);
+    expect(formatted).toBe(0);
+  });
+});
+
+describe('retainDateLabels — release on destroy', () => {
+  it('empties the label memo when the last live renderer is released, not before', () => {
+    const t = task('r', '2026-01-05T09:00', '2026-01-06T17:00');
+    const releaseA = retainDateLabels();
+    const releaseB = retainDateLabels();
+    const proto = Object.getPrototypeOf(normalizeDate('2026-01-05T09:00', cal.timezone).toPlainDate()) as {
+      toLocaleString: (...a: unknown[]) => string;
+    };
+    buildTaskAriaLabel(t, false, false, cal, 'it');
+    const spy = vi.spyOn(proto, 'toLocaleString');
+    releaseA();
+    buildTaskAriaLabel(t, false, false, cal, 'it');
+    expect(spy).not.toHaveBeenCalled(); // one renderer still alive: memo kept
+    releaseB();
+    buildTaskAriaLabel(t, false, false, cal, 'it');
+    expect(spy).toHaveBeenCalled(); // last one gone: memo was emptied
     spy.mockRestore();
   });
 });
