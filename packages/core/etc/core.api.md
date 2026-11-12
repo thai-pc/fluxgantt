@@ -143,6 +143,13 @@ export class DependencyStore {
     get(id: DependencyId): Dependency | undefined;
     hasCycle(): boolean;
     link(from: TaskId, to: TaskId, type?: DependencyType, options?: LinkOptions): Dependency;
+    // @internal
+    linkAll(inputs: readonly {
+        from: TaskId;
+        to: TaskId;
+        type?: DependencyType;
+        lag?: number;
+    }[]): Dependency[];
     // (undocumented)
     linkExists(from: TaskId, to: TaskId): boolean;
     of(taskId: TaskId): Dependency[];
@@ -155,7 +162,7 @@ export class DependencyStore {
     // (undocumented)
     get size(): number;
     successors(taskId: TaskId): Dependency[];
-    unlink(from: TaskId, to: TaskId): void;
+    unlink(from: TaskId, to: TaskId): Dependency | undefined;
     wouldCreateCycle(from: TaskId, to: TaskId): boolean;
 }
 
@@ -627,6 +634,8 @@ export class TaskStore {
     roots(): Task[];
     // (undocumented)
     get size(): number;
+    // @internal
+    subtree(id: TaskId): TaskId[];
     // (undocumented)
     update(id: TaskId, patch: TaskPatch): Task;
 }
