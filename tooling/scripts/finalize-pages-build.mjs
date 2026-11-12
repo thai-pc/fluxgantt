@@ -14,7 +14,9 @@
 //    Node server and zero HTML — a silent, deploy-a-blank-site failure. If a future config
 //    change flips it back, fail here instead. `index.html` must exist too: it is the home page.
 //
-// 3. Every root-relative `/assets/...` URL the HTML references exists in the output. That is
+// 3. No HTML file carries an absolute `<base href>` (see `head.base` in vocs.config.ts).
+//
+// 4. Every root-relative `/assets/...` URL the HTML references exists in the output. That is
 //    the class of breakage a wrong base path produces (scripts and styles 404, the page renders
 //    unstyled and never hydrates), so check it directly rather than trusting the config.
 //
@@ -68,7 +70,19 @@ if (htmlFiles.length === 0) {
 }
 if (!existsSync(join(publicDir, 'index.html'))) fail('the build has no index.html (home page).');
 
-// --- 3. every referenced /assets/ file exists -------------------------------------------------
+// --- 3. no absolute <base href> ----------------------------------------------------------------
+// Vocs emits `<base href="${baseUrl}">` unless `head.base: false`. It points every root-relative
+// URL at production, so preview deploys and local serves silently run production's assets.
+const baseTag = /<base\s[^>]*href="[a-z][a-z0-9+.-]*:/i;
+const withBase = htmlFiles.filter((file) => baseTag.test(readFileSync(file, 'utf8')));
+if (withBase.length > 0) {
+  fail(
+    `${withBase.length} HTML file(s) carry an absolute <base href>, which loads assets from\n` +
+      "  production on every preview. Keep `head.base: false` in apps/docs/vocs.config.ts.",
+  );
+}
+
+// --- 4. every referenced /assets/ file exists -------------------------------------------------
 // `src="/assets/x.js"`, `href="/assets/x.css"`, and the `"/assets/x"` strings in inline module
 // preload / RSC payloads. Query strings and fragments are not part of the file name.
 const assetRef = /["'(](\/assets\/[^"')?#\s\\]+)/g;

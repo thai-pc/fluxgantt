@@ -26,6 +26,12 @@ export default defineConfig({
   accentColor: 'light-dark(#6366f1, #818cf8)',
   // Vocs 2.x dropped the `font.google` shorthand; load the Google Font via a head <link> instead.
   head: {
+    // No `<base href>`. Vocs defaults it to `baseUrl`, which resolves every root-relative asset
+    // and router import against the production origin: a Cloudflare preview deploy
+    // (`*.pages.dev`) or a local serve would then load production's scripts (or 404 on hashes
+    // production does not have yet). Every URL Vocs emits is already root-relative, so the tag
+    // buys nothing.
+    base: false,
     link: [
       { rel: 'preconnect', href: 'https://fonts.googleapis.com' },
       { rel: 'preconnect', href: 'https://fonts.gstatic.com', crossorigin: 'anonymous' },
