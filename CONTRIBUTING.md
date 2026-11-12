@@ -63,10 +63,21 @@ pnpm api:check    # what CI runs (needs a fresh build): fails on a stale or miss
 
 Rules when a report changes (enforced on PRs by `pnpm api:changeset`):
 
-- The PR must add a changeset that **names the package** with at least a **minor** bump. A patch
-  release never changes a report. Doc-comment-only edits do not appear in the reports.
-- If the diff **removes or alters** a line, the changeset body needs a line starting `BREAKING:`
-  (stable API) or `Beta:` (experimental API) saying so.
+- The PR must add (or edit) a changeset that **names the package** with at least a **minor** bump.
+  A patch release never changes a report.
+- API Extractor derives `// (undocumented)` markers and `// Warning:` lines from doc comments and
+  forgotten exports, not from the API, so the changeset gate strips them before comparing. Adding a
+  doc comment therefore needs no changeset. (`api:check` still asks you to regenerate the file.)
+- If the diff **removes or alters** a declaration line, the changeset body needs a line starting
+  `BREAKING:` (stable API) or `Beta:` (experimental API) saying so.
+- The gate is a tripwire, not a semver oracle. It cannot tell additive from breaking: adding a
+  **required** member to an input type such as `GanttConfig` only adds lines yet breaks every host,
+  while widening a union rewrites a line yet breaks nobody. Reviewers decide what is breaking and
+  must check that the `BREAKING:` / `Beta:` line is true. A renamed package directory is exempt for
+  that one PR (it has no reports at the base).
+- The Vue report embeds Vue's own `DefineComponent<...>` generics, so a `vue` or TypeScript
+  dependency bump can change `vue.api.md` without any FluxGantt change. Regenerate it and say so in
+  the changeset rather than treating it as an API decision.
 - Reports are generated from `dist/`, never from a stale build: always go through `pnpm api:update`.
 - A new `exports` subpath needs its report committed, or `api:check` fails.
 - `pnpm attw` checks the packed packages with
