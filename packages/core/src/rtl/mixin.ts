@@ -9,7 +9,7 @@
 //
 // What it does on each mount: sets `dir="rtl"` on the container (restored when the handle is
 // destroyed), exposes `handle.mirrorX` (the single "is mirrored" predicate the interaction and
-// viewport layers consult), mirrors the painted svg through the renderer's `onPaint` seam (or
+// viewport layers consult), mirrors the painted svg through the renderer's `paintHooks` seam (or
 // flips the Canvas renderer natively), and swaps the zoom anchor for a logical-scroll variant.
 //
 // Scroll model: evergreen browsers count `scrollLeft` from 0 at the inline-start (right) edge down
@@ -67,11 +67,11 @@ export function withRtl<T extends GanttInstance>(instance: T): T {
       };
       handle.setOptions({ rtl: true });
     } else {
-      handle.setOptions({
-        onPaint: (...roots) => {
-          for (const root of roots) mirrorSvg(root, Number(root.getAttribute('width')));
-        },
+      handle.paintHooks.push((e) => {
+        for (const root of [e.svg, e.overlay, e.column, e.corner])
+          if (root) mirrorSvg(root, Number(root.getAttribute('width')));
       });
+      handle.setOptions({}); // repaint so the hook sees the current paint
     }
   });
 

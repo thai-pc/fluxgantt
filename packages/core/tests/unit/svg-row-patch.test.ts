@@ -220,14 +220,18 @@ describe('row patch: pinned layers (T5)', () => {
     expect(clone.dataset.rowIndex).toBe('3');
   });
 
-  it('onPaint is called after a patch with the chart svg only', () => {
-    const onPaint = vi.fn();
-    const h = createSvgRenderer(container, input(), { onPaint });
-    expect(onPaint.mock.calls[0]).toHaveLength(4);
-    onPaint.mockClear();
+  it('a paint hook gets the pinned roots after a full render and only svg + rebuilt rows after a patch', () => {
+    const hook = vi.fn();
+    const h = createSvgRenderer(container, input());
+    h.paintHooks.push(hook);
+    h.setOptions({});
+    expect(Object.keys(hook.mock.calls[0]![0]).sort()).toEqual(['column', 'corner', 'overlay', 'svg']);
+    hook.mockClear();
     h.update(input([id('a')]));
-    expect(onPaint).toHaveBeenCalledTimes(1);
-    expect(onPaint.mock.calls[0]).toEqual([h.svg]);
+    expect(hook).toHaveBeenCalledTimes(1);
+    const e = hook.mock.calls[0]![0];
+    expect(Object.keys(e).sort()).toEqual(['rows', 'svg']);
+    expect(e.svg).toBe(h.svg);
   });
 });
 

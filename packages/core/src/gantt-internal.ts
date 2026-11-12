@@ -144,6 +144,11 @@ export interface GanttInternal {
   /** True once the host called `setDensity()`; `withResponsive` then stops pushing density. */
   densityPinned?: boolean;
 
+  /** Polite live-region writer, assigned by `withInteraction` per mount and cleared when that mount
+   *  is disposed (so other mixins announce through the one region). Takes final text; the caller
+   *  resolves `messages.announce` itself. Undefined without `withInteraction`. */
+  announce?: (text: string) => void;
+
   // --- Mount slot (writer: render/mixin.ts) ---
   mountOf(): MountState | undefined;
   setMount(state: MountState | undefined): void;

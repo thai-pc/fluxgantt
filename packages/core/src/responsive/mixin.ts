@@ -396,7 +396,7 @@ export function withResponsive<T extends GanttInstance>(
    *  content-sized geometry depends on container width. */
   function applyLabelWidth(containerWidth: number): void {
     const mount = internal.mountOf();
-    if (disposed || !mount) return;
+    if (disposed || !mount || mount.handle.fixedLabelWidth) return;
     const next = clampLabelWidth(containerWidth);
     if (next === labelColumnWidth) return; // no repaint for a resize that changes nothing
     labelColumnWidth = next;
