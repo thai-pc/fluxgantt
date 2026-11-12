@@ -4,31 +4,40 @@
 
 | | |
 |---|---|
-| **Version** | 0.1.3 (Pre-launch Draft — revised) |
+| **Version** | 0.1.4 (2026-11 strategy revision) |
 | **Status** | Planning / Pre-build |
 | **Author** | Flux Toolkit Team |
-| **License** | Core MIT · Pro Commercial · Cloud SaaS |
+| **License** | Core MIT · Pro Commercial (planned, not yet on sale) |
 | **Date** | 2026 |
 
 ---
 
+> **2026-11 strategy revision (owner-approved, 2026-11-12).** Source: findings S1, S3 and S4 of `.claude/work/audit-architecture-fable.md` and the market report `reports/Thị trường thư viện Gantt JS.md` (list prices read 2026-11-11/12). What changed, so the older text below is not rewritten silently:
+>
+> 1. **Competitors.** The benchmark is no longer Frappe Gantt / jsGantt Improved. The real MIT-tier rivals are vendor-backed: **DHTMLX Gantt 10 Community** (MIT since 2026-06-11), **SVAR Gantt** (MIT core) and **Bryntum Gantt 8 Community** (MIT since 2026-11-03). The old prices ("dhtmlx $599–1,599/dev/year, Bryntum $850+/dev/year") were stale; current figures are in §2.1.
+> 2. **The wedge.** Critical path (CPM) in MIT core + headless engine that runs in Node/Workers + small tree-shakable bundle + WCAG 2.1 AA tested in CI + a permissive licence with no SaaS restriction. Free CPM stays in core. Bundle figures always carry the Temporal-polyfill disclosure.
+> 3. **Pro.** Was $299/dev one-time (Team $999 for 10 devs) with lifetime updates. Now **planned** at about **$600–800/dev perpetual, 12 months of updates, optional paid renewal at about 50–70%** — exact numbers not set, **not yet on sale**. The Pro licence explicitly **allows use in SaaS products with no OEM surcharge**. Svelte/Angular wrappers and basic/custom grid columns **move to MIT core**. The watermark idea is **dropped** (none was ever built). Pro keeps resources/leveling, baselines, constraints, MS Project XML and PDF branding.
+> 4. **Cloud.** The hosted Cloud subscription ($29/$99/$299 per month: multiplayer, AI auto-schedule, hosted PM features) and the Enterprise tier built on it are **removed from the committed roadmap**. Committed instead: an **MIT MCP server plus `llms.txt`** (AI-assistant visibility) and a **Yjs sync adapter built only on pre-sold demand**. The Cloud material (§4.3, §9.3, §12, §13.3, §14.4, the Cloud gate in §17) is kept, labelled **Not committed / exploratory**, as history. `.claude/rules/security.md` §3–4 stay as guidance in case that work ever happens.
+>
+> Sections edited for this revision: Overview, §1, §2.1–2.4, §3.2, §4.1–4.3, §5.1, §9.2–9.4, §10.6, §12, §13.3, §14, §16, §17, §18, §21.
+
 ## Overview
 
-FluxGantt is a TypeScript-first, MIT-licensed Gantt chart library targeting the gap between two extremes: expensive commercial solutions (dhtmlx Gantt $599–1,599/dev/year, Bryntum $850+/dev/year) and weak open-source options (Frappe Gantt, jsGantt Improved — all lacking features, TypeScript, and modern framework wrappers).
+FluxGantt is a TypeScript-first, MIT-licensed Gantt chart library for developers who embed a Gantt in their own product. Its wedge (2026-11): **critical path in MIT core, a headless engine that runs in Node/Workers, a small tree-shakable bundle, WCAG 2.1 AA tested in CI, and a permissive licence with no SaaS restriction**. The MIT-tier rivals are DHTMLX Gantt 10 Community, SVAR Gantt and Bryntum 8 Community; the commercial reference prices are DHTMLX PRO from $799 perpetual, Bryntum $699/$1,100 per dev per year (SaaS requires OEM), SVAR PRO from $749 (cheapest tier excludes SaaS) and Syncfusion $959 per dev per year (see §2.1). *(Before 2026-11 this paragraph positioned FluxGantt between "dhtmlx $599–1,599/dev/year, Bryntum $850+/dev/year" and weak OSS such as Frappe Gantt and jsGantt Improved.)*
 
 The product is part of the Flux family (alongside FluxFiles — a file manager), sharing a brand to reduce marketing cost and create a consistent developer experience.
 
-**Three monetization tiers:**
+**Monetization (revised 2026-11):**
 
-- **Core (MIT, free)** — full Gantt rendering, dependencies, hierarchy
-- **Pro (one-time)** — resource view, baselines, MS Project I/O, no AI
-- **Cloud (subscription)** — hosted multiplayer, AI auto-scheduling, integrations
+- **Core (MIT, free)** — full Gantt rendering, dependencies, hierarchy, critical path, all framework wrappers, basic/custom grid columns
+- **Pro (perpetual, planned, not yet on sale)** — resource view + leveling, baselines, constraints, MS Project I/O, PDF branding; SaaS use allowed with no OEM surcharge
+- ~~**Cloud (subscription)** — hosted multiplayer, AI auto-scheduling, integrations~~ — not committed / exploratory since 2026-11
 
 The primary audience is the **developer** embedding a Gantt into their web app, not the direct end user — this orientation drives every decision from API design to pricing.
 
 **Core architecture:** a headless engine (state + logic) fully decoupled from the rendering layer, rendering to SVG (Canvas fallback above 2,000 tasks), state managed by a hand-rolled reactive signal (no React/Vue dependency), and date/time computation using the Temporal API for correct timezone/DST handling.
 
-**3-wave roadmap:** Wave 1 (weeks 1–8) ships the Core MIT MVP to attract GitHub stars; Wave 2 (weeks 11–18) adds the Pro tier (resource leveling, baseline, MS Project XML); Wave 3 (month 6+) builds the Cloud tier with real-time multiplayer and AI auto-schedule.
+**Roadmap:** Wave 1 (weeks 1–8) ships the Core MIT MVP (shipped, first npm release 2026-09-24); Wave 2 (weeks 11–18) adds the Pro tier (resource leveling, baseline, MS Project XML); after that, an MIT MCP server + `llms.txt`, and a Yjs sync adapter only on pre-sold demand (§9.4). The former Wave 3 (hosted Cloud tier with real-time multiplayer and AI auto-schedule) is not committed / exploratory (§9.3).
 
 ---
 
@@ -60,15 +69,15 @@ The primary audience is the **developer** embedding a Gantt into their web app, 
 
 ## 1. Executive Summary
 
-FluxGantt is a TypeScript-first, MIT-licensed Gantt chart library targeting the gap between expensive commercial solutions (dhtmlx Gantt $599–1,599/developer/year, Bryntum $850+/developer/year) and weak open-source options (Frappe Gantt, jsGantt-improved, old jQuery plugins).
+FluxGantt is a TypeScript-first, MIT-licensed Gantt chart library. Since the 2026-11 strategy revision its reference competitors are the vendor-backed MIT editions (DHTMLX Gantt 10 Community, SVAR Gantt, Bryntum 8 Community), and it competes on a combination none of them offers: critical path in MIT core, a headless engine for Node/Workers, a small tree-shakable bundle, tested WCAG 2.1 AA, and a licence with no SaaS restriction. *(Originally: "the gap between expensive commercial solutions (dhtmlx Gantt $599–1,599/developer/year, Bryntum $850+/developer/year) and weak open-source options (Frappe Gantt, jsGantt-improved, old jQuery plugins)"; those prices are stale, see §2.1.)*
 
 The product is part of the Flux family of modern web tools, alongside FluxFiles (a file manager). The shared brand reduces marketing cost, builds a long-term moat through a consistent developer experience, and enables cross-promotion between products.
 
-Three monetization tiers are planned:
+Monetization (revised 2026-11, see §14):
 
-- **Core (MIT, free):** Full Gantt rendering, dependencies, hierarchy
-- **Pro (one-time):** Resource view, baselines, MS Project I/O, no AI
-- **Cloud (subscription):** Hosted multiplayer, AI auto-scheduling, integrations
+- **Core (MIT, free):** Full Gantt rendering, dependencies, hierarchy, critical path, all framework wrappers, basic/custom grid columns
+- **Pro (perpetual, planned, not yet on sale):** Resource view + leveling, baselines, constraints, MS Project I/O, PDF branding; SaaS use allowed
+- **Cloud (subscription):** not committed / exploratory; replaced on the roadmap by an MIT MCP server + `llms.txt` and an on-demand Yjs sync adapter
 
 The product targets developers embedding Gantt features into their own web apps, not direct end users. This orientation drives every decision, from API design to the pricing model.
 
@@ -78,25 +87,33 @@ The product targets developers embedding Gantt features into their own web apps,
 
 ### 2.1 Competitor Landscape
 
-**Commercial / Closed Source:**
+**Commercial / Closed Source** (prices revised 2026-11; list prices read 2026-11-11/12, sources below):
 
 | Product | License | Pricing | Stack | Strengths | Weaknesses |
 |---|---|---|---|---|---|
-| **dhtmlx Gantt PRO** | Commercial | $599/dev/yr (Standard)<br>$1,599/dev/yr (Enterprise) | JavaScript, no native TypeScript | Feature-complete, mature, MS Project parity | Dated API, expensive, heavy bundle |
-| **Bryntum Gantt** | Commercial | $850+/dev/yr | JavaScript, has framework wrappers | Modern UI, good React/Vue support | High price, sales-driven licensing model |
-| **Highcharts Gantt** | Commercial (bundled with Highcharts) | Locked in the Highcharts license ($1,295+) | JavaScript | Charts ecosystem | Restrictive license, not Gantt-focused |
+| **DHTMLX Gantt PRO** | Commercial | From **$799 perpetual** (1 dev, 1 project) + 1 year of updates; $1,599 (5 devs); $2,999; $5,999. SaaS "upon request for a fee" | JavaScript, no native TypeScript | Feature-complete, mature, MS Project parity | Dated API, heavy bundle, SaaS surcharge |
+| **Bryntum Gantt** | Commercial (Business / Enterprise) | Business **$699**/dev/yr; Enterprise **$1,100**/dev/yr. **SaaS requires an OEM licence** (quoted); support auto-renews at the original price | JavaScript, has framework wrappers | Modern UI, good React/Vue support; in the AG Grid group since 2025-11 | Sales-driven licensing, OEM for SaaS |
+| **SVAR Gantt PRO** | Commercial | From **$749** (1 dev, **no SaaS**); $1,899 (5 devs, SaaS allowed, Application tier). Perpetual + 1 year, renewal 70–80% | React / Svelte / Vue | Fast-growing (MIT core ~142k weekly npm downloads) | Cheapest tier excludes SaaS |
+| **Syncfusion Gantt** | Commercial (suite) | **$959**/dev/yr (single component); $1,199 (suite). Free Community License under $1M revenue / ≤5 devs | Multi-framework suite | Large suite vendor | Subscription; Gantt is one component in a suite |
+| **Highcharts Gantt** | Commercial (bundled with Highcharts) | $366 Core + $73 Gantt per seat; OEM quoted | JavaScript | Charts ecosystem | Restrictive license, not Gantt-focused |
+
+Sources: [DHTMLX licensing](https://dhtmlx.com/docs/products/dhtmlxGantt/#licensing), [Bryntum Gantt store](https://bryntum.com/store/gantt/), [SVAR pricing](https://svar.dev/react/gantt/pricing), [Syncfusion pricing](https://www.syncfusion.com/sales/pricing), [Highcharts shop](https://shop.highcharts.com/), all read 2026-11-11/12 (via `reports/Thị trường thư viện Gantt JS.md`). *Superseded figures (pre-2026-11): dhtmlx PRO $599/$1,599 per dev per year, Bryntum $850+/dev/yr, Highcharts $1,295+.*
 
 **Open Source:**
 
 | Product | License | Stars | Stack | Status | Weaknesses |
 |---|---|---|---|---|---|
-| **DHTMLX Gantt Community Edition** | MIT | newly released (2026) | JavaScript, based on the dhtmlx PRO codebase | Maintained by DHTMLX — commercial backing | **Most dangerous competitor:** same MIT license as FluxGantt, ships a fair amount of PRO features (all dependency types, critical path, MS Project I/O). But: still JS, no native TypeScript; core not framework-agnostic; **heavy bundle** (inherits the PRO monolith architecture); dated API; no first-class React/Vue wrappers; no AI/MCP. The Community edition is a funnel strategy toward PRO — intentional feature gating |
-| **Frappe Gantt** | MIT | ~12k GitHub | Vanilla JS, no TypeScript | Maintained but slow (~3 months/commit) | No resource view, no critical path, Finish-to-Start dependencies only, no MS Project import, no TypeScript, no framework wrapper, dated visuals |
-| **jsGantt Improved** | BSD | — | jQuery | Legacy | jQuery-based, nearly abandoned, no modern framework support |
+| **DHTMLX Gantt Community Edition** | MIT (v10, 2026-06-11) | newly released (2026) | JavaScript, based on the dhtmlx PRO codebase | Maintained by DHTMLX — commercial backing | **Most dangerous competitor:** same MIT license as FluxGantt, ships a fair amount of PRO features (hierarchy, all four dependency types, smart rendering for 30k+ tasks, RTL, WAI-ARIA) — but **keeps auto-scheduling, critical path and resource planning in PRO** ([DHTMLX Gantt 10.0](https://dhtmlx.com/blog/dhtmlx-gantt-10-0/), 2026-06; this row previously listed critical path as included, which was wrong). But: still JS, no native TypeScript; core not framework-agnostic; **heavy bundle** (inherits the PRO monolith architecture); dated API; no first-class React/Vue wrappers; no AI/MCP. The Community edition is a funnel strategy toward PRO — intentional feature gating |
+| **SVAR Gantt** (2026-11) | MIT core + PRO | 218 (react-gantt) | React / Svelte / Vue | Vendor-backed; ~142k weekly npm downloads, fastest-growing in the niche | Critical path and auto-scheduling in PRO; ~101 KB gzip (bundlephobia) ([SVAR pricing](https://svar.dev/react/gantt/pricing/)) |
+| **Bryntum Gantt Community** (2026-11) | MIT (8.0.0, 2026-11-03) | — | JavaScript, framework wrappers | Vendor-backed (AG Grid group) | Critical path, baselines, MS Project import and PDF export are Enterprise-only ([Bryntum changelog](https://bryntum.com/products/gantt/changelog/)) |
+| **Frappe Gantt** *(no longer the benchmark, 2026-11)* | MIT | ~12k GitHub | Vanilla JS, no TypeScript | Maintained but slow (~3 months/commit) | No resource view, no critical path, Finish-to-Start dependencies only, no MS Project import, no TypeScript, no framework wrapper, dated visuals |
+| **jsGantt Improved** *(no longer the benchmark, 2026-11)* | BSD | — | jQuery | Legacy | jQuery-based, nearly abandoned, no modern framework support |
 
 ### 2.2 Market Gap
 
 > **2026 update:** DHTMLX releasing a Community Edition (MIT) has closed part of the "MIT + feature-complete" gap FluxGantt originally targeted. "MIT-licensed" and "AI auto-schedule" are **no longer exclusive differentiators** — AI scheduling is now an industry standard (Asana, Monday, dhtmlx, Bryntum all have it or are adding it). The real remaining gap is about the **engineering quality of an embeddable library**, not about license or the mere existence of AI.
+
+> **2026-11 update:** Bryntum 8 Community (MIT, 2026-11-03) and SVAR (MIT core) join DHTMLX Community, so the basic MIT tier (dependencies, drag, hierarchy) is now crowded. What none of the three ships in MIT is critical path: DHTMLX, SVAR and Bryntum all keep CPM and auto-scheduling behind their paid tier, and Bryntum's Node-capable engine is Enterprise-only. The licence is the other gap: Bryntum requires OEM for SaaS, SVAR's $749 tier excludes SaaS, DHTMLX charges extra. The wedge is therefore the **combination** of CPM in MIT, headless engine, small bundle, tested WCAG 2.1 AA and a licence with no SaaS restriction (see the revision note at the top). Accessibility is not exclusive (DHTMLX has had WAI-ARIA since v4.1); the claim is "WCAG 2.1 AA tested with axe in CI".
 
 The remaining opportunity — where DHTMLX Community and Frappe are both weak — is an MIT library that delivers:
 
@@ -105,7 +122,7 @@ The remaining opportunity — where DHTMLX Community and Frappe are both weak �
 - **Framework-agnostic core** + first-class React/Vue/Svelte wrappers (DHTMLX Community has none).
 - Full dependency types (FS, SS, FF, SF) with correct cascade + Critical Path (CPM).
 - **Headless engine** that runs in Node/Workers (server-side scheduling, tests) — something dhtmlx's DOM-coupled architecture cannot do.
-- **AI via MCP server** (Wave 3, see §3.2 & §9.3): instead of bolting AI onto the UI, expose the Gantt as a tool for an AI agent (Claude) to plan/adjust the schedule — same direction as FluxDocs. This is a different kind of AI integration, not "an AI button" like every competitor.
+- **AI via MCP server** (MIT, planned, see §3.2 & §9.4; was Wave 3 / Cloud before 2026-11): instead of bolting AI onto the UI, expose the Gantt as a tool for an AI agent (Claude) to plan/adjust the schedule — same direction as FluxDocs. This is a different kind of AI integration, not "an AI button" like every competitor.
 
 Resource view/leveling, MS Project XML I/O, and baselines remain in the Pro tier as before.
 
@@ -114,15 +131,15 @@ Resource view/leveling, MS Project XML I/O, and baselines remain in the Pro tier
 **Primary Customer:**
 - Solo/small-team developers building vertical SaaS
 - Examples: construction management tools, video production planning, manufacturing schedulers, custom internal PM tools
-- Pain point: dhtmlx pricing $599–1,599/dev/year, renewal anxiety, no migration path off the proprietary format
-- Spend: $199–499 one-time/developer for a Pro license
+- Pain point: commercial licences that restrict SaaS use (Bryntum requires OEM, SVAR's cheapest tier excludes SaaS, DHTMLX charges extra), renewal anxiety, no migration path off the proprietary format. Also: orphaned users of `gantt-task-react` (archived, last release 2022-07-10, ~63k weekly downloads)
+- Spend (revised 2026-11): a perpetual Pro license at about $600–800/developer (planned, not yet on sale). *Originally $199–499 one-time.*
 
 **Secondary Customer:**
 - Agencies and consultancies building custom tools for clients
 - Pain point: client projects aren't big enough to justify a dhtmlx site license; building from scratch takes 2–3 months
 - Spend: $499–999 team license, one-time
 
-**Tertiary Customer (Cloud tier, post-launch):**
+**Tertiary Customer (Cloud tier — not committed / exploratory since 2026-11):**
 - Small PM teams wanting a hosted Gantt without the complexity of Asana/Monday
 - Pain point: Asana/Monday have too many superfluous features; Excel is fragile
 - Spend: $29–99/month/team
@@ -135,7 +152,7 @@ Resource view/leveling, MS Project XML I/O, and baselines remain in the Pro tier
 - Bryntum: same order of magnitude
 - Total commercial Gantt library market: ~$15–30M/year
 
-**Feasible market share for FluxGantt:**
+**Feasible market share for FluxGantt** *(pre-2026-11 projection at the superseded $299 price and with a Cloud tier; kept as history. The 2026-11 market report's base case is 20–80 Pro seats/year in the first 12–18 months, and it estimates the Bryntum-led niche at a few vendors of ~$5–7M/year each, not $15–30M total.)*:
 
 - Year 1: 50–100 Pro licenses × $299 = $15–30k
 - Year 2: 300–500 Pro + 50 Cloud subs = $90–180k ARR
@@ -159,7 +176,9 @@ Resource view/leveling, MS Project XML I/O, and baselines remain in the Pro tier
 
 > **Positioning:** "The TypeScript-first, headless Gantt chart library with the smallest bundle on the market — MIT-licensed, agent-ready via MCP."
 
-> **Elevator Pitch:** "Every project management app needs a Gantt chart. The old options: pay $1,000/yr for dhtmlx PRO, use the MIT Community build that is 226kb gzip and not TypeScript, use Frappe and go without a critical path or types, or burn three months building from scratch. FluxGantt is a headless, TypeScript-first engine with a 7.7kb gzip core (an order of magnitude smaller than dhtmlx/Bryntum), framework-agnostic with first-class React/Vue wrappers. And because it's a headless engine, it runs on the server too — enough for an AI agent like Claude to plan the schedule via MCP, not just an 'AI' button in the UI."
+> **Elevator Pitch:** "Every project management app needs a Gantt chart. The old options: pay $699–1,100 per developer per year for Bryntum (plus an OEM licence for SaaS) or from $799 for DHTMLX PRO, use the MIT Community build that is 226kb gzip and not TypeScript, use Frappe and go without a critical path or types, or burn three months building from scratch. FluxGantt is a headless, TypeScript-first engine with a 7.7kb gzip core (an order of magnitude smaller than dhtmlx/Bryntum), framework-agnostic with first-class React/Vue wrappers. And because it's a headless engine, it runs on the server too — enough for an AI agent like Claude to plan the schedule via MCP, not just an 'AI' button in the UI."
+
+> **Positioning note (2026-11):** the full wedge is CPM in MIT + headless engine (Node/Workers) + small tree-shakable bundle + WCAG 2.1 AA tested in CI + a licence with no SaaS restriction. Every bundle number carries the Temporal-polyfill disclosure (sizes exclude `@js-temporal/polyfill`, ~45.8 KiB gzip, needed where Temporal is not native).
 
 > **Positioning note:** AI auto-scheduling is now an **industry standard**, not an exclusive selling point. FluxGantt no longer markets itself as "the first MIT library with AI" (DHTMLX Community Edition is already MIT). The measurable differentiator is **architecture** — headless + small bundle + framework-agnostic + agent-native via an MCP server.
 
@@ -208,7 +227,7 @@ Resource view/leveling, MS Project XML I/O, and baselines remain in the Pro tier
 | **State management** | Reactive store built on a hand-rolled signal, following Preact Signals semantics, zero dependency on React/Vue |
 | **Rendering** | SVG primary (clean, vector, accessible, exportable); automatic Canvas fallback when task count > 2,000 |
 | **Date arithmetic** | Temporal API via an internal adapter layer. Uses native `globalThis.Temporal` when the runtime provides it; `@js-temporal/polyfill` is an **optional peerDependency** (the consumer installs it when needed, NOT bundled into core → not counted against the bundle budget). `date-fns` only for minor ergonomics. Reason: Temporal handles timezone/DST correctly, native `Date` is not trustworthy |
-| **Multiplayer** | Yjs (CRDT) — Pro/Cloud only. Reference: tldraw, BlockNote use Yjs successfully |
+| **Multiplayer** | Yjs (CRDT) sync adapter, customer-run backend, built only on pre-sold demand (2026-11; was "Pro/Cloud only"). Reference: tldraw, BlockNote use Yjs successfully |
 | **Build tooling** | tsup (library packages), vite (demo apps), changesets (versioning + changelog) |
 | **Testing** | vitest (unit), playwright (e2e + visual regression), @testing-library (framework wrappers) |
 | **Monorepo** | pnpm workspaces, turbo cho task orchestration |
@@ -219,7 +238,7 @@ Resource view/leveling, MS Project XML I/O, and baselines remain in the Pro tier
 - `@fluxgantt/react` — React 18+, hooks-first API
 - `@fluxgantt/vue` — Vue 3+, Composition API
 
-**Wave 2:**
+**Next (MIT core since the 2026-11 revision; previously Wave 2 / Pro, not yet built):**
 - `@fluxgantt/svelte` — Svelte 5+, runes-based
 - `@fluxgantt/angular` — Angular 17+, signals-based
 
@@ -228,7 +247,9 @@ Resource view/leveling, MS Project XML I/O, and baselines remain in the Pro tier
 - `@fluxgantt/qwik` — Qwik
 - `@fluxgantt/preact` — Preact (possibly trivial via React compat)
 
-### 4.3 Cloud Backend (Wave 3)
+### 4.3 Cloud Backend (Not committed / exploratory — was Wave 3)
+
+> Removed from the committed roadmap and from the locked tech stack in the 2026-11 strategy revision. Kept as the design if a hosted product is ever revived on evidence of paid demand.
 
 | | |
 |---|---|
@@ -294,7 +315,7 @@ Resource view/leveling, MS Project XML I/O, and baselines remain in the Pro tier
 │  │  Compute Layer                                        ││
 │  │  - Critical Path (CPM algorithm)                       ││
 │  │  - Resource Leveling (Pro)                             ││
-│  │  - Auto-Schedule (AI, Cloud tier)                      ││
+│  │  - Auto-Schedule (AI, exploratory)                     ││
 │  │  - Working Calendar (working days, holidays)           ││
 │  └───────────────────────────────────────────────────────┘│
 │  ┌───────────────────────────────────────────────────────┐│
@@ -317,7 +338,7 @@ Resource view/leveling, MS Project XML I/O, and baselines remain in the Pro tier
 │  │  - PNG / SVG / PDF export                              ││
 │  └───────────────────────────────────────────────────────┘│
 │  ┌───────────────────────────────────────────────────────┐│
-│  │  Sync Layer (Cloud only)                               ││
+│  │  Sync Layer (adapter, on pre-sold demand)              ││
 │  │  - Yjs adapter                                         ││
 │  │  - Presence (cursor, selection)                        ││
 │  │  - Conflict resolution                                 ││
@@ -1217,6 +1238,8 @@ handle needs `r: 22`, large enough to swallow the bar it anchors to.
 
 ## 9. Feature Roadmap (3 Waves)
 
+> **2026-11 strategy revision:** Wave 1 shipped; Wave 2 (Pro) stands with a revised scope and price (§9.2, §14); Wave 3 (hosted Cloud + AI) is **not committed / exploratory** (§9.3) and is replaced by the smaller commitments in §9.4.
+
 ### 9.1 Wave 1 — Free MVP (Tier: Core MIT, Weeks 1–8)
 
 **Goal:** Ship a solid MIT-licensed Gantt that beats Frappe Gantt **and DHTMLX Community Edition** on developer experience and **bundle size** (7.50 KiB gzip headless / 18.40 KiB editable, against 226 KiB for dhtmlx Community — though note Frappe measures *smaller* at 14.89 KiB, see §2.2), enough to attract early users and GitHub stars. Since both MIT competitors are heavy / not TypeScript-first, "small-bundle headless engine + strict types" is the main selling angle of Wave 1 — not AI (which doesn't ship until later).
@@ -1275,7 +1298,7 @@ handle needs `r: 22`, large enough to swallow the bar it anchors to.
 
 ### 9.2 Wave 2 — Pro Tier (Weeks 11–18, after validation)
 
-**Goal:** Add features developers will pay $199–499 one-time for.
+**Goal:** Add features developers will pay for: a perpetual licence at about $600–800/developer with 12 months of updates and an optional paid renewal at about 50–70% (planned, not yet on sale; see §14). The licence allows SaaS use with no OEM surcharge. *(Originally "$199–499 one-time".)* Validate the price with refundable pre-orders before building.
 
 **Weeks 11–12: MS Project Compatibility**
 - Import MS Project XML (.xml format)
@@ -1296,26 +1319,28 @@ handle needs `r: 22`, large enough to swallow the bar it anchors to.
 - Multi-baseline comparison
 - Visual diff (planned vs actual)
 - Task constraints (must-start-on, ASAP, ALAP, etc.)
-- Custom columns in the task list
+- ~~Custom columns in the task list~~ — moved to MIT core (2026-11): DHTMLX Community and SVAR MIT already ship grid columns
 - Advanced filters
 
 **Week 17: Advanced Export**
 - Export PDF with a custom header/footer
 - Print preview
 - Multi-page export for large projects
-- Remove watermark (Pro only)
+- ~~Remove watermark (Pro only)~~ — dropped (2026-11): a watermark on an MIT core is unenforceable and none exists
 
 **Week 18: Polish & Pro Launch**
 - License key validation system
-- Stripe Checkout integration (one-time payment)
+- Stripe Checkout integration (one-time payment for the perpetual licence; renewal optional)
 - Pro documentation
 - Pro tier landing page
 - Email blast to the waitlist
 - Public Pro launch
 
-### 9.3 Wave 3 — Cloud + AI Tier (Month 6+)
+### 9.3 Wave 3 — Cloud + AI Tier (Not committed / exploratory)
 
-**Goal:** Recurring revenue via a hosted multiplayer Gantt with AI features.
+> **Status (2026-11):** removed from the committed roadmap. A hosted PM product competes with the very ISVs core and Pro sell to, needs multi-tenant authZ, SOC2 and operations, and there is no evidence yet of demand for a multiplayer Gantt that would pay for that. The only parts that survive are the MCP server (now MIT, §9.4) and a Yjs sync adapter (§9.4). Everything below is kept as history and as a starting point if the idea is ever revived on evidence of paid demand (§17).
+
+**Original goal:** Recurring revenue via a hosted multiplayer Gantt with AI features.
 
 **Months 6–7: Cloud Foundation**
 - Backend API (Hono + Postgres)
@@ -1335,7 +1360,7 @@ handle needs `r: 22`, large enough to swallow the bar it anchors to.
 
 > AI auto-schedule is now an **industry standard** (every competitor has it) → no longer an exclusive selling point. FluxGantt's real differentiator is **how AI is integrated**: because the core is a headless engine that runs server-side, we expose the Gantt as a **tool for an AI agent** via MCP, instead of just bolting an "AI" button onto the UI like every competitor.
 
-- **MCP server (`@fluxgantt/mcp`) — the main differentiator of the Cloud tier.** Exposes Gantt operations (add/move task, link dependency, compute critical path, level resources, query schedule) as MCP tools so Claude/an agent can plan and adjust the schedule conversationally. Same direction as FluxDocs. The headless engine makes this feasible where DOM-coupled libraries cannot.
+- **MCP server (`@fluxgantt/mcp`) — the main differentiator of the Cloud tier.** *(2026-11: moved out of Cloud; now an MIT growth channel, see §9.4.)* Exposes Gantt operations (add/move task, link dependency, compute critical path, level resources, query schedule) as MCP tools so Claude/an agent can plan and adjust the schedule conversationally. Same direction as FluxDocs. The headless engine makes this feasible where DOM-coupled libraries cannot.
 - AI auto-schedule (LLM + constraint solver) — reaches parity with the industry, not marketed as exclusive
 - AI conflict explanation
 - AI risk forecaster (based on progress velocity)
@@ -1348,6 +1373,11 @@ handle needs `r: 22`, large enough to swallow the bar it anchors to.
 - Email digest (weekly progress)
 - Zapier connector
 - Sync Jira / Linear / Asana
+
+### 9.4 Committed after Wave 2 (2026-11 revision)
+
+- **MCP server + `llms.txt` (MIT).** Exposes the headless engine's operations as MCP tools and publishes an `llms.txt`, so AI coding assistants can find, recommend and drive FluxGantt. Rationale: being cited by AI assistants is now a competitive channel (SVAR already ships an MCP server, per the 2026-11 market report). Treat tool inputs as untrusted (`.claude/rules/security.md`).
+- **Sync adapter (Yjs).** A binding the customer runs against their own backend. Built **only on pre-sold demand**; no hosted service.
 
 ---
 
@@ -1466,11 +1496,12 @@ type ResourceId = string & { readonly __brand: 'ResourceId' }
 | `@fluxgantt/core` | Headless engine (Wave 1) |
 | `@fluxgantt/react` | React wrapper (Wave 1) |
 | `@fluxgantt/vue` | Vue wrapper (Wave 1) |
-| `@fluxgantt/svelte` | Svelte wrapper (Wave 2) |
-| `@fluxgantt/angular` | Angular wrapper (Wave 2) |
-| `@fluxgantt/ai` | AI scheduling features (Pro) |
+| `@fluxgantt/svelte` | Svelte wrapper (MIT core since 2026-11; not yet built) |
+| `@fluxgantt/angular` | Angular wrapper (MIT core since 2026-11; not yet built) |
+| `@fluxgantt/mcp` | MCP server (MIT, planned, §9.4) |
+| `@fluxgantt/ai` | AI scheduling features (not committed / exploratory since 2026-11) |
 | `@fluxgantt/msproject` | MS Project import/export (Pro) |
-| `@fluxgantt/cloud-sdk` | Cloud API client (Wave 3) |
+| `@fluxgantt/cloud-sdk` | Cloud API client (not committed / exploratory since 2026-11) |
 | `@fluxgantt/themes` | Prebuilt themes (community) |
 | `@fluxgantt/icons` | Icon set |
 | `@fluxgantt/dev-tools` | Browser devtools extension |
@@ -1553,11 +1584,11 @@ fluxgantt/
 │   │   │   └── index.ts
 │   │   └── package.json
 │   │
-│   ├── svelte/                     # @fluxgantt/svelte (Wave 2)
-│   ├── angular/                    # @fluxgantt/angular (Wave 2)
-│   ├── ai/                         # @fluxgantt/ai (Pro)
+│   ├── svelte/                     # @fluxgantt/svelte (MIT, not yet built)
+│   ├── angular/                    # @fluxgantt/angular (MIT, not yet built)
+│   ├── ai/                         # @fluxgantt/ai (exploratory)
 │   ├── msproject/                  # @fluxgantt/msproject (Pro)
-│   └── cloud-sdk/                  # @fluxgantt/cloud-sdk (Wave 3)
+│   └── cloud-sdk/                  # @fluxgantt/cloud-sdk (exploratory)
 │
 ├── examples/
 │   ├── react-vite-demo/
@@ -1601,6 +1632,8 @@ fluxgantt/
 ---
 
 ## 12. Database Schema (Cloud Tier)
+
+> **Not committed / exploratory (2026-11).** The hosted Cloud tier is off the roadmap (§9.3); this schema is kept as history.
 
 PostgreSQL schema for the hosted Cloud edition. Uses Drizzle ORM.
 
@@ -1853,7 +1886,7 @@ function levelResources(tasks, dependencies, resources):
     recomputeCriticalPath()
 ```
 
-### 13.3 AI Auto-Schedule (Cloud Tier)
+### 13.3 AI Auto-Schedule (Cloud Tier — not committed / exploratory since 2026-11)
 
 Use an LLM to generate an initial schedule from a natural-language description, then refine it with a constraint solver.
 
@@ -1886,64 +1919,59 @@ function autoSchedule(naturalLanguageInput):
 
 ## 14. Pricing & Monetization
 
+> **Revised 2026-11** (strategy revision at the top of this document). Superseded structure, kept for the record: Pro Self-host **$299 one-time** per developer and Pro Team **$999 one-time** for up to 10 developers, both with lifetime updates; Cloud Starter $29/month (5 users), Team $99/month (25 users), Business $299/month (unlimited); Enterprise $5k–50k/year (SSO, on-prem, SLA). The old matrix put Svelte/Angular wrappers, custom columns and "remove watermark" in Pro. Why it changed: $299 is about 40% of SVAR's $749 entry tier and below FullCalendar Premium (from $480), creates no recurring revenue, and reads as low quality to enterprise buyers; one-time pricing with no renewal left Tailwind Labs dependent on new customers (sources in the 2026-11 market report).
+
 ### 14.1 Tier Structure
 
 | Tier | Price | Audience |
 |---|---|---|
-| **Core (MIT)** | $0 | OSS projects, evaluation, hobby |
-| **Pro Self-host** | $299 one-time | Indie dev, agency (per developer license) |
-| **Pro Team** | $999 one-time | Small dev team (up to 10 developers) |
-| **Cloud Starter** | $29/month | Small team (Cloud, 5 users) |
-| **Cloud Team** | $99/month | Growing company (25 users) |
-| **Cloud Business** | $299/month | Mid-market (unlimited users) |
-| **Enterprise** | $5k–50k/year | Large org (SSO, on-prem, SLA) |
+| **Core (MIT)** | $0 | Everyone: OSS, commercial and SaaS products, evaluation |
+| **Pro** | About **$600–800 per developer, perpetual**, with 12 months of updates; optional paid renewal at about 50–70%. **Planned, not yet on sale** — exact numbers not set | Developers and teams building products, including SaaS |
+
+- **The Pro licence explicitly allows use in SaaS products, with no OEM surcharge.** This is the main selling point against Bryntum (SaaS requires OEM), SVAR (the $749 tier excludes SaaS) and DHTMLX (SaaS "upon request for a fee").
+- No watermark in any tier.
+- Hosted Cloud plans and an Enterprise tier are **not committed / exploratory** (§9.3).
+
+Reference prices (list, read 2026-11-11/12): DHTMLX PRO from $799 perpetual; Bryntum $699 / $1,100 per dev per year, SaaS requires OEM; SVAR PRO from $749, cheapest tier excludes SaaS; Syncfusion $959 per dev per year. Sources in §2.1.
 
 ### 14.2 Feature Matrix
 
-| Feature | Core | Pro | Cloud | Ent |
-|---|---|---|---|---|
-| Task CRUD | ✓ | ✓ | ✓ | ✓ |
-| Dependencies (FS/SS/FF/SF) | ✓ | ✓ | ✓ | ✓ |
-| Critical path computation | ✓ | ✓ | ✓ | ✓ |
-| React/Vue wrappers | ✓ | ✓ | ✓ | ✓ |
-| Export PNG/SVG/JSON | ✓ | ✓ | ✓ | ✓ |
-| Resource view | – | ✓ | ✓ | ✓ |
-| Resource leveling | – | ✓ | ✓ | ✓ |
-| Baselines | – | ✓ | ✓ | ✓ |
-| Task constraints | – | ✓ | ✓ | ✓ |
-| MS Project XML I/O | – | ✓ | ✓ | ✓ |
-| Export PDF with branding | – | ✓ | ✓ | ✓ |
-| Custom columns | – | ✓ | ✓ | ✓ |
-| Svelte/Angular wrappers | – | ✓ | ✓ | ✓ |
-| Remove watermark | – | ✓ | ✓ | ✓ |
-| Email support | – | ✓ | ✓ | ✓ |
-| Real-time multiplayer | – | – | ✓ | ✓ |
-| Comment + @mention | – | – | ✓ | ✓ |
-| Activity feed | – | – | ✓ | ✓ |
-| AI auto-schedule | – | – | ✓ | ✓ |
-| AI risk forecaster | – | – | ✓ | ✓ |
-| Share link with permissions | – | – | ✓ | ✓ |
-| Slack/Email integration | – | – | ✓ | ✓ |
-| Webhooks | – | – | ✓ | ✓ |
-| Priority support | – | – | ✓ | ✓ |
-| SSO (SAML, OIDC) | – | – | – | ✓ |
-| Audit log retention | – | – | – | ✓ |
-| On-premise deployment | – | – | – | ✓ |
-| DPA, SOC2, HIPAA BAA | – | – | – | ✓ |
-| SLA 99.9% uptime | – | – | – | ✓ |
-| Dedicated success manager | – | – | – | ✓ |
+| Feature | Core (MIT) | Pro |
+|---|---|---|
+| Task CRUD | ✓ | ✓ |
+| Dependencies (FS/SS/FF/SF) | ✓ | ✓ |
+| Critical path computation | ✓ | ✓ |
+| Headless engine (Node/Workers) | ✓ | ✓ |
+| React/Vue wrappers | ✓ | ✓ |
+| Svelte/Angular wrappers *(moved from Pro, 2026-11; not yet built)* | ✓ | ✓ |
+| Basic/custom grid columns *(moved from Pro, 2026-11; not yet built)* | ✓ | ✓ |
+| Export PNG/SVG/JSON/CSV | ✓ | ✓ |
+| MCP server + `llms.txt` *(planned, §9.4)* | ✓ | ✓ |
+| Resource view | – | ✓ |
+| Resource leveling | – | ✓ |
+| Baselines | – | ✓ |
+| Task constraints | – | ✓ |
+| MS Project XML I/O | – | ✓ |
+| Export PDF with branding | – | ✓ |
+| Use in SaaS products (no OEM surcharge) | ✓ (MIT) | ✓ |
+| Email support | – | ✓ |
 
-### 14.3 Why Pro Is One-Time
+Removed from the matrix (2026-11): "Remove watermark" (dropped) and the Cloud and Enterprise columns (real-time multiplayer, comments, activity feed, AI auto-schedule, AI risk forecaster, share links, Slack/email integration, webhooks, priority support, SSO, audit log retention, on-premise, DPA/SOC2/HIPAA, SLA, success manager), which are not committed / exploratory. A Yjs sync adapter is built only on pre-sold demand (§9.4).
 
-Developers prefer one-time license payments for libraries:
+### 14.3 Why Pro Is Perpetual, With a Paid Renewal
 
-- A component library is infrastructure, not a workflow tool
-- "Subscription fatigue" is real; developers limit recurring costs
-- A one-time payment removes churn risk for us and reduces anxiety for the customer
-- License keys are easy to validate and renew for lifetime updates
-- One-time Stripe Checkout = simple integration, no subscription state needed
+*(Revised 2026-11; originally "Why Pro Is One-Time", arguing for lifetime updates.)*
+
+Developers still prefer not to rent a library, so the licence is perpetual: the version you bought keeps working forever. But updates are bundled for 12 months only, with an optional renewal at about 50–70% of the price, because:
+
+- This is the industry norm (DHTMLX, SVAR: perpetual + 1 year of updates, then renewal)
+- One-time pricing with lifetime updates makes revenue depend entirely on new customers
+- A price in the ~$600–800 range stays under the ~$1k company-card threshold while signalling a serious scheduling engine rather than a template
+- License keys are easy to validate; renewal just extends the update window
 
 ### 14.4 Why Cloud Is Recurring
+
+> **Not committed / exploratory (2026-11).** No Cloud subscription is planned; the reasoning below is kept as history.
 
 The Cloud tier fits a subscription because:
 
@@ -2023,14 +2051,14 @@ A synchronized multi-channel launch:
 | 8 | **LAUNCH** | Show HN + Product Hunt + Reddit + email outreach | 500+ GH stars, 1k+ npm downloads |
 | 9 | Listen | Bug fixes, review PRs, community engagement | Triage 80% of issues |
 | 10 | Listen | Iterate on feedback, improve docs | DX polish, more examples |
-| 11 | Pre-order | Email blast: "Pro early bird $199, first 100 spots" | 30–50 pre-orders |
+| 11 | Pre-order | Email blast: refundable Pro pre-order at the planned price *(was "Pro early bird $199, first 100 spots")* | 30–50 pre-orders |
 | 12 | Build Pro | Import MS Project XML | Clean import of 20 sample .xml files |
 | 13 | Build Pro | Resource view + assignment | Complete UI |
 | 14 | Build Pro | Resource leveling algorithm | Algorithm validated |
 | 15 | Build Pro | Capture + compare baselines | Visual diff working |
-| 16 | Build Pro | Constraints, export PDF, custom columns | Export passes the Acrobat test |
+| 16 | Build Pro | Constraints, export PDF *(custom columns moved to MIT core, 2026-11)* | Export passes the Acrobat test |
 | 17 | Polish | Pro docs, migration guide, license key system | License system working |
-| 18 | **LAUNCH Pro** | Pro tier live, email pre-order customers | 50+ Pro licenses sold = $10k+ revenue |
+| 18 | **LAUNCH Pro** | Pro tier live, email pre-order customers | 50+ Pro licenses sold *(was "= $10k+ revenue" at $199–299)* |
 
 ---
 
@@ -2065,7 +2093,7 @@ A synchronized multi-channel launch:
 | Refund rate | <5% | Address quality |
 | Support ticket volume | <2/week | Improve docs |
 
-**After Month 6 (Cloud Tier Decision):**
+**After Month 6 (Cloud Tier Decision)** — *not committed / exploratory since 2026-11. If a hosted tier is ever reconsidered, the bar is a waitlist with payment commitments, not an email count.*
 
 Signals to proceed with Cloud:
 - 100+ Pro customers
@@ -2106,10 +2134,13 @@ Signals to delay Cloud:
 - **Headless engine** running server-side → unlocks an **MCP server** (`@fluxgantt/mcp`) for AI agents — a qualitatively different AI integration, not an "AI button in the UI".
 - Release velocity + a healthy community + DX (docs, types, StackBlitz examples) as developer-retention advantages.
 
+**Risk (⚠️ HAS OCCURRED — 2026-11):** Bryntum 8.0.0 (2026-11-03) also ships an MIT Community edition, and SVAR is MIT with ~142k weekly downloads. The free floor keeps rising.
+**Mitigation:** compete on the combination none of them offers in MIT (critical path, headless engine, small bundle, tested WCAG 2.1 AA) and on licence terms (Pro allows SaaS use with no OEM surcharge). CPM is the easiest pillar to copy, so it must also be fast and verifiably correct.
+
 **Risk:** A VC-funded competitor ships a similar product
 **Mitigation:** Speed and community focus. Solo + Flux brand recognition for a 6–12 month early advantage. Pivot to a niche if needed.
 
-**Risk:** AI scheduling is unstable in production
+**Risk** *(exploratory, applies only if AI auto-schedule is revived)*: AI scheduling is unstable in production
 **Mitigation:** Position AI as "suggest", not "decide". Always show reasoning. Make reverts easy. Test thoroughly before shipping the Cloud tier.
 
 **Risk:** An open-source contributor forks and creates a competing product
@@ -2126,7 +2157,7 @@ Signals to delay Cloud:
 **Risk:** Support volume exceeds solo capacity
 **Mitigation:** Thorough docs reduce the support load. A community forum for peer help. Email-only support, no SLA, until revenue is enough to hire.
 
-**Risk:** Cloud tier infrastructure cost exceeds revenue
+**Risk** *(exploratory, Cloud is not committed since 2026-11)*: Cloud tier infrastructure cost exceeds revenue
 **Mitigation:** Charge fairly from the start. Use Cloudflare R2 (cheap storage), Fly.io (auto-scaling). Set hard limits per tier.
 
 ### 18.4 Legal Risks
@@ -2137,7 +2168,7 @@ Signals to delay Cloud:
 **Risk:** Patent infringement claims (scheduling algorithm)
 **Mitigation:** CPM is public domain (developed in 1957). Clean-room implementation. Avoid copying dhtmlx's code or API verbatim.
 
-**Risk:** GDPR/privacy compliance for the Cloud tier
+**Risk** *(exploratory, Cloud is not committed since 2026-11)*: GDPR/privacy compliance for the Cloud tier
 **Mitigation:** Privacy-by-design from the start. Data residency option for Enterprise. A standard DPA template ready.
 
 ### 18.5 Security (Library & Cloud)
@@ -2149,7 +2180,7 @@ Technical threat model (full details & checklist in `.claude/rules/security.md`)
 - **Untrusted parsing (JSON/CSV/XML):** validate the schema before loading into the store. **XML (MS Project) must disable external entities/DTD → prevent XXE**; limit size/depth to prevent DoS. CSV export guards against formula injection. Detect dependency cycles (throw).
 - Respect the host's CSP (no inline script/`eval`).
 
-**Cloud (Wave 3):**
+**Cloud (not committed / exploratory since 2026-11; kept as guidance):**
 - **Multi-tenant authZ:** scope every query by `org_id`/`project_id` + check `membership.role` on the server (prevents IDOR).
 - **Share link:** token ≥32 bytes of entropy; `password_hash` uses argon2/bcrypt; respects `expires_at`/`permission`.
 - **API key:** store only `key_hash` + `prefix`; support `scopes`/`revoked_at`.
@@ -2335,7 +2366,7 @@ function earliestStartFromPred(
 | Feature | FluxGantt | dhtmlx PRO | dhtmlx Community | Bryntum Gantt | Frappe Gantt | jsGantt Improved |
 |---|---|---|---|---|---|---|
 | License | MIT | Comm. | **MIT** | Comm. | MIT | BSD |
-| Price / dev / year | $0 | $599+ | $0 | $850+ | $0 | $0 |
+| Price / dev (2026-11 list) | $0 | from $799 perpetual | $0 | $699 / $1,100 per year; SaaS needs OEM | $0 | $0 |
 | **Bundle size (gzip, incl. required CSS)** | **7.50kb** headless / **18.40kb** editable ✓ | heavy (monolith) | **226.18kb** (measured) | not measurable (login-gated) | **14.89kb** (measured — *smaller than FluxGantt editable*) | ~ |
 | TypeScript native | ✓ | ~ | ~ | ✓ | ✗ | ✗ |
 | Core framework-agnostic | ✓ | ✗ | ✗ | ~ | ~ | ✗ |
@@ -2345,14 +2376,14 @@ function earliestStartFromPred(
 | Svelte wrapper | ✓* | ✗ | ✗ | ✗ | ✗ | ✗ |
 | Angular wrapper | ✓* | ✓ | ~ | ✓ | ✗ | ✗ |
 | All 4 dependency types | ✓ | ✓ | ✓ | ✓ | ✗ (FS only) | ✗ |
-| Critical path | ✓ | ✓ | ✓ | ✓ | ✗ | ✗ |
+| Critical path | ✓ (MIT) | ✓ | ✗ (PRO only) | ✓ (Enterprise) | ✗ | ✗ |
 | Resource view | ✓** | ✓ | ✗ | ✓ | ✗ | ✗ |
 | Resource leveling | ✓** | ✓ | ✗ | ✓ | ✗ | ✗ |
 | Baselines | ✓** | ✓ | ✗ | ✓ | ✗ | ✗ |
 | MS Project XML import | ✓** | ✓ | ~ | ✓ | ✗ | ✗ |
 | Export PDF | ✓** | ✓ | ✗ | ✓ | ~ | ✗ |
 | AI auto-schedule † | ✓*** | ~ | ✗ | ~ | ✗ | ✗ |
-| AI agent via MCP server | ✓*** | ✗ | ✗ | ✗ | ✗ | ✗ |
+| AI agent via MCP server | ✓* | ✗ | ✗ | ✗ | ✗ | ✗ |
 | AI risk forecaster | ✓*** | ✗ | ✗ | ✗ | ✗ | ✗ |
 | Real-time multiplayer | ✓*** | ✗ | ✗ | ✗ | ✗ | ✗ |
 | Modern UI (2026) | ✓ | ~ | ~ | ✓ | ~ | ✗ |
@@ -2361,7 +2392,9 @@ function earliestStartFromPred(
 | Actively maintained | ✓ | ✓ | ✓ | ✓ | ~ | ✗ |
 
 **Legend:**
-`✓` = Yes · `✓*` = Yes, Wave 2 (Pro tier) · `✓**` = Yes, Pro tier · `✓***` = Yes, Cloud tier · `✗` = No · `~` = Partial / limited
+`✓` = Yes · `✓*` = Planned, MIT core (2026-11; previously "Wave 2 (Pro tier)" for the wrappers and "Cloud tier" for MCP) · `✓**` = Yes, Pro tier (planned) · `✓***` = Not committed / exploratory (was Cloud tier) · `✗` = No · `~` = Partial / limited
+
+**2026-11 corrections:** the dhtmlx Community critical-path cell previously read ✓; DHTMLX 10 keeps critical path, auto-scheduling and resource planning in PRO ([DHTMLX Gantt 10.0](https://dhtmlx.com/blog/dhtmlx-gantt-10-0/)). The "Bryntum Gantt" column is the commercial product; **Bryntum 8 Community** (MIT, 2026-11-03) keeps critical path, baselines, MS Project import and PDF export in Enterprise ([Bryntum changelog](https://bryntum.com/products/gantt/changelog/)). **SVAR Gantt** (MIT core, PRO from $749, React/Svelte/Vue, ~101 KB gzip per bundlephobia) keeps CPM in PRO and is not given a column because its other cells have not been verified. Prices: [DHTMLX licensing](https://dhtmlx.com/docs/products/dhtmlxGantt/#licensing), [Bryntum store](https://bryntum.com/store/gantt/), read 2026-11-11/12. Frappe and jsGantt remain in the table for continuity but are no longer the benchmark.
 
 `†` **AI auto-schedule is now an industry standard** — no longer an exclusive differentiator for FluxGantt. The real differentiators are **bundle size**, **headless/server-side**, **framework-agnostic core**, and **AI agent via MCP server** (the bold rows / FluxGantt-only). `dhtmlx Community` is derived from the PRO codebase as a funnel strategy: it ships some PRO features but **gates** resource/baseline/PDF to push users toward the paid build.
 
@@ -2370,6 +2403,8 @@ function earliestStartFromPred(
 ## Conclusion
 
 This spec is a living document. As the product evolves, sections will be updated, and major changes will be reflected in the version number at the top of the document.
+
+**Revision 0.1.4 (2026-11-12 — strategy revision):** owner-approved findings S1, S3 and S4 of `.claude/work/audit-architecture-fable.md`, using `reports/Thị trường thư viện Gantt JS.md` (2026-11). Reference competitors are now DHTMLX Gantt 10 Community, SVAR Gantt and Bryntum 8 Community, with current dated, sourced prices (§2.1, §21; the dhtmlx Community critical-path claim was corrected). The wedge is CPM in MIT + headless engine + small bundle + tested WCAG 2.1 AA + a licence with no SaaS restriction (§2.2, §3.2). Pro is planned at ~$600–800/dev perpetual with 12 months of updates and a ~50–70% renewal, licence allows SaaS with no OEM surcharge, not yet on sale (§9.2, §14); Svelte/Angular wrappers and basic/custom columns moved to MIT core; the watermark is dropped. The hosted Cloud tier and Enterprise tier are not committed / exploratory (§4.3, §9.3, §12, §13.3, §14.4, §17, §18), replaced by an MIT MCP server + `llms.txt` and a Yjs sync adapter built only on pre-sold demand (§9.4). Superseded values are quoted inline where they were replaced. Summary at the top of the document.
 
 **Revision 0.1.3 (Week 8 — documentation & launch prep; bundle claims replaced by measurements):** marked §9.1 Week 8 item-by-item with what shipped and what is genuinely blocked, rather than ticking the week wholesale. Added `/docs/comparison` and `/docs/examples`, plus `apps/docs/launch/{show-hn,product-hunt}.md`. **Every competitor bundle figure in this spec was replaced with a measurement** from the new `tooling/scripts/measure-competitor-bundles.mjs`, which packs each library from npm at a pinned version and gzips its own entry point plus required stylesheet — and two of this document's own claims did not survive that: the "all competitors are hundreds-of-KB monoliths" framing is **false for Frappe** (14.89 KiB gzip, *smaller* than FluxGantt's 19.17 KiB editable chart), and **Bryntum is not independently measurable at all** (npm ships a 13 KB placeholder; the real bundle is login-gated). §2.2, §3.2, §4.2, §9.1, §17 and §21 were rewritten accordingly, and the positioning moved from "smallest in class" to "you download only what you compose, and the engine alone is 7.71 KiB" — the claim that survives a reader re-running the script. Also: the §3.2 tagline and §4.2 budgets now carry real numbers (7.71 / 23.82 KiB) instead of the original <15kb/<30kb targets, both of which are met; `apps/landing/` is documented as deliberately empty (the landing page is `apps/docs/pages/index.mdx`); and §15.1's third demo GIF ("AI scheduling") is replaced by a critical-path recompute, since AI scheduling is Wave 3. **Not done, and flagged rather than ticked:** the 3 demo GIFs and the Product Hunt image gallery (binary media, specified shot-by-shot but not capturable in-repo), and StackBlitz embeds (blocked on npm publication — `workspace:*` cannot resolve there). Launch itself is gated on publishing `@fluxgantt/core`.
 
