@@ -221,7 +221,24 @@ export interface TaskLabelParams {
  * or `dependencyLabel` later is a new optional key on an existing optional interface —
  * non-breaking by construction, no architectural change.
  */
+export type GanttAnnouncement =
+  /** After a keyboard move / resize: the task's new span, localized with times. */
+  | {
+      readonly kind: 'moved' | 'resized';
+      readonly name: string;
+      readonly startLabel: string;
+      readonly endLabel: string;
+      readonly locale: string;
+    }
+  /** After Alt+Enter: `linked` when the dependency was created, `link-failed` when it was rejected
+   *  (duplicate, or it would form a cycle). `from` / `to` are task names. */
+  | { readonly kind: 'linked' | 'link-failed'; readonly from: string; readonly to: string; readonly locale: string };
+
 export interface GanttMessages {
+  /** Text for the polite live region that announces keyboard move, resize and link results
+   *  (`withInteraction`). Return a complete sentence; throwing or returning a non-string falls back
+   *  to the English default. Inserted with `textContent`, never as HTML. */
+  readonly announce?: (announcement: GanttAnnouncement) => string;
   /** Replaces the per-task `aria-label` sentence wholesale. Throwing, or returning a
    *  non-string, falls back to the English default — silently, by design: this runs once per
    *  task per paint, so a `console.warn` would emit thousands of identical lines in a single

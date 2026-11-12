@@ -375,3 +375,60 @@ describe('property', () => {
     );
   });
 });
+
+describe('live region', () => {
+  const live = () => container.querySelector('[aria-live="polite"]') as HTMLElement;
+
+  it('exists once per mount, hidden, and is removed on unmount', () => {
+    const g = chart([t('a', '2026-01-05T09:00', '2026-01-06T09:00')]);
+    expect(container.querySelectorAll('[aria-live]')).toHaveLength(1);
+    g.unmount();
+    expect(container.querySelector('[aria-live]')).toBeNull();
+  });
+
+  it('announces a move with the new start and end including times', () => {
+    chart([t('a', '2026-01-05T09:00', '2026-01-06T17:00')]);
+    key(row('a'), 'ArrowRight', ALT);
+    expect(live().textContent).toBe('a moved: Jan 6, 2026, 9:00 AM to Jan 7, 2026, 5:00 PM');
+  });
+
+  it('announces a resize whose date label would not change (time of day only)', () => {
+    chart([t('a', '2026-01-05T09:00', '2026-01-07T09:00')]);
+    key(row('a'), 'ArrowRight', ALT_SHIFT);
+    expect(live().textContent).toBe('a resized: Jan 5, 2026, 9:00 AM to Jan 7, 2026, 5:00 PM');
+  });
+
+  it('announces a created link and a rejected one', () => {
+    const g = chart([t('a', '2026-01-05T09:00', '2026-01-06T09:00'), t('b', '2026-01-06T09:00', '2026-01-07T09:00')]);
+    key(row('a'), 'ArrowDown', { shiftKey: true });
+    key(row('b'), 'Enter', ALT);
+    expect(live().textContent).toBe('Linked a to b');
+    key(row('b'), 'Enter', ALT); // duplicate
+    expect(live().textContent).toBe('Link not created from a to b');
+    expect(g.getDependencies()).toHaveLength(1);
+  });
+
+  it('uses messages.announce, writes it as text (never HTML), and falls back when it throws', () => {
+    let boom = false;
+    chart([t('a', '2026-01-05T09:00', '2026-01-06T09:00')], {
+      messages: {
+        announce: (x) => {
+          if (boom) throw new Error('x');
+          return `<img src=x onerror=alert(1)> ${x.kind}`;
+        },
+      },
+    });
+    key(row('a'), 'ArrowRight', ALT);
+    expect(live().textContent).toBe('<img src=x onerror=alert(1)> moved');
+    expect(live().querySelector('img')).toBeNull();
+    boom = true;
+    key(row('a'), 'ArrowRight', ALT);
+    expect(live().textContent).toContain('a moved:');
+  });
+
+  it('does not announce a declined resize (milestone)', () => {
+    chart([t('m', '2026-01-05T09:00', '2026-01-05T09:00', { type: 'milestone' })]);
+    key(row('m'), 'ArrowRight', ALT_SHIFT);
+    expect(live().textContent).toBe('');
+  });
+});

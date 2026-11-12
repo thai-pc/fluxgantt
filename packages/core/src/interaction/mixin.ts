@@ -18,7 +18,7 @@ import {
 } from '../gantt-internal.js';
 import { DependencyLinkError } from '../store/index.js';
 import { normalizeDate, differenceInWorkingHours } from '../compute/working-calendar.js';
-import { layoutRows } from '../render/renderer-base.js';
+import { layoutRows, MAX_ARIA_TASK_NAME_LENGTH } from '../render/renderer-base.js';
 import type { SvgRendererHandle } from '../render/svg-renderer.js';
 import type { CanvasRendererHandle } from '../render/canvas-renderer.js';
 import { enableDragMove } from './drag-move.js';
@@ -32,7 +32,7 @@ import { enableWheelZoom } from './wheel-zoom.js';
 import { batch } from '../signals.js';
 // TYPE-ONLY import back into the base facade — erased at compile time, so no runtime cycle.
 import type { GanttInstance } from '../gantt.js';
-import type { TaskId } from '../types.js';
+import type { GanttAnnouncement, Task, TaskId } from '../types.js';
 
 /**
  * Makes a mounted chart interactive: drag-move, drag-resize, drag-create-dependency,
@@ -78,6 +78,21 @@ function wireInto(
 ): InteractionDisposers {
   const config = internal.config;
   const density = config.density ?? 'default';
+  // One visually hidden polite live region per mount, created here so no other capability pays for it.
+  // Text goes in via `textContent` only. Keyboard commits announce; pointer drags do not.
+  const live = document.createElement('div');
+  live.setAttribute('aria-live', 'polite');
+  live.style.cssText = 'position:absolute;top:0;left:0;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap';
+  handle.container.append(live);
+  const say = (a: GanttAnnouncement) => {
+    let text: string | undefined;
+    try {
+      text = config.messages?.announce?.(a);
+    } catch {
+      text = undefined;
+    }
+    live.textContent = (typeof text === 'string' ? text : english(a)).slice(0, 400);
+  };
 
   // Selection is NOT gated by readOnly (confirmed): readOnly disables drag-move/drag-resize/
   // drag-create-dep, not click-select (spec-selection.md §5.5).
@@ -136,8 +151,16 @@ function wireInto(
     // Read at keypress time so composition order is irrelevant; inert without `withViewport`.
     // Keyboard alternative to drag (SC 2.5.7): same commit points as the pointer path, gated by readOnly
     // inside keyboard-nav and by enableDependencyDrag here.
-    onShift: (id, days, edge) => commitShift(instance, internal, id, days, edge),
-    onLink: callbacks.onDependencyCreated,
+    onShift: (id, days, edge) => {
+      if (commitShift(instance, internal, id, days, edge)) {
+        const t = internal.tasks.get(id);
+        if (t) say({ kind: edge ? 'resized' : 'moved', name: nameOf(t), ...span(internal, t), locale: config.locale ?? 'en' });
+      }
+    },
+    onLink: callbacks.onDependencyCreated && ((from, to) => {
+      const [a, b] = [internal.tasks.get(from), internal.tasks.get(to)];
+      if (a && b) say({ kind: callbacks.onDependencyCreated!(from, to) ? 'linked' : 'link-failed', from: nameOf(a), to: nameOf(b), locale: config.locale ?? 'en' });
+    }),
     onReveal: (id) => (instance as { scrollToTask?: (id: TaskId) => boolean }).scrollToTask?.(id),
     getTasks: () => internal.tasks.all(),
     // Live, not the construction-time constant: `setDensity()` and `withResponsive` change the
@@ -212,7 +235,10 @@ function wireInto(
     // (see pointer-drag.ts) and click-select/keyboard-nav own independent listeners. The reactive
     // render effect is stopped by the caller BEFORE this runs, and `handle.destroy()`
     // AFTER it (see `gantt.ts`'s `unmount`).
-    dispose: () => disposers.forEach((d) => d()),
+    dispose: () => {
+      disposers.forEach((d) => d());
+      live.remove();
+    },
   };
 }
 
@@ -238,6 +264,28 @@ function commitDrag(
   internal.reschedule(taskId, { start: newStart, end: newEnd }, true);
 }
 
+const nameOf = (t: Task): string => t.name.slice(0, MAX_ARIA_TASK_NAME_LENGTH);
+
+/** Localized start / end WITH times: a keyboard resize or move can change only the time of day. */
+function span(internal: GanttInternal, t: Task, locale = internal.config.locale ?? 'en') {
+  const f = (d: Task['start']) => {
+    try {
+      return normalizeDate(d, internal.calendar.timezone).toLocaleString(locale, { dateStyle: 'medium', timeStyle: 'short' });
+    } catch {
+      return String(d);
+    }
+  };
+  return { startLabel: f(t.start), endLabel: f(t.end) };
+}
+
+function english(a: GanttAnnouncement): string {
+  return 'from' in a
+    ? a.kind === 'linked'
+      ? `Linked ${a.from} to ${a.to}`
+      : `Link not created from ${a.from} to ${a.to}`
+    : `${a.name} ${a.kind}: ${a.startLabel} to ${a.endLabel}`;
+}
+
 /** The drag gate: a bar is rolled up exactly when the renderer's own provider call has an entry for it
  *  (a provider that throws paints authored dates, so the bar is draggable and so is this). */
 function isRolledUp(internal: GanttInternal, id: TaskId): boolean {
@@ -260,14 +308,16 @@ function commitShift(
   id: TaskId,
   days: number,
   edge?: 'end',
-): void {
+): boolean {
   const task = internal.tasks.get(id);
-  if (!task || (task.type !== 'milestone' && isRolledUp(internal, id))) return;
+  if (!task || (task.type !== 'milestone' && isRolledUp(internal, id))) return false;
   const tz = internal.calendar.timezone;
   const end = normalizeDate(task.end, tz);
   if (!edge) {
     commitDrag(internal, id, normalizeDate(task.start, tz).add({ days }), end.add({ days }));
-  } else if (task.type !== 'milestone') {
+  } else if (task.type === 'milestone') {
+    return false;
+  } else {
     // Floor: the EARLIER of start + 1 day and the current end, as `computeClampedResizedEnd`.
     const floor = normalizeDate(task.start, tz).add({ days: 1 });
     const min = floor.epochNanoseconds < end.epochNanoseconds ? floor : end;
@@ -279,10 +329,11 @@ function commitShift(
       const next = t.epochNanoseconds < min.epochNanoseconds ? min : t;
       if (differenceInWorkingHours(task.start, next, internal.calendar) !== cur || next === min) {
         commitResize(instance, internal, id, next);
-        return;
+        break;
       }
     }
   }
+  return true;
 }
 
 function commitResize(
@@ -333,17 +384,18 @@ function commitCreateDep(
   internal: GanttInternal,
   fromTaskId: TaskId,
   toTaskId: TaskId,
-): void {
-  if (!internal.tasks.has(fromTaskId) || !internal.tasks.has(toTaskId)) return; // race: a task removed mid-drag
+): boolean {
+  if (!internal.tasks.has(fromTaskId) || !internal.tasks.has(toTaskId)) return false; // race: a task removed mid-drag
   try {
     instance.linkTasks(fromTaskId, toTaskId, 'FS'); // emits dependency:added on success
+    return true;
   } catch (err) {
     // Swallow ONLY the expected validation rejections — self-link (defense-in-depth; the
     // recognizer already filters this out) / duplicate-pair / cycle, all raised as
     // DependencyLinkError. Silent revert (decision 2): no event, no rethrow. A NON-validation
     // throw (a real bug) is rethrown rather than hidden — a bare `catch {}` here would mask
     // genuine defects as ordinary rejected drops.
-    if (err instanceof DependencyLinkError) return;
+    if (err instanceof DependencyLinkError) return false;
     throw err;
   }
 }
