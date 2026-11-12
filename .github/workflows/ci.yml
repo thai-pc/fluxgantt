@@ -56,7 +56,7 @@ jobs:
       - name: Typecheck
         run: pnpm typecheck
 
-      - name: Build (packages + docs site + example apps)
+      - name: Build (packages + example apps)
         run: pnpm build
 
       - name: "Public API reports (committed etc/*.api.md must match the build)"
@@ -88,13 +88,13 @@ jobs:
       - name: Unit tests
         run: pnpm test
 
-      - name: Snippet-sync check (README / docs / example stay identical)
+      - name: Snippet-sync check (README / core README / example stay identical)
         run: node tooling/scripts/check-snippet-sync.mjs
 
       - name: Publish readiness (npm metadata on every publishable package)
         run: node tooling/scripts/check-publish-readiness.mjs
 
-      - name: StackBlitz links (docs/README links match the generator manifest)
+      - name: StackBlitz links (README links match the generator manifest)
         run: node tooling/scripts/check-stackblitz-links.mjs
 
       - name: Tooling unit tests (StackBlitz generator, node:test)
@@ -237,5 +237,5 @@ jobs:
 
 # NOTE: This workflow build-checks; it never publishes or deploys. Releasing to npm lives in
 # release.yml (changesets opens a "Version Packages" PR; merging it is what publishes). The docs
-# site is deployed by Cloudflare Pages' Git integration, outside GitHub Actions (RELEASING.md ->
-# Docs site); the `pnpm build` step above still builds it, so a broken docs build fails the PR.
+# site lives in its own repository, with its own CI, and is deployed by Cloudflare Pages' Git
+# integration there (RELEASING.md -> Docs site).
