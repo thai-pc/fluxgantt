@@ -1,5 +1,41 @@
 # @fluxgantt/core
 
+## 0.8.0
+
+### Minor Changes
+
+- 6d5b1a1: Tier the public API with TSDoc release tags (see `STABILITY.md`). No runtime change: every bundle fixture is byte-identical.
+  
+  Beta: these 61 symbols are now `@beta` and may change or be removed in any minor release without a deprecation window.
+  
+  - `@fluxgantt/core`: `signal`, `computed`, `effect`, `batch`, `untracked`, `ReadonlySignal`, `TaskStore`, `DependencyStore`, `LinkOptions`, `normalizeDate`, `computeCascade`, `CascadeResult`, `CascadeShift`, `ComputeCriticalPathOptions`, `ConstraintResolver`, `ConstraintResolverContext`, `toResourceId`, `toBaselineId`, `toProjectId`, `ResourceId`, `BaselineId`, `ProjectId`, `ResourceAssignment`, `TaskConstraint`, `GanttAnnouncement` (and the `GanttMessages.announce` member that takes it).
+  - `@fluxgantt/core/io`: `escapeCsvValue`.
+  - `@fluxgantt/core/render`: `createSvgRenderer`, `createTimeScale`, `deriveTimeRange`, `layoutRows`, `layoutTaskBar`, `layoutDependencyPath`, `computeGridColumns`, `anchorOf`, `validateTaskColor`, `ROW_HEIGHT`, `SvgRendererInput`, `SvgRendererOptions`, `SvgRendererHandle`, `BarHit`, `BarZone`, `InteractiveRendererHandle`, `TimeRange`, `TimeScale`, `RowLayout`, `TaskBarLayout`, `DependencyPathLayout`, `GridColumn`.
+  - `@fluxgantt/core/interaction`: `enableDragMove`, `enableDragResize`, `enableDragCreateDep`, `enableClickSelect`, `enableKeyboardNav`, `enableWheelZoom` and their option/handle types `DragMoveOptions`, `DragResizeOptions`, `DragCreateDepOptions`, `SelectionOptions`, `KeyboardNavOptions`, `KeyboardNavHandle`, `WheelZoomOptions`.
+  
+  Deprecated: these 7 symbols were exported by accident. They still work, are also `@beta`, and will stop being exported no earlier than 2 minor releases and 30 days after this release.
+  
+  - `Signal` (class, from `@fluxgantt/core`): annotate with the `ReadonlySignal` type instead; a type-only export will remain.
+  - `SelectionStore` (from `@fluxgantt/core`): use `GanttInstance.select()` / `getSelection()`.
+  - `CollapseStore` (from `@fluxgantt/core`): use `GanttInstance.toggleCollapse()` / `isCollapsed()`.
+  - `ARROWHEAD_MARKER_ID`, `LABEL_COLUMN_WIDTH`, `PIXELS_PER_DAY`, `MAX_GRID_COLUMNS` (from `@fluxgantt/core/render`): no replacement.
+  
+  Also deprecated at member level: `TaskStore.restore()` and `DependencyStore.restore()` (history replay only: they bypass validation and events; no replacement).
+  
+  `TaskStore` and `DependencyStore` are `@beta`, not deprecated. Public declarations that reference a `@beta` type (`Task.constraint`, `Task.resources`, `computeCriticalPath`'s options) are recorded as `ae-incompatible-release-tags` warnings in `core.api.md`.
+- 62c4efc: Add the `task:updated` event: a bus-level catch-all that fires once per write that changed at least one task field, with the payload `{ taskId, task, prev, changed, source? }`.
+  
+  Beta: `task:updated`, `TaskUpdatedPayload` and `TaskField` are experimental and may change in any minor release.
+  
+  - Fires for `updateTask`, `moveTask`, `resizeTask`, `setProgress`, every auto-schedule cascade shift, and undo/redo of an update (`source` is then `'undo'` or `'redo'`). It fires after the write's specific `task:moved` / `task:resized` / `task:progressed` events and after `onTaskChange`, so one write can deliver both a specific event and `task:updated`; subscribe to one kind, not both.
+  - `task` and `prev` are write-time snapshots: do not mutate them, and read `getTask(taskId)` when persisting. `changed` is a set (order unspecified). A shape-only change (a string replaced by an equal-instant `ZonedDateTime`) emits nothing.
+  - A write or `undo()`/`redo()` made from inside a listener or `onTaskChange` starts a nested command whose events arrive before the rest of the outer command's events. Undo-to-reject is unsupported; validate before writing, or defer with `queueMicrotask`.
+  - Never fires for add, remove, import or dependency operations, and not for a no-op patch (`onTaskChange` still does).
+  - `start` / `end` compare by instant; every other field compares with `Object.is` (a deep-equal replacement object counts as changed); `updatedAt` is ignored.
+  - Hosts that keep an exhaustive `Record<GanttEventName, ...>` must add the new key.
+  
+  Behaviour fix (visible): `updateTask(id, patch)` no longer lets a patch overwrite `createdAt` (`id` and `updatedAt` were already forced). Passing a whole `Task` as the patch used to replace `createdAt` with the patch's value; it now keeps the original. Only hosts that relied on rewriting `createdAt` through `updateTask` are affected.
+
 ## 0.7.1
 
 ### Patch Changes
