@@ -275,12 +275,19 @@ const FOCUS_RING_OFFSET_PX = 5;
 // full width of the focused row, also cloned into the pinned column, so focus stays visible when the
 // bar is scrolled away or under the column. The `:has()` rule is its OWN rule: a UA without `:has`
 // drops the whole rule, and must not take the bar-ring rule down with it. The default colour
-// is #0369a1 (5.9:1 on white); the old #0ea5e9 was 2.8:1.
+// is #0369a1 (5.9:1 on white); the old #0ea5e9 was 2.8:1. The frame's stroke is clamped to 2px so a wider
+// host token cannot spill into the neighbouring rows (the inset is fixed at 1px). Chromium does not
+// recolour SVG `stroke` in forced colors, and a dark blue is under 3:1 on some Windows contrast grounds
+// (#202020, #2D3236), so both strokes become `Highlight` there (separate rules inside one @media: a UA
+// without `:has` drops only the frame's), and the pinned column takes the forced Canvas ground like the chart.
 const FOCUS_STYLE_TEXT =
   '.fg-timeline__row:focus-visible{outline:none}' +
   '.fg-task__focus-ring,.fg-timeline__focus-row{stroke:none;pointer-events:none}' +
   '.fg-timeline__row:focus-visible .fg-task__focus-ring{stroke:var(--fg-task-focus,#0369a1);stroke-width:var(--fg-task-focus-width,2px)}' +
-  '.fg-timeline__layer:has(.fg-timeline__row:focus-visible) .fg-timeline__focus-row{stroke:var(--fg-task-focus,#0369a1);stroke-width:var(--fg-task-focus-width,2px)}';
+  '.fg-timeline__layer:has(.fg-timeline__row:focus-visible) .fg-timeline__focus-row{stroke:var(--fg-task-focus,#0369a1);stroke-width:min(var(--fg-task-focus-width,2px),2px)}' +
+  '@media (forced-colors:active){.fg-timeline__row:focus-visible .fg-task__focus-ring{stroke:Highlight}' +
+  '.fg-timeline__layer:has(.fg-timeline__row:focus-visible) .fg-timeline__focus-row{stroke:Highlight}' +
+  '.fg-timeline__sticky-column{background:Canvas!important}}';
 
 /**
  * Creates and mounts an SVG renderer into `container` — appends one

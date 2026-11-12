@@ -46,18 +46,29 @@ test('dark theme: no axe violations and the live focus colour is #38bdf8 at 3:1+
   expect(live.bg).toBe('rgb(10, 10, 10)');
 });
 
-test('svg + forced-colors: the frame keeps a visible, non-transparent stroke', async ({ page }) => {
+test('svg + forced-colors: the ring and the frame resolve to the system Highlight colour', async ({ page }) => {
   await page.emulateMedia({ forcedColors: 'active' });
   await focusOffscreenRow(page, 60);
-  const styles = await frameStyles(page);
-  expect(styles).toHaveLength(2);
-  for (const s of styles) {
-    expect(s.stroke).not.toBe('none');
-    expect(s.stroke).not.toMatch(/transparent|rgba\(0, 0, 0, 0\)/);
-    expect(s.width).toBeGreaterThanOrEqual(2);
-  }
-  // Chromium does not recolour SVG `stroke` under forced-colors: the author colour (#0369a1) is kept, which
-  // is 3.5:1 even on the worst forced ground (pure black), so no `@media (forced-colors)` rule is shipped.
+  const r = await page.evaluate(() => {
+    const probe = document.createElement('span');
+    probe.style.color = 'Highlight';
+    document.body.append(probe);
+    const highlight = getComputedStyle(probe).color;
+    probe.remove();
+    const stroke = (sel: string) => [...document.querySelectorAll(sel)].map((e) => getComputedStyle(e).stroke);
+    return {
+      highlight,
+      frames: stroke('.fg-timeline__focus-row'),
+      ring: stroke('.fg-timeline__row:focus-visible .fg-task__focus-ring'),
+      columnBg: getComputedStyle(document.querySelector('.fg-timeline__sticky-column')!).backgroundColor,
+      canvas: getComputedStyle(document.getElementById('gantt')!).backgroundColor,
+    };
+  });
+  expect(r.frames).toHaveLength(2);
+  expect(r.frames.every((s) => s === r.highlight)).toBe(true);
+  expect(r.ring).toEqual([r.highlight]);
+  // The pinned column takes the same forced ground as the chart, so Highlight is read against one ground.
+  expect(r.columnBg).toBe(r.canvas);
 });
 
 test('canvas + forced-colors: nothing throws and the frame is still painted', async ({ page }) => {
