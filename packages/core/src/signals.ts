@@ -149,13 +149,24 @@ class EffectImpl extends ReactiveNode {
 
 function flush(): void {
   // Loop until stable (an effect may trigger further effects).
+  // One throwing effect must not drop the rest of the pending list: run them all, then
+  // rethrow the first error.
   let guard = 0;
+  let failed = false;
+  let error: unknown;
   while (pending.size > 0) {
     if (++guard > 10_000) throw new Error('signals: flush did not converge');
     const batchList = [...pending];
     pending.clear();
-    for (const e of batchList) e._run();
+    for (const e of batchList) {
+      try {
+        e._run();
+      } catch (err) {
+        if (!failed) [failed, error] = [true, err];
+      }
+    }
   }
+  if (failed) throw error;
 }
 
 /** Create a reactive signal that can be read/written through `.value`. */

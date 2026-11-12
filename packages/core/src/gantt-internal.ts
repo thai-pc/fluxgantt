@@ -166,8 +166,8 @@ export interface GanttInternal {
   // --- Mutation commit primitives (shared with interaction's gesture commit points) ---
   reschedule(id: TaskId, patch: TaskPatch, cascade: boolean): Task;
   shift(id: TaskId, start: DateInput, end: DateInput): void;
-  begin(): void;
-  end(): void;
+  /** The single command path: batches writes, defers events/`onTaskChange` until effects flushed. */
+  run<T>(fn: () => T, group?: boolean): T;
   record(op: HistoryOp): void;
   recordAll(ops: readonly HistoryOp[]): void;
   applySel(ids: readonly TaskId[]): void;

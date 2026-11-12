@@ -108,26 +108,24 @@ function subtree(n: number): GanttConfig {
 describe('effect-run tripwires: cascade (50-task FS chain, schedulingMode auto)', () => {
   const move = (g: ReturnType<typeof createGantt>) => g.moveTask(id('k0'), '2026-02-02T09:00');
 
-  it('moveTask: one run for the mover plus one per shifted successor (50 tasks = mover + 49 shifts)', { timeout: 60_000 }, () => {
-    // The spec / audit quote "51" for a 50-chain; measured on 0109f02 it is 50 (the chain head is
-    // the mover, not a shift). A 51-task chain gives the quoted 51.
-    expect(measure(chain(50, auto), move, { mounted: false })).toEqual({ data: 50 });
-    expect(measure(chain(51, auto), move, { mounted: false })).toEqual({ data: 51 });
-    // TODO(spec-mutation-batching §8 item 2, PR 1): target data 1.
+  it('moveTask: ONE run for the mover plus every shifted successor (was mover + one per shift)', { timeout: 60_000 }, () => {
+    // Before PR 1 a 50-chain ran 50 data effects (mover + 49 shifts), a 51-chain 51. The command
+    // runner batches the whole cascade into ONE.
+    expect(measure(chain(50, auto), move, { mounted: false })).toEqual({ data: 1 });
+    expect(measure(chain(51, auto), move, { mounted: false })).toEqual({ data: 1 });
     expect(measure(chain(50, auto), move, { mounted: true })).toMatchInlineSnapshot(`
       {
-        "cpm": 50,
-        "data": 50,
-        "paints": 50,
+        "cpm": 1,
+        "data": 1,
+        "paints": 1,
       }
     `);
-    // TODO(spec-mutation-batching §8 item 2, PR 1): target paints 1, cpm 1.
   });
 
   it('undo and redo of that move', () => {
     const undo = (g: ReturnType<typeof createGantt>) => g.undo();
     const redo = (g: ReturnType<typeof createGantt>) => g.redo();
-    expect(measure(chain(50, auto), undo, { mounted: false, prepare: move2 })).toEqual({ data: 50 });
+    expect(measure(chain(50, auto), undo, { mounted: false, prepare: move2 })).toEqual({ data: 1 });
     expect(
       measure(chain(50, auto), redo, {
         mounted: false,
@@ -136,8 +134,7 @@ describe('effect-run tripwires: cascade (50-task FS chain, schedulingMode auto)'
           g.undo();
         },
       }),
-    ).toEqual({ data: 50 });
-    // TODO(spec-mutation-batching §8 item 2, PR 1): target data 1 for each.
+    ).toEqual({ data: 1 });
   });
   function move2(g: ReturnType<typeof createGantt>): void {
     g.moveTask(id('k0'), '2026-02-02T09:00');
@@ -154,19 +151,17 @@ describe('effect-run tripwires: removeTask of a 100-descendant subtree with 99 d
   it('headless', () => {
     expect(measure(subtree(100), remove, { mounted: false })).toMatchInlineSnapshot(`
       {
-        "data": 200,
+        "data": 1,
       }
     `);
-    // TODO(spec-mutation-batching §8 item 2, PR 1/2): target data 1 (PR 2 also drops the
-    // per-descendant TaskStore bump, so the revision moves by 1 instead of N).
   });
 
   it('mounted', () => {
     expect(measure(subtree(100), remove, { mounted: true })).toMatchInlineSnapshot(`
       {
-        "cpm": 100,
-        "data": 200,
-        "paints": 200,
+        "cpm": 0,
+        "data": 1,
+        "paints": 1,
       }
     `);
   });
@@ -179,13 +174,12 @@ describe('effect-run tripwires: multi-write grouped mutations', () => {
   it('duplicateTask of 5 selected tasks', () => {
     const act = (g: ReturnType<typeof createGantt>) => g.duplicateTask();
     const prepare = (g: ReturnType<typeof createGantt>) => g.select(ids5);
-    expect(measure(flat(10), act, { mounted: false, prepare })).toEqual({ data: 5 });
-    // TODO(spec-mutation-batching §8 item 2, PR 1): target data 1.
+    expect(measure(flat(10), act, { mounted: false, prepare })).toEqual({ data: 1 });
     expect(measure(flat(10), act, { mounted: true, prepare })).toMatchInlineSnapshot(`
       {
-        "cpm": 5,
-        "data": 5,
-        "paints": 5,
+        "cpm": 1,
+        "data": 1,
+        "paints": 1,
       }
     `);
   });
@@ -198,12 +192,11 @@ describe('effect-run tripwires: multi-write grouped mutations', () => {
     const prepare = (g: ReturnType<typeof createGantt>) => g.select(ids5);
     expect(measure(flat(10), act, { mounted: true, prepare })).toMatchInlineSnapshot(`
       {
-        "cpm": 5,
-        "data": 5,
-        "paints": 5,
+        "cpm": 1,
+        "data": 1,
+        "paints": 1,
       }
     `);
-    // TODO(spec-mutation-batching §8 item 2, PR 1): target data 1, paints 1.
   });
 
   it('importJson (already batched) is one run', () => {
