@@ -1624,7 +1624,7 @@ export function createCanvasRenderer(
         labelCtx.translate(0, HEADER_HEIGHT - scrollTop);
         paintRowLabels(labelCtx, windowedRows, rowHeight, 0, tokens);
         // Before the divider, which stays last; the closing edge falls outside the bitmap (open at the divider side).
-        paintFocusRow(labelCtx, focusRowY, 0, offsetX + 2, rowHeight, tokens);
+        paintFocusRow(labelCtx, focusRowY, 0, offsetX + tokens.taskFocusWidth, rowHeight, tokens);
       } finally {
         labelCtx.restore();
       }
