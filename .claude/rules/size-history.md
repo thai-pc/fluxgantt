@@ -265,3 +265,10 @@ place of per-kind branches plus two helpers and no `try` around `toLocaleString`
 sink, kept); creating the live-region element lazily on first announce (+1..+5 B, rejected: it saves no code and a
 region that is created and filled in the same tick is announced less reliably); reusing the renderer's `dateLabel`
 memo (not applicable: it is date-only and private to `renderer-base.ts`, while the announcement needs times).
+
+Review round 2 of that pass (resize no-op test based on what `resizeTask` would write, painted-span stepping oracle,
+a 366-step bound, "cannot move / resize" announcements, ids and a link-failure `reason` in `GanttAnnouncement`, an
+alternating no-break space so repeated announcements are re-read) cost +164 B (`+ withRender + withInteraction`,
+now 20841, 919 B left), +172 B (kitchen sink 25630, 1250 B left) and +174 B (`+ withResponsive` 22334); other
+fixtures +0. Total against master after #127: +909 / +899 / +938. A hidden-anchor "cannot link" announcement was
+not built (it would need a third `onLink` outcome across the keyboard-nav boundary); it is documented instead.
