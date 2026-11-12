@@ -17,12 +17,14 @@ FluxGantt renders data **provided by others** (host-app tasks, file imports, sha
 - Dependency cycles must be detected and thrown, no infinite loop (CPM).
 
 ## 3. AI layer (Pro/Cloud) — prompt injection
+> **Status (2026-11 strategy revision):** AI auto-schedule and the hosted Cloud tier are off the committed roadmap (see `project-overview.md`). §3 and §4 stay as guidance in case that work ever happens. §3 still applies to anything that feeds user content to an LLM, and the planned MIT MCP server must still treat tool inputs as untrusted.
+
 - User natural-language input going into the LLM = **untrusted**. Don't concatenate it straight into the system prompt; separate system vs user content clearly.
 - LLM output (task/dep JSON) must be **re-validated against a schema** before use — don't trust the returned structure.
 - AI **"suggests", doesn't "decide"**: always let the user review + revert. Don't overwrite the plan automatically.
 - Don't send sensitive project data to the LLM without consent / per tier. Log/redact PII.
 
-## 4. Cloud backend (Wave 3)
+## 4. Cloud backend (not committed / exploratory; was Wave 3)
 - **Multi-tenant authZ**: scope every query by `org_id` / `project_id`. Check `membership.role` (owner/admin/editor/viewer) on the **server**, don't trust the client. IDOR is risk #1.
 - **Auth**: Better-Auth. Don't log passwords/secrets. Session cookie `HttpOnly`, `Secure`, `SameSite`.
 - **Share link**: `token` random ≥ 32 bytes of entropy (stored unique). `password_hash` uses **argon2/bcrypt** (the `password_hash` column in the schema — never store plaintext). Respect `expires_at`, `permission` (read/comment/edit), increment `view_count` safely.
