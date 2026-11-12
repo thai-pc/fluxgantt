@@ -8,6 +8,7 @@
 // The entry list is DRIVEN BY each package's `exports` map (`import.types`), so a new subpath
 // with no committed report fails `--check` instead of silently escaping the lock. Reports are
 // built from `dist/**/*.d.ts`, so run `pnpm build` first (`pnpm api:update` does).
+import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -47,15 +48,27 @@ function run(mode) {
       localBuild: local,
       showVerboseMessages: false,
       messageCallback: (m) => {
-        // Warnings are baseline noise (forgotten exports are recorded inside the reports).
-        if (m.logLevel === 'warning') m.handled = true;
+        // Extractor warnings (forgotten exports, undocumented members) are baseline noise: the
+        // former are recorded inside the reports. TypeScript diagnostics and every error stay visible.
+        if (m.logLevel === 'warning' && m.category === 'Extractor') m.handled = true;
       },
     });
     const stale = result.apiReportChanged;
     const label = `${e.name}.api.md`;
     if (result.errorCount > 0 || (!local && stale)) {
       failed++;
-      console.error(`api-report: ${label} is ${existsSync(join(e.pkgDir, 'etc', label)) ? 'stale' : 'missing'}`);
+      const committed = join(e.pkgDir, 'etc', label);
+      if (result.errorCount > 0) {
+        console.error(`api-report: ${label}: extractor reported ${result.errorCount} error(s), see above`);
+      } else if (!existsSync(committed)) {
+        console.error(`api-report: ${label} is missing (not committed)`);
+      } else {
+        console.error(`api-report: ${label} is stale. Diff (committed -> generated):`);
+        const generated = join(tempFolder, label);
+        const d = spawnSync('diff', ['-u', committed, generated], { encoding: 'utf8' });
+        if (d.stdout) console.error(d.stdout);
+        else console.error(`  (no diff tool; compare ${committed} with ${generated})`);
+      }
     } else {
       console.log(`api-report: ${label} ${local && stale ? 'updated' : 'ok'}`);
     }
