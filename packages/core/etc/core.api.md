@@ -653,7 +653,7 @@ export type UnsubscribeFn = () => void;
 export function untracked<T>(fn: () => T): T;
 
 // @public (undocumented)
-export const VERSION = "0.7.0";
+export const VERSION: string;
 
 // @public (undocumented)
 export type ViewMode = 'day' | 'week' | 'month' | 'quarter' | 'year';
