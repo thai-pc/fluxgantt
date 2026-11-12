@@ -30,7 +30,7 @@ import { Temporal } from '@js-temporal/polyfill';
 (globalThis as unknown as { Temporal?: typeof Temporal }).Temporal ??= Temporal;
 ```
 
-Not every browser ships Temporal natively yet (Safari does not at the time of writing), and
+Not every browser ships Temporal natively yet (check your target browsers), and
 neither do Node 22 and 24.
 
 It is optional **at runtime only** — the bundle contains no polyfill code, and `getTemporal()`
@@ -135,8 +135,8 @@ fail CI; `+ withRender()` is tracked report-only):
 | everything | 23.85 KiB |
 
 These figures **exclude the Temporal polyfill**: core bundles none and reads `globalThis.Temporal`.
-Safari (including iOS) and Node 22/24 need `@js-temporal/polyfill`, about **45.8 KiB gzip**
-(`0.5.1` with `jsbi`, minified), on top of the table; Chromium and Firefox have Temporal natively.
+Runtimes without native Temporal (Node 22/24, older browsers) need `@js-temporal/polyfill`, about **45.8 KiB gzip**
+(`0.5.1` with `jsbi`, minified), on top of the table; runtimes with native Temporal pay nothing.
 
 ## Framework wrappers
 

@@ -70,8 +70,8 @@ gantt.on('task:moved', (task, prevStart) => {
 gantt.mount(document.getElementById('gantt')!);
 ```
 
-Core needs `globalThis.Temporal`. In a browser without native Temporal (Safari, at the time of
-writing) or in Node 22/24, `pnpm add @js-temporal/polyfill` and run this once, before the code
+Core needs `globalThis.Temporal`. In a browser without native Temporal (check your
+targets) or in Node 22/24, `pnpm add @js-temporal/polyfill` and run this once, before the code
 above (the examples do it in `src/temporal.ts`):
 
 ```ts
@@ -125,9 +125,9 @@ are tracked report-only:
 | Every capability composed | <!--sz:kitchen.2-->23.85<!--/sz--> KiB |
 
 **These figures exclude the Temporal polyfill.** Core reads `globalThis.Temporal` and ships no
-polyfill. Safari (including iOS) and Node 22/24 need `@js-temporal/polyfill`, about **45.8 KiB gzip**
+polyfill. Runtimes without native Temporal (Node 22/24, older browsers) need `@js-temporal/polyfill`, about **45.8 KiB gzip**
 (`0.5.1` with its `jsbi` dependency, minified), so on those runtimes add that to every row above
-(an editable chart is then ~65 KiB). Chromium and Firefox have Temporal natively and pay nothing.
+(an editable chart is then ~65 KiB). Runtimes with native Temporal pay nothing.
 The install is shown in the setup section above.
 
 Required host CSS: **none** — every visual property is written inline with a `--fg-*` token

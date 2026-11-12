@@ -68,7 +68,7 @@ Post this yourself in the first minutes; it is the thing people actually read.
 > drag interactions, theming, touch adaptation and import/export are separate opt-in imports, so you
 > download what you compose. An editable chart is <!--sz:editable.1-->19.2<!--/sz--> KiB; everything composed is <!--sz:kitchen.1-->23.8<!--/sz--> KiB. Those are
 > CI-enforced budgets, not aspirations, and they exclude the Temporal polyfill (~45.8 KiB gzip) that
-> Safari and Node 22/24 need.
+> runtimes without native Temporal (Node 22/24, older browsers) need.
 >
 > Two details I'm oddly proud of:
 >

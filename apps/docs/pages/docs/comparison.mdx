@@ -51,7 +51,7 @@ monoliths, so a bundler cannot drop anything and the entry file *is* what ships.
 FluxGantt is not a favour to FluxGantt — it is what actually happens in your build, and it is the
 only reason a row can read {/*sz:hello.2*/}7.35{/*/sz*/} KiB.
 
-**FluxGantt rows exclude the Temporal polyfill.** Core reads `globalThis.Temporal` and bundles no polyfill. Runtimes without native Temporal (Safari, including iOS, and Node 22/24 at the time of writing) need `@js-temporal/polyfill`, about 45.8 KiB gzip (`@js-temporal/polyfill@0.5.1` with its `jsbi` dependency, minified). Add that to any FluxGantt row if your users are on such a runtime: an editable chart is then roughly 65 KiB, still well under dhtmlx. Chromium and Firefox ship Temporal natively and pay nothing. Only the hello-world, editable and everything-composed rows are hard CI gates; the others are tracked report-only.
+**FluxGantt rows exclude the Temporal polyfill.** Core reads `globalThis.Temporal` and bundles no polyfill. Runtimes without native Temporal (Node 22/24 and older browsers at the time of writing) need `@js-temporal/polyfill`, about 45.8 KiB gzip (`@js-temporal/polyfill@0.5.1` with its `jsbi` dependency, minified). Add that to any FluxGantt row if your users are on such a runtime: an editable chart is then roughly 65 KiB, still well under dhtmlx. Runtimes with native Temporal pay nothing. Only the hello-world, editable and everything-composed rows are hard CI gates; the others are tracked report-only.
 
 **FluxGantt rows are measured as ESM output.** `pnpm size` bundles each fixture with esbuild as
 `format: 'esm'`, because that is what a Vite, Rollup, webpack 5 or esbuild build of your app

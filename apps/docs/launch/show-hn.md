@@ -64,7 +64,7 @@ monolithic `Gantt` facade bills every consumer for the renderer, the drag handle
 exporter whether they call them or not. Splitting the facade into a base plus opt-in mixins
 (`withRender`, `withInteraction`, `withIo`, `withTheme`, `withResponsive`) took hello-world from
 22.3 KiB to <!--sz:hello.1-->7.3<!--/sz--> KiB without deleting a single feature. An editable chart is <!--sz:editable.1-->19.2<!--/sz--> KiB. Everything
-composed is <!--sz:kitchen.1-->23.8<!--/sz--> KiB. The hello-world, editable and everything-composed sizes are hard CI gates. These figures exclude the Temporal polyfill (~45.8 KiB gzip), which Safari and Node 22/24 need.
+composed is <!--sz:kitchen.1-->23.8<!--/sz--> KiB. The hello-world, editable and everything-composed sizes are hard CI gates. These figures exclude the Temporal polyfill (~45.8 KiB gzip), which runtimes without native Temporal (Node 22/24, older browsers) need.
 
 **All date math goes through the Temporal API**, never native `Date`. A Gantt chart is date
 arithmetic wearing a UI, and native `Date` gets DST transitions and timezones wrong in ways that
@@ -109,7 +109,7 @@ will find it out in thirty seconds; saying it first is the only position that su
 
 **"Is the <!--sz:hello.1-->7.3<!--/sz--> KiB number real?"** — It's `pnpm size` output on a bundled, tree-shaken, gzipped
 fixture that mounts nothing, and it's enforced on every PR. It excludes the Temporal polyfill
-(~45.8 KiB gzip), which you only ship to runtimes without native Temporal (Safari, Node 22/24). It is genuinely the headless
+(~45.8 KiB gzip), which you only ship to runtimes without native Temporal (Node 22/24, older browsers). It is genuinely the headless
 configuration and genuinely not a chart. An editable chart is <!--sz:editable.1-->19.2<!--/sz--> KiB; that's the number to quote if
 someone accuses the small one of being cherry-picked — because it is a fair accusation about a
 library people want for its UI.
