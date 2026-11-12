@@ -24,6 +24,7 @@ export const MAX_DATE_STRING_LENGTH = 64;
  *  the input is a string; an already-parsed object skips this specific check. */
 export const MAX_INPUT_LENGTH_CHARS = 20_000_000;
 
+/** The size and depth caps applied to every import unless the host overrides them. */
 export const DEFAULT_IMPORT_LIMITS: ImportLimits = {
   maxTaskCount: MAX_TASK_COUNT,
   maxDependencyCount: MAX_DEPENDENCY_COUNT,

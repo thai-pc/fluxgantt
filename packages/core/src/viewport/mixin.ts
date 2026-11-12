@@ -30,10 +30,12 @@ const HEADER_HEIGHT = 32;
  *  renderer-base.ts for the same isolation reason. */
 const MILESTONE_SIDE_RATIO = 0.6;
 
+/** Where the target lands in the viewport. */
 export type ScrollAlign = 'nearest' | 'start' | 'center' | 'end';
 /** Named `...Option` so it never shadows the DOM lib's global `ScrollBehavior`. */
 export type ScrollBehaviorOption = 'auto' | 'smooth';
 
+/** Options for `scrollToTask`. */
 export interface ScrollToTaskOptions {
   /** Both axes, `scrollIntoView` semantics. Default `'nearest'`: scroll the minimum amount, and
    *  not at all if the row AND bar are already fully visible. */
@@ -46,6 +48,7 @@ export interface ScrollToTaskOptions {
   readonly expand?: boolean;
 }
 
+/** Options for `scrollToDate`. */
 export interface ScrollToDateOptions {
   /** Horizontal only. Default `'center'`. */
   readonly align?: 'start' | 'center' | 'end';
@@ -97,7 +100,8 @@ function resolveAxis(
   else if (align === 'end') target = itemEnd - viewSize;
   else if (align === 'center') target = itemStart + size / 2 - viewSize / 2;
   else if (itemStart >= viewStart && itemEnd <= viewStart + viewSize) target = viewStart;
-  else if (itemStart <= viewStart && itemEnd >= viewStart + viewSize) target = viewStart; // already covers the viewport
+  else if (itemStart <= viewStart && itemEnd >= viewStart + viewSize)
+    target = viewStart; // already covers the viewport
   else if (size >= viewSize || itemStart < viewStart) target = itemStart;
   else target = itemEnd - viewSize;
   return Math.max(0, target);
@@ -130,6 +134,7 @@ function applyScroll(
   if (y !== undefined) container.scrollTop = y;
 }
 
+/** Adds scroll and density control (`scrollToTask`, `scrollToDate`, `setDensity`) to a mounted chart. */
 export function withViewport<T extends GanttInstance>(instance: T): T & ViewportCapability {
   const internal = getInternal(instance);
   const currentDensity = (): Density => internal.density ?? internal.config.density ?? 'default';
@@ -191,7 +196,8 @@ export function withViewport<T extends GanttInstance>(instance: T): T & Viewport
           ? resolveAxis(itemTop, itemTop + ROW_HEIGHT[density], container.scrollTop, viewH, align)
           : undefined;
       const viewW = container.clientWidth - labelW;
-      const left = viewW > 0 ? resolveAxis(x0, x1, k * container.scrollLeft, viewW, align) : undefined;
+      const left =
+        viewW > 0 ? resolveAxis(x0, x1, k * container.scrollLeft, viewW, align) : undefined;
       applyScroll(container, left, top, options.behavior, k);
       return true;
     },

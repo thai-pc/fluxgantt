@@ -7,6 +7,7 @@ import type { Dependency, DependencyType, ResourceAssignment, TaskKind } from '.
 
 // --- JSON envelope (export shape) -------------------------------------------------------
 
+/** A task constraint as written in an export. */
 export type ExportedTaskConstraint =
   | { kind: 'asap' }
   | { kind: 'alap' }
@@ -21,6 +22,7 @@ export type ExportedTaskConstraint =
       date: string; // ISO-8601 UTC instant, e.g. "2026-01-15T17:00:00Z"
     };
 
+/** A task as written in an export. */
 export interface ExportedTask {
   id: string;
   name: string;
@@ -42,6 +44,7 @@ export interface ExportedTask {
   updatedAt: string;
 }
 
+/** A dependency as written in an export. */
 export interface ExportedDependency {
   id: string;
   from: string;
@@ -50,6 +53,7 @@ export interface ExportedDependency {
   lag?: number;
 }
 
+/** The JSON export document, versioned by `schemaVersion`. */
 export interface ExportBundle {
   fluxgantt: {
     schemaVersion: '1.0';
@@ -62,6 +66,7 @@ export interface ExportBundle {
 
 // --- Options -------------------------------------------------------------------------------
 
+/** Options for `exportJson`. */
 export interface ExportJsonOptions {
   /** IANA timezone used only to disambiguate a bare wall-clock `DateInput` (a string with no
    *  offset/`Z`, or a `Temporal.PlainDate`) — has no effect on inputs that already carry an
@@ -69,6 +74,7 @@ export interface ExportJsonOptions {
   timezone?: string;
 }
 
+/** Options for `exportCsv`. */
 export interface ExportCsvOptions {
   /** Same disambiguation-only semantics as `ExportJsonOptions.timezone`. Default `'UTC'`. */
   timezone?: string;
@@ -80,6 +86,7 @@ export interface ExportCsvOptions {
 
 // --- SVG/PNG export (spec-export-png-svg.md §2) -------------------------------------------
 
+/** Options for `exportSvg`. */
 export interface ExportSvgOptions {
   /**
    * Bakes each element's browser-RESOLVED `fill`/`stroke`/`stroke-width`/`stroke-dasharray`/
@@ -104,6 +111,7 @@ export interface ExportSvgOptions {
   readonly background?: string | 'transparent';
 }
 
+/** Options for `exportPng`. */
 export interface ExportPngOptions {
   /**
    * Raster scale multiplier — output pixel size = SVG width/height × `scale`. Pass
@@ -128,6 +136,7 @@ export interface ExportPngOptions {
   // option would only let a caller silently mis-theme the raster (review B4).
 }
 
+/** Size and depth caps for an import. */
 export interface ImportLimits {
   maxTaskCount: number;
   maxDependencyCount: number;
@@ -142,11 +151,13 @@ export interface ImportLimits {
   maxInputLengthChars: number;
 }
 
+/** Options for `importJson`. */
 export interface ImportJsonOptions {
   /** Overrides individual caps; merged shallowly over `DEFAULT_IMPORT_LIMITS`. */
   limits?: Partial<ImportLimits>;
 }
 
+/** Options for `importCsv`. */
 export interface ImportCsvOptions {
   limits?: Partial<ImportLimits>;
 }
@@ -158,25 +169,19 @@ export interface ImportCsvOptions {
  *  import (`gantt.ts` imports `io/index.js`, not the other way around). */
 export type DependencyInput = Omit<Dependency, 'id'>;
 
+/** What `importJson` returns. */
 export interface ImportResult {
   tasks: TaskInput[];
   dependencies: DependencyInput[];
 }
 
+/** What `importCsv` returns. */
 export interface ImportCsvResult {
   tasks: TaskInput[];
 }
 
 // --- CSV ---------------------------------------------------------------------------------
 
+/** A CSV column name. */
 export type CsvColumn =
-  | 'id'
-  | 'name'
-  | 'start'
-  | 'end'
-  | 'duration'
-  | 'progress'
-  | 'type'
-  | 'parent'
-  | 'notes'
-  | 'color';
+  'id' | 'name' | 'start' | 'end' | 'duration' | 'progress' | 'type' | 'parent' | 'notes' | 'color';

@@ -18,6 +18,7 @@ import type { GanttInstance, TaskContextRequestedPayload, TaskHitPart } from '..
 import { getInternal } from '../gantt-internal.js';
 import { toTaskId, type TaskId } from '../types.js';
 
+/** Options for `withEditHooks`. */
 export interface EditHooksOptions {
   /** Touch long-press delay (ms) before `task:context-requested` fires. Default 500. `0`, a
    *  negative or a non-finite value disables the touch long-press. Keep it at or below ~500 on
@@ -39,7 +40,11 @@ interface Hit {
   readonly onBar?: boolean;
 }
 
-export function withEditHooks<T extends GanttInstance>(instance: T, options: EditHooksOptions = {}): T {
+/** Adds host edit hooks (double-click, context menu, keyboard) to a mounted chart. */
+export function withEditHooks<T extends GanttInstance>(
+  instance: T,
+  options: EditHooksOptions = {},
+): T {
   const internal = getInternal(instance);
   const ms = options.longPressMs ?? 500;
   const longPressMs = ms > 0 && Number.isFinite(ms) ? ms : 0;
@@ -77,7 +82,8 @@ export function withEditHooks<T extends GanttInstance>(instance: T, options: Edi
         onBar = hit.onBar === true;
         if (hit.onLabel) part = 'label';
       } else {
-        if (!(target instanceof Element) || target.closest('.fg-timeline__row-toggle')) return undefined;
+        if (!(target instanceof Element) || target.closest('.fg-timeline__row-toggle'))
+          return undefined;
         // The painted grid sits outside the row groups: fall back to the row spanning y.
         const row =
           target.closest('[data-row-index]') ??
@@ -92,7 +98,9 @@ export function withEditHooks<T extends GanttInstance>(instance: T, options: Edi
         else if (target.closest('.fg-timeline__row-label')) part = 'label';
       }
       // A forged or stale id never leaves the library.
-      return id !== null && internal.tasks.has(toTaskId(id)) ? { id: toTaskId(id), part, onBar } : undefined;
+      return id !== null && internal.tasks.has(toTaskId(id))
+        ? { id: toTaskId(id), part, onBar }
+        : undefined;
     };
 
     /** Emits the context event; resolves to whether the host called `preventDefault()`. */
@@ -216,7 +224,9 @@ export function withEditHooks<T extends GanttInstance>(instance: T, options: Edi
       const rowEl = target instanceof Element ? target.closest('[data-row-index]') : null;
       if (!rowEl || e.isComposing) return;
       const plain = !(e.ctrlKey || e.metaKey || e.altKey || e.shiftKey);
-      const menu = e.key === 'ContextMenu' || (e.key === 'F10' && e.shiftKey && !(e.ctrlKey || e.metaKey || e.altKey));
+      const menu =
+        e.key === 'ContextMenu' ||
+        (e.key === 'F10' && e.shiftKey && !(e.ctrlKey || e.metaKey || e.altKey));
       const activate = plain && (e.key === 'F2' || (e.key === 'Enter' && !e.defaultPrevented));
       if (!menu && !activate) return;
       const idAttr = rowEl.getAttribute('data-task-id');
@@ -229,14 +239,24 @@ export function withEditHooks<T extends GanttInstance>(instance: T, options: Edi
       let rect = rowEl.getBoundingClientRect();
       let x = painted ? painted.clientX : rect.left + rect.width / 2;
       let y = painted ? painted.clientY : rect.top + rect.height / 2;
-      if (!Number.isFinite(x) || !Number.isFinite(y) || (!painted && !(rect.width > 0 && rect.height > 0))) {
+      if (
+        !Number.isFinite(x) ||
+        !Number.isFinite(y) ||
+        (!painted && !(rect.width > 0 && rect.height > 0))
+      ) {
         rect = root.getBoundingClientRect();
         x = (Number.isFinite(rect.left) ? rect.left : 0) + handle.getLabelColumnWidth();
         y = Number.isFinite(rect.top) ? rect.top : 0;
       }
       if (activate) {
         e.preventDefault();
-        internal.emit('task:activated', { taskId: id, part: 'row', source: 'keyboard', clientX: x, clientY: y });
+        internal.emit('task:activated', {
+          taskId: id,
+          part: 'row',
+          source: 'keyboard',
+          clientX: x,
+          clientY: y,
+        });
         return;
       }
       origin = 'keyboard';

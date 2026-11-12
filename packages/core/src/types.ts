@@ -2,8 +2,10 @@
 import type { Temporal } from '@js-temporal/polyfill';
 
 // Branded ID types — prevent mixing up IDs at compile time (spec §6.1)
+/** Tags a primitive so differently branded IDs cannot be mixed up. */
 export type Brand<T, B> = T & { readonly __brand: B };
 
+/** Branded task identifier. */
 export type TaskId = Brand<string, 'TaskId'>;
 /**
  * Branded resource identifier (reserved for the Pro resource view).
@@ -11,6 +13,7 @@ export type TaskId = Brand<string, 'TaskId'>;
  * @beta
  */
 export type ResourceId = Brand<string, 'ResourceId'>;
+/** Branded dependency identifier. */
 export type DependencyId = Brand<string, 'DependencyId'>;
 /**
  * Branded baseline identifier (reserved for the Pro baseline feature).
@@ -27,6 +30,7 @@ export type ProjectId = Brand<string, 'ProjectId'>;
 
 // Coercion at the boundary: the public API accepts plain strings, the core brands
 // them internally (spec §6.1). Callers never need to write `as TaskId`.
+/** Brands a string as a `TaskId`. */
 export const toTaskId = (s: string): TaskId => s as TaskId;
 /**
  * Brands a string as a `ResourceId`.
@@ -34,6 +38,7 @@ export const toTaskId = (s: string): TaskId => s as TaskId;
  * @beta
  */
 export const toResourceId = (s: string): ResourceId => s as ResourceId;
+/** Brands a string as a `DependencyId`. */
 export const toDependencyId = (s: string): DependencyId => s as DependencyId;
 /**
  * Brands a string as a `BaselineId`.
@@ -49,14 +54,17 @@ export const toBaselineId = (s: string): BaselineId => s as BaselineId;
 export const toProjectId = (s: string): ProjectId => s as ProjectId;
 
 // Schedule instants accept several input shapes; normalized to Temporal internally (spec §6.2).
+/** Any date value the API accepts; normalized to a `Temporal.ZonedDateTime` internally. */
 export type DateInput = string | Date | Temporal.ZonedDateTime | Temporal.PlainDate;
 
+/** Dependency link type: finish-to-start, start-to-start, finish-to-finish or start-to-finish. */
 export type DependencyType =
   | 'FS' // Finish-to-Start (default)
   | 'SS' // Start-to-Start
   | 'FF' // Finish-to-Finish
   | 'SF'; // Start-to-Finish (rare)
 
+/** What a task is: a normal task, a summary, a milestone or a project. */
 export type TaskKind = 'task' | 'summary' | 'milestone' | 'project';
 
 /**
@@ -84,6 +92,7 @@ export interface ResourceAssignment {
   units: number; // 0..1 = % allocation
 }
 
+/** A scheduled task, summary or milestone. */
 export interface Task {
   id: TaskId;
   name: string;
@@ -103,6 +112,7 @@ export interface Task {
   updatedAt: Date;
 }
 
+/** A directed link between two tasks. */
 export interface Dependency {
   id: DependencyId;
   from: TaskId;
@@ -111,6 +121,7 @@ export interface Dependency {
   lag?: number; // hours; negative = lead time
 }
 
+/** Two-letter weekday code (`MO` to `SU`). */
 export type WeekdayCode = 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat' | 'sun';
 
 /** A working-time window within a day, formatted as "HH:MM" (24h). */
@@ -119,6 +130,7 @@ export interface WorkingHours {
   end: string;
 }
 
+/** Which weekdays and hours count as work, plus holidays and the time zone. */
 export interface WorkingCalendar {
   workingDays: WeekdayCode[];
   workingHours: WorkingHours[]; // may contain multiple windows (e.g. a lunch break)
@@ -131,6 +143,7 @@ export interface WorkingCalendar {
 // render layer — avoids a duplicate definition when the facade lands. NOT a `Viewport`
 // type name on purpose: that name is reserved for a future reactive `ViewportStore`
 // (pan/zoom state), which does not exist yet — see render/renderer-base.ts `TimeRange`.
+/** Time-axis zoom level. */
 export type ViewMode = 'day' | 'week' | 'month' | 'quarter' | 'year';
 /**
  * Row-height scale. `'touch'` is the coarse-pointer level (spec-responsive-mobile.md): it is
@@ -150,6 +163,7 @@ export type SchedulingMode = 'manual' | 'auto';
 // Critical Path (CPM) result types (spec §13.1, §20 Appendix B). Placed here (not
 // co-located in compute/critical-path.ts) because the render layer also needs
 // `TaskSchedule` per-task to paint `.fg-task--critical` (dashed outline, spec §8.5).
+/** The computed early/late dates and slack of one task. */
 export interface TaskSchedule {
   readonly taskId: TaskId;
   readonly earlyStart: Temporal.ZonedDateTime;
@@ -162,6 +176,7 @@ export interface TaskSchedule {
   readonly isCritical: boolean;
 }
 
+/** What `computeCriticalPath` returns: per-task schedule and the critical path. */
 export interface CriticalPathResult {
   readonly schedule: ReadonlyMap<TaskId, TaskSchedule>;
   /** Task ids with isCritical === true, in the same order as the input `tasks` array. */
@@ -354,4 +369,5 @@ export interface InvalidSpanConflict {
  * default branch in any `switch (conflict.kind)`.
  */
 export type Conflict = DependencyViolationConflict | OutsideParentConflict | InvalidSpanConflict;
+/** The discriminant values of `Conflict`. New kinds may be added in a minor release, so keep a `default` branch. */
 export type ConflictKind = Conflict['kind'];

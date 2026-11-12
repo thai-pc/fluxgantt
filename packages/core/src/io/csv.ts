@@ -28,6 +28,7 @@ import {
   validateColor,
 } from './validate.js';
 
+/** The columns `exportCsv` writes, and `importCsv` reads, by default. */
 export const DEFAULT_CSV_COLUMNS: readonly CsvColumn[] = [
   'id',
   'name',

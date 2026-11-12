@@ -83,6 +83,7 @@ export const ASAP_ONLY_RESOLVER: ConstraintResolver = (_task, earlyStart) => ear
  *  from bigint-nanosecond → number-hours conversion). */
 export const CRITICAL_SLACK_EPSILON_HOURS = 1e-6;
 
+/** Computes the critical path (forward and backward pass) over a task graph. Throws `CyclicDependencyError` on a cycle. */
 export function computeCriticalPath(
   tasks: readonly Task[],
   dependencies: readonly Dependency[],

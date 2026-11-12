@@ -11,10 +11,10 @@ import { Temporal } from '@js-temporal/polyfill';
 // @public
 export function addWorkingHours(start: DateInput, hours: number, cal: WorkingCalendar): ZDT$1;
 
-// @public (undocumented)
+// @beta
 export type BaselineId = Brand<string, 'BaselineId'>;
 
-// @public
+// @beta
 export function batch<T>(fn: () => T): T;
 
 // @public (undocumented)
@@ -22,12 +22,12 @@ export type Brand<T, B> = T & {
     readonly __brand: B;
 };
 
-// @public (undocumented)
+// @beta
 export interface CascadeResult {
     readonly shifts: readonly CascadeShift[];
 }
 
-// @public (undocumented)
+// @beta
 export interface CascadeShift {
     // (undocumented)
     readonly end: Temporal.ZonedDateTime;
@@ -37,7 +37,7 @@ export interface CascadeShift {
     readonly taskId: TaskId;
 }
 
-// @public (undocumented)
+// @beta @deprecated
 export class CollapseStore {
     // (undocumented)
     all(): readonly TaskId[];
@@ -51,18 +51,20 @@ export class CollapseStore {
     get size(): number;
 }
 
-// @public
+// @beta
 export function computeCascade(tasks: readonly Task[], dependencies: readonly Dependency[], calendar: WorkingCalendar, changedTaskIds: readonly TaskId[]): CascadeResult;
 
+// Warning: (ae-incompatible-release-tags) The symbol "computeCriticalPath" is marked as @public, but its signature references "ComputeCriticalPathOptions" which is marked as @beta
+//
 // @public (undocumented)
 export function computeCriticalPath(tasks: readonly Task[], dependencies: readonly Dependency[], calendar: WorkingCalendar, options?: ComputeCriticalPathOptions): CriticalPathResult;
 
-// @public (undocumented)
+// @beta
 export interface ComputeCriticalPathOptions {
     resolveConstraint?: ConstraintResolver;
 }
 
-// @public
+// @beta
 export function computed<T>(fn: () => T): ReadonlySignal<T>;
 
 // @public
@@ -74,10 +76,10 @@ export type Conflict = DependencyViolationConflict | OutsideParentConflict | Inv
 // @public (undocumented)
 export type ConflictKind = Conflict['kind'];
 
-// @public
+// @beta
 export type ConstraintResolver = (task: Task, computedEarlyStart: Temporal.ZonedDateTime, context: ConstraintResolverContext) => Temporal.ZonedDateTime;
 
-// @public (undocumented)
+// @beta
 export interface ConstraintResolverContext {
     // (undocumented)
     readonly calendar: WorkingCalendar;
@@ -132,7 +134,7 @@ export type DependencyId = Brand<string, 'DependencyId'>;
 // @public
 export type DependencyInput = Omit<Dependency, 'id'>;
 
-// @public (undocumented)
+// @beta
 export class DependencyStore {
     constructor(initial?: readonly Dependency[]);
     // (undocumented)
@@ -157,6 +159,7 @@ export class DependencyStore {
     // (undocumented)
     remove(id: DependencyId): void;
     removeForTask(taskId: TaskId): void;
+    // @deprecated
     restore(dependency: Dependency): Dependency;
     get revision(): ReadonlySignal<number>;
     // (undocumented)
@@ -195,7 +198,7 @@ export interface DetectConflictsOptions {
 // @public
 export function differenceInWorkingHours(from: DateInput, to: DateInput, cal: WorkingCalendar): number;
 
-// @public
+// @beta
 export function effect(fn: () => void): () => void;
 
 // @public
@@ -204,7 +207,7 @@ export interface EventMeta {
     readonly source: 'undo' | 'redo';
 }
 
-// @public
+// @beta
 export type GanttAnnouncement =
 /** After a keyboard move or resize (`moved`, `resized`), or when one changed nothing (`cannot-move`,
 *  `cannot-resize`: a summary, a milestone resize, the one-day minimum, or no working time to extend into).
@@ -340,6 +343,7 @@ export interface GanttInstance {
 
 // @public
 export interface GanttMessages {
+    // @beta
     readonly announce?: (announcement: GanttAnnouncement) => string;
     readonly taskLabel?: (params: TaskLabelParams) => string;
 }
@@ -365,14 +369,14 @@ export function isHoliday(date: DateInput, cal: WorkingCalendar): boolean;
 // @public (undocumented)
 export function isWorkingDay(date: DateInput, cal: WorkingCalendar): boolean;
 
-// @public (undocumented)
+// @beta
 export interface LinkOptions {
     allowCycle?: boolean;
     // (undocumented)
     lag?: number;
 }
 
-// @public
+// @beta
 export function normalizeDate(input: DateInput, timezone: string): Temporal.ZonedDateTime;
 
 // @public
@@ -386,10 +390,10 @@ export interface OutsideParentConflict {
     readonly taskId: TaskId;
 }
 
-// @public (undocumented)
+// @beta
 export type ProjectId = Brand<string, 'ProjectId'>;
 
-// @public (undocumented)
+// @beta
 export interface ReadonlySignal<T> {
     peek(): T;
     // (undocumented)
@@ -405,7 +409,7 @@ export interface RendererSelectedPayload {
     readonly taskCount: number;
 }
 
-// @public (undocumented)
+// @beta
 export interface ResourceAssignment {
     // (undocumented)
     resourceId: ResourceId;
@@ -413,7 +417,7 @@ export interface ResourceAssignment {
     units: number;
 }
 
-// @public (undocumented)
+// @beta
 export type ResourceId = Brand<string, 'ResourceId'>;
 
 // @public
@@ -444,7 +448,7 @@ export interface RollupResult {
 // @public
 export type SchedulingMode = 'manual' | 'auto';
 
-// @public (undocumented)
+// @beta @deprecated
 export class SelectionStore {
     // (undocumented)
     all(): TaskId[];
@@ -457,7 +461,7 @@ export class SelectionStore {
     get size(): number;
 }
 
-// @public (undocumented)
+// @beta @deprecated
 export class Signal<T> implements ReadonlySignal<T> {
     constructor(value: T);
     // (undocumented)
@@ -467,7 +471,7 @@ export class Signal<T> implements ReadonlySignal<T> {
     set value(next: T);
 }
 
-// @public
+// @beta
 export function signal<T>(value: T): Signal<T>;
 
 // @public
@@ -477,6 +481,8 @@ export function subtractWorkingHours(start: DateInput, hours: number, cal: Worki
 export interface Task {
     // (undocumented)
     color?: string;
+    // Warning: (ae-incompatible-release-tags) The symbol "constraint" is marked as @public, but its signature references "TaskConstraint" which is marked as @beta
+    //
     // (undocumented)
     constraint?: TaskConstraint;
     // (undocumented)
@@ -499,6 +505,8 @@ export interface Task {
     priority?: number;
     // (undocumented)
     progress: number;
+    // Warning: (ae-incompatible-release-tags) The symbol "resources" is marked as @public, but its signature references "ResourceAssignment" which is marked as @beta
+    //
     // (undocumented)
     resources?: ResourceAssignment[];
     // (undocumented)
@@ -522,7 +530,7 @@ export interface TaskActivatedPayload {
     readonly taskId: TaskId;
 }
 
-// @public (undocumented)
+// @beta
 export type TaskConstraint = {
     kind: 'asap';
 } | {
@@ -610,7 +618,7 @@ export interface TaskSchedule {
     readonly taskId: TaskId;
 }
 
-// @public (undocumented)
+// @beta
 export class TaskStore {
     constructor(initial?: readonly Task[]);
     // (undocumented)
@@ -628,6 +636,7 @@ export class TaskStore {
     // (undocumented)
     has(id: TaskId): boolean;
     remove(id: TaskId): void;
+    // @deprecated
     restore(task: Task): Task;
     get revision(): ReadonlySignal<number>;
     // (undocumented)
@@ -640,16 +649,16 @@ export class TaskStore {
     update(id: TaskId, patch: TaskPatch): Task;
 }
 
-// @public (undocumented)
+// @beta
 export const toBaselineId: (s: string) => BaselineId;
 
 // @public (undocumented)
 export const toDependencyId: (s: string) => DependencyId;
 
-// @public (undocumented)
+// @beta
 export const toProjectId: (s: string) => ProjectId;
 
-// @public (undocumented)
+// @beta
 export const toResourceId: (s: string) => ResourceId;
 
 // @public (undocumented)
@@ -658,7 +667,7 @@ export const toTaskId: (s: string) => TaskId;
 // @public (undocumented)
 export type UnsubscribeFn = () => void;
 
-// @public
+// @beta
 export function untracked<T>(fn: () => T): T;
 
 // @public (undocumented)

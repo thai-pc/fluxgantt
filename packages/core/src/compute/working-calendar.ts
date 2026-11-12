@@ -6,6 +6,7 @@ import type { Temporal } from '@js-temporal/polyfill';
 import { getTemporal, type TemporalApi } from '../internal/temporal.js';
 import type { DateInput, WeekdayCode, WorkingCalendar } from '../types.js';
 
+/** The calendar used when none is configured: Monday to Friday, 09:00 to 17:00, UTC. Treat it as read-only; pass your own calendar instead of mutating it. */
 export const DEFAULT_CALENDAR: WorkingCalendar = {
   workingDays: ['mon', 'tue', 'wed', 'thu', 'fri'],
   workingHours: [{ start: '09:00', end: '17:00' }],
@@ -33,12 +34,14 @@ export function normalizeDate(input: DateInput, timezone: string): Temporal.Zone
   return normalize(input, timezone, getTemporal());
 }
 
+/** Whether `date` falls on a working weekday that is not a holiday. */
 export function isWorkingDay(date: DateInput, cal: WorkingCalendar): boolean {
   const api = getTemporal();
   const zdt = normalize(date, cal.timezone, api);
   return isWorkingPlainDate(zdt.toPlainDate(), cal, holidaySet(cal, api));
 }
 
+/** Whether the calendar lists `date` as a holiday. */
 export function isHoliday(date: DateInput, cal: WorkingCalendar): boolean {
   const api = getTemporal();
   const zdt = normalize(date, cal.timezone, api);

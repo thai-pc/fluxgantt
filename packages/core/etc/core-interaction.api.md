@@ -6,7 +6,7 @@
 
 import { Temporal } from '@js-temporal/polyfill';
 
-// @public (undocumented)
+// @beta
 export interface DragCreateDepOptions {
     dragThresholdPx?: number;
     // Warning: (ae-forgotten-export) The symbol "TaskId" needs to be exported by the entry point index.d.ts
@@ -14,14 +14,14 @@ export interface DragCreateDepOptions {
     onLinking?(fromTaskId: TaskId, candidateTaskId: TaskId | undefined): void;
 }
 
-// @public (undocumented)
+// @beta
 export interface DragMoveOptions {
     dragThresholdPx?: number;
     onDragging?(taskId: TaskId, tentativeStart: Temporal.ZonedDateTime, tentativeEnd: Temporal.ZonedDateTime): void;
     onTaskMoved(taskId: TaskId, newStart: Temporal.ZonedDateTime, newEnd: Temporal.ZonedDateTime): void;
 }
 
-// @public (undocumented)
+// @beta
 export interface DragResizeOptions {
     dragThresholdPx?: number;
     edgeHitZonePx?: number;
@@ -32,27 +32,27 @@ export interface DragResizeOptions {
 // Warning: (ae-forgotten-export) The symbol "InteractiveRendererHandle" needs to be exported by the entry point index.d.ts
 // Warning: (ae-forgotten-export) The symbol "Task" needs to be exported by the entry point index.d.ts
 //
-// @public
+// @beta
 export function enableClickSelect(handle: InteractiveRendererHandle, getTasks: () => readonly Task[], options: SelectionOptions): () => void;
 
 // Warning: (ae-forgotten-export) The symbol "SvgRendererHandle" needs to be exported by the entry point index.d.ts
 //
-// @public
+// @beta
 export function enableDragCreateDep(handle: SvgRendererHandle, getTasks: () => readonly Task[], options: DragCreateDepOptions): () => void;
 
-// @public
+// @beta
 export function enableDragMove(handle: SvgRendererHandle, getTasks: () => readonly Task[], options: DragMoveOptions): () => void;
 
-// @public
+// @beta
 export function enableDragResize(handle: SvgRendererHandle, getTasks: () => readonly Task[], options: DragResizeOptions): () => void;
 
-// @public
+// @beta
 export function enableKeyboardNav(handle: InteractiveRendererHandle, options: KeyboardNavOptions): KeyboardNavHandle;
 
-// @public
+// @beta
 export function enableWheelZoom(handle: SvgRendererHandle, options: WheelZoomOptions): () => void;
 
-// @public (undocumented)
+// @beta
 export interface KeyboardNavHandle {
     // (undocumented)
     dispose: () => void;
@@ -62,7 +62,7 @@ export interface KeyboardNavHandle {
     syncFocusToRows: () => void;
 }
 
-// @public (undocumented)
+// @beta
 export interface KeyboardNavOptions {
     // Warning: (ae-forgotten-export) The symbol "Density" needs to be exported by the entry point index.d.ts
     density: Density;
@@ -85,7 +85,7 @@ export interface KeyboardNavOptions {
     onZoomOut: () => void;
 }
 
-// @public (undocumented)
+// @beta
 export interface SelectionOptions {
     density: Density;
     dragThresholdPx?: number;
@@ -96,7 +96,7 @@ export interface SelectionOptions {
     onToggle(taskId: TaskId): void;
 }
 
-// @public (undocumented)
+// @beta
 export interface WheelZoomOptions {
     onZoomIn: () => void;
     onZoomOut: () => void;

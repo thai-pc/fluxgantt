@@ -43,6 +43,7 @@ import type { UseFluxGanttConfig, UseFluxGanttResult } from './types.js';
 // packages/react for the identical pattern/rationale.
 declare const process: { readonly env?: { readonly NODE_ENV?: string } } | undefined;
 
+/** Creates and owns a Gantt instance for the lifetime of the component. */
 export function useFluxGantt(config: UseFluxGanttConfig): UseFluxGanttResult {
   const containerRef = ref<HTMLDivElement | null>(null);
 
@@ -57,25 +58,27 @@ export function useFluxGantt(config: UseFluxGanttConfig): UseFluxGanttResult {
     // IO (`/io`) is deliberately NOT composed: the wrapper exposes no import/export surface, so
     // a consumer who never calls it never downloads it.
     // `/rtl` (the `rtl` prop) is composed unconditionally: `withRtl` returns at once unless `rtl === true`.
-    instance = withRtl(withTheme(
-      withViewport(
-        withEditHooks(
-          withInteraction(
-            withRender(
-              createGantt({
-                ...pickConstructionConfig(config),
-                // Always constructed light so no OS `matchMedia` listener is armed before
-                // mount; the real theme is applied in `onMounted` and disarmed in
-                // `onBeforeUnmount`. Unset means 'light' here, not core's 'auto', because
-                // wrapper charts have always been light; hosts opt in with `theme="auto"`.
-                theme: 'light',
-                onTaskChange: (task, prev) => config.onTaskChange?.(task, prev),
-              }),
+    instance = withRtl(
+      withTheme(
+        withViewport(
+          withEditHooks(
+            withInteraction(
+              withRender(
+                createGantt({
+                  ...pickConstructionConfig(config),
+                  // Always constructed light so no OS `matchMedia` listener is armed before
+                  // mount; the real theme is applied in `onMounted` and disarmed in
+                  // `onBeforeUnmount`. Unset means 'light' here, not core's 'auto', because
+                  // wrapper charts have always been light; hosts opt in with `theme="auto"`.
+                  theme: 'light',
+                  onTaskChange: (task, prev) => config.onTaskChange?.(task, prev),
+                }),
+              ),
             ),
           ),
         ),
       ),
-    ));
+    );
   } catch (err) {
     // Same re-throw-with-context contract as react (invalid INITIAL tasks/dependencies —
     // duplicate id, self/duplicate/cyclic link — throws synchronously from `createGantt`).

@@ -15,7 +15,7 @@ export const DEFAULT_CSV_COLUMNS: readonly CsvColumn[];
 // @public (undocumented)
 export const DEFAULT_IMPORT_LIMITS: ImportLimits;
 
-// @public
+// @beta
 export function escapeCsvValue(value: string): string;
 
 // @public (undocumented)

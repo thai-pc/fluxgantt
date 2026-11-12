@@ -35,6 +35,7 @@ declare const process: { readonly env?: { readonly NODE_ENV?: string } } | undef
 // anyway, so fall back to `useEffect` where there is no `window`.
 const useIsomorphicLayoutEffect = typeof window !== 'undefined' ? useLayoutEffect : useEffect;
 
+/** Creates and owns a Gantt instance for the lifetime of the component. */
 export function useFluxGantt(config: UseFluxGanttConfig): UseFluxGanttResult {
   const containerRef = useRef<HTMLDivElement | null>(null);
 
@@ -66,27 +67,29 @@ export function useFluxGantt(config: UseFluxGanttConfig): UseFluxGanttResult {
       // wants them) and `/theme` (setTheme/getTheme/getResolvedTheme; the `theme` prop needs it). IO (`/io`) is deliberately NOT composed: the wrapper exposes no
       // import/export surface, so a consumer who never calls it never downloads it. `/rtl` (the `rtl`
       // prop) is composed unconditionally too: `withRtl` returns at once unless `rtl === true`.
-      instanceRef.current = withRtl(withTheme(
-        withViewport(
-          withEditHooks(
-            withInteraction(
-              withRender(
-                createGantt({
-                  ...pickConstructionConfig(config),
-                  // Always constructed light: `withTheme` arms an OS `matchMedia` listener for
-                  // 'auto', and the instance is created during RENDER, where StrictMode / an
-                  // abandoned concurrent render can discard it with no cleanup. The real theme
-                  // is applied in the layout effect below (and disarmed on teardown). Unset
-                  // means 'light' here, not core's 'auto', because wrapper charts have always
-                  // been light; hosts opt into OS-following with `theme="auto"`.
-                  theme: 'light',
-                  onTaskChange: (task, prev) => configRef.current.onTaskChange?.(task, prev),
-                }),
+      instanceRef.current = withRtl(
+        withTheme(
+          withViewport(
+            withEditHooks(
+              withInteraction(
+                withRender(
+                  createGantt({
+                    ...pickConstructionConfig(config),
+                    // Always constructed light: `withTheme` arms an OS `matchMedia` listener for
+                    // 'auto', and the instance is created during RENDER, where StrictMode / an
+                    // abandoned concurrent render can discard it with no cleanup. The real theme
+                    // is applied in the layout effect below (and disarmed on teardown). Unset
+                    // means 'light' here, not core's 'auto', because wrapper charts have always
+                    // been light; hosts opt into OS-following with `theme="auto"`.
+                    theme: 'light',
+                    onTaskChange: (task, prev) => configRef.current.onTaskChange?.(task, prev),
+                  }),
+                ),
               ),
             ),
           ),
         ),
-      ));
+      );
     } catch (err) {
       // `createGantt` constructs the stores synchronously and throws on invalid INITIAL data
       // (a duplicate task id, or a self/duplicate/cyclic initial dependency). Because this
