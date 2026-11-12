@@ -1,5 +1,6 @@
 // @fluxgantt/core — public entry (spec §7)
 
+/** The `@fluxgantt/core` version this build was published as. */
 export const VERSION: string = '0.7.1';
 
 // Public facade (spec §7)

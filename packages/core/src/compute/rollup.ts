@@ -18,6 +18,7 @@ type ZDT = Temporal.ZonedDateTime;
 
 const CALLER_NAME = 'computeRollup';
 
+/** The derived span, progress and duration of one summary task, as `computeRollup` returns it. */
 export interface RollupResult {
   /** Earliest start across the whole descendant subtree. */
   readonly start: ZDT;

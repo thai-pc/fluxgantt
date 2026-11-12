@@ -6,7 +6,7 @@
 
 import { Temporal } from '@js-temporal/polyfill';
 
-// @public (undocumented)
+// @public
 export interface EditHooksOptions {
     readonly longPressMs?: number;
 }
@@ -46,7 +46,7 @@ export type TaskHitPart = 'bar' | 'label' | 'row';
 
 // Warning: (ae-forgotten-export) The symbol "GanttInstance" needs to be exported by the entry point index.d.ts
 //
-// @public (undocumented)
+// @public
 export function withEditHooks<T extends GanttInstance>(instance: T, options?: EditHooksOptions): T;
 
 // (No @packageDocumentation comment for this package)

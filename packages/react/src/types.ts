@@ -45,6 +45,7 @@ export interface UseFluxGanttConfig extends GanttConfig {
   readonly onTaskContextRequested?: (payload: TaskContextRequestedPayload) => void;
 }
 
+/** What `useFluxGantt` returns. */
 export interface UseFluxGanttResult {
   /** Attach to the container element that should host the rendered chart. Stable identity
    *  across renders (from `useRef`). NOT the raw DOM node itself as a value — an object
@@ -61,13 +62,11 @@ export interface UseFluxGanttResult {
   readonly instance: GanttInstance & RenderCapability & ViewportCapability & ThemeCapability;
 }
 
+/** Props of the `FluxGantt` component. */
 export interface FluxGanttProps extends UseFluxGanttConfig {
   readonly className?: string;
   readonly style?: CSSProperties;
 }
 
 /** Type of the value `<FluxGantt ref={...}>` exposes via `useImperativeHandle`. */
-export type FluxGanttRef = GanttInstance &
-  RenderCapability &
-  ViewportCapability &
-  ThemeCapability;
+export type FluxGanttRef = GanttInstance & RenderCapability & ViewportCapability & ThemeCapability;

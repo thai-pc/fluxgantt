@@ -122,9 +122,9 @@ export function buildTaskAriaLabel(
   // no Intl constructor (the expensive half) per task per paint and no format cache to key or
   // invalidate. Localized because an `ar-EG` host was otherwise getting Western Arabic digits
   // sitting next to Intl-formatted dates in the same sentence.
-  const progressPct = Math.round(
-    (effective?.progress ?? task.progress ?? 0) * 100,
-  ).toLocaleString(locale);
+  const progressPct = Math.round((effective?.progress ?? task.progress ?? 0) * 100).toLocaleString(
+    locale,
+  );
 
   const custom = messages?.taskLabel;
   if (custom) {
@@ -155,11 +155,21 @@ type ZDT = Temporal.ZonedDateTime;
 
 // --- Time-scale --------------------------------------------------------------------
 
+/**
+ * A closed start/end span the chart covers.
+ *
+ * @beta
+ */
 export interface TimeRange {
   readonly start: Temporal.ZonedDateTime;
   readonly end: Temporal.ZonedDateTime;
 }
 
+/**
+ * Maps instants to x positions (and back) for a view mode and calendar.
+ *
+ * @beta
+ */
 export interface TimeScale {
   readonly range: TimeRange;
   readonly pixelsPerDay: number;
@@ -174,6 +184,9 @@ export interface TimeScale {
  * `ViewMode` in v1 — only this value and the label format change with zoom level. Tuned
  * for readability: wide at `'day'`, hairline at `'year'` (where a one-year range renders
  * ~365 columns — accepted v1 simplification, see spec §5.6 note).
+ *
+ * @deprecated No replacement; will stop being exported from `@fluxgantt/core/render` no earlier than 2 minor releases and 30 days after this release.
+ * @beta
  */
 export const PIXELS_PER_DAY: Readonly<Record<ViewMode, number>> = {
   day: 60,
@@ -202,6 +215,8 @@ const TIME_RANGE_PADDING_DAYS: Readonly<Record<ViewMode, number>> = {
  * `computeCriticalPath` throwing on `tasks.length === 0` (there is nothing to derive a
  * viewport from). Callers that already have an explicit `options.timeRange` should skip
  * this function entirely, not call it and discard the result.
+ *
+ * @beta
  */
 export function deriveTimeRange(
   tasks: readonly Task[],
@@ -238,6 +253,8 @@ function hoursBetween(a: ZDT, b: ZDT): number {
  * Builds a pure date↔pixel mapping over `range` (spec §5.2). `dateToX`/`xToDate` are
  * exact inverses within a small rounding error (nanosecond rounding when converting
  * pixels back to an instant) — see round-trip property test.
+ *
+ * @beta
  */
 export function createTimeScale(
   range: TimeRange,
@@ -266,6 +283,11 @@ export function createTimeScale(
 
 // --- Hierarchy / rows ----------------------------------------------------------------
 
+/**
+ * Geometry of one painted row, as computed by `layoutRows`.
+ *
+ * @beta
+ */
 export interface RowLayout {
   readonly task: Task;
   readonly depth: number;
@@ -294,6 +316,8 @@ export interface RowLayout {
  *  2.2 SC 2.5.8's 24x24 minimum, where a 40px `comfortable` row yields only 24.0 — exactly on the
  *  line. Summary/project bars stay at ratio 0.4 (19.2px) and remain under it; that is accepted,
  *  not overlooked: a summary bar is deliberately NOT a drag target (both `drag-move` and
+ *
+ * @beta
  *  `drag-resize` decline a `data-rolled-up` bar), so SC 2.5.8 does not apply to it. */
 export const ROW_HEIGHT: Readonly<Record<Density, number>> = {
   compact: 24,
@@ -340,6 +364,8 @@ export const TOGGLE_GLYPH_GUTTER_PX = 14;
  * Row emission — and whether a subtree's children are walked *as visible* — is governed by
  * a separate `hiddenByAncestor` flag threaded down the recursion, independent of the
  * cycle/depth guards.
+ *
+ * @beta
  */
 export function layoutRows(
   tasks: readonly Task[],
@@ -407,6 +433,11 @@ export function layoutRows(
 
 // --- Task bar geometry -----------------------------------------------------------------
 
+/**
+ * Geometry of one task bar, as computed by `layoutTaskBar`.
+ *
+ * @beta
+ */
 export interface TaskBarLayout {
   readonly task: Task;
   readonly x: number;
@@ -459,6 +490,8 @@ export function isTreeLayout(rows: readonly RowLayout[]): boolean {
  *   and `aria-label`, and substituting a fabricated task there would make the renderer disagree
  *   with the store about what a row actually is. Rollup is derived-on-read (spec §4) and must
  *   not leak into identity.
+ *
+ * @beta
  */
 export function layoutTaskBar(
   task: Task,
@@ -511,6 +544,11 @@ export function progressFillWidth(task: Task, bar: TaskBarLayout, rolled?: Rolle
 
 // --- Dependency routing ----------------------------------------------------------------
 
+/**
+ * Routed polyline for one dependency arrow, as computed by `layoutDependencyPath`.
+ *
+ * @beta
+ */
 export interface DependencyPathLayout {
   readonly dependency: Dependency;
   readonly points: ReadonlyArray<{ readonly x: number; readonly y: number }>;
@@ -549,6 +587,8 @@ export function isKnownDependencyType(type: string): type is DependencyType {
 
 /** Exported for `interaction/drag-create-dep.ts` (via `render/svg-renderer.ts`'s
  *  `renderLinkHandle`) — the connector handle's position must sit exactly where a resulting
+ *
+ * @beta
  *  FS/SS/FF/SF arrow would attach, with zero duplicated geometry math. */
 export function anchorOf(bar: TaskBarLayout, edge: BarEdge): { x: number; y: number } {
   return edge === 'start'
@@ -562,6 +602,8 @@ export function anchorOf(bar: TaskBarLayout, edge: BarEdge): { x: number; y: num
  * 3-segment elbow through a `rowHeight * 0.4` gutter. Does NOT reflect critical-path
  * status on the edge (spec §4: `CriticalPathResult` only marks tasks, not edges —
  * inferring "both ends critical ⇒ edge critical" is an unverified heuristic, not drawn).
+ *
+ * @beta
  */
 export function layoutDependencyPath(
   dependency: Dependency,
@@ -593,6 +635,11 @@ export function layoutDependencyPath(
 
 // --- Grid / header -----------------------------------------------------------------------
 
+/**
+ * One header/grid column of the time axis, as computed by `computeGridColumns`.
+ *
+ * @beta
+ */
 export interface GridColumn {
   readonly x: number;
   readonly width: number;
@@ -607,6 +654,9 @@ export interface GridColumn {
  * size ... avoid DoS"). 20,000 days ≈ 54 years, comfortably beyond any real
  * project timeline; a caller-supplied `options.timeRange` spanning centuries would
  * otherwise allocate an unbounded number of `<rect>`/`<text>` nodes.
+ *
+ * @deprecated No replacement; will stop being exported from `@fluxgantt/core/render` no earlier than 2 minor releases and 30 days after this release.
+ * @beta
  */
 export const MAX_GRID_COLUMNS = 20_000;
 
@@ -626,6 +676,8 @@ const GRID_LABEL_OPTIONS: Readonly<Record<ViewMode, Intl.DateTimeFormatOptions>>
  * `compute/working-calendar.ts` (`isWorkingPlainDate`/`holidaySet`) — never re-derived here.
  * `now` is an injected parameter (not `Temporal.Now` read internally) so this function
  * stays deterministic/testable (spec §6).
+ *
+ * @beta
  */
 export function computeGridColumns(
   timeScale: TimeScale,
@@ -791,7 +843,7 @@ export function computeHeaderTiers(
   const months: HeaderSpan[] = [];
   const years: { x: number; width: number; text: string }[] = [];
   let date = range.start.toPlainDate();
-  for (let i = 0; i < columns.length && columns[i]!.x < totalWidth; ) {
+  for (let i = 0; i < columns.length && columns[i]!.x < totalWidth;) {
     const end = Math.min(i + date.daysInMonth - date.day + 1, columns.length);
     const last = columns[end - 1]!;
     const x = columns[i]!.x;
@@ -802,7 +854,10 @@ export function computeHeaderTiers(
       months.push({
         x,
         width,
-        text: date.toLocaleString(locale, yearly ? { month: 'short' } : { month: 'short', year: 'numeric' }),
+        text: date.toLocaleString(
+          locale,
+          yearly ? { month: 'short' } : { month: 'short', year: 'numeric' },
+        ),
       });
     if (yearly) {
       if (!years.length || date.month === 1)
@@ -852,7 +907,6 @@ export function todayLineX(timeScale: TimeScale, now: Temporal.ZonedDateTime): n
   return timeScale.dateToX(now);
 }
 
-
 // --- Security: color whitelist ------------------------------------------------------------
 
 // Full-match (`^...$`) whitelist only — no `.includes()`/partial match, which would let
@@ -869,6 +923,8 @@ const HSL_COLOR = /^hsla?\(\s*\d{1,3}\s*,\s*\d{1,3}%\s*,\s*\d{1,3}%\s*(,\s*(0|1|
  * (`svg-renderer.ts`) is responsible for falling back to a default token, and must
  * never pass an unvalidated value into `style.setProperty`. No CSS named colors
  * (`"red"`, ...) in v1 — deliberately minimal, easy-to-audit whitelist (spec §8).
+ *
+ * @beta
  */
 export function validateTaskColor(color: string | undefined): string | undefined {
   if (color === undefined) return undefined;

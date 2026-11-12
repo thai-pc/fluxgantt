@@ -43,6 +43,8 @@ export { MAX_CPM_HOURS, CyclicDependencyError };
  * `task.start` normalized for a root task) and returns the constrained early start to
  * use instead. Core does NOT supply an implementation — `options.resolveConstraint`
  * left `undefined` (the default) means pure ASAP, every `task.constraint` inert.
+ *
+ * @beta
  */
 export type ConstraintResolver = (
   task: Task,
@@ -50,12 +52,22 @@ export type ConstraintResolver = (
   context: ConstraintResolverContext,
 ) => Temporal.ZonedDateTime;
 
+/**
+ * Read-only inputs handed to a `ConstraintResolver`.
+ *
+ * @beta
+ */
 export interface ConstraintResolverContext {
   readonly calendar: WorkingCalendar;
   /** Resolved working-hours duration of `task` (task.duration, or derived from start/end). */
   readonly taskDuration: number;
 }
 
+/**
+ * Options for `computeCriticalPath` (calendar, constraint resolver).
+ *
+ * @beta
+ */
 export interface ComputeCriticalPathOptions {
   /** Pro-tier seam. `undefined` (default) = never called — pure ASAP, every
    *  `task.constraint` inert. */
@@ -71,6 +83,7 @@ export const ASAP_ONLY_RESOLVER: ConstraintResolver = (_task, earlyStart) => ear
  *  from bigint-nanosecond → number-hours conversion). */
 export const CRITICAL_SLACK_EPSILON_HOURS = 1e-6;
 
+/** Computes the critical path (forward and backward pass) over a task graph. Throws `CyclicDependencyError` on a cycle. */
 export function computeCriticalPath(
   tasks: readonly Task[],
   dependencies: readonly Dependency[],
@@ -104,7 +117,14 @@ export function computeCriticalPath(
             .map((dep) => {
               const predEs = es.get(dep.from)!;
               const predEf = ef.get(dep.from)!;
-              return earliestStartFromPredecessor(predEs, predEf, dep.type, dep.lag ?? 0, taskDuration, calendar);
+              return earliestStartFromPredecessor(
+                predEs,
+                predEf,
+                dep.type,
+                dep.lag ?? 0,
+                taskDuration,
+                calendar,
+              );
             })
             .reduce((acc, candidate) => laterOf(acc, candidate));
 
@@ -132,7 +152,9 @@ export function computeCriticalPath(
       succs.length === 0
         ? projectEnd
         : succs
-            .map((dep) => latestFinishFromSucc(predDuration, dep.to, ls, lf, dep.type, dep.lag ?? 0, calendar))
+            .map((dep) =>
+              latestFinishFromSucc(predDuration, dep.to, ls, lf, dep.type, dep.lag ?? 0, calendar),
+            )
             .reduce((acc, candidate) => earlierOf(acc, candidate));
 
     lf.set(id, finalLf);

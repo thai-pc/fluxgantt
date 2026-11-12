@@ -28,6 +28,11 @@
 // svelte).
 import type { SvgRendererHandle } from '../render/svg-renderer.js';
 
+/**
+ * Options for `enableWheelZoom`.
+ *
+ * @beta
+ */
 export interface WheelZoomOptions {
   /** Ctrl+wheel with `deltaY < 0` (scroll "up"/away from the user — the conventional
    *  zoom-in direction, matching pinch-out-to-zoom-in and the Google-Maps/Figma
@@ -49,11 +54,10 @@ export interface WheelZoomOptions {
  * `DependencyStore`/`SelectionStore` — same posture as the Ctrl/Cmd+Plus/Minus keyboard
  * zoom binding (spec-zoom-keybinding.md §4). Register unconditionally at the `mount()`
  * call site.
+ *
+ * @beta
  */
-export function enableWheelZoom(
-  handle: SvgRendererHandle,
-  options: WheelZoomOptions,
-): () => void {
+export function enableWheelZoom(handle: SvgRendererHandle, options: WheelZoomOptions): () => void {
   let disposed = false;
 
   // `{ passive: false }` is required — browsers default `wheel` listeners to passive for

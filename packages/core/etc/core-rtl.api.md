@@ -8,7 +8,7 @@ import { Temporal } from '@js-temporal/polyfill';
 
 // Warning: (ae-forgotten-export) The symbol "GanttInstance" needs to be exported by the entry point index.d.ts
 //
-// @public (undocumented)
+// @public
 export function withRtl<T extends GanttInstance>(instance: T): T;
 
 // (No @packageDocumentation comment for this package)

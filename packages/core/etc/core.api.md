@@ -11,23 +11,23 @@ import { Temporal } from '@js-temporal/polyfill';
 // @public
 export function addWorkingHours(start: DateInput, hours: number, cal: WorkingCalendar): ZDT$1;
 
-// @public (undocumented)
+// @beta
 export type BaselineId = Brand<string, 'BaselineId'>;
 
-// @public
+// @beta
 export function batch<T>(fn: () => T): T;
 
-// @public (undocumented)
+// @public
 export type Brand<T, B> = T & {
     readonly __brand: B;
 };
 
-// @public (undocumented)
+// @beta
 export interface CascadeResult {
     readonly shifts: readonly CascadeShift[];
 }
 
-// @public (undocumented)
+// @beta
 export interface CascadeShift {
     // (undocumented)
     readonly end: Temporal.ZonedDateTime;
@@ -37,7 +37,7 @@ export interface CascadeShift {
     readonly taskId: TaskId;
 }
 
-// @public (undocumented)
+// @beta @deprecated
 export class CollapseStore {
     // (undocumented)
     all(): readonly TaskId[];
@@ -51,18 +51,20 @@ export class CollapseStore {
     get size(): number;
 }
 
-// @public
+// @beta
 export function computeCascade(tasks: readonly Task[], dependencies: readonly Dependency[], calendar: WorkingCalendar, changedTaskIds: readonly TaskId[]): CascadeResult;
 
-// @public (undocumented)
+// Warning: (ae-incompatible-release-tags) The symbol "computeCriticalPath" is marked as @public, but its signature references "ComputeCriticalPathOptions" which is marked as @beta
+//
+// @public
 export function computeCriticalPath(tasks: readonly Task[], dependencies: readonly Dependency[], calendar: WorkingCalendar, options?: ComputeCriticalPathOptions): CriticalPathResult;
 
-// @public (undocumented)
+// @beta
 export interface ComputeCriticalPathOptions {
     resolveConstraint?: ConstraintResolver;
 }
 
-// @public
+// @beta
 export function computed<T>(fn: () => T): ReadonlySignal<T>;
 
 // @public
@@ -71,23 +73,23 @@ export function computeRollup(tasks: readonly Task[], calendar?: WorkingCalendar
 // @public
 export type Conflict = DependencyViolationConflict | OutsideParentConflict | InvalidSpanConflict;
 
-// @public (undocumented)
+// @public
 export type ConflictKind = Conflict['kind'];
 
-// @public
+// @beta
 export type ConstraintResolver = (task: Task, computedEarlyStart: Temporal.ZonedDateTime, context: ConstraintResolverContext) => Temporal.ZonedDateTime;
 
-// @public (undocumented)
+// @beta
 export interface ConstraintResolverContext {
     // (undocumented)
     readonly calendar: WorkingCalendar;
     readonly taskDuration: number;
 }
 
-// @public (undocumented)
+// @public
 export function createGantt(config: GanttConfig): GanttInstance;
 
-// @public (undocumented)
+// @public
 export interface CriticalPathResult {
     readonly criticalTaskIds: readonly TaskId[];
     // (undocumented)
@@ -96,23 +98,23 @@ export interface CriticalPathResult {
     readonly schedule: ReadonlyMap<TaskId, TaskSchedule>;
 }
 
-// @public (undocumented)
+// @public
 export class CyclicDependencyError extends Error {
     constructor(taskIds: readonly TaskId[], callerName?: string);
     // (undocumented)
     readonly taskIds: readonly TaskId[];
 }
 
-// @public (undocumented)
+// @public
 export type DateInput = string | Date | Temporal.ZonedDateTime | Temporal.PlainDate;
 
-// @public (undocumented)
+// @public
 export const DEFAULT_CALENDAR: WorkingCalendar;
 
 // @public
 export type Density = 'compact' | 'default' | 'comfortable' | 'touch';
 
-// @public (undocumented)
+// @public
 export interface Dependency {
     // (undocumented)
     from: TaskId;
@@ -126,13 +128,13 @@ export interface Dependency {
     type: DependencyType;
 }
 
-// @public (undocumented)
+// @public
 export type DependencyId = Brand<string, 'DependencyId'>;
 
 // @public
 export type DependencyInput = Omit<Dependency, 'id'>;
 
-// @public (undocumented)
+// @beta
 export class DependencyStore {
     constructor(initial?: readonly Dependency[]);
     // (undocumented)
@@ -157,6 +159,7 @@ export class DependencyStore {
     // (undocumented)
     remove(id: DependencyId): void;
     removeForTask(taskId: TaskId): void;
+    // @deprecated
     restore(dependency: Dependency): Dependency;
     get revision(): ReadonlySignal<number>;
     // (undocumented)
@@ -166,7 +169,7 @@ export class DependencyStore {
     wouldCreateCycle(from: TaskId, to: TaskId): boolean;
 }
 
-// @public (undocumented)
+// @public
 export type DependencyType = 'FS' | 'SS' | 'FF' | 'SF';
 
 // @public
@@ -187,7 +190,7 @@ export interface DependencyViolationConflict {
 // @public
 export function detectConflicts(tasks: readonly Task[], dependencies: readonly Dependency[], calendar: WorkingCalendar, options?: DetectConflictsOptions): Conflict[];
 
-// @public (undocumented)
+// @public
 export interface DetectConflictsOptions {
     readonly kinds?: readonly ConflictKind[];
 }
@@ -195,7 +198,7 @@ export interface DetectConflictsOptions {
 // @public
 export function differenceInWorkingHours(from: DateInput, to: DateInput, cal: WorkingCalendar): number;
 
-// @public
+// @beta
 export function effect(fn: () => void): () => void;
 
 // @public
@@ -204,7 +207,7 @@ export interface EventMeta {
     readonly source: 'undo' | 'redo';
 }
 
-// @public
+// @beta
 export type GanttAnnouncement =
 /** After a keyboard move or resize (`moved`, `resized`), or when one changed nothing (`cannot-move`,
 *  `cannot-resize`: a summary, a milestone resize, the one-day minimum, or no working time to extend into).
@@ -232,7 +235,7 @@ export type GanttAnnouncement =
     readonly locale: string;
 };
 
-// @public (undocumented)
+// @public
 export interface GanttConfig {
     readonly ariaLabel?: string;
     readonly calendar?: WorkingCalendar;
@@ -254,7 +257,7 @@ export interface GanttConfig {
     readonly viewMode?: ViewMode;
 }
 
-// @public (undocumented)
+// @public
 export interface GanttEventMap {
     'collapse:changed': [collapsedTaskIds: readonly TaskId[]];
     'conflict:detected': [conflicts: readonly Conflict[]];
@@ -283,10 +286,10 @@ export interface GanttEventMap {
     'viewport:changed': [state: ViewportChangedPayload];
 }
 
-// @public (undocumented)
+// @public
 export type GanttEventName = keyof GanttEventMap;
 
-// @public (undocumented)
+// @public
 export interface GanttInstance {
     // (undocumented)
     addTask(input: TaskInput): Task;
@@ -340,11 +343,12 @@ export interface GanttInstance {
 
 // @public
 export interface GanttMessages {
+    // @beta
     readonly announce?: (announcement: GanttAnnouncement) => string;
     readonly taskLabel?: (params: TaskLabelParams) => string;
 }
 
-// @public (undocumented)
+// @public
 export interface ImportSummary {
     readonly dependencyCount: number;
     readonly format: 'json' | 'csv';
@@ -359,20 +363,20 @@ export interface InvalidSpanConflict {
     readonly taskId: TaskId;
 }
 
-// @public (undocumented)
+// @public
 export function isHoliday(date: DateInput, cal: WorkingCalendar): boolean;
 
-// @public (undocumented)
+// @public
 export function isWorkingDay(date: DateInput, cal: WorkingCalendar): boolean;
 
-// @public (undocumented)
+// @beta
 export interface LinkOptions {
     allowCycle?: boolean;
     // (undocumented)
     lag?: number;
 }
 
-// @public
+// @beta
 export function normalizeDate(input: DateInput, timezone: string): Temporal.ZonedDateTime;
 
 // @public
@@ -386,10 +390,10 @@ export interface OutsideParentConflict {
     readonly taskId: TaskId;
 }
 
-// @public (undocumented)
+// @beta
 export type ProjectId = Brand<string, 'ProjectId'>;
 
-// @public (undocumented)
+// @beta
 export interface ReadonlySignal<T> {
     peek(): T;
     // (undocumented)
@@ -405,7 +409,7 @@ export interface RendererSelectedPayload {
     readonly taskCount: number;
 }
 
-// @public (undocumented)
+// @beta
 export interface ResourceAssignment {
     // (undocumented)
     resourceId: ResourceId;
@@ -413,7 +417,7 @@ export interface ResourceAssignment {
     units: number;
 }
 
-// @public (undocumented)
+// @beta
 export type ResourceId = Brand<string, 'ResourceId'>;
 
 // @public
@@ -432,7 +436,7 @@ export interface RolledUpSpan {
 // @public
 export type RollupProvider = (tasks: readonly Task[], calendar: WorkingCalendar) => ReadonlyMap<TaskId, RolledUpRow>;
 
-// @public (undocumented)
+// @public
 export interface RollupResult {
     readonly durationHours: number;
     readonly end: ZDT;
@@ -444,7 +448,7 @@ export interface RollupResult {
 // @public
 export type SchedulingMode = 'manual' | 'auto';
 
-// @public (undocumented)
+// @beta @deprecated
 export class SelectionStore {
     // (undocumented)
     all(): TaskId[];
@@ -457,7 +461,7 @@ export class SelectionStore {
     get size(): number;
 }
 
-// @public (undocumented)
+// @beta @deprecated
 export class Signal<T> implements ReadonlySignal<T> {
     constructor(value: T);
     // (undocumented)
@@ -467,16 +471,18 @@ export class Signal<T> implements ReadonlySignal<T> {
     set value(next: T);
 }
 
-// @public
+// @beta
 export function signal<T>(value: T): Signal<T>;
 
 // @public
 export function subtractWorkingHours(start: DateInput, hours: number, cal: WorkingCalendar): ZDT$1;
 
-// @public (undocumented)
+// @public
 export interface Task {
     // (undocumented)
     color?: string;
+    // Warning: (ae-incompatible-release-tags) The symbol "constraint" is marked as @public, but its signature references "TaskConstraint" which is marked as @beta
+    //
     // (undocumented)
     constraint?: TaskConstraint;
     // (undocumented)
@@ -499,6 +505,8 @@ export interface Task {
     priority?: number;
     // (undocumented)
     progress: number;
+    // Warning: (ae-incompatible-release-tags) The symbol "resources" is marked as @public, but its signature references "ResourceAssignment" which is marked as @beta
+    //
     // (undocumented)
     resources?: ResourceAssignment[];
     // (undocumented)
@@ -522,7 +530,7 @@ export interface TaskActivatedPayload {
     readonly taskId: TaskId;
 }
 
-// @public (undocumented)
+// @beta
 export type TaskConstraint = {
     kind: 'asap';
 } | {
@@ -565,7 +573,7 @@ export interface TaskContextRequestedPayload {
 // @public
 export type TaskHitPart = 'bar' | 'label' | 'row';
 
-// @public (undocumented)
+// @public
 export type TaskId = Brand<string, 'TaskId'>;
 
 // @public
@@ -573,7 +581,7 @@ export type TaskInput = Omit<Task, 'id' | 'createdAt' | 'updatedAt'> & {
     id?: TaskId;
 };
 
-// @public (undocumented)
+// @public
 export type TaskKind = 'task' | 'summary' | 'milestone' | 'project';
 
 // @public
@@ -594,7 +602,7 @@ export interface TaskLabelParams {
 // @public
 export type TaskPatch = Partial<Omit<Task, 'id' | 'createdAt' | 'updatedAt'>>;
 
-// @public (undocumented)
+// @public
 export interface TaskSchedule {
     // (undocumented)
     readonly earlyFinish: Temporal.ZonedDateTime;
@@ -610,7 +618,7 @@ export interface TaskSchedule {
     readonly taskId: TaskId;
 }
 
-// @public (undocumented)
+// @beta
 export class TaskStore {
     constructor(initial?: readonly Task[]);
     // (undocumented)
@@ -628,6 +636,7 @@ export class TaskStore {
     // (undocumented)
     has(id: TaskId): boolean;
     remove(id: TaskId): void;
+    // @deprecated
     restore(task: Task): Task;
     get revision(): ReadonlySignal<number>;
     // (undocumented)
@@ -640,31 +649,31 @@ export class TaskStore {
     update(id: TaskId, patch: TaskPatch): Task;
 }
 
-// @public (undocumented)
+// @beta
 export const toBaselineId: (s: string) => BaselineId;
 
-// @public (undocumented)
+// @public
 export const toDependencyId: (s: string) => DependencyId;
 
-// @public (undocumented)
+// @beta
 export const toProjectId: (s: string) => ProjectId;
 
-// @public (undocumented)
+// @beta
 export const toResourceId: (s: string) => ResourceId;
 
-// @public (undocumented)
+// @public
 export const toTaskId: (s: string) => TaskId;
 
-// @public (undocumented)
+// @public
 export type UnsubscribeFn = () => void;
 
-// @public
+// @beta
 export function untracked<T>(fn: () => T): T;
 
-// @public (undocumented)
+// @public
 export const VERSION: string;
 
-// @public (undocumented)
+// @public
 export type ViewMode = 'day' | 'week' | 'month' | 'quarter' | 'year';
 
 // @public
@@ -674,10 +683,10 @@ export interface ViewportChangedPayload {
     readonly viewMode: ViewMode;
 }
 
-// @public (undocumented)
+// @public
 export type WeekdayCode = 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat' | 'sun';
 
-// @public (undocumented)
+// @public
 export interface WorkingCalendar {
     // (undocumented)
     holidays: DateInput[];

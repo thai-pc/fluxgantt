@@ -279,13 +279,13 @@ export { TaskPatch }
 
 export { UnsubscribeFn }
 
-// @public (undocumented)
+// @public
 export function useFluxGantt(config: UseFluxGanttConfig): UseFluxGanttResult;
 
 // @public
 export type UseFluxGanttConfig = GanttConfig;
 
-// @public (undocumented)
+// @public
 export interface UseFluxGanttResult {
     readonly containerRef: Ref<HTMLDivElement | null>;
     readonly instance: GanttInstance & RenderCapability & ViewportCapability & ThemeCapability;

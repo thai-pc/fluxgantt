@@ -8,16 +8,16 @@ import { Temporal } from '@js-temporal/polyfill';
 
 // Warning: (ae-forgotten-export) The symbol "BarEdge" needs to be exported by the entry point index.d.ts
 //
-// @public
+// @beta
 export function anchorOf(bar: TaskBarLayout, edge: BarEdge): {
     x: number;
     y: number;
 };
 
-// @public
+// @beta @deprecated
 export const ARROWHEAD_MARKER_ID = "fg-dep-arrowhead";
 
-// @public
+// @beta
 export interface BarHit {
     // Warning: (ae-forgotten-export) The symbol "TaskId" needs to be exported by the entry point index.d.ts
     readonly taskId: TaskId;
@@ -25,7 +25,7 @@ export interface BarHit {
     readonly zone: BarZone;
 }
 
-// @public
+// @beta
 export type BarZone = 'link-start' | 'link-end' | 'resize-end' | 'body';
 
 // @public
@@ -34,16 +34,16 @@ export const CANVAS_AUTO_SWITCH_THRESHOLD = 2000;
 // Warning: (ae-forgotten-export) The symbol "ViewMode" needs to be exported by the entry point index.d.ts
 // Warning: (ae-forgotten-export) The symbol "WorkingCalendar" needs to be exported by the entry point index.d.ts
 //
-// @public
+// @beta
 export function computeGridColumns(timeScale: TimeScale, viewMode: ViewMode, calendar: WorkingCalendar, locale: string, now: Temporal.ZonedDateTime): GridColumn[];
 
-// @public
+// @beta
 export function createSvgRenderer(container: HTMLElement, input: SvgRendererInput, options?: SvgRendererOptions): SvgRendererHandle;
 
-// @public
+// @beta
 export function createTimeScale(range: TimeRange, viewMode: ViewMode, calendar: WorkingCalendar): TimeScale;
 
-// @public (undocumented)
+// @beta
 export interface DependencyPathLayout {
     // Warning: (ae-forgotten-export) The symbol "Dependency" needs to be exported by the entry point index.d.ts
     //
@@ -58,10 +58,10 @@ export interface DependencyPathLayout {
 
 // Warning: (ae-forgotten-export) The symbol "Task" needs to be exported by the entry point index.d.ts
 //
-// @public
+// @beta
 export function deriveTimeRange(tasks: readonly Task[], viewMode: ViewMode, calendar: WorkingCalendar): TimeRange;
 
-// @public (undocumented)
+// @beta
 export interface GridColumn {
     // (undocumented)
     readonly isHoliday: boolean;
@@ -77,7 +77,7 @@ export interface GridColumn {
     readonly x: number;
 }
 
-// @public
+// @beta
 export interface InteractiveRendererHandle {
     readonly container: HTMLElement;
     getLabelColumnWidth(): number;
@@ -100,26 +100,26 @@ export interface InteractiveRendererHandle {
     readonly pointerEventTarget: Element;
 }
 
-// @public (undocumented)
+// @beta @deprecated
 export const LABEL_COLUMN_WIDTH = 160;
 
-// @public
+// @beta
 export function layoutDependencyPath(dependency: Dependency, fromBar: TaskBarLayout, toBar: TaskBarLayout, rowHeight: number): DependencyPathLayout;
 
 // Warning: (ae-forgotten-export) The symbol "Density" needs to be exported by the entry point index.d.ts
 //
-// @public
+// @beta
 export function layoutRows(tasks: readonly Task[], density: Density, collapsedIds?: ReadonlySet<TaskId>): RowLayout[];
 
 // Warning: (ae-forgotten-export) The symbol "RolledUpSpan" needs to be exported by the entry point index.d.ts
 //
-// @public
+// @beta
 export function layoutTaskBar(task: Task, timeScale: TimeScale, row: RowLayout, rowHeight: number, rollup?: ReadonlyMap<TaskId, RolledUpSpan>): TaskBarLayout;
 
-// @public
+// @beta @deprecated
 export const MAX_GRID_COLUMNS = 20000;
 
-// @public
+// @beta @deprecated
 export const PIXELS_PER_DAY: Readonly<Record<ViewMode, number>>;
 
 // @public
@@ -131,10 +131,10 @@ export interface RenderCapability {
     unmount(): void;
 }
 
-// @public
+// @beta
 export const ROW_HEIGHT: Readonly<Record<Density, number>>;
 
-// @public (undocumented)
+// @beta
 export interface RowLayout {
     // (undocumented)
     readonly depth: number;
@@ -147,7 +147,7 @@ export interface RowLayout {
     readonly y: number;
 }
 
-// @public (undocumented)
+// @beta
 export interface SvgRendererHandle extends InteractiveRendererHandle {
     // (undocumented)
     readonly container: HTMLElement;
@@ -161,7 +161,7 @@ export interface SvgRendererHandle extends InteractiveRendererHandle {
     update(input: SvgRendererInput, options?: Partial<SvgRendererOptions>): void;
 }
 
-// @public (undocumented)
+// @beta
 export interface SvgRendererInput {
     readonly calendar?: WorkingCalendar;
     readonly collapsedIds?: ReadonlySet<TaskId>;
@@ -178,7 +178,7 @@ export interface SvgRendererInput {
     readonly tasks: readonly Task[];
 }
 
-// @public (undocumented)
+// @beta
 export interface SvgRendererOptions {
     readonly ariaLabel?: string;
     // (undocumented)
@@ -197,7 +197,7 @@ export interface SvgRendererOptions {
     readonly viewMode?: ViewMode;
 }
 
-// @public (undocumented)
+// @beta
 export interface TaskBarLayout {
     // (undocumented)
     readonly height: number;
@@ -211,7 +211,7 @@ export interface TaskBarLayout {
     readonly y: number;
 }
 
-// @public (undocumented)
+// @beta
 export interface TimeRange {
     // (undocumented)
     readonly end: Temporal.ZonedDateTime;
@@ -219,7 +219,7 @@ export interface TimeRange {
     readonly start: Temporal.ZonedDateTime;
 }
 
-// @public (undocumented)
+// @beta
 export interface TimeScale {
     // (undocumented)
     dateToX(date: DateInput): number;
@@ -233,7 +233,7 @@ export interface TimeScale {
     xToDate(x: number): Temporal.ZonedDateTime;
 }
 
-// @public
+// @beta
 export function validateTaskColor(color: string | undefined): string | undefined;
 
 // Warning: (ae-forgotten-export) The symbol "GanttInstance" needs to be exported by the entry point index.d.ts
@@ -243,7 +243,7 @@ export function withRender<T extends GanttInstance>(instance: T): T & RenderCapa
 
 // Warnings were encountered during analysis:
 //
-// dist/svg-renderer-EHQIHgEe.d.ts:322:9 - (ae-forgotten-export) The symbol "DateInput" needs to be exported by the entry point index.d.ts
+// dist/svg-renderer-1T-6Z6DE.d.ts:396:9 - (ae-forgotten-export) The symbol "DateInput" needs to be exported by the entry point index.d.ts
 
 // (No @packageDocumentation comment for this package)
 

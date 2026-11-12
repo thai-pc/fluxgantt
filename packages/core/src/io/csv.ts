@@ -10,7 +10,13 @@ import type { TaskInput } from '../store/index.js';
 import { dateInputToIso, assertParsableDateInput } from './date.js';
 import { IoValidationError } from './errors.js';
 import { DEFAULT_IMPORT_LIMITS } from './limits.js';
-import type { CsvColumn, ExportCsvOptions, ImportCsvOptions, ImportCsvResult, ImportLimits } from './types.js';
+import type {
+  CsvColumn,
+  ExportCsvOptions,
+  ImportCsvOptions,
+  ImportCsvResult,
+  ImportLimits,
+} from './types.js';
 import {
   TASK_KINDS,
   assertFiniteNumber,
@@ -22,6 +28,7 @@ import {
   validateColor,
 } from './validate.js';
 
+/** The columns `exportCsv` writes, and `importCsv` reads, by default. */
 export const DEFAULT_CSV_COLUMNS: readonly CsvColumn[] = [
   'id',
   'name',
@@ -35,13 +42,24 @@ export const DEFAULT_CSV_COLUMNS: readonly CsvColumn[] = [
   'color',
 ];
 
-const REQUIRED_CSV_COLUMNS: readonly CsvColumn[] = ['id', 'name', 'start', 'end', 'progress', 'type'];
+const REQUIRED_CSV_COLUMNS: readonly CsvColumn[] = [
+  'id',
+  'name',
+  'start',
+  'end',
+  'progress',
+  'type',
+];
 
 /** Cell first-character trigger set for CSV formula-injection escaping (security.md §2,
  *  spec §5.2). Always-on, no opt-out. */
 const FORMULA_TRIGGER_CHARS = ['=', '+', '-', '@', '\t', '\r'];
 
-/** Prefix a literal `'` so Excel/Sheets treats the cell as text, never a formula. */
+/**
+ * Prefix a literal `'` so Excel/Sheets treats the cell as text, never a formula.
+ *
+ * @beta
+ */
 export function escapeCsvValue(value: string): string {
   if (value.length > 0 && FORMULA_TRIGGER_CHARS.includes(value[0]!)) {
     return `'${value}`;
@@ -130,7 +148,10 @@ function rfc4180Quote(value: string): string {
 export function importCsv(csv: string, options?: ImportCsvOptions): ImportCsvResult {
   const limits: ImportLimits = { ...DEFAULT_IMPORT_LIMITS, ...options?.limits };
   if (csv.length > limits.maxInputLengthChars) {
-    throw new IoValidationError(`csv exceeds maxInputLengthChars (${limits.maxInputLengthChars})`, '$');
+    throw new IoValidationError(
+      `csv exceeds maxInputLengthChars (${limits.maxInputLengthChars})`,
+      '$',
+    );
   }
 
   const rows = parseRfc4180(csv);
@@ -215,7 +236,10 @@ export function importCsv(csv: string, options?: ImportCsvOptions): ImportCsvRes
     });
   });
 
-  checkHierarchyDepth(result as ReadonlyArray<{ id: TaskId; parent?: TaskId }>, limits.maxHierarchyDepth);
+  checkHierarchyDepth(
+    result as ReadonlyArray<{ id: TaskId; parent?: TaskId }>,
+    limits.maxHierarchyDepth,
+  );
   return { tasks: result };
 }
 

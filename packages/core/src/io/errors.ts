@@ -6,6 +6,7 @@
 // `DependencyStore.link()`/`createGantt()` are explicitly NOT `IoValidationError` — they occur
 // outside this module (see spec §5.5): `instanceof IoValidationError` means "this module
 // rejected the raw input," not "any error anywhere in the import pipeline."
+/** Thrown when imported data fails validation. Nothing is loaded into the chart when it is thrown. */
 export class IoValidationError extends Error {
   /**
    * JSON-Path-ish pointer to the offending value, e.g. `"$.tasks[3].name"` or

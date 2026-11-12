@@ -14,6 +14,7 @@ import type { Dependency, DependencyType, Task, TaskId, WorkingCalendar } from '
 
 type ZDT = Temporal.ZonedDateTime;
 
+/** Thrown when a dependency graph contains a cycle. Match on `name`; the message text is not API. */
 export class CyclicDependencyError extends Error {
   readonly taskIds: readonly TaskId[];
 
@@ -157,7 +158,9 @@ export function validateTaskDuration(task: Task, callerName: string): void {
     );
   }
   if (duration < 0) {
-    throw new Error(`${callerName}: task ${task.id} has an invalid duration (${duration}) — must be >= 0`);
+    throw new Error(
+      `${callerName}: task ${task.id} has an invalid duration (${duration}) — must be >= 0`,
+    );
   }
   if (duration > MAX_CPM_HOURS) {
     throw new Error(
@@ -178,7 +181,9 @@ export function validateDependencyLag(dep: Dependency, callerName: string): void
   const { lag } = dep;
   if (lag === undefined) return;
   if (!Number.isFinite(lag)) {
-    throw new Error(`${callerName}: dependency ${dep.id} has an invalid lag (${lag}) — must be a finite number`);
+    throw new Error(
+      `${callerName}: dependency ${dep.id} has an invalid lag (${lag}) — must be a finite number`,
+    );
   }
   if (Math.abs(lag) > MAX_CPM_HOURS) {
     throw new Error(
@@ -194,7 +199,9 @@ export function resolveDuration(task: Task, calendar: WorkingCalendar, callerNam
   if (task.duration !== undefined) return task.duration;
   const hours = differenceInWorkingHours(task.start, task.end, calendar);
   if (hours < 0) {
-    throw new Error(`${callerName}: task ${task.id} has an end before its start and no explicit duration`);
+    throw new Error(
+      `${callerName}: task ${task.id} has an end before its start and no explicit duration`,
+    );
   }
   return hours;
 }

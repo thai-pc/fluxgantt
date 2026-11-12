@@ -23,7 +23,7 @@ export interface ResponsiveOptions {
 
 // Warning: (ae-forgotten-export) The symbol "GanttInstance" needs to be exported by the entry point index.d.ts
 //
-// @public (undocumented)
+// @public
 export function withResponsive<T extends GanttInstance>(instance: T, options?: ResponsiveOptions): T & ResponsiveCapability;
 
 // (No @packageDocumentation comment for this package)

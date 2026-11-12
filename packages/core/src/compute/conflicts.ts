@@ -32,6 +32,7 @@ const CALLER_NAME = 'detectConflicts';
  */
 const MAX_SHORTFALL_DAYS = 36_500;
 
+/** Options for `detectConflicts`. */
 export interface DetectConflictsOptions {
   /** Default: all kinds. */
   readonly kinds?: readonly ConflictKind[];
@@ -137,7 +138,9 @@ export function detectConflicts(
                 ps.end,
                 d.type,
                 lag,
-                d.type === 'FF' || d.type === 'SF' ? resolveDuration(succ, calendar, CALLER_NAME) : 0,
+                d.type === 'FF' || d.type === 'SF'
+                  ? resolveDuration(succ, calendar, CALLER_NAME)
+                  : 0,
                 calendar,
               );
       if (compareInstant(required, ss.start) > 0) {

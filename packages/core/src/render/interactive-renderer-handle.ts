@@ -4,10 +4,18 @@
 // without violating either file's module-isolation rules.
 import type { TaskId } from '../types.js';
 
-/** Where a press on a Canvas bar lands: a link handle, the resizable end edge, or the movable body. */
+/**
+ * Where a press on a Canvas bar lands: a link handle, the resizable end edge, or the movable body.
+ *
+ * @beta
+ */
 export type BarZone = 'link-start' | 'link-end' | 'resize-end' | 'body';
 
-/** The bar zone a drag recognizer would claim at a point (see `InteractiveRendererHandle.hitTestBar`). */
+/**
+ * The bar zone a drag recognizer would claim at a point (see `InteractiveRendererHandle.hitTestBar`).
+ *
+ * @beta
+ */
 export interface BarHit {
   /** Resolved from the laid-out rows, never parsed from DOM. */
   readonly taskId: TaskId;
@@ -37,6 +45,8 @@ export interface BarHit {
  * `interaction/collapse-toggle.ts` can read `hit.hitToggle` through the shared structural type
  * without a defensive `'hitToggle' in hit` runtime check — the type itself is now the source of
  * truth, matching what the implementation actually returns.
+ *
+ * @beta
  */
 export interface InteractiveRendererHandle {
   readonly interactionRoot: Element;
@@ -73,7 +83,9 @@ export interface InteractiveRendererHandle {
   hitTestRow?(
     clientX: number,
     clientY: number,
-  ): { taskId: TaskId; rowIndex: number; hitToggle: boolean; onBar?: boolean; onLabel?: boolean } | undefined;
+  ):
+    | { taskId: TaskId; rowIndex: number; hitToggle: boolean; onBar?: boolean; onLabel?: boolean }
+    | undefined;
   /**
    * Present ONLY when the chart is painted mirrored (set by `withRtl`; do not rely on it). An
    * involution `x -> W - x` on the painted width `W` (label column + `timeScale.totalWidth`)

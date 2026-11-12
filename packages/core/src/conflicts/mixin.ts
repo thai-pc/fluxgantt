@@ -16,6 +16,7 @@ import { detectConflicts as detect } from '../compute/conflicts.js';
 import { effect } from '../signals.js';
 import type { Conflict, ConflictKind } from '../types.js';
 
+/** Options for `withConflicts`. */
 export interface WithConflictsOptions {
   /** Which kinds to report. Default: all. `outside-parent` is dropped automatically when
    *  `GanttConfig.rollup` is set (the parent is DRAWN at its derived span, so an authored
@@ -31,6 +32,7 @@ export interface WithConflictsOptions {
   readonly kinds?: readonly ConflictKind[];
 }
 
+/** The methods `withConflicts` adds to an instance. */
 export interface ConflictsCapability {
   /**
    * Pure query over the live data: the current schedule conflicts in canonical order, as a fresh
@@ -59,6 +61,7 @@ function signatureOf(conflicts: readonly Conflict[]): string {
     .join('\n');
 }
 
+/** Adds conflict detection (`detectConflicts` plus a change watcher) to an instance. */
 export function withConflicts<T extends GanttInstance>(
   instance: T,
   options?: WithConflictsOptions,
@@ -81,9 +84,9 @@ export function withConflicts<T extends GanttInstance>(
   const { tasks: taskStore, deps: dependencyStore, calendar, config } = internal;
 
   const compute = (): Conflict[] => {
-    const kinds = (options?.kinds ?? ['invalid-span', 'dependency-violation', 'outside-parent']).filter(
-      (k) => k !== 'outside-parent' || config.rollup === undefined,
-    );
+    const kinds = (
+      options?.kinds ?? ['invalid-span', 'dependency-violation', 'outside-parent']
+    ).filter((k) => k !== 'outside-parent' || config.rollup === undefined);
     return detect(taskStore.all(), dependencyStore.all(), calendar, { kinds });
   };
 

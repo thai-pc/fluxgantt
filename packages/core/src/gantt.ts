@@ -14,7 +14,12 @@
 // via `computeCascade` — opt-in via `GanttConfig.schedulingMode: 'auto'`. Default remains
 // `'manual'` (= v1's original single-task-only behavior, unchanged) — see `#maybeCascade`.
 import { batch, signal, type Signal } from './signals.js';
-import { INTERNAL, type GanttInternal, type MountState, type InteractionHooks } from './gantt-internal.js';
+import {
+  INTERNAL,
+  type GanttInternal,
+  type MountState,
+  type InteractionHooks,
+} from './gantt-internal.js';
 import { TaskStore, DependencyStore, SelectionStore, CollapseStore } from './store/index.js';
 import type { TaskInput, TaskPatch } from './store/index.js';
 import {
@@ -49,6 +54,7 @@ import type {
 
 // --- Public config -------------------------------------------------------------------
 
+/** Configuration passed to `createGantt`. */
 export interface GanttConfig {
   /** Initial tasks. Routed through `TaskStore.add()` one at a time at construction (not
    *  the store's `initial` constructor array) so every task gets the same
@@ -286,6 +292,7 @@ export interface RendererSelectedPayload {
   readonly canvasFallbackReason?: 'dimension-exceeded' | 'load-failed' | 'construction-failed';
 }
 
+/** Counts reported by `data:imported`. */
 export interface ImportSummary {
   /** Which of the two import methods produced this summary. */
   readonly format: 'json' | 'csv';
@@ -298,6 +305,7 @@ export interface ImportSummary {
   readonly dependencyCount: number;
 }
 
+/** Event names mapped to their listener argument tuples. */
 export interface GanttEventMap {
   'task:added': [task: Task, meta?: EventMeta];
   /** `prevStart` is `DateInput` (usually the same shape the task was last written with),
@@ -372,11 +380,14 @@ export interface GanttEventMap {
   'task:context-requested': [payload: TaskContextRequestedPayload];
 }
 
+/** Any event name `GanttInstance.on` accepts. */
 export type GanttEventName = keyof GanttEventMap;
+/** Call to remove the listener that returned it. */
 export type UnsubscribeFn = () => void;
 
 // --- Public instance shape ---------------------------------------------------------------
 
+/** A chart instance: tasks, dependencies, selection, history, events and export. */
 export interface GanttInstance {
   // --- Task operations (no cascade, see the module doc-comment above) ------------------
   addTask(input: TaskInput): Task;
@@ -670,14 +681,22 @@ class Gantt implements GanttInstance {
     // May throw (duplicate id / self-link / duplicate pair / cycle) — construction fails
     // atomically; no partial state is observable (the whole `createGantt()` call throws, no
     // instance is ever returned).
-    this.#loadDataset(config.tasks ?? [], config.dependencies ?? [], this.#taskStore, this.#dependencyStore, 'createGantt');
+    this.#loadDataset(
+      config.tasks ?? [],
+      config.dependencies ?? [],
+      this.#taskStore,
+      this.#dependencyStore,
+      'createGantt',
+    );
 
     // `initialCollapsed` (spec-collapse-expand.md §3.3) — applied AFTER `#taskStore` is
     // populated (needs `children()` to resolve), using the exact same "must currently have a
     // child" filter as `collapseAll()`. Does NOT emit `collapse:changed` — construction-time
     // state, not a runtime mutation.
     if (config.initialCollapsed && config.initialCollapsed.length > 0) {
-      const withChildren = config.initialCollapsed.filter((id) => this.#taskStore.children(id).length > 0);
+      const withChildren = config.initialCollapsed.filter(
+        (id) => this.#taskStore.children(id).length > 0,
+      );
       this.#collapseStore.replace(withChildren);
     }
 
@@ -717,7 +736,8 @@ class Gantt implements GanttInstance {
         this.#applySelection(ids);
       },
       withKids: (ids) => this.#expandWithDescendants(ids),
-      load: (tasks, dependencies, format) => this.#run(() => this.#commitImport(tasks, dependencies, format)),
+      load: (tasks, dependencies, format) =>
+        this.#run(() => this.#commitImport(tasks, dependencies, format)),
       requireMount: (method) => this.#assertMounted(method),
       noteCrit: (ids) => {
         if (this.#sameCriticalIds(ids)) return false;
@@ -816,7 +836,11 @@ class Gantt implements GanttInstance {
     this.#redoStack.length = 0;
     if (hadHistory) this.#emitHistoryChanged(); // suppressed when both stacks were already empty
 
-    const summary: ImportSummary = { format, taskCount: tasks.length, dependencyCount: dependencies.length };
+    const summary: ImportSummary = {
+      format,
+      taskCount: tasks.length,
+      dependencyCount: dependencies.length,
+    };
     this.#emit('data:imported', summary);
     return summary;
   }
@@ -834,7 +858,8 @@ class Gantt implements GanttInstance {
   updateTask(id: TaskId, patch: TaskPatch): Task {
     this.#assertAlive('updateTask');
     this.#requireTask(id, 'updateTask');
-    const cascades = patch.start !== undefined || patch.end !== undefined || patch.duration !== undefined;
+    const cascades =
+      patch.start !== undefined || patch.end !== undefined || patch.duration !== undefined;
     return this.#commitScheduleChange(id, patch, cascades);
   }
 
@@ -860,7 +885,9 @@ class Gantt implements GanttInstance {
     this.#assertAlive('resizeTask');
     const prev = this.#requireTask(id, 'resizeTask');
     if (!Number.isFinite(newDuration) || newDuration < 0) {
-      throw new Error(`gantt.resizeTask: invalid duration (${newDuration}) — must be a finite number >= 0`);
+      throw new Error(
+        `gantt.resizeTask: invalid duration (${newDuration}) — must be a finite number >= 0`,
+      );
     }
     // Sets BOTH `end` (so the rendered bar — whose width comes from start/end, not
     // `duration` — actually resizes) AND explicit `duration` (authoritative for
@@ -903,7 +930,14 @@ class Gantt implements GanttInstance {
 
         // Omit id/createdAt/updatedAt/start/end from the spread — id/timestamps are
         // store-owned (addTask mints/stamps them), start/end are explicitly recomputed below.
-        const { id: _id, createdAt: _createdAt, updatedAt: _updatedAt, start: _start, end: _end, ...rest } = source;
+        const {
+          id: _id,
+          createdAt: _createdAt,
+          updatedAt: _updatedAt,
+          start: _start,
+          end: _end,
+          ...rest
+        } = source;
 
         const sourceEnd = normalizeDate(source.end, tz);
         const durationHours =
@@ -952,7 +986,9 @@ class Gantt implements GanttInstance {
       //     deps before tasks (matches this method's own emit order below); undo() (LIFO/
       //     reverse) re-adds tasks before the dependencies that reference them.
       this.#recordOps([
-        ...[...depsToRemove.values()].map((dependency) => ({ kind: 'dependency-remove', dependency }) as const),
+        ...[...depsToRemove.values()].map(
+          (dependency) => ({ kind: 'dependency-remove', dependency }) as const,
+        ),
         ...removedTasks.map((task) => ({ kind: 'task-remove', task }) as const),
       ]);
 
@@ -1184,7 +1220,10 @@ class Gantt implements GanttInstance {
 
   // --- Events ----------------------------------------------------------------------------------
 
-  on<E extends GanttEventName>(event: E, callback: (...args: GanttEventMap[E]) => void): UnsubscribeFn {
+  on<E extends GanttEventName>(
+    event: E,
+    callback: (...args: GanttEventMap[E]) => void,
+  ): UnsubscribeFn {
     if (this.#destroyed) return () => {}; // nothing will ever fire again — true no-op
     let set = this.#listeners.get(event);
     if (!set) {
@@ -1216,7 +1255,6 @@ class Gantt implements GanttInstance {
     this.#listeners.clear();
     this.#destroyed = true;
   }
-
 
   // --- Private: mutation → split-event pipeline (Q3 + Q6) ---------------------------------
 
@@ -1295,11 +1333,16 @@ class Gantt implements GanttInstance {
   /** Instant span (end − start) in nanoseconds — translation-invariant, so a move (both
    *  ends shifted by the same delta) preserves it. */
   #spanNs(task: Task, timezone: string): bigint {
-    return normalizeDate(task.end, timezone).epochNanoseconds - normalizeDate(task.start, timezone).epochNanoseconds;
+    return (
+      normalizeDate(task.end, timezone).epochNanoseconds -
+      normalizeDate(task.start, timezone).epochNanoseconds
+    );
   }
 
   #sameInstant(a: DateInput, b: DateInput, timezone: string): boolean {
-    return normalizeDate(a, timezone).epochNanoseconds === normalizeDate(b, timezone).epochNanoseconds;
+    return (
+      normalizeDate(a, timezone).epochNanoseconds === normalizeDate(b, timezone).epochNanoseconds
+    );
   }
 
   /** True when `next` equals the last-emitted critical set element-wise. `criticalTaskIds`
@@ -1343,7 +1386,10 @@ class Gantt implements GanttInstance {
   }
 
   #emitHistoryChanged(): void {
-    this.#emit('history:changed', { canUndo: this.#undoStack.length > 0, canRedo: this.#redoStack.length > 0 });
+    this.#emit('history:changed', {
+      canUndo: this.#undoStack.length > 0,
+      canRedo: this.#redoStack.length > 0,
+    });
   }
 
   #beginTransaction(): void {
@@ -1555,7 +1601,12 @@ class Gantt implements GanttInstance {
    */
   #maybeCascade(changedId: TaskId): void {
     if (this.#config.schedulingMode !== 'auto') return;
-    const result = computeCascade(this.#taskStore.all(), this.#dependencyStore.all(), this.#calendar, [changedId]);
+    const result = computeCascade(
+      this.#taskStore.all(),
+      this.#dependencyStore.all(),
+      this.#calendar,
+      [changedId],
+    );
     for (const shift of result.shifts) {
       // Cascade shifts are pure moves (duration preserved) → emit only `task:moved`, never a
       // spurious `task:resized` from an instant-span change across weekends (review finding).
@@ -1613,6 +1664,7 @@ class Gantt implements GanttInstance {
   }
 }
 
+/** Creates a headless Gantt instance. Add capabilities with the `with*` mixins. */
 export function createGantt(config: GanttConfig): GanttInstance {
   return new Gantt(config);
 }

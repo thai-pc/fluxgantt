@@ -13,6 +13,10 @@ This file is the context entry point for AI. Details are split into rules under 
 - @.claude/rules/testing.md — testing strategy (vitest, playwright, fast-check)
 - @.claude/rules/security.md — **MUST read** before touching IO/auth/cloud/AI
 
+## Stability policy
+The API report is the lock and the TSDoc tag decides the tier (stable, `@beta`, `@deprecated`): read
+[`STABILITY.md`](https://github.com/thai-pc/fluxgantt/blob/master/STABILITY.md) before changing an exported symbol. A report change needs a minor changeset.
+
 ## Golden rules (summary, do not violate)
 1. **Headless first** — core runs without a DOM (Node/Workers/tests). No DOM API imports in `store/`, `compute/`, or pure-data `io`.
 2. **Framework-agnostic core** — `@fluxgantt/core` must NOT import `react`/`vue`/`svelte`. Framework opinions live only in wrappers.

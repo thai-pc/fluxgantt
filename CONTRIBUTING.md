@@ -63,6 +63,14 @@ pnpm api:update   # builds, then regenerates every report; commit the result
 pnpm api:check    # what CI runs (needs a fresh build): fails on a stale or missing report
 ```
 
+Every exported symbol has a tier (stable, `@beta`, `@deprecated`) set by a TSDoc tag on its
+declaration. Read the [stability policy](https://github.com/thai-pc/fluxgantt/blob/master/STABILITY.md) before adding or changing one. New public surface
+ships as `@beta` for its first minor and is promoted in the next minor if it is unchanged. A
+deprecation message names the replacement (or says there is none) and the removal window: no
+earlier than 2 minor releases and 30 days after the release that deprecated it. `@internal` members
+of public classes keep their name (renaming would be a breaking change); do not add new top-level
+`@internal` exports (API Extractor requires an underscore name for those and CI enforces it).
+
 Rules when a report changes (enforced on PRs by `pnpm api:changeset`):
 
 - The PR must add (or edit) a changeset that **names the package** with at least a **minor** bump.

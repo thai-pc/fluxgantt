@@ -135,6 +135,7 @@ export interface ResponsiveCapability {
   getLabelColumnWidth(): number;
 }
 
+/** Adapts a mounted chart to touch and narrow screens. */
 export function withResponsive<T extends GanttInstance>(
   instance: T,
   options: ResponsiveOptions = {},

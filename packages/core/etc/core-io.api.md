@@ -6,19 +6,19 @@
 
 import { Temporal } from '@js-temporal/polyfill';
 
-// @public (undocumented)
+// @public
 export type CsvColumn = 'id' | 'name' | 'start' | 'end' | 'duration' | 'progress' | 'type' | 'parent' | 'notes' | 'color';
 
-// @public (undocumented)
+// @public
 export const DEFAULT_CSV_COLUMNS: readonly CsvColumn[];
 
-// @public (undocumented)
+// @public
 export const DEFAULT_IMPORT_LIMITS: ImportLimits;
 
-// @public
+// @beta
 export function escapeCsvValue(value: string): string;
 
-// @public (undocumented)
+// @public
 export interface ExportBundle {
     // (undocumented)
     dependencies: ExportedDependency[];
@@ -36,13 +36,13 @@ export interface ExportBundle {
 // @public
 export function exportCsv(tasks: readonly Task[], options?: ExportCsvOptions): string;
 
-// @public (undocumented)
+// @public
 export interface ExportCsvOptions {
     columns?: readonly CsvColumn[];
     timezone?: string;
 }
 
-// @public (undocumented)
+// @public
 export interface ExportedDependency {
     // (undocumented)
     from: string;
@@ -58,7 +58,7 @@ export interface ExportedDependency {
     type: DependencyType;
 }
 
-// @public (undocumented)
+// @public
 export interface ExportedTask {
     // (undocumented)
     color?: string;
@@ -96,7 +96,7 @@ export interface ExportedTask {
     updatedAt: string;
 }
 
-// @public (undocumented)
+// @public
 export type ExportedTaskConstraint = {
     kind: 'asap';
 } | {
@@ -111,7 +111,7 @@ export type ExportedTaskConstraint = {
 // @public
 export function exportJson(tasks: readonly Task[], dependencies: readonly Dependency[], options?: ExportJsonOptions): ExportBundle;
 
-// @public (undocumented)
+// @public
 export interface ExportJsonOptions {
     timezone?: string;
 }
@@ -119,7 +119,7 @@ export interface ExportJsonOptions {
 // @public
 export function exportPng(svg: SVGSVGElement, options?: ExportPngOptions): Promise<Blob>;
 
-// @public (undocumented)
+// @public
 export interface ExportPngOptions {
     readonly background?: string | 'transparent';
     readonly scale?: number;
@@ -128,7 +128,7 @@ export interface ExportPngOptions {
 // @public
 export function exportSvg(svg: SVGSVGElement, options?: ExportSvgOptions): string;
 
-// @public (undocumented)
+// @public
 export interface ExportSvgOptions {
     readonly background?: string | 'transparent';
     readonly inlineComputedStyle?: boolean;
@@ -137,13 +137,13 @@ export interface ExportSvgOptions {
 // @public
 export function importCsv(csv: string, options?: ImportCsvOptions): ImportCsvResult;
 
-// @public (undocumented)
+// @public
 export interface ImportCsvOptions {
     // (undocumented)
     limits?: Partial<ImportLimits>;
 }
 
-// @public (undocumented)
+// @public
 export interface ImportCsvResult {
     // Warning: (ae-forgotten-export) The symbol "TaskInput" needs to be exported by the entry point index.d.ts
     //
@@ -154,12 +154,12 @@ export interface ImportCsvResult {
 // @public
 export function importJson(input: string | object, options?: ImportJsonOptions): ImportResult;
 
-// @public (undocumented)
+// @public
 export interface ImportJsonOptions {
     limits?: Partial<ImportLimits>;
 }
 
-// @public (undocumented)
+// @public
 export interface ImportLimits {
     // (undocumented)
     maxDependencyCount: number;
@@ -180,7 +180,7 @@ export interface ImportLimits {
     maxTaskCount: number;
 }
 
-// @public (undocumented)
+// @public
 export interface ImportResult {
     // Warning: (ae-forgotten-export) The symbol "DependencyInput" needs to be exported by the entry point index.d.ts
     //
@@ -201,7 +201,7 @@ export interface IoCapability {
     importJson(data: string | object, options?: ImportJsonOptions): ImportSummary;
 }
 
-// @public (undocumented)
+// @public
 export class IoValidationError extends Error {
     constructor(message: string, path: string);
     readonly path: string;

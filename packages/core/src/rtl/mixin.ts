@@ -18,6 +18,7 @@ import type { GanttInstance } from '../gantt.js';
 import { getInternal } from '../gantt-internal.js';
 import { mirrorSvg } from './mirror-svg.js';
 
+/** Mirrors a mounted chart for right-to-left layouts. */
 export function withRtl<T extends GanttInstance>(instance: T): T {
   const internal = getInternal(instance);
   if (internal.config.rtl !== true) return instance;
@@ -49,7 +50,11 @@ export function withRtl<T extends GanttInstance>(instance: T): T {
         .getTimeScale()
         .xToDate(-container.scrollLeft + container.clientWidth / 2 - labelW);
       mutate();
-      container.scrollLeft = -(handle.getTimeScale().dateToX(anchorDate) + labelW - container.clientWidth / 2);
+      container.scrollLeft = -(
+        handle.getTimeScale().dateToX(anchorDate) +
+        labelW -
+        container.clientWidth / 2
+      );
     };
 
     if ('canvas' in handle) {

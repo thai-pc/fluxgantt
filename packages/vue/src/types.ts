@@ -34,6 +34,7 @@ import type {
  */
 export type UseFluxGanttConfig = GanttConfig;
 
+/** What `useFluxGantt` returns. */
 export interface UseFluxGanttResult {
   /** Template ref target for the container element that should host the rendered chart.
    *  Bind it via `h('div', { ref: containerRef })` or, in a consuming SFC template,
@@ -95,10 +96,7 @@ export interface FluxGanttEmits {
 }
 
 /** Type of the value `<FluxGantt ref="...">` exposes via `setup()`'s `expose()`. */
-export type FluxGanttRef = GanttInstance &
-  RenderCapability &
-  ViewportCapability &
-  ThemeCapability;
+export type FluxGanttRef = GanttInstance & RenderCapability & ViewportCapability & ThemeCapability;
 
 // Re-exported for FluxGantt.ts's `PropType<T>` casts (kept here, not inlined, so the prop
 // declaration and this file's own type surface stay adjacent and easy to audit together).

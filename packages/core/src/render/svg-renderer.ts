@@ -50,6 +50,11 @@ import type {
   WorkingCalendar,
 } from '../types.js';
 
+/**
+ * The data the SVG renderer paints: tasks, dependencies and the view settings.
+ *
+ * @beta
+ */
 export interface SvgRendererInput {
   readonly tasks: readonly Task[];
   readonly dependencies: readonly Dependency[];
@@ -88,6 +93,11 @@ export interface SvgRendererInput {
   readonly rev?: number;
 }
 
+/**
+ * Presentation options for the SVG renderer (labels, theme tokens, density, callbacks).
+ *
+ * @beta
+ */
 export interface SvgRendererOptions {
   readonly viewMode?: ViewMode; // default 'week'
   readonly density?: Density; // default 'default'
@@ -117,6 +127,11 @@ export interface SvgRendererOptions {
   readonly onPaint?: (svg: SVGSVGElement, ...overlays: SVGSVGElement[]) => void;
 }
 
+/**
+ * The handle `createSvgRenderer` returns: update, hit-test and tear down a painted chart.
+ *
+ * @beta
+ */
 export interface SvgRendererHandle extends InteractiveRendererHandle {
   /** Root `<svg>` created and appended into `container` by the renderer. */
   readonly svg: SVGSVGElement;
@@ -164,6 +179,12 @@ const SVG_NS = 'http://www.w3.org/2000/svg';
 // for that. `render/mixin.ts`'s scroll-anchor math does exactly that when converting between the
 // renderer's own painted coordinate space (which includes this offset, see the `offsetX`
 // assignment below) and `TimeScale.dateToX`/`xToDate`'s "content-only" space (which does not).
+/**
+ * Default width in px of the task-label column.
+ *
+ * @deprecated No replacement; will stop being exported from `@fluxgantt/core/render` no earlier than 2 minor releases and 30 days after this release.
+ * @beta
+ */
 export const LABEL_COLUMN_WIDTH = 160;
 const HEADER_HEIGHT = 32;
 const LABEL_INDENT_PX = 16;
@@ -173,6 +194,9 @@ const PIN = 'position:sticky;grid-area:1/1;align-self:start;justify-self:start;'
 
 /** Compile-time constant — never derived from task/user data (security §8). Exported so
  *  `interaction/drag-create-dep.ts`'s rubber-band preview can reference the SAME marker id
+ *
+ * @deprecated No replacement; will stop being exported from `@fluxgantt/core/render` no earlier than 2 minor releases and 30 days after this release.
+ * @beta
  *  string instead of a second hardcoded copy (single source of truth). */
 export const ARROWHEAD_MARKER_ID = 'fg-dep-arrowhead';
 
@@ -252,11 +276,11 @@ const FOCUS_STYLE_TEXT =
   '.fg-task__focus-ring{stroke:none;pointer-events:none}' +
   '.fg-timeline__row:focus-visible .fg-task__focus-ring{stroke:var(--fg-task-focus,#0ea5e9);stroke-width:var(--fg-task-focus-width,2px)}';
 
-
-
 /**
  * Creates and mounts an SVG renderer into `container` — appends one
  * `<svg class="fg-timeline">` child (does not accept an existing `<svg>` as `container`).
+ *
+ * @beta
  */
 export function createSvgRenderer(
   container: HTMLElement,
@@ -312,7 +336,10 @@ export function createSvgRenderer(
   const column = pin('column', 'inset-inline-start:0;background:var(--fg-bg,#fff)');
   // Date axis replica. -1px top: Firefox does not pixel-snap a sticky box, so at a fractional container y
   // the opaque fill starts mid-pixel; the shadow adds an opaque row above (clipped at rest).
-  const overlay = pin('header', `top:0;clip-path:inset(-1px 0 0);background:${BAND_BG};box-shadow:0 -1px 0 ${BAND_BG}`);
+  const overlay = pin(
+    'header',
+    `top:0;clip-path:inset(-1px 0 0);background:${BAND_BG};box-shadow:0 -1px 0 ${BAND_BG}`,
+  );
   // Top-left corner, pinned on BOTH axes: its LOGICAL border carries the label divider across the band.
   const corner = pin(
     'corner',
@@ -335,7 +362,10 @@ export function createSvgRenderer(
       if (destroyed) return;
       // Same data token and every passed option equal by value (any doubt means a full render).
       let same = nextInput.rev !== undefined && nextInput.rev === currentInput.rev;
-      for (const k in nextOptions) same &&= nextOptions[k as keyof SvgRendererOptions] === currentOptions[k as keyof SvgRendererOptions];
+      for (const k in nextOptions)
+        same &&=
+          nextOptions[k as keyof SvgRendererOptions] ===
+          currentOptions[k as keyof SvgRendererOptions];
       currentOptions = { ...currentOptions, ...nextOptions };
       currentInput = nextInput;
       if (same && patch) patch(nextInput.selectedTaskIds ?? [], nextInput.focusedTaskId);
@@ -408,9 +438,7 @@ export function createSvgRenderer(
     if (clampedCount > 0) {
       // Single summary warning per render (spec §11 Q5) — not silent, but not a
       // per-task flood either.
-      console.warn(
-        `@fluxgantt/core: ${clampedCount} task(s) have end before start.`,
-      );
+      console.warn(`@fluxgantt/core: ${clampedCount} task(s) have end before start.`);
     }
 
     // "Today" is read from the real clock only here, at the DOM boundary — never inside
@@ -425,7 +453,9 @@ export function createSvgRenderer(
     // attribute and silently blank the chart, so it degrades to the default instead.
     const requestedLabelWidth = currentOptions.labelColumnWidth;
     const offsetX =
-      requestedLabelWidth !== undefined && Number.isFinite(requestedLabelWidth) && requestedLabelWidth >= 0
+      requestedLabelWidth !== undefined &&
+      Number.isFinite(requestedLabelWidth) &&
+      requestedLabelWidth >= 0
         ? requestedLabelWidth
         : LABEL_COLUMN_WIDTH;
     currentLabelColumnWidth = offsetX;
@@ -505,7 +535,8 @@ export function createSvgRenderer(
     svg.append(
       defs,
       Object.assign(el('style', {}), {
-        textContent: SELECTION_STYLE_TEXT + FOCUS_STYLE_TEXT + (showLinkHandles ? LINK_HANDLE_STYLE_TEXT : ''),
+        textContent:
+          SELECTION_STYLE_TEXT + FOCUS_STYLE_TEXT + (showLinkHandles ? LINK_HANDLE_STYLE_TEXT : ''),
       }),
       grid,
     );
@@ -541,7 +572,12 @@ export function createSvgRenderer(
     header.append(
       el(
         'line',
-        { x1: offsetX, x2: offsetX + timeScale.totalWidth, y1: HEADER_HEIGHT - 0.5, y2: HEADER_HEIGHT - 0.5 },
+        {
+          x1: offsetX,
+          x2: offsetX + timeScale.totalWidth,
+          y1: HEADER_HEIGHT - 0.5,
+          y2: HEADER_HEIGHT - 0.5,
+        },
         { stroke: 'var(--fg-border-strong, #d4d4d8)' },
       ),
     );
@@ -651,7 +687,15 @@ export function createSvgRenderer(
         class: `fg-task fg-task--${kind}${isCritical ? ' fg-task--critical' : ''}${isSelected ? ' fg-task--selected' : ''}`,
         'data-task-id': task.id,
         ...(rolled && task.type !== 'milestone' ? { 'data-rolled-up': 'true' } : {}),
-        'aria-label': buildTaskAriaLabel(task, isCritical, isSelected, calendar, locale, rolled, messages),
+        'aria-label': buildTaskAriaLabel(
+          task,
+          isCritical,
+          isSelected,
+          calendar,
+          locale,
+          rolled,
+          messages,
+        ),
       });
 
       const x = bar.x + offsetX;
@@ -785,7 +829,13 @@ export function createSvgRenderer(
     if (todayLine) svg.append(todayLine);
     const divider = el(
       'line',
-      { class: 'fg-timeline__label-divider', x1: offsetX - 0.5, x2: offsetX - 0.5, y1: 0, y2: totalHeight },
+      {
+        class: 'fg-timeline__label-divider',
+        x1: offsetX - 0.5,
+        x2: offsetX - 0.5,
+        y1: 0,
+        y2: totalHeight,
+      },
       { stroke: 'var(--fg-border, #e5e7eb)' },
     );
     svg.append(divider);
@@ -799,7 +849,10 @@ export function createSvgRenderer(
     overlay.replaceChildren(header.cloneNode(true));
     if (todayLine) overlay.append(todayLine.cloneNode(true));
     column.replaceChildren(
-      ...[divider, ...svg.querySelectorAll<SVGElement>('.fg-timeline__row-toggle,.fg-timeline__row-label')].map((n) => {
+      ...[
+        divider,
+        ...svg.querySelectorAll<SVGElement>('.fg-timeline__row-toggle,.fg-timeline__row-label'),
+      ].map((n) => {
         const c = n.cloneNode(true) as SVGElement;
         Object.assign(c.dataset, n.closest<SVGElement>('[data-row-index]')?.dataset);
         return c;
@@ -812,7 +865,8 @@ export function createSvgRenderer(
     // restored, never grabbed. `preventScroll`: a native focus() on a row scrolls the container itself
     // (Firefox resets BOTH offsets to 0, Chromium scrolls vertically when the row is off screen, WebKit
     // does not); the keyboard path reveals the row explicitly (keyboard-nav `revealFocusedRow`).
-    if (hadFocusInside) svg.querySelector<SVGElement>('[tabindex="0"]')?.focus({ preventScroll: true });
+    if (hadFocusInside)
+      svg.querySelector<SVGElement>('[tabindex="0"]')?.focus({ preventScroll: true });
 
     patch = (ids, focus) => {
       const had = svg.contains(document.activeElement);
@@ -823,7 +877,10 @@ export function createSvgRenderer(
       rows.forEach((row, i) => {
         const old = rowsGroup.children[i] as SVGElement;
         const { id } = row.task;
-        if (`${old.getAttribute('aria-selected')}${old.tabIndex}` !== `${selectedIds.has(id)}${id === focusedTaskId ? 0 : -1}`) {
+        if (
+          `${old.getAttribute('aria-selected')}${old.tabIndex}` !==
+          `${selectedIds.has(id)}${id === focusedTaskId ? 0 : -1}`
+        ) {
           old.replaceWith(makeRow(row));
         }
       });

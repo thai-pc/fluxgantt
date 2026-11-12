@@ -4,6 +4,12 @@
 import { signal, type ReadonlySignal } from '../signals.js';
 import type { TaskId } from '../types.js';
 
+/**
+ * Reactive set of selected tasks.
+ *
+ * @deprecated Use `GanttInstance.select()` / `getSelection()`. The class will stop being exported from the package root no earlier than 2 minor releases and 30 days after this release.
+ * @beta
+ */
 export class SelectionStore {
   readonly #ids = new Set<TaskId>();
   readonly #rev = signal(0);
