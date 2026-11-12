@@ -30,8 +30,12 @@ function setup(opts: { shift?: boolean; readOnly?: boolean } = {}) {
   });
   container.appendChild(root);
   const calls: string[] = [];
-  const onShift = vi.fn((id: string, d: number, e?: string) => calls.push(`shift:${id}:${d}:${e ?? ''}`));
-  const onReveal = vi.fn((id: string) => calls.push(`reveal:${id}`));
+  const onShift = vi.fn((id: string, d: number, e?: string): void => {
+    calls.push(`shift:${id}:${d}:${e ?? ''}`);
+  });
+  const onReveal = vi.fn((id: string): void => {
+    calls.push(`reveal:${id}`);
+  });
   const onLink = vi.fn();
   const handle = { interactionRoot: root, container } as unknown as InteractiveRendererHandle;
   const nav = enableKeyboardNav(handle, {
