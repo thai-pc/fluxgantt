@@ -239,7 +239,11 @@ export interface EventMeta {
   readonly source: 'undo' | 'redo';
 }
 
-/** Names a `Task` field a patch can change (the keys of `TaskPatch`). */
+/**
+ * Names a `Task` field a patch can change (the keys of `TaskPatch`).
+ *
+ * @beta
+ */
 export type TaskField = keyof TaskPatch;
 
 /**
