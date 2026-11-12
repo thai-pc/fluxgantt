@@ -71,7 +71,7 @@ export interface KeyboardNavOptions {
   /** Alt+Arrow (`days` = +-1, LOGICAL time direction, already RTL-resolved) moves the focused task;
    *  Alt+Shift+Arrow (`edge: 'end'`) resizes its end. The keyboard alternative to drag (WCAG 2.2
    *  SC 2.5.7). Not invoked when read-only; the callee guards no-ops. Optional; absent = unbound. */
-  onShift?: (id: TaskId, days: number, edge?: 'end') => void;
+  onShift?: ((id: TaskId, days: number, edge?: 'end') => void) | undefined;
   /** Alt+Enter: link the Shift-range anchor (source) to the focused row (target). Not invoked when
    *  read-only. Optional; absent = unbound. */
   onLink?: ((fromId: TaskId, toId: TaskId) => void) | undefined;
@@ -286,10 +286,12 @@ export function enableKeyboardNav(
         // commit is a clamped no-op, or Alt+Left would fall through to the browser's History Back.
         // Direction is LOGICAL: `mirrorX` is read per event (withRtl assigns it after setup).
         if (!event.altKey || mod || event.isComposing || options.isReadOnly() || !options.onShift) return;
-        if (focusedTaskId !== undefined) {
+        {
+          const id = rows[currentIndex]?.task.id; // the resolved VISIBLE focused row, as `g` does
+          if (id === undefined) return;
           event.preventDefault();
-          options.onShift(focusedTaskId, (event.key === 'ArrowRight') === !handle.mirrorX ? 1 : -1, event.shiftKey ? 'end' : undefined);
-          if (!disposed) options.onReveal?.(focusedTaskId); // re-reads the task after the commit
+          options.onShift(id, (event.key === 'ArrowRight') === !handle.mirrorX ? 1 : -1, event.shiftKey ? 'end' : undefined);
+          if (!disposed) options.onReveal?.(id); // re-reads the task after the commit
         }
         return;
       case ' ':
@@ -371,9 +373,11 @@ export function enableKeyboardNav(
         // spec's own reasoning for why Enter is the conflict-free choice.
         if (event.altKey && !mod) {
           // Alt+Enter links anchor -> focus (never toggles collapse).
-          if (focusedTaskId && anchorTaskId && anchorTaskId !== focusedTaskId && !options.isReadOnly() && options.onLink) {
+          const to = rows[currentIndex]?.task.id;
+          if (to && anchorTaskId && anchorTaskId !== to && !options.isReadOnly() && options.onLink) {
             event.preventDefault();
-            options.onLink(anchorTaskId, focusedTaskId);
+            // A source hidden by a collapse is not linked from (drag cannot target hidden bars either).
+            if (rows.some((r) => r.task.id === anchorTaskId)) options.onLink(anchorTaskId, to);
           }
           return;
         }

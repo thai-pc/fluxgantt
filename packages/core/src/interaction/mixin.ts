@@ -238,6 +238,16 @@ function commitDrag(
   internal.reschedule(taskId, { start: newStart, end: newEnd }, true);
 }
 
+/** The drag gate: a bar is rolled up exactly when the renderer's own provider call has an entry for it
+ *  (a provider that throws paints authored dates, so the bar is draggable and so is this). */
+function isRolledUp(internal: GanttInternal, id: TaskId): boolean {
+  try {
+    return internal.config.rollup?.(internal.tasks.all(), internal.calendar).has(id) === true;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Alt+Arrow / Alt+Shift+Arrow (keyboard alternative to drag-move / drag-resize). Same calendar-day
  * arithmetic as drag (`.add({ days })`, wall-clock and DST safe) and the same one-day resize floor,
@@ -252,7 +262,7 @@ function commitShift(
   edge?: 'end',
 ): void {
   const task = internal.tasks.get(id);
-  if (!task || (internal.config.rollup && task.type !== 'milestone' && internal.withKids([id]).length > 1)) return;
+  if (!task || (task.type !== 'milestone' && isRolledUp(internal, id))) return;
   const tz = internal.calendar.timezone;
   const end = normalizeDate(task.end, tz);
   if (!edge) {

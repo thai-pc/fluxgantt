@@ -151,6 +151,16 @@ describe('Alt+Arrow move', () => {
     expect(date(rolled, 'p', 'end')).toContain('2026-01-09');
   });
 
+  it('uses the drag gate: a custom provider that rolls up only some parents leaves the others movable', () => {
+    const tasks = [
+      t('p', '2026-01-05T09:00', '2026-01-09T09:00'), // a plain parent, not rolled up by this provider
+      t('c', '2026-01-05T09:00', '2026-01-06T09:00', { parent: toTaskId('p') }),
+    ];
+    const g = chart(tasks, { rollup: () => new Map() });
+    key(row('p'), 'ArrowRight', ALT);
+    expect(date(g, 'p', 'start')).toContain('2026-01-06');
+  });
+
   it('a removed task is a no-op, a disposed chart ignores the key', () => {
     const g = chart([t('a', '2026-01-05T09:00', '2026-01-06T09:00')]);
     const el = row('a');
@@ -307,6 +317,19 @@ describe('Alt+Enter link', () => {
     expect(() => key(row('b'), 'Enter', ALT)).not.toThrow(); // c -> b would cycle
     expect(g.getDependencies().filter((d) => d.from === toTaskId('c'))).toHaveLength(0);
     expect(added).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not link from an anchor hidden by a collapse (prevented, nothing created)', () => {
+    const g = chart([
+      t('p', '2026-01-05T09:00', '2026-01-09T09:00', { type: 'summary' }),
+      t('c', '2026-01-05T09:00', '2026-01-06T09:00', { parent: toTaskId('p') }),
+    ]);
+    key(row('p'), 'ArrowDown'); // focus c
+    key(row('c'), 'ArrowUp', SHIFT); // anchor c, focus p
+    key(row('p'), 'Enter'); // collapse p: c is hidden
+    const e = key(row('p'), 'Enter', ALT);
+    expect(e.defaultPrevented).toBe(true);
+    expect(g.getDependencies()).toHaveLength(0);
   });
 
   it('does not toggle summary collapse and plain Enter still does', () => {
