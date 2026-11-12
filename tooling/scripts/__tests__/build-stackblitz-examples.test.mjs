@@ -18,7 +18,7 @@ import {
   parseArgs,
   parseJsonc,
 } from '../build-stackblitz-examples.mjs';
-import { DOCS_PAGE, checkLinks } from '../check-stackblitz-links.mjs';
+import { CATALOGUE, checkLinks } from '../check-stackblitz-links.mjs';
 
 const SCRIPT = fileURLToPath(new URL('../build-stackblitz-examples.mjs', import.meta.url));
 const REPO = resolve(dirname(SCRIPT), '..', '..');
@@ -486,18 +486,15 @@ describe('check-stackblitz-links', () => {
     `https://stackblitz.com/github/thai-pc/fluxgantt/tree/${ref}/${dir}?file=${encodeURIComponent(file)}&title=x`;
   const allDirs = () => MANIFEST.map((e) => `[x](${link(e.dir, e.startFile)})`).join('\n');
 
-  test('the real docs page and README pass', async () => {
-    const contents = {
-      [DOCS_PAGE]: await readFile(join(REPO, DOCS_PAGE), 'utf8'),
-      'README.md': await readFile(join(REPO, 'README.md'), 'utf8'),
-    };
+  test('the real README passes', async () => {
+    const contents = { [CATALOGUE]: await readFile(join(REPO, CATALOGUE), 'utf8') };
     const { problems, links } = await checkLinks(contents);
     assert.deepEqual(problems, []);
     assert.ok(links.length >= MANIFEST.length);
   });
 
   test('every manifest startFile is a generated file', async () => {
-    const { problems } = await checkLinks({ [DOCS_PAGE]: allDirs() });
+    const { problems } = await checkLinks({ [CATALOGUE]: allDirs() });
     assert.deepEqual(problems, []);
   });
 
@@ -517,8 +514,8 @@ describe('check-stackblitz-links', () => {
     assert.match(joined, /missing \?file=/);
   });
 
-  test('the docs page must link every example', async () => {
-    const { problems } = await checkLinks({ [DOCS_PAGE]: `[x](${link('react', 'src/App.tsx')})` });
+  test('the README must link every example', async () => {
+    const { problems } = await checkLinks({ [CATALOGUE]: `[x](${link('react', 'src/App.tsx')})` });
     for (const dir of ['vanilla', 'vue', 'headless']) assert.ok(problems.some((p) => p.includes(`"${dir}" example`)), dir);
   });
 });

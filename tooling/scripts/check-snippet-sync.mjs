@@ -2,8 +2,10 @@
 // Guards the single-sourced quick-start snippet against drift. The source of truth is the
 // region between `// #region quickstart` and `// #endregion quickstart` in
 // examples/plain-html-demo/src/main.ts. That exact block must also appear as a fenced ```ts
-// code block in the root README.md, in apps/docs/pages/docs/quick-start.mdx, and in
-// packages/core/README.md (the page npmjs.com renders).
+// code block in the root README.md and in packages/core/README.md (the page npmjs.com renders).
+//
+// The docs site's copy (`pages/docs/quick-start.mdx`) lives in the separate docs repository and is
+// re-checked by hand at release (RELEASING.md -> Docs site); this script cannot see it.
 //
 // Run: node tooling/scripts/check-snippet-sync.mjs  (exits non-zero on drift; used in CI)
 import { readFile } from 'node:fs/promises';
@@ -13,7 +15,7 @@ import { dirname, resolve } from 'node:path';
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
 const SOURCE = 'examples/plain-html-demo/src/main.ts';
-const TARGETS = ['README.md', 'apps/docs/pages/docs/quick-start.mdx', 'packages/core/README.md'];
+const TARGETS = ['README.md', 'packages/core/README.md'];
 
 function fail(msg) {
   console.error(`\n✗ check-snippet-sync: ${msg}\n`);

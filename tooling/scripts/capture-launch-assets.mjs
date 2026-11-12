@@ -1,6 +1,7 @@
 #!/usr/bin/env node
-// Regenerates the launch media in apps/docs/launch/assets/ and syncs the bundle-size figures in
-// the launch/docs copy (see the README next to the assets).
+// Regenerates the launch media in docs/launch/assets/ and syncs the bundle-size figures in the
+// launch copy and the root README (see the README next to the assets). The docs SITE lives in its
+// own repository now; its figures are updated by hand at release (RELEASING.md -> Docs site).
 //
 //   pnpm --filter @fluxgantt/core build        # the demo imports core's dist
 //   pnpm capture:launch-assets                 # sizes + copy sync + all media
@@ -41,7 +42,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
-const OUT = process.env.OUT_DIR ?? path.join(ROOT, 'apps/docs/launch/assets');
+const OUT = process.env.OUT_DIR ?? path.join(ROOT, 'docs/launch/assets');
 const PORT = Number(process.env.LAUNCH_PORT ?? 5187);
 const BASE = `http://localhost:${PORT}`;
 const args = new Set(process.argv.slice(2));
@@ -49,16 +50,13 @@ const COPY_ONLY = args.has('--copy-only');
 const NO_COPY = args.has('--no-copy');
 
 // Competitor figures (KiB gzip incl. required CSS): tooling/scripts/measure-competitor-bundles.mjs,
-// as published on /docs/comparison. Not measured here.
+// as published on the docs site's /docs/comparison page. Not measured here.
 const COMPETITORS = { dhtmlx: 226.18, frappe: 14.89 };
 
 // Files whose `sz` markers are rewritten. Relative to the repo root.
 const SYNC_FILES = [
-  'apps/docs/pages/docs/comparison.mdx',
-  'apps/docs/pages/index.mdx',
-  'apps/docs/pages/docs/examples.mdx',
-  'apps/docs/launch/product-hunt.md',
-  'apps/docs/launch/show-hn.md',
+  'docs/launch/product-hunt.md',
+  'docs/launch/show-hn.md',
   'README.md',
 ];
 

@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // Measures the gzipped bundle size of the MIT Gantt libraries FluxGantt is compared against,
-// so the numbers in `apps/docs/pages/docs/comparison.mdx` are reproducible rather than quoted
+// so the numbers on the docs site's comparison page (https://fluxgantt.thai-pc.com/docs/comparison) are
+// reproducible rather than quoted
 // from a vendor page or a blog post.
 //
 // Run: node tooling/scripts/measure-competitor-bundles.mjs

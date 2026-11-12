@@ -1,13 +1,16 @@
 #!/usr/bin/env node
-// Keeps the StackBlitz links in the docs and README consistent with what
+// Keeps the StackBlitz links in the root README consistent with what
 // build-stackblitz-examples.mjs actually generates. Offline: it checks the links against the
 // generator's manifest, not against stackblitz.com.
 //
 // For every `https://stackblitz.com/github/thai-pc/fluxgantt/tree/<ref>/<dir>[?query]` URL in the
 // files below, asserts that <ref> is `stackblitz` (the generated branch; `master` holds
 // `workspace:*` examples that cannot install there), <dir> is a manifest folder, and the `?file=`
-// path is a file the generator writes for that folder. The docs examples page must link every
-// manifest folder at least once.
+// path is a file the generator writes for that folder. The README must link every manifest
+// folder at least once.
+//
+// The docs site (and its examples page, which carries the same links) lives in its own repository
+// now, so it is not scanned here; see RELEASING.md -> Docs site.
 //
 // Run: node tooling/scripts/check-stackblitz-links.mjs  (exits non-zero on a broken link; used in CI)
 import { readFile } from 'node:fs/promises';
@@ -16,8 +19,9 @@ import { dirname, resolve } from 'node:path';
 import { MANIFEST, listOutputFiles } from './build-stackblitz-examples.mjs';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
-export const DOCS_PAGE = 'apps/docs/pages/docs/examples.mdx';
-export const FILES = [DOCS_PAGE, 'README.md'];
+/** The file that must link every generated example. */
+export const CATALOGUE = 'README.md';
+export const FILES = [CATALOGUE];
 const BRANCH = 'stackblitz';
 const URL_RE = /https:\/\/stackblitz\.com\/github\/([\w.-]+\/[\w.-]+)\/tree\/([^/\s)"'<>]+)\/([^?#\s)"'<>]+)(\?[^#\s)"'<>]*)?/g;
 
@@ -46,10 +50,10 @@ export async function checkLinks(contents, sourceRoot = repoRoot) {
     }
   }
 
-  const docsDirs = new Set(links.filter((l) => l.path === DOCS_PAGE).map((l) => l.dir));
+  const linkedDirs = new Set(links.filter((l) => l.path === CATALOGUE).map((l) => l.dir));
   for (const example of MANIFEST) {
-    if (DOCS_PAGE in contents && !docsDirs.has(example.dir)) {
-      problems.push(`${DOCS_PAGE}: no StackBlitz link for the "${example.dir}" example`);
+    if (CATALOGUE in contents && !linkedDirs.has(example.dir)) {
+      problems.push(`${CATALOGUE}: no StackBlitz link for the "${example.dir}" example`);
     }
   }
   return { problems, links };
