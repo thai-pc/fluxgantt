@@ -243,7 +243,7 @@ export function withRender<T extends GanttInstance>(instance: T): T & RenderCapa
 
 // Warnings were encountered during analysis:
 //
-// dist/svg-renderer-DSItedjR.d.ts:396:9 - (ae-forgotten-export) The symbol "DateInput" needs to be exported by the entry point index.d.ts
+// dist/svg-renderer-1T-6Z6DE.d.ts:396:9 - (ae-forgotten-export) The symbol "DateInput" needs to be exported by the entry point index.d.ts
 
 // (No @packageDocumentation comment for this package)
 

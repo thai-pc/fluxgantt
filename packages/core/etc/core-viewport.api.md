@@ -6,20 +6,20 @@
 
 import { Temporal } from '@js-temporal/polyfill';
 
-// @public (undocumented)
+// @public
 export type ScrollAlign = 'nearest' | 'start' | 'center' | 'end';
 
 // @public
 export type ScrollBehaviorOption = 'auto' | 'smooth';
 
-// @public (undocumented)
+// @public
 export interface ScrollToDateOptions {
     readonly align?: 'start' | 'center' | 'end';
     // (undocumented)
     readonly behavior?: ScrollBehaviorOption;
 }
 
-// @public (undocumented)
+// @public
 export interface ScrollToTaskOptions {
     readonly align?: ScrollAlign;
     readonly behavior?: ScrollBehaviorOption;
@@ -38,7 +38,7 @@ export interface ViewportCapability {
 
 // Warning: (ae-forgotten-export) The symbol "GanttInstance" needs to be exported by the entry point index.d.ts
 //
-// @public (undocumented)
+// @public
 export function withViewport<T extends GanttInstance>(instance: T): T & ViewportCapability;
 
 // (No @packageDocumentation comment for this package)

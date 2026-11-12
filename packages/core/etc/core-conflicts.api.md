@@ -6,7 +6,7 @@
 
 import { Temporal } from '@js-temporal/polyfill';
 
-// @public (undocumented)
+// @public
 export interface ConflictsCapability {
     // Warning: (ae-forgotten-export) The symbol "Conflict" needs to be exported by the entry point index.d.ts
     detectConflicts(): Conflict[];
@@ -14,10 +14,10 @@ export interface ConflictsCapability {
 
 // Warning: (ae-forgotten-export) The symbol "GanttInstance" needs to be exported by the entry point index.d.ts
 //
-// @public (undocumented)
+// @public
 export function withConflicts<T extends GanttInstance>(instance: T, options?: WithConflictsOptions): T & ConflictsCapability;
 
-// @public (undocumented)
+// @public
 export interface WithConflictsOptions {
     // Warning: (ae-forgotten-export) The symbol "ConflictKind" needs to be exported by the entry point index.d.ts
     readonly kinds?: readonly ConflictKind[];

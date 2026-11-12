@@ -40,7 +40,7 @@ export { DependencyId }
 // @public
 export const FluxGantt: react.ForwardRefExoticComponent<FluxGanttProps & react.RefAttributes<FluxGanttRef>>;
 
-// @public (undocumented)
+// @public
 export interface FluxGanttProps extends UseFluxGanttConfig {
     // (undocumented)
     readonly className?: string;
@@ -75,7 +75,7 @@ export { TaskPatch }
 
 export { UnsubscribeFn }
 
-// @public (undocumented)
+// @public
 export function useFluxGantt(config: UseFluxGanttConfig): UseFluxGanttResult;
 
 // @public
@@ -99,7 +99,7 @@ export interface UseFluxGanttConfig extends GanttConfig {
     readonly onTaskResized?: (task: Task, prevDuration: number) => void;
 }
 
-// @public (undocumented)
+// @public
 export interface UseFluxGanttResult {
     readonly instance: GanttInstance & RenderCapability & ViewportCapability & ThemeCapability;
     readonly ref: RefObject<HTMLDivElement | null>;
