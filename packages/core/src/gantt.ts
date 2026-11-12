@@ -154,9 +154,11 @@ export interface GanttConfig {
    *  (Canvas draws its handles on an overlay). Construction-time only. `readOnly: true` still wins. */
   readonly enableDependencyDrag?: boolean;
 
-  /** Fired once per `addTask`/`updateTask`/`moveTask`/`resizeTask`/`setProgress` call that
-   *  actually changed the task (same call site as the split `task:*` events). This is the
-   *  "any field changed" catch-all — v1 does NOT add a bus-level `task:updated` (Q3).
+  /** Fired once per `updateTask`/`moveTask`/`resizeTask`/`setProgress` call, each auto-schedule
+   *  cascade shift, and undo/redo of an update. NOT for `addTask`, `removeTask`, imports or
+   *  dependency ops. It also fires for a no-op patch (nothing changed, `updatedAt` restamped).
+   *  Fires after the write's split `task:*` events; the bus form is `task:updated`, which adds
+   *  `changed` and stays silent for a no-op patch.
    *  `onDependencyChange`/`onSelectionChange` are intentionally excluded from v1. */
   readonly onTaskChange?: (task: Task, prev: Task) => void;
 
