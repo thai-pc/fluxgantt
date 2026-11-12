@@ -60,7 +60,7 @@ export class TaskStore {
   update(id: TaskId, patch: TaskPatch): Task {
     const current = this.#tasks.get(id);
     if (!current) throw new Error(`TaskStore.update: task ${id} not found`);
-    const next: Task = { ...current, ...patch, id, updatedAt: new Date() };
+    const next: Task = { ...current, ...patch, id, createdAt: current.createdAt, updatedAt: new Date() };
     this.#put(next);
     this.#bump();
     return next;

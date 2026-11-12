@@ -104,6 +104,7 @@ describe('golden event log: single-write mutations (history:changed fires BEFORE
         "history:changed {"canUndo":true,"canRedo":false}",
         "task:progressed c[2026-01-09T09:00..2026-01-12T17:00 p=0.5] prev=0",
         "onTaskChange c[2026-01-09T09:00..2026-01-12T17:00 p=0.5] prev=[2026-01-09T09:00..2026-01-12T17:00 p=0]",
+        "task:updated c[2026-01-09T09:00..2026-01-12T17:00 p=0.5] changed=[progress]",
       ]
     `);
   });
@@ -116,6 +117,7 @@ describe('golden event log: grouped mutations, manual scheduling (history:change
     expect(rec.log).toMatchInlineSnapshot(`
       [
         "onTaskChange c[2026-01-09T09:00..2026-01-12T17:00 p=0] prev=[2026-01-09T09:00..2026-01-12T17:00 p=0]",
+        "task:updated c[2026-01-09T09:00..2026-01-12T17:00 p=0] changed=[name]",
         "history:changed {"canUndo":true,"canRedo":false}",
       ]
     `);
@@ -128,6 +130,7 @@ describe('golden event log: grouped mutations, manual scheduling (history:change
       [
         "task:resized c[2026-01-09T09:00..2026-01-13T17:00 p=0] prevDuration=16",
         "onTaskChange c[2026-01-09T09:00..2026-01-13T17:00 p=0] prev=[2026-01-09T09:00..2026-01-12T17:00 p=0]",
+        "task:updated c[2026-01-09T09:00..2026-01-13T17:00 p=0] changed=[end]",
         "history:changed {"canUndo":true,"canRedo":false}",
       ]
     `);
@@ -140,6 +143,7 @@ describe('golden event log: grouped mutations, manual scheduling (history:change
       [
         "task:moved b[2026-01-20T09:00..2026-01-21T17:00 p=0 parent=p] prevStart=2026-01-07T09:00",
         "onTaskChange b[2026-01-20T09:00..2026-01-21T17:00 p=0 parent=p] prev=[2026-01-07T09:00..2026-01-08T17:00 p=0]",
+        "task:updated b[2026-01-20T09:00..2026-01-21T17:00 p=0 parent=p] changed=[end,start]",
         "history:changed {"canUndo":true,"canRedo":false}",
       ]
     `);
@@ -152,6 +156,7 @@ describe('golden event log: grouped mutations, manual scheduling (history:change
       [
         "task:resized b[2026-01-07T09:00..2026-01-09T17:00 p=0 parent=p] prevDuration=16",
         "onTaskChange b[2026-01-07T09:00..2026-01-09T17:00 p=0 parent=p] prev=[2026-01-07T09:00..2026-01-08T17:00 p=0]",
+        "task:updated b[2026-01-07T09:00..2026-01-09T17:00 p=0 parent=p] changed=[duration,end]",
         "history:changed {"canUndo":true,"canRedo":false}",
       ]
     `);
@@ -167,10 +172,13 @@ describe("golden event log: cascade in schedulingMode 'auto'", () => {
       [
         "task:moved a2[2026-01-19T09:00..2026-01-20T17:00 p=0 parent=a] prevStart=2026-01-05T09:00",
         "onTaskChange a2[2026-01-19T09:00..2026-01-20T17:00 p=0 parent=a] prev=[2026-01-05T09:00..2026-01-06T17:00 p=0]",
+        "task:updated a2[2026-01-19T09:00..2026-01-20T17:00 p=0 parent=a] changed=[end,start]",
         "task:moved c[2026-01-19T13:00..2026-01-21T13:00 p=0] prevStart=2026-01-09T09:00",
         "onTaskChange c[2026-01-19T13:00..2026-01-21T13:00 p=0] prev=[2026-01-09T09:00..2026-01-12T17:00 p=0]",
+        "task:updated c[2026-01-19T13:00..2026-01-21T13:00 p=0] changed=[end,start]",
         "task:moved d[2026-01-21T13:00..2026-01-23T13:00 p=0] prevStart=2026-01-13T09:00",
         "onTaskChange d[2026-01-21T13:00..2026-01-23T13:00 p=0] prev=[2026-01-13T09:00..2026-01-14T17:00 p=0]",
+        "task:updated d[2026-01-21T13:00..2026-01-23T13:00 p=0] changed=[end,start]",
         "history:changed {"canUndo":true,"canRedo":false}",
       ]
     `);
@@ -183,8 +191,10 @@ describe("golden event log: cascade in schedulingMode 'auto'", () => {
       [
         "task:resized c[2026-01-09T09:00..2026-01-15T17:00 p=0] prevDuration=16",
         "onTaskChange c[2026-01-09T09:00..2026-01-15T17:00 p=0] prev=[2026-01-09T09:00..2026-01-12T17:00 p=0]",
+        "task:updated c[2026-01-09T09:00..2026-01-15T17:00 p=0] changed=[duration,end]",
         "task:moved d[2026-01-15T17:00..2026-01-19T17:00 p=0] prevStart=2026-01-13T09:00",
         "onTaskChange d[2026-01-15T17:00..2026-01-19T17:00 p=0] prev=[2026-01-13T09:00..2026-01-14T17:00 p=0]",
+        "task:updated d[2026-01-15T17:00..2026-01-19T17:00 p=0] changed=[end,start]",
         "history:changed {"canUndo":true,"canRedo":false}",
       ]
     `);
@@ -197,10 +207,13 @@ describe("golden event log: cascade in schedulingMode 'auto'", () => {
       [
         "task:resized b[2026-01-07T09:00..2026-01-15T17:00 p=0 parent=p] prevDuration=16",
         "onTaskChange b[2026-01-07T09:00..2026-01-15T17:00 p=0 parent=p] prev=[2026-01-07T09:00..2026-01-08T17:00 p=0]",
+        "task:updated b[2026-01-07T09:00..2026-01-15T17:00 p=0 parent=p] changed=[end]",
         "task:moved c[2026-01-15T17:00..2026-01-19T17:00 p=0] prevStart=2026-01-09T09:00",
         "onTaskChange c[2026-01-15T17:00..2026-01-19T17:00 p=0] prev=[2026-01-09T09:00..2026-01-12T17:00 p=0]",
+        "task:updated c[2026-01-15T17:00..2026-01-19T17:00 p=0] changed=[end,start]",
         "task:moved d[2026-01-19T17:00..2026-01-21T17:00 p=0] prevStart=2026-01-13T09:00",
         "onTaskChange d[2026-01-19T17:00..2026-01-21T17:00 p=0] prev=[2026-01-13T09:00..2026-01-14T17:00 p=0]",
+        "task:updated d[2026-01-19T17:00..2026-01-21T17:00 p=0] changed=[end,start]",
         "history:changed {"canUndo":true,"canRedo":false}",
       ]
     `);
@@ -213,17 +226,18 @@ describe("golden event log: cascade in schedulingMode 'auto'", () => {
       [
         "task:moved c[2026-01-06T09:00..2026-01-09T17:00 p=0] prevStart=2026-01-09T09:00",
         "onTaskChange c[2026-01-06T09:00..2026-01-09T17:00 p=0] prev=[2026-01-09T09:00..2026-01-12T17:00 p=0]",
+        "task:updated c[2026-01-06T09:00..2026-01-09T17:00 p=0] changed=[end,start]",
         "history:changed {"canUndo":true,"canRedo":false}",
       ]
     `);
   });
 
-  it('moving the head of a 5-chain emits task:moved + onTaskChange pairs in chain order, history last', () => {
+  it('moving the head of a 5-chain emits task:moved + onTaskChange + task:updated triples in chain order, history last', () => {
     const { tasks, dependencies } = chain(5);
     const { gantt, rec } = setup({ ...auto, tasks, dependencies });
     gantt.moveTask(id('k0'), '2026-01-12T09:00');
     expect(rec.log.map((l) => l.split(' ')[0])).toEqual([
-      ...Array.from({ length: 5 }, () => ['task:moved', 'onTaskChange']).flat(),
+      ...Array.from({ length: 5 }, () => ['task:moved', 'onTaskChange', 'task:updated']).flat(),
       'history:changed',
     ]);
     expect(rec.log.filter((l) => l.startsWith('task:moved')).map((l) => l.split('[')[0]!.split(' ')[1])).toEqual([
@@ -335,10 +349,12 @@ describe('golden event log: undo / redo', () => {
       [
         "task:progressed c[2026-01-09T09:00..2026-01-12T17:00 p=0] prev=0.5 {"source":"undo"}",
         "onTaskChange c[2026-01-09T09:00..2026-01-12T17:00 p=0] prev=[2026-01-09T09:00..2026-01-12T17:00 p=0.5]",
+        "task:updated c[2026-01-09T09:00..2026-01-12T17:00 p=0] changed=[progress] {"source":"undo"}",
         "history:changed {"canUndo":false,"canRedo":true}",
         "-- redo",
         "task:progressed c[2026-01-09T09:00..2026-01-12T17:00 p=0.5] prev=0 {"source":"redo"}",
         "onTaskChange c[2026-01-09T09:00..2026-01-12T17:00 p=0.5] prev=[2026-01-09T09:00..2026-01-12T17:00 p=0]",
+        "task:updated c[2026-01-09T09:00..2026-01-12T17:00 p=0.5] changed=[progress] {"source":"redo"}",
         "history:changed {"canUndo":true,"canRedo":false}",
       ]
     `);
@@ -382,21 +398,27 @@ describe('golden event log: undo / redo', () => {
         "task:moved d[2026-01-13T09:00..2026-01-14T17:00 p=0] prevStart=2026-01-21T13:00 {"source":"undo"}",
         "task:resized d[2026-01-13T09:00..2026-01-14T17:00 p=0] prevDuration=16 {"source":"undo"}",
         "onTaskChange d[2026-01-13T09:00..2026-01-14T17:00 p=0] prev=[2026-01-21T13:00..2026-01-23T13:00 p=0]",
+        "task:updated d[2026-01-13T09:00..2026-01-14T17:00 p=0] changed=[end,start] {"source":"undo"}",
         "task:moved c[2026-01-09T09:00..2026-01-12T17:00 p=0] prevStart=2026-01-19T13:00 {"source":"undo"}",
         "task:resized c[2026-01-09T09:00..2026-01-12T17:00 p=0] prevDuration=16 {"source":"undo"}",
         "onTaskChange c[2026-01-09T09:00..2026-01-12T17:00 p=0] prev=[2026-01-19T13:00..2026-01-21T13:00 p=0]",
+        "task:updated c[2026-01-09T09:00..2026-01-12T17:00 p=0] changed=[end,start] {"source":"undo"}",
         "task:moved a2[2026-01-05T09:00..2026-01-06T17:00 p=0 parent=a] prevStart=2026-01-19T09:00 {"source":"undo"}",
         "onTaskChange a2[2026-01-05T09:00..2026-01-06T17:00 p=0 parent=a] prev=[2026-01-19T09:00..2026-01-20T17:00 p=0]",
+        "task:updated a2[2026-01-05T09:00..2026-01-06T17:00 p=0 parent=a] changed=[end,start] {"source":"undo"}",
         "history:changed {"canUndo":false,"canRedo":true}",
         "-- redo",
         "task:moved a2[2026-01-19T09:00..2026-01-20T17:00 p=0 parent=a] prevStart=2026-01-05T09:00 {"source":"redo"}",
         "onTaskChange a2[2026-01-19T09:00..2026-01-20T17:00 p=0 parent=a] prev=[2026-01-05T09:00..2026-01-06T17:00 p=0]",
+        "task:updated a2[2026-01-19T09:00..2026-01-20T17:00 p=0 parent=a] changed=[end,start] {"source":"redo"}",
         "task:moved c[2026-01-19T13:00..2026-01-21T13:00 p=0] prevStart=2026-01-09T09:00 {"source":"redo"}",
         "task:resized c[2026-01-19T13:00..2026-01-21T13:00 p=0] prevDuration=16 {"source":"redo"}",
         "onTaskChange c[2026-01-19T13:00..2026-01-21T13:00 p=0] prev=[2026-01-09T09:00..2026-01-12T17:00 p=0]",
+        "task:updated c[2026-01-19T13:00..2026-01-21T13:00 p=0] changed=[end,start] {"source":"redo"}",
         "task:moved d[2026-01-21T13:00..2026-01-23T13:00 p=0] prevStart=2026-01-13T09:00 {"source":"redo"}",
         "task:resized d[2026-01-21T13:00..2026-01-23T13:00 p=0] prevDuration=16 {"source":"redo"}",
         "onTaskChange d[2026-01-21T13:00..2026-01-23T13:00 p=0] prev=[2026-01-13T09:00..2026-01-14T17:00 p=0]",
+        "task:updated d[2026-01-21T13:00..2026-01-23T13:00 p=0] changed=[end,start] {"source":"redo"}",
         "history:changed {"canUndo":true,"canRedo":false}",
       ]
     `);

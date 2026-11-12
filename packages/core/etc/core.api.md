@@ -283,6 +283,8 @@ export interface GanttEventMap {
     // (undocumented)
     'task:removed': [taskId: TaskId, meta?: EventMeta];
     'task:resized': [task: Task, prevDuration: number, meta?: EventMeta];
+    // @beta
+    'task:updated': [payload: TaskUpdatedPayload];
     'viewport:changed': [state: ViewportChangedPayload];
 }
 
@@ -570,6 +572,9 @@ export interface TaskContextRequestedPayload {
     readonly taskId: TaskId;
 }
 
+// @beta
+export type TaskField = keyof TaskPatch;
+
 // @public
 export type TaskHitPart = 'bar' | 'label' | 'row';
 
@@ -647,6 +652,16 @@ export class TaskStore {
     subtree(id: TaskId): TaskId[];
     // (undocumented)
     update(id: TaskId, patch: TaskPatch): Task;
+}
+
+// @beta
+export interface TaskUpdatedPayload {
+    readonly changed: readonly TaskField[];
+    readonly prev: Task;
+    readonly source?: 'undo' | 'redo';
+    readonly task: Task;
+    // (undocumented)
+    readonly taskId: TaskId;
 }
 
 // @beta

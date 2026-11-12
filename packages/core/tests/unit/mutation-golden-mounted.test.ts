@@ -62,10 +62,13 @@ describe('mounted golden event log (adds critical-path:computed from the render 
       [
         "task:moved b[2026-01-19T09:00..2026-01-20T17:00 p=0 parent=p] prevStart=2026-01-07T09:00",
         "onTaskChange b[2026-01-19T09:00..2026-01-20T17:00 p=0 parent=p] prev=[2026-01-07T09:00..2026-01-08T17:00 p=0]",
+        "task:updated b[2026-01-19T09:00..2026-01-20T17:00 p=0 parent=p] changed=[end,start]",
         "task:moved c[2026-01-20T17:00..2026-01-22T17:00 p=0] prevStart=2026-01-09T09:00",
         "onTaskChange c[2026-01-20T17:00..2026-01-22T17:00 p=0] prev=[2026-01-09T09:00..2026-01-12T17:00 p=0]",
+        "task:updated c[2026-01-20T17:00..2026-01-22T17:00 p=0] changed=[end,start]",
         "task:moved d[2026-01-22T17:00..2026-01-26T17:00 p=0] prevStart=2026-01-13T09:00",
         "onTaskChange d[2026-01-22T17:00..2026-01-26T17:00 p=0] prev=[2026-01-13T09:00..2026-01-14T17:00 p=0]",
+        "task:updated d[2026-01-22T17:00..2026-01-26T17:00 p=0] changed=[end,start]",
         "history:changed {"canUndo":true,"canRedo":false}",
       ]
     `);
@@ -91,6 +94,7 @@ describe('mounted golden event log (adds critical-path:computed from the render 
         "history:changed {"canUndo":true,"canRedo":false}",
         "task:progressed n[2026-01-15T09:00..2026-01-16T17:00 p=0.25] prev=0",
         "onTaskChange n[2026-01-15T09:00..2026-01-16T17:00 p=0.25] prev=[2026-01-15T09:00..2026-01-16T17:00 p=0]",
+        "task:updated n[2026-01-15T09:00..2026-01-16T17:00 p=0.25] changed=[progress]",
       ]
     `);
   });
@@ -129,21 +133,27 @@ describe('mounted golden event log (adds critical-path:computed from the render 
         "task:moved d[2026-01-13T09:00..2026-01-14T17:00 p=0] prevStart=2026-01-22T17:00 {"source":"undo"}",
         "task:resized d[2026-01-13T09:00..2026-01-14T17:00 p=0] prevDuration=16 {"source":"undo"}",
         "onTaskChange d[2026-01-13T09:00..2026-01-14T17:00 p=0] prev=[2026-01-22T17:00..2026-01-26T17:00 p=0]",
+        "task:updated d[2026-01-13T09:00..2026-01-14T17:00 p=0] changed=[end,start] {"source":"undo"}",
         "task:moved c[2026-01-09T09:00..2026-01-12T17:00 p=0] prevStart=2026-01-20T17:00 {"source":"undo"}",
         "task:resized c[2026-01-09T09:00..2026-01-12T17:00 p=0] prevDuration=16 {"source":"undo"}",
         "onTaskChange c[2026-01-09T09:00..2026-01-12T17:00 p=0] prev=[2026-01-20T17:00..2026-01-22T17:00 p=0]",
+        "task:updated c[2026-01-09T09:00..2026-01-12T17:00 p=0] changed=[end,start] {"source":"undo"}",
         "task:moved b[2026-01-07T09:00..2026-01-08T17:00 p=0 parent=p] prevStart=2026-01-19T09:00 {"source":"undo"}",
         "onTaskChange b[2026-01-07T09:00..2026-01-08T17:00 p=0 parent=p] prev=[2026-01-19T09:00..2026-01-20T17:00 p=0]",
+        "task:updated b[2026-01-07T09:00..2026-01-08T17:00 p=0 parent=p] changed=[end,start] {"source":"undo"}",
         "history:changed {"canUndo":false,"canRedo":true}",
         "-- redo",
         "task:moved b[2026-01-19T09:00..2026-01-20T17:00 p=0 parent=p] prevStart=2026-01-07T09:00 {"source":"redo"}",
         "onTaskChange b[2026-01-19T09:00..2026-01-20T17:00 p=0 parent=p] prev=[2026-01-07T09:00..2026-01-08T17:00 p=0]",
+        "task:updated b[2026-01-19T09:00..2026-01-20T17:00 p=0 parent=p] changed=[end,start] {"source":"redo"}",
         "task:moved c[2026-01-20T17:00..2026-01-22T17:00 p=0] prevStart=2026-01-09T09:00 {"source":"redo"}",
         "task:resized c[2026-01-20T17:00..2026-01-22T17:00 p=0] prevDuration=16 {"source":"redo"}",
         "onTaskChange c[2026-01-20T17:00..2026-01-22T17:00 p=0] prev=[2026-01-09T09:00..2026-01-12T17:00 p=0]",
+        "task:updated c[2026-01-20T17:00..2026-01-22T17:00 p=0] changed=[end,start] {"source":"redo"}",
         "task:moved d[2026-01-22T17:00..2026-01-26T17:00 p=0] prevStart=2026-01-13T09:00 {"source":"redo"}",
         "task:resized d[2026-01-22T17:00..2026-01-26T17:00 p=0] prevDuration=16 {"source":"redo"}",
         "onTaskChange d[2026-01-22T17:00..2026-01-26T17:00 p=0] prev=[2026-01-13T09:00..2026-01-14T17:00 p=0]",
+        "task:updated d[2026-01-22T17:00..2026-01-26T17:00 p=0] changed=[end,start] {"source":"redo"}",
         "history:changed {"canUndo":true,"canRedo":false}",
       ]
     `);

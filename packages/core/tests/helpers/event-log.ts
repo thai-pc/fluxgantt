@@ -8,6 +8,7 @@ import type { Dependency, Task } from '../../src/types.js';
 const EVENT_NAMES: readonly GanttEventName[] = [
   'task:added',
   'task:moved',
+  'task:updated',
   'task:resized',
   'task:progressed',
   'task:removed',
@@ -67,6 +68,10 @@ export function createRecorder(): EventRecorder {
         return `task:resized ${taskStr(args[0] as Task)} prevDuration=${String(args[1])}${meta(args[2])}`;
       case 'task:progressed':
         return `task:progressed ${taskStr(args[0] as Task)} prev=${String(args[1])}${meta(args[2])}`;
+      case 'task:updated': {
+        const p = args[0] as { task: Task; changed: string[]; source?: string };
+        return `task:updated ${taskStr(p.task)} changed=[${[...p.changed].sort().join(',')}]${meta(p.source ? { source: p.source } : undefined)}`;
+      }
       case 'task:removed':
         return `task:removed ${relabel(String(args[0]))}${meta(args[1])}`;
       case 'dependency:added': {

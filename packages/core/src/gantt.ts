@@ -154,9 +154,11 @@ export interface GanttConfig {
    *  (Canvas draws its handles on an overlay). Construction-time only. `readOnly: true` still wins. */
   readonly enableDependencyDrag?: boolean;
 
-  /** Fired once per `addTask`/`updateTask`/`moveTask`/`resizeTask`/`setProgress` call that
-   *  actually changed the task (same call site as the split `task:*` events). This is the
-   *  "any field changed" catch-all — v1 does NOT add a bus-level `task:updated` (Q3).
+  /** Fired once per `updateTask`/`moveTask`/`resizeTask`/`setProgress` call, each auto-schedule
+   *  cascade shift, and undo/redo of an update. NOT for `addTask`, `removeTask`, imports or
+   *  dependency ops. It also fires for a no-op patch (nothing changed, `updatedAt` restamped).
+   *  Fires after the write's split `task:*` events; the bus form is `task:updated`, which adds
+   *  `changed` and stays silent for a no-op patch.
    *  `onDependencyChange`/`onSelectionChange` are intentionally excluded from v1. */
   readonly onTaskChange?: (task: Task, prev: Task) => void;
 
@@ -239,6 +241,30 @@ export interface EventMeta {
   readonly source: 'undo' | 'redo';
 }
 
+/**
+ * Names a `Task` field a patch can change (the keys of `TaskPatch`).
+ *
+ * @beta
+ */
+export type TaskField = keyof TaskPatch;
+
+/**
+ * Payload of `task:updated`.
+ *
+ * @beta
+ */
+export interface TaskUpdatedPayload {
+  readonly taskId: TaskId;
+  /** The task after the write. */
+  readonly task: Task;
+  /** The task before the write. */
+  readonly prev: Task;
+  /** Fields whose value changed. Never empty, never contains `updatedAt`; treat as a set. */
+  readonly changed: readonly TaskField[];
+  /** Present only when the write is a direct result of `undo()`/`redo()` (same rule as `EventMeta`). */
+  readonly source?: 'undo' | 'redo';
+}
+
 /** Returned by `importJson()`/`importCsv()` AND the payload of the `data:imported` event they
  *  emit — same value in both places (see computeCriticalPath()/critical-path:computed for the
  *  precedent of "method returns it, event echoes it"). */
@@ -311,6 +337,23 @@ export interface GanttEventMap {
   /** `prevStart` is `DateInput` (usually the same shape the task was last written with),
    *  NOT a plain `Date`. */
   'task:moved': [task: Task, prevStart: DateInput, meta?: EventMeta];
+  /** Fires once per write (`updateTask`/`moveTask`/`resizeTask`/`setProgress`, each cascade shift,
+   *  undo/redo of an update) that changed at least one field, AFTER the specific `task:moved`/
+   *  `task:resized`/`task:progressed` events and `onTaskChange` of that write. A superset of those:
+   *  one write can fire both. `start`/`end` compare by instant, everything else by `Object.is`
+   *  (so a deep-equal replacement object counts as changed); `updatedAt` is ignored. A shape-only
+   *  change (a string replaced by an equal-instant `ZonedDateTime`) emits nothing. Never fires
+   *  for add, remove, import or dependency ops, nor for a no-op patch.
+   *
+   *  `task`/`prev` are write-time snapshots: do not mutate them, and a host that persists must read
+   *  `getTask(taskId)` when it handles the event (or keep the last event per id by arrival order,
+   *  with the caveat below). `changed` is a set: its order is unspecified.
+   *
+   *  Re-entrancy: a write, or `undo()`/`redo()`, made from inside a listener or `onTaskChange`
+   *  starts a nested command whose events arrive BEFORE the remaining events of the outer
+   *  command, so a snapshot can already be superseded. Undo-to-reject is unsupported: validate
+   *  before writing instead, or defer the write with `queueMicrotask`. @beta */
+  'task:updated': [payload: TaskUpdatedPayload];
   /** Working hours, matches `Task.duration`'s unit. */
   'task:resized': [task: Task, prevDuration: number, meta?: EventMeta];
   'task:progressed': [task: Task, prevProgress: number, meta?: EventMeta];
@@ -1416,7 +1459,7 @@ class Gantt implements GanttInstance {
         const [from, to] = redo ? [op.prev, op.next] : [op.next, op.prev];
         this.#taskStore.restore(to);
         this.#diffAndEmit(from, to, meta.source); // "before" = from (current), "after" = to (target)
-        this.#changed(to, from);
+        this.#changed(to, from, meta.source);
         break;
       }
       case 'task-add':
@@ -1544,8 +1587,27 @@ class Gantt implements GanttInstance {
     else f();
   }
 
-  #changed(next: Task, prev: Task): void {
+  #changed(next: Task, prev: Task, source?: 'undo' | 'redo'): void {
     this.#defer(() => this.#config.onTaskChange?.(next, prev));
+    this.#defer(() => {
+      if (!this.#listeners.get('task:updated')?.size) return;
+      const changed = (Object.keys({ ...prev, ...next }) as Array<keyof Task>).filter(
+        (k) =>
+          k !== 'updatedAt' &&
+          (k === 'start' || k === 'end'
+            ? !this.#sameInstant(prev[k], next[k], this.#calendar.timezone)
+            : !Object.is(prev[k], next[k])),
+      ) as TaskField[];
+      if (changed.length) {
+        this.#dispatch('task:updated', {
+          taskId: next.id,
+          task: next,
+          prev,
+          changed,
+          ...(source && { source }),
+        });
+      }
+    });
   }
 
   #emit<E extends GanttEventName>(event: E, ...args: GanttEventMap[E]): void {
