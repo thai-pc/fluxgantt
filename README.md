@@ -21,8 +21,9 @@ Its headless core is fully decoupled from rendering, renders to SVG (Canvas fall
 above 2000 tasks), and does all date/time math with the Temporal API.
 
 > [!NOTE]
-> **0.x — the API is still stabilizing pre-1.0.** Published and installable, but a minor bump
-> may change an exported type or an event name; see `CHANGELOG.md` in each package.
+> **0.x — the API is still stabilizing pre-1.0.** Published and installable. A minor bump may
+> change an exported type or an event name; a patch never does, and symbols tagged `@beta` may
+> change in any minor. See the [stability policy](https://github.com/thai-pc/fluxgantt/blob/master/STABILITY.md) and `CHANGELOG.md` in each package.
 
 ## Install
 

@@ -13,7 +13,7 @@ import { setsEqual } from './selection-store.js';
 /**
  * Reactive set of collapsed summary tasks.
  *
- * @deprecated Use `GanttInstance.toggleCollapse()` / `getCollapsedIds()`. The class will stop being exported from the package root no earlier than 2 minor releases and 30 days after this release.
+ * @deprecated Use `GanttInstance.toggleCollapse()` / `isCollapsed()`. The class will stop being exported from the package root no earlier than 2 minor releases and 30 days after this release.
  * @beta
  */
 export class CollapseStore {
