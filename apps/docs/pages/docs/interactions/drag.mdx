@@ -103,6 +103,52 @@ In `readOnly` mode the gated rows above become inert **without** calling `preven
 the keystroke passes through to the host page rather than being swallowed. Focus, selection,
 collapse and zoom all keep working, because none of them mutate data.
 
+## Keyboard alternative to dragging
+
+Every drag gesture has a keyboard equivalent (WCAG 2.2 SC 2.5.7, Dragging Movements). They act on
+the **focused row only**, even if several rows are selected (drag moves one bar too), go through the
+same commit path as the pointer (same events, same cascade, same undo), and are inert under
+`readOnly` (`enableDependencyDrag: false` also turns off linking).
+
+| Keys | Action | Mirrors |
+|---|---|---|
+| <kbd>Alt</kbd>+<kbd>→</kbd> / <kbd>←</kbd> | Move the task one calendar day later / earlier | drag-move |
+| <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>→</kbd> / <kbd>←</kbd> | Lengthen / shorten the task by moving its end one day (never shorter than one day, or than the task already is) | drag-resize |
+| <kbd>Shift</kbd>+<kbd>↑</kbd>/<kbd>↓</kbd> to the target row, then <kbd>Alt</kbd>+<kbd>Enter</kbd> | Link the row where the Shift range began (source) to the focused row (target), finish-to-start | drag-create-dependency |
+
+- Holding the key repeats, one day per tick, and **each press is its own undo step**. Auto-repeat
+  fires about 30 times a second, so a few seconds of holding fills the history limit (`historyLimit`,
+  default 100) and evicts older undo entries. Tap the key for single steps.
+- Resizing steps past weekends and holidays: one press changes the working time of the painted
+  span (up to 366 days of stepping), so a task ending on a Friday ends on the next working day
+  afterwards. If nothing can change (the one-day minimum, a milestone, a rolled-up summary) nothing is
+  written and the live region says "cannot resize" / "cannot move".
+- Left/right are **logical** on the time axis: in an [RTL chart](/docs/rtl) later dates are visually
+  on the left, so <kbd>Alt</kbd>+<kbd>←</kbd> moves the task later there.
+- Only the end edge is resizable, exactly like dragging (the start edge never moves).
+- Rolled-up summary bars (when `rollup` is configured) and milestone resizes are declined, as in drag.
+- The bar is scrolled back into view after a move or resize (needs `withViewport`, as for <kbd>g</kbd>).
+- <kbd>Alt</kbd>+<kbd>←</kbd>/<kbd>→</kbd> is "Back / Forward" in Chrome, Edge and Firefox on
+  Windows and Linux; the chart calls `preventDefault()` on it. <kbd>Ctrl/Cmd</kbd>+<kbd>Alt</kbd>+arrow
+  is left alone (tab switching, screen readers).
+- On Windows, <kbd>Alt</kbd>+<kbd>Shift</kbd> is the default shortcut for switching input
+  language, so users with several keyboard layouts may see the layout flip on the resize keys.
+- On macOS <kbd>Option</kbd> is <kbd>Alt</kbd>. <kbd>Option</kbd>+letter types a symbol, which is why
+  every binding here is an arrow or <kbd>Enter</kbd>.
+- The rows between the source and the target stay **selected**, so a <kbd>Delete</kbd> pressed right
+  after linking removes all of them. Press <kbd>↑</kbd>/<kbd>↓</kbd> once to collapse the selection.
+- A source row hidden by a collapse is not linked from.
+- Results are announced to screen readers through a polite live region (moved / resized with the new
+  start and end including times, "cannot move" / "cannot resize", linked, "link not created" with a
+  `reason` of `duplicate` or `cycle`). Translate or reword them with
+  `messages.announce`, which receives a `GanttAnnouncement`. Pointer drags are not announced; hosts
+  that want that listen to `task:moved` / `task:resized`, which carry no keyboard-versus-pointer flag.
+- Invalid links (to itself, a duplicate, or one that would create a cycle) are dropped without an
+  event, like a rejected drop; the keyboard path announces "link not created". Linking from a source
+  hidden by a collapse does nothing (and is not announced).
+
+See also [read-only charts](/docs/interactions/read-only).
+
 ## Listening to the results
 
 Every gesture commits through the same pipeline as the programmatic API, so the events carry

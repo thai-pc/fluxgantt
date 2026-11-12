@@ -4,6 +4,9 @@
 // semantics, Shift extends; ignored with Ctrl/Cmd/Alt). The arrows scroll vertically only; the bare
 // key `g` is the explicit horizontal "go to bar" (delegated to `onReveal`, see spec-keyboard-
 // horizontal-reveal.md; a no-op without it).
+// Alt+ArrowLeft/Right moves the focused task by one calendar day, Alt+Shift+ArrowLeft/Right resizes
+// its end, and Shift+Arrow to a target row then Alt+Enter links anchor -> target: the keyboard
+// alternative to dragging (WCAG 2.2 SC 2.5.7, spec-keyboard-move-resize.md). Gated by `isReadOnly()`.
 // Space toggles the focused row's selection membership, Delete/Backspace removes every
 // selected task. Ctrl/Cmd+Z undoes the most recent history entry, Ctrl/Cmd+Shift+Z redoes
 // it — both gated by `isReadOnly()` like Delete/Backspace. Ctrl/Cmd+D duplicates every
@@ -65,6 +68,13 @@ export interface KeyboardNavOptions {
    *  scroll you performed still happened. Optional; absent = `g` is inert. Moves neither focus
    *  nor selection. */
   onReveal?: (id: TaskId) => boolean | void;
+  /** Alt+Arrow (`days` = +-1, LOGICAL time direction, already RTL-resolved) moves the focused task;
+   *  Alt+Shift+Arrow (`edge: 'end'`) resizes its end. The keyboard alternative to drag (WCAG 2.2
+   *  SC 2.5.7). Not invoked when read-only; the callee guards no-ops. Optional; absent = unbound. */
+  onShift?: ((id: TaskId, days: number, edge?: 'end') => void) | undefined;
+  /** Alt+Enter: link the Shift-range anchor (source) to the focused row (target). Not invoked when
+   *  read-only. Optional; absent = unbound. */
+  onLink?: ((fromId: TaskId, toId: TaskId) => void) | undefined;
   /** Read-only tasks accessor — same contract as `enableClickSelect`'s `getTasks`: full
    *  `Task[]`, re-read fresh on every keydown (never cached), and fed straight into
    *  `layoutRows` for row-order resolution. */
@@ -204,9 +214,10 @@ export function enableKeyboardNav(
   // included, which focuses the row natively) and a programmatic `.focus()` both land here. The
   // renderer's own post-repaint focus restore targets `focusedTaskId` itself, so it is a no-op.
   function onFocusIn(event: Event): void {
-    // Only a row element is ever focusable (roving tabindex), and it carries `data-task-id`.
+    // Only a row element is ever focusable (roving tabindex), and it carries `data-task-id`. Not checked
+    // with `contains()`: the Canvas renderer rebuilds its a11y layer on this same focusin, detaching the target.
     const t = event.target as Element;
-    const id = handle.interactionRoot.contains(t) ? t.getAttribute('data-task-id') : null;
+    const id = t.hasAttribute('data-row-index') ? t.getAttribute('data-task-id') : null;
     if (id !== null && id !== focusedTaskId) focusTask(toTaskId(id));
   }
 
@@ -270,9 +281,18 @@ export function enableKeyboardNav(
       }
       case 'ArrowLeft':
       case 'ArrowRight':
-        // No-op, `preventDefault()` NOT called (reserved for future horizontal/cell nav —
-        // spec §4.4). When that lands it must be LOGICAL (inline-start/end), not physical: under
-        // `withRtl` the start of the row is visually RIGHT, so inline-start is ArrowRight there. Keep key -> direction in one place and flip it on `handle.mirrorX`.
+        // Alt+Arrow moves, Alt+Shift+Arrow resizes (SC 2.5.7). Plain/Shift-only arrows stay unbound and
+        // unprevented; Ctrl/Meta+Alt belongs to the OS/screen readers. preventDefault even when the
+        // commit is a clamped no-op, or Alt+Left would fall through to the browser's History Back.
+        // Direction is LOGICAL: `mirrorX` is read per event (withRtl assigns it after setup).
+        if (!event.altKey || mod || event.isComposing || options.isReadOnly() || !options.onShift) return;
+        {
+          const id = rows[currentIndex]?.task.id; // the resolved VISIBLE focused row, as `g` does
+          if (id === undefined) return;
+          event.preventDefault();
+          options.onShift(id, (event.key === 'ArrowRight') === !handle.mirrorX ? 1 : -1, event.shiftKey ? 'end' : undefined);
+          if (!disposed) options.onReveal?.(id); // re-reads the task after the commit
+        }
         return;
       case ' ':
       case 'Spacebar': // legacy key value some UAs still report for Space
@@ -349,9 +369,18 @@ export function enableKeyboardNav(
         return;
       case 'Enter': {
         // (spec-collapse-expand.md §7.4) — Enter toggles collapse/expand on the focused row,
-        // no-op on a leaf. Not bound to ArrowLeft/ArrowRight (reserved above for future
-        // horizontal/cell nav) and not Space (already bound to selection toggle) — see the
+        // no-op on a leaf. Not bound to ArrowLeft/ArrowRight and not Space (already bound to selection toggle) — see the
         // spec's own reasoning for why Enter is the conflict-free choice.
+        if (event.altKey && !mod) {
+          // Alt+Enter links anchor -> focus (never toggles collapse).
+          const to = rows[currentIndex]?.task.id;
+          if (to && anchorTaskId && anchorTaskId !== to && !options.isReadOnly() && options.onLink) {
+            event.preventDefault();
+            // A source hidden by a collapse is not linked from (drag cannot target hidden bars either).
+            if (rows.some((r) => r.task.id === anchorTaskId)) options.onLink(anchorTaskId, to);
+          }
+          return;
+        }
         const row = rows[currentIndex]; // `undefined` for -1 (focus not in the grid)
         if (!row?.hasChildren) return; // no-op on a leaf
         event.preventDefault();

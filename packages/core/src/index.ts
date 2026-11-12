@@ -92,6 +92,7 @@ export type {
   RolledUpRow,
   RollupProvider,
   GanttMessages,
+  GanttAnnouncement,
   TaskLabelParams,
   ViewMode,
   Density,

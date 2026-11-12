@@ -254,3 +254,21 @@ more than the first pass. Final gzip bytes against the #124 re-base: hello world
 +93..+160 B, `+ withRender + withEditHooks` 16347 (37 B under its 16 KiB reference, so it will warn first).
 Spent under the exemption rule as a correctness + performance fix (one `updateTask` at 2000 tasks / 520 days:
 ~8.4 s -> ~0.7 s CPU).
+
+The 2026-11 keyboard move / resize / link pass (WCAG 2.2 SC 2.5.7: Alt+Arrow, Alt+Shift+Arrow, Alt+Enter, plus a
+polite live region created by `withInteraction`) is an accessibility fix and spends hard-gate headroom under the
+exemption rule. Cost against master after #127 (gzip bytes): `+ withRender + withInteraction` 19932 -> 20677
+(+745, 1083 B left), kitchen sink 24731 -> 25458 (+727, 1422 B left), `+ withInteraction + withResponsive` 21396 ->
+22160 (+764, now 656 B over its 21504 B reference); hello world and the other seven fixtures +0.
+Levers measured one at a time: a single `say(kind, a, b?)` template in
+place of per-kind branches plus two helpers and no `try` around `toLocaleString` (-37 B interaction, -34 B kitchen
+sink, kept); creating the live-region element lazily on first announce (+1..+5 B, rejected: it saves no code and a
+region that is created and filled in the same tick is announced less reliably); reusing the renderer's `dateLabel`
+memo (not applicable: it is date-only and private to `renderer-base.ts`, while the announcement needs times).
+
+Review round 2 of that pass (resize no-op test based on what `resizeTask` would write, painted-span stepping oracle,
+a 366-step bound, "cannot move / resize" announcements, ids and a link-failure `reason` in `GanttAnnouncement`, an
+alternating no-break space so repeated announcements are re-read) cost +164 B (`+ withRender + withInteraction`,
+now 20841, 919 B left), +172 B (kitchen sink 25630, 1250 B left) and +174 B (`+ withResponsive` 22334); other
+fixtures +0. Total against master after #127: +909 / +899 / +938. A hidden-anchor "cannot link" announcement was
+not built (it would need a third `onLink` outcome across the keyboard-nav boundary); it is documented instead.

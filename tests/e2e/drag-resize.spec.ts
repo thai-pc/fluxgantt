@@ -76,6 +76,7 @@ test('a resize moves only the end — `start` is kept', async ({ page }) => {
 test('dragging the edge inward shortens the task', async ({ page }) => {
   const endBefore = await readTaskDate(page, 'build', 'end');
 
+  // 2 days: Mon -> Sat. The end is normalised to the working boundary (Fri 17:00), as before.
   await mouseDrag(page, await rightEdgeOf(page, 'build'), -DEFAULT_PIXELS_PER_DAY * 2);
 
   await expect
