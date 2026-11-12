@@ -1,15 +1,26 @@
 import { test, expect, type Page } from '@playwright/test';
-import { DAY_MS, dependencyCount, events, openCanvasDrag, taskMs } from '../helpers/canvas-drag.js';
+import { DAY_MS, dependencyCount, events, openCanvasDrag as openCanvas, taskMs } from '../helpers/canvas-drag.js';
 import { openRtl } from '../helpers/rtl.js';
 
 // Keyboard alternative to drag (WCAG 2.2 SC 2.5.7, spec-keyboard-move-resize.md). Fixtures:
 // `canvas-drag.html` (`?pad=0` = SVG twin, default = Canvas; rows a b c d ms sum x y, c -> d) and
 // `rtl.html` (`?pad=0` SVG, `?pad=2100` Canvas). Dates are read through the public API.
 
-const row = (page: Page, id: string) => page.locator(`[data-row-index][data-task-id="${id}"]`);
+const row = (page: Page, id: string) => page.locator(`[role="row"][data-task-id="${id}"]`);
+// Reaches a row the way a keyboard user does: focus the first row, then ArrowDown. (A programmatic
+// `.focus()` on a later Canvas row is not used: it moves the roving id and repaints.)
 const focusRow = async (page: Page, id: string) => {
-  await row(page, id).focus();
+  const index = Number(await row(page, id).getAttribute('data-row-index'));
+  await page.locator('[role="row"][data-row-index="0"]').focus();
+  for (let i = 0; i < index; i++) await page.keyboard.press('ArrowDown');
   await expect(row(page, id)).toBeFocused();
+};
+// `?pad=0` is the SVG twin of the Canvas fixture.
+const openCanvasDrag = async (page: Page, query = '') => {
+  if (!query.includes('pad=0')) return openCanvas(page, query);
+  await page.goto(`/canvas-drag.html?${query}`);
+  await expect(page.locator('#gantt svg.fg-timeline')).toBeVisible();
+  await page.waitForFunction(() => '__fx' in window && '__events' in window);
 };
 
 for (const [name, query] of [
@@ -34,18 +45,22 @@ for (const [name, query] of [
       expect(await taskMs(page, 'a', 'start')).toBe(s0);
     });
 
-    test('Alt+Shift+ArrowLeft shortens the end; a milestone does not resize', async ({ page }) => {
+    test('Alt+Shift+ArrowLeft shortens the end', async ({ page }) => {
       const e0 = await taskMs(page, 'b', 'end');
       await focusRow(page, 'b');
       await page.keyboard.press('Alt+Shift+ArrowLeft');
       await expect.poll(() => taskMs(page, 'b', 'end')).toBeLessThan(e0);
       expect((await events(page, 'task:resized')).length).toBe(1);
+    });
 
+    test('a milestone moves but does not resize', async ({ page }) => {
       const m0 = await taskMs(page, 'ms', 'end');
       await focusRow(page, 'ms');
       await page.keyboard.press('Alt+Shift+ArrowRight');
       expect(await taskMs(page, 'ms', 'end')).toBe(m0);
       expect(await taskMs(page, 'ms', 'start')).toBe(m0);
+      await page.keyboard.press('Alt+ArrowRight');
+      await expect.poll(() => taskMs(page, 'ms', 'start')).toBe(m0 + DAY_MS);
     });
 
     test('Shift+ArrowDown then Alt+Enter links anchor -> focus', async ({ page }) => {
