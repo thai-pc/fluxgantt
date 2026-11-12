@@ -1,5 +1,19 @@
 # @fluxgantt/vue
 
+## 0.5.0
+
+### Minor Changes
+
+- b4ee2ac: Bridge the core `task:updated` event into the wrappers: React gets an `onTaskUpdated` prop and Vue gets a `task-updated` emit, both receiving core's `TaskUpdatedPayload` (`taskId`, `task`, `prev`, `changed`). `TaskUpdatedPayload` is re-exported from both packages.
+  
+  Beta: `onTaskUpdated` and `task-updated` are `@beta`, following the core event, and may change in any minor release.
+
+### Patch Changes
+
+- Updated dependencies [6d5b1a1]
+- Updated dependencies [62c4efc]
+  - @fluxgantt/core@0.8.0
+
 ## 0.4.3
 
 ### Patch Changes
