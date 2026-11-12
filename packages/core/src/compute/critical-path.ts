@@ -191,7 +191,7 @@ function latestFinishFromSucc(
   const succLs = ls.get(succId);
   const succLf = lf.get(succId);
   if (!succLs || !succLf) {
-    throw new Error('computeCriticalPath: successor not scheduled');
+    throw new Error(`computeCriticalPath: successor ${succId} not scheduled`);
   }
   switch (depType) {
     case 'FS':
