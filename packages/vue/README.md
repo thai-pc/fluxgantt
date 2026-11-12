@@ -5,7 +5,7 @@ MIT-licensed Gantt chart library. Provides a `<FluxGantt>` component and a `useF
 composable over the headless [`@fluxgantt/core`](https://www.npmjs.com/package/@fluxgantt/core)
 engine.
 
-- **Docs:** https://thai-pc.github.io/fluxgantt/docs/frameworks/vue
+- **Docs:** https://fluxgantt.thai-pc.com/docs/frameworks/vue
 - **Repository:** https://github.com/thai-pc/fluxgantt
 
 ## Install
@@ -67,7 +67,7 @@ Behavior change: a native `aria-label="..."` attribute used to fall through to t
 binds to the `ariaLabel` prop and names the chart's `<svg>` instead.
 
 Full prop and emit tables, plus the composable:
-[the Vue docs page](https://thai-pc.github.io/fluxgantt/docs/frameworks/vue).
+[the Vue docs page](https://fluxgantt.thai-pc.com/docs/frameworks/vue).
 
 ## License
 

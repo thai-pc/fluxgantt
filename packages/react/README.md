@@ -4,7 +4,7 @@ The React wrapper for [FluxGantt](https://github.com/thai-pc/fluxgantt) — a Ty
 MIT-licensed Gantt chart library. Provides a `<FluxGantt>` component and a `useFluxGantt` hook
 over the headless [`@fluxgantt/core`](https://www.npmjs.com/package/@fluxgantt/core) engine.
 
-- **Docs:** https://thai-pc.github.io/fluxgantt/docs/frameworks/react
+- **Docs:** https://fluxgantt.thai-pc.com/docs/frameworks/react
 - **Repository:** https://github.com/thai-pc/fluxgantt
 
 ## Install
@@ -61,7 +61,7 @@ on every render.
 `theme="auto"` to follow the OS.
 
 Full prop table, the `useFluxGantt` hook, and the uncontrolled-data rationale:
-[the React docs page](https://thai-pc.github.io/fluxgantt/docs/frameworks/react).
+[the React docs page](https://fluxgantt.thai-pc.com/docs/frameworks/react).
 
 ## License
 

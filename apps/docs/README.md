@@ -38,39 +38,40 @@ by `tooling/scripts/check-snippet-sync.mjs`.
 
 ## Deploy
 
-The site is deployed to **GitHub Pages** at https://thai-pc.github.io/fluxgantt by
-`.github/workflows/docs-deploy.yml`.
+The site is hosted on **Cloudflare Pages** at https://fluxgantt.thai-pc.com, through Cloudflare's
+Git integration: every push to `master` deploys, and every PR gets a preview URL on `*.pages.dev`.
+There is no deploy workflow in `.github/`; the dashboard settings live in `RELEASING.md` →
+Docs site. A broken docs build still fails PRs, because `ci.yml`'s `pnpm build` builds this app.
 
 - **Build:** `pnpm --filter docs build` — `vocs build` followed by
-  `tooling/scripts/finalize-pages-build.mjs`.
-- **Artifact:** `apps/docs/dist/public` (22 HTML files). Not `dist/` — that also contains an SSR
+  `tooling/scripts/finalize-pages-build.mjs`, which only validates the output (see below).
+- **Output:** `apps/docs/dist/public` (23 HTML files). Not `dist/` — that also contains an SSR
   server bundle the static deploy does not use.
-- **Trigger:** `workflow_dispatch` (run **Deploy docs** from the Actions tab).
 
-Three settings in `vocs.config.ts` are what make this work, and none is optional:
+Three settings in `vocs.config.ts` are what make this work:
 
 | Setting | Why |
 |---|---|
-| `renderStrategy: 'full-static'` | Vocs defaults to `'dynamic'`, which emits an SSR server and **zero HTML**. `finalize-pages-build.mjs` fails the build if that ever regresses. |
-| `basePath: '/fluxgantt'` | Pages serves from the repository sub-path, so every asset and internal link needs the prefix. |
-| `baseUrl: 'https://thai-pc.github.io'` | Origin **only** — Vocs composes canonicals as `baseUrl + basePath + pathname`, so including the sub-path here would double it. |
+| `renderStrategy: 'full-static'` | Vocs defaults to `'dynamic'`, which emits an SSR server and **zero HTML**. |
+| `baseUrl: 'https://fluxgantt.thai-pc.com'` | Canonicals, `og:url`, `sitemap.xml` and `robots.txt` are built from it. No `basePath`: the site is served from the domain root. |
+| `head.base: false` | Vocs otherwise emits `<base href="${baseUrl}">`, which points every root-relative asset at production — a preview deploy or a local serve would then run production's scripts. |
 
-`sitemap` is off deliberately: Vocs generates sitemap entries as `siteUrl + pagePath`, omitting
-`basePath`, which under a sub-path deployment would list URLs that 404.
+`finalize-pages-build.mjs` fails the build if there is no HTML, if a `basePath` is set, if a page
+carries an absolute `<base href>`, or if any `/assets/...` URL a page references is missing from
+the output.
 
-`finalize-pages-build.mjs` also writes `.nojekyll`. Pages runs Jekyll by default and Jekyll drops
-paths beginning with `_`, which is exactly what waku's `encodeRscPath()` emits (`RSC/R/_root.txt`,
-`_root.d/`) — without it, client-side navigation 404s on the live site while working locally.
+Vocs emits `pages/docs/x.mdx` as `docs/x/index.html`, so Cloudflare answers `/docs/x` with a 308 to
+`/docs/x/`. Client-side navigation uses the slash-less form and works either way.
 
 ### Previewing the built site
 
-Serve it under the real sub-path, or basePath bugs stay invisible:
+`wrangler pages dev` is the closest local stand-in for Cloudflare (same trailing-slash redirects
+and `404.html` handling). It runs entirely locally and needs no Cloudflare login:
 
 ```bash
 pnpm --filter docs build
-mkdir -p /tmp/pages-preview && cp -R apps/docs/dist/public /tmp/pages-preview/fluxgantt
-cd /tmp/pages-preview && python3 -m http.server 8099
-# http://localhost:8099/fluxgantt/
+npx wrangler@4 pages dev apps/docs/dist/public --port 5240
+# http://127.0.0.1:5240/
 ```
 
-`pnpm --filter docs preview` serves at `/` instead, so it cannot catch those.
+`python3 -m http.server 5240 -d apps/docs/dist/public` also works for a quick look.
