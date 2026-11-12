@@ -19,7 +19,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join, resolve } from 'node:path';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
-const PATTERN = /(export const VERSION = ')([^']*)(')/;
+const PATTERN = /(export const VERSION(?:: string)? = ')([^']*)(')/;
 
 const updated = [];
 
