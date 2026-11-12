@@ -339,8 +339,18 @@ export interface GanttEventMap {
    *  undo/redo of an update) that changed at least one field, AFTER the specific `task:moved`/
    *  `task:resized`/`task:progressed` events and `onTaskChange` of that write. A superset of those:
    *  one write can fire both. `start`/`end` compare by instant, everything else by `Object.is`
-   *  (so a deep-equal replacement object counts as changed); `updatedAt` is ignored. Never fires
-   *  for add, remove, import or dependency ops, nor for a no-op patch. @beta */
+   *  (so a deep-equal replacement object counts as changed); `updatedAt` is ignored. A shape-only
+   *  change (a string replaced by an equal-instant `ZonedDateTime`) emits nothing. Never fires
+   *  for add, remove, import or dependency ops, nor for a no-op patch.
+   *
+   *  `task`/`prev` are write-time snapshots: do not mutate them, and a host that persists must read
+   *  `getTask(taskId)` when it handles the event (or keep the last event per id by arrival order,
+   *  with the caveat below). `changed` is a set: its order is unspecified.
+   *
+   *  Re-entrancy: a write, or `undo()`/`redo()`, made from inside a listener or `onTaskChange`
+   *  starts a nested command whose events arrive BEFORE the remaining events of the outer
+   *  command, so a snapshot can already be superseded. Undo-to-reject is unsupported: validate
+   *  before writing instead, or defer the write with `queueMicrotask`. @beta */
   'task:updated': [payload: TaskUpdatedPayload];
   /** Working hours, matches `Task.duration`'s unit. */
   'task:resized': [task: Task, prevDuration: number, meta?: EventMeta];

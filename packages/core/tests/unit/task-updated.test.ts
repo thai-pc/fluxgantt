@@ -327,3 +327,20 @@ describe('task:updated: property (sound and complete), across zones', () => {
     );
   });
 });
+
+describe('task:updated: re-entrant writes (pins the current #127 order)', () => {
+  it('a nested updateTask from onTaskChange delivers its event BEFORE the outer write\'s (documented)', () => {
+    let nested = false;
+    const { gantt, events } = setup({
+      onTaskChange: (task) => {
+        if (task.name === 'first' && !nested) {
+          nested = true;
+          gantt.updateTask(id('a'), { name: 'second' });
+        }
+      },
+    });
+    gantt.updateTask(id('a'), { name: 'first' });
+    expect(events.map((e) => e.task.name)).toEqual(['second', 'first']);
+    expect(gantt.getTask(id('a'))!.name).toBe('second'); // so persisters must read getTask()
+  });
+});
