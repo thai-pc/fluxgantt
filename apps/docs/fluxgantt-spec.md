@@ -778,7 +778,7 @@ gantt.exportPdf(options?: ExportOptions): Promise<Blob>         // Pro (branding
   cycle is caught) before any live store is touched; a rejected import leaves tasks, dependencies,
   history and selection unchanged. On success it replaces the dataset (no merge), clears undo/redo
   and the selection, and fires one `data:imported`. CSV has no dependencies, so `importCsv()`
-  clears them. `ImportLimits` defaults: 50,000 tasks, 2,500 dependencies (interim: dependency loading is quadratic until the bulk-link work lands; raise it per call with `options.limits.maxDependencyCount`), hierarchy depth 100,
+  clears them. `ImportLimits` defaults: 50,000 tasks, 100,000 dependencies, hierarchy depth 100,
   20 M input chars (security.md: limit size).
 - **`exportCsv()`** escapes formula-leading cells (`= + - @`, tab, CR) — security.md.
 - **`exportSvg()`** returns a self-contained, sanitized SVG with resolved styles baked in
