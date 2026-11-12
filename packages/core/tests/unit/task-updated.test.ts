@@ -266,9 +266,17 @@ describe('task:updated: ordering and the batched runner', () => {
     expect(events.map((e) => e.taskId)).toEqual([id('a'), id('b')]);
   });
 
-  it('with no listener, no payload is built (no work on the hot path)', () => {
-    const gantt = createGantt({ tasks: [t('a', '2026-01-05T09:00', '2026-01-06T17:00')] });
-    expect(() => gantt.setProgress(id('a'), 0.5)).not.toThrow();
+  it('with no listener, no payload is built (no key diff runs)', () => {
+    const run = (listen: boolean): number => {
+      const gantt = createGantt({ tasks: [t('a', '2026-01-05T09:00', '2026-01-06T17:00')] });
+      if (listen) gantt.on('task:updated', () => {});
+      const spy = vi.spyOn(Object, 'keys');
+      gantt.updateTask(id('a'), { name: 'q' });
+      const n = spy.mock.calls.length;
+      spy.mockRestore();
+      return n;
+    };
+    expect(run(true)).toBeGreaterThan(run(false));
   });
 });
 
@@ -311,7 +319,14 @@ describe('task:updated: property (sound and complete), across zones', () => {
           const keys = new Set([...Object.keys(e.prev), ...Object.keys(e.task)]) as Set<keyof Task>;
           for (const k of keys) {
             if (k === 'updatedAt' || e.changed.includes(k as TaskField)) continue;
-            if (k === 'start' || k === 'end') continue; // instant-equal values may differ in shape
+            if (k === 'start' || k === 'end') {
+              // Independent oracle: compare epoch milliseconds via Temporal in the calendar zone.
+              const ms = (v: unknown): number =>
+                Temporal.PlainDateTime.from(String(v).replace(/\[.*$/, '').replace(/[+-]\d\d:\d\d$|Z$/, '')).toZonedDateTime(timezone)
+                  .epochMilliseconds;
+              expect(ms(e.prev[k])).toBe(ms(e.task[k]));
+              continue;
+            }
             expect(Object.is(e.prev[k], e.task[k])).toBe(true);
           }
         }
