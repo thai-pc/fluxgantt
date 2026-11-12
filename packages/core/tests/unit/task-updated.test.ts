@@ -344,3 +344,22 @@ describe('task:updated: re-entrant writes (pins the current #127 order)', () => 
     expect(gantt.getTask(id('a'))!.name).toBe('second'); // so persisters must read getTask()
   });
 });
+
+describe('updateTask ignores id / createdAt / updatedAt in the patch', () => {
+  it('a full Task passed as the patch keeps id and createdAt and reports only real changes', () => {
+    const { gantt, events } = setup();
+    const before = gantt.getTask(id('a'))!;
+    const full = { ...before, name: 'renamed', createdAt: new Date(0), updatedAt: new Date(1), id: id('zzz') };
+    const next = gantt.updateTask(id('a'), full as never);
+    expect(next.id).toBe(id('a'));
+    expect(next.createdAt).toBe(before.createdAt);
+    expect(next.updatedAt.getTime()).not.toBe(1);
+    expect(events.map((e) => e.changed)).toEqual([['name']]);
+  });
+  it('createdAt alone in the patch is a no-op for task:updated', () => {
+    const { gantt, events } = setup();
+    gantt.updateTask(id('a'), { createdAt: new Date(0) } as never);
+    expect(events).toEqual([]);
+    expect(gantt.getTask(id('a'))!.createdAt.getTime()).not.toBe(0);
+  });
+});

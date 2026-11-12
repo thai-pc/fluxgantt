@@ -12,3 +12,5 @@ Beta: `task:updated`, `TaskUpdatedPayload` and `TaskField` are experimental and 
 - Never fires for add, remove, import or dependency operations, and not for a no-op patch (`onTaskChange` still does).
 - `start` / `end` compare by instant; every other field compares with `Object.is` (a deep-equal replacement object counts as changed); `updatedAt` is ignored.
 - Hosts that keep an exhaustive `Record<GanttEventName, ...>` must add the new key.
+
+Behaviour fix (visible): `updateTask(id, patch)` no longer lets a patch overwrite `createdAt` (`id` and `updatedAt` were already forced). Passing a whole `Task` as the patch used to replace `createdAt` with the patch's value; it now keeps the original. Only hosts that relied on rewriting `createdAt` through `updateTask` are affected.
