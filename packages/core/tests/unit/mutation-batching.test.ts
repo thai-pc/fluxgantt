@@ -63,7 +63,7 @@ describe('#run outbox', () => {
     expect(log).toEqual(['moved k0', 'progressed k2', 'moved k1', 'moved k2']);
   });
 
-  it('destroy() from a listener mid-drain is safe and silences the remaining items', () => {
+  it('destroy() from a listener mid-drain is safe and silences the remaining events', () => {
     const gantt = createGantt(chain(4));
     const log: string[] = [];
     gantt.on('task:moved', (task) => {

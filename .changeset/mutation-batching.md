@@ -18,5 +18,13 @@ mutation, before that mutation's other events, with the final set. If `onTaskCha
 remaining events still fire and the first error is rethrown afterwards (before, the throw aborted
 the rest of the mutation part-way).
 
+An import over a mounted chart now emits `critical-path:computed` BEFORE `selection:changed`,
+`history:changed` and `data:imported` (the repaint happens first, then the queued events); the
+relative order of those three is unchanged.
+
+Error precedence: if the mutation itself throws (for example a cascade `CyclicDependencyError`),
+that error is what the caller sees; a throwing `onTaskChange` or effect raised alongside it is
+logged with `console.error` instead of replacing it.
+
 `signals`: a throwing effect no longer drops the other pending effects of the same flush; they all
 run and the first error is rethrown.

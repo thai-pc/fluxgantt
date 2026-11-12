@@ -103,6 +103,7 @@ export function withEditHooks<T extends GanttInstance>(instance: T, options: Edi
       y: number,
     ): boolean => {
       let prevented = false;
+      // Relies on a SYNCHRONOUS emit (reads `prevented` right after); true only outside a command.
       internal.emit('task:context-requested', {
         taskId: hit.id,
         part: hit.part,

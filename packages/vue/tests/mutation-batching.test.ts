@@ -56,6 +56,8 @@ describe('<FluxGantt> batched mutations', () => {
       if (task.id === 'k1') wrapper.unmount();
     });
     expect(() => instance.moveTask(toTaskId('k0'), '2026-02-02T09:00')).not.toThrow();
+    // The instance-level listener outlives the component; the component's own emit bridge does not.
     expect(seen.slice(0, 2)).toEqual(['k0', 'k1']);
+    expect(wrapper.emitted('task-moved')?.length ?? 0).toBeLessThanOrEqual(2);
   });
 });
