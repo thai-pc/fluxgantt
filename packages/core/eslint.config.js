@@ -14,10 +14,10 @@ export default [
     },
   },
   {
-    // Node-run tooling scripts (`pnpm size:headroom`): console/process are Node globals.
+    // Node-run tooling scripts (`pnpm size`, `pnpm size:headroom`): console/process are Node globals.
     files: ['scripts/**/*.mjs'],
     languageOptions: {
-      globals: { console: 'readonly', process: 'readonly' },
+      globals: { console: 'readonly', process: 'readonly', URL: 'readonly' },
     },
   },
   {
