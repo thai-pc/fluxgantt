@@ -17,6 +17,7 @@ import type {
   SchedulingMode,
   TaskContextRequestedPayload,
   TaskId,
+  TaskUpdatedPayload,
 } from '@fluxgantt/core';
 import type {
   DependencyInput,
@@ -131,7 +132,7 @@ export const FluxGantt = defineComponent({
     },
   },
   emits: {
-    // Vue's object-form `emits` both registers the 10 events at runtime (so `v-on`/`@x`
+    // Vue's object-form `emits` both registers the 11 events at runtime (so `v-on`/`@x`
     // listeners on unknown events still fall through as attrs correctly, and Vue's dev-mode
     // "unknown event" warning doesn't fire) AND drives TypeScript's inference of `emit`'s
     // signature inside `setup()` — the non-macro equivalent of `defineEmits<FluxGanttEmits>()`.
@@ -141,6 +142,7 @@ export const FluxGantt = defineComponent({
     // inference. Must be kept in sync with `FluxGanttEmits` in types.ts BY HAND — see §9
     // (guarded by the mandatory drift-guard test, tests/flux-gantt.test.ts).
     'task-added': (_task: Task) => true,
+    'task-updated': (_payload: TaskUpdatedPayload) => true,
     'task-moved': (_task: Task, _prevStart: DateInput) => true,
     'task-resized': (_task: Task, _prevDuration: number) => true,
     'task-progressed': (_task: Task, _prevProgress: number) => true,
@@ -158,7 +160,7 @@ export const FluxGantt = defineComponent({
     // doc-comment).
     const { containerRef, instance } = useFluxGantt(props as UseFluxGanttConfig);
 
-    // Bridge the 10 GanttEventMap events to this component's typed `emit`. Subscribe
+    // Bridge the 11 GanttEventMap events to this component's typed `emit`. Subscribe
     // SYNCHRONOUSLY in setup() — NOT in onMounted — so the listeners are active before
     // useFluxGantt's onMounted runs `instance.mount()`, which synchronously emits the INITIAL
     // `critical-path:computed` for any initial tasks. Subscribing in onMounted (which fires
@@ -167,6 +169,7 @@ export const FluxGantt = defineComponent({
     // `emit` doesn't exist inside a bare composable.
     const unsubs: Array<() => void> = [
       instance.on('task:added', (task) => emit('task-added', task)),
+      instance.on('task:updated', (payload) => emit('task-updated', payload)),
       instance.on('task:moved', (task, prevStart) => emit('task-moved', task, prevStart)),
       instance.on('task:resized', (task, prevDuration) => emit('task-resized', task, prevDuration)),
       instance.on('task:progressed', (task, prevProgress) =>
