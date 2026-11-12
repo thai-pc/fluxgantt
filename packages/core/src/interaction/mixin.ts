@@ -261,8 +261,17 @@ function commitShift(
     // Floor: the EARLIER of start + 1 day and the current end, as `computeClampedResizedEnd`.
     const floor = normalizeDate(task.start, tz).add({ days: 1 });
     const min = floor.epochNanoseconds < end.epochNanoseconds ? floor : end;
-    const next = end.add({ days });
-    commitResize(instance, internal, id, next.epochNanoseconds < min.epochNanoseconds ? min : next);
+    // A press must change the working-hours duration (a drag computes from its origin and so crosses a
+    // weekend or holiday; a relative step would stick on it): keep stepping, bounded, until it does.
+    const cur = task.duration ?? differenceInWorkingHours(task.start, end, internal.calendar);
+    for (let n = 1; n <= 31; n++) {
+      const t = end.add({ days: n * days });
+      const next = t.epochNanoseconds < min.epochNanoseconds ? min : t;
+      if (differenceInWorkingHours(task.start, next, internal.calendar) !== cur || next === min) {
+        commitResize(instance, internal, id, next);
+        return;
+      }
+    }
   }
 }
 
@@ -289,6 +298,8 @@ function commitResize(
   //    gesture that changed nothing. Skip.
   if (newEndNs <= startNs || newEndNs === endNs) return;
   const newDuration = differenceInWorkingHours(task.start, newEnd, internal.calendar);
+  // The requested end can resolve to the same working time (a weekend or holiday): no event, no undo entry.
+  if (newDuration === (task.duration ?? differenceInWorkingHours(task.start, task.end, internal.calendar))) return;
   // Reuses the EXISTING resizeTask() pipeline in full: validates newDuration >= 0/finite, writes
   // end+duration (→ task:resized, which correctly fires here because a real resize changes the
   // instant span — unlike drag-move's commitDrag), and cascades. No new facade method.

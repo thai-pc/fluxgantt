@@ -174,11 +174,36 @@ describe('Alt+Shift+Arrow resize (end edge)', () => {
     expect(resized).toHaveBeenCalledTimes(2);
   });
 
-  it('goes through the working calendar: a weekend-only extension adds no working time', () => {
+  it('lengthens past a weekend: Thu-Fri plus one press ends Mon 17:00 (24 h), one undo step', () => {
     const g = chart([t('a', '2026-01-08T09:00', '2026-01-09T17:00')]); // Thu-Fri
-    expect(key(row('a'), 'ArrowRight', ALT_SHIFT).defaultPrevented).toBe(true); // end -> Saturday
+    expect(key(row('a'), 'ArrowRight', ALT_SHIFT).defaultPrevented).toBe(true);
+    expect(date(g, 'a', 'end')).toContain('2026-01-12T17:00');
+    expect(g.getTask(toTaskId('a'))!.duration).toBe(24);
+    g.undo();
     expect(date(g, 'a', 'end')).toContain('2026-01-09T17:00');
-    expect(g.getTask(toTaskId('a'))!.duration).toBe(16);
+  });
+
+  it('lengthens past a holiday', () => {
+    const g = chart([t('a', '2026-01-08T09:00', '2026-01-09T17:00')], {
+      calendar: { ...DEFAULT_CALENDAR, holidays: ['2026-01-12'] },
+    });
+    key(row('a'), 'ArrowRight', ALT_SHIFT);
+    expect(date(g, 'a', 'end')).toContain('2026-01-13T17:00');
+  });
+
+  it('a press that cannot change the duration writes nothing (no event, no undo entry)', () => {
+    const g = chart([t('a', '2026-01-05T09:00', '2026-01-05T17:00')]); // one working day: at the floor
+    const resized = vi.fn();
+    g.on('task:resized', resized);
+    expect(key(row('a'), 'ArrowLeft', ALT_SHIFT).defaultPrevented).toBe(true);
+    expect(resized).not.toHaveBeenCalled();
+    expect(g.canUndo()).toBe(false);
+  });
+
+  it('shrinks across a weekend in one press', () => {
+    const g = chart([t('a', '2026-01-08T09:00', '2026-01-12T17:00')]); // Thu to Mon, 24 h
+    key(row('a'), 'ArrowLeft', ALT_SHIFT);
+    expect(date(g, 'a', 'end')).toContain('2026-01-09T17:00');
   });
 
   it("floors at one calendar day like drag, and a 1-day task still preventDefaults", () => {
