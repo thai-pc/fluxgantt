@@ -54,7 +54,6 @@ describe('TaskStore children index vs brute force', () => {
           } else if (op.k === 'restore') {
             store.restore(mk(id, op.parent));
           } else if (op.k === 'remove') {
-            // Parent cycles are host errors; skip removals that would walk one.
             store.remove(id);
           } else store.clear();
           const all = store.all();
@@ -79,7 +78,12 @@ describe('TaskStore children index vs brute force', () => {
         const expected = new Set<TaskId>([id]);
         for (let grew = true; grew; ) {
           grew = false;
-          for (const t of before) if (t.parent && expected.has(t.parent) && !expected.has(t.id)) (expected.add(t.id), (grew = true));
+          for (const t of before) {
+            if (t.parent && expected.has(t.parent) && !expected.has(t.id)) {
+              expected.add(t.id);
+              grew = true;
+            }
+          }
         }
         const rev = store.revision.value;
         store.remove(id);
