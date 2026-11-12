@@ -85,6 +85,10 @@ export class DependencyStore {
    * cycle is reported as the first input edge whose endpoints are both on or downstream of it).
    * On a throw nothing is added. Does not honour `allowCycle`.
    *
+   * Precondition: the store is acyclic before the call (`Gantt` always guarantees it: it loads
+   * into a fresh store). The cycle check covers the whole graph, so on a store that already holds
+   * a cycle (made with `link(..., { allowCycle: true })`) every call is rejected, whatever it adds.
+   *
    * @internal Loader plumbing, not part of the stable API.
    */
   linkAll(

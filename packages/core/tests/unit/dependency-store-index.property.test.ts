@@ -214,3 +214,16 @@ describe('DependencyStore.linkAll cycle message names an edge on a cycle', () =>
     expect(performance.now() - t0).toBeLessThan(5000);
   });
 });
+
+describe('DependencyStore.linkAll precondition', () => {
+  it('on a store that already holds an allowCycle cycle, every call is rejected and rolled back', () => {
+    const [a, b, x, y] = ids as [TaskId, TaskId, TaskId, TaskId];
+    const s = new DependencyStore();
+    s.link(a, b);
+    s.link(b, a, 'FS', { allowCycle: true });
+    expect(() => s.linkAll([{ from: x, to: y }])).toThrow(DependencyLinkError);
+    expect(s.size).toBe(2);
+    expect(s.linkExists(x, y)).toBe(false);
+    expect(s.link(x, y)).toBeDefined(); // sequential link is still fine
+  });
+});
