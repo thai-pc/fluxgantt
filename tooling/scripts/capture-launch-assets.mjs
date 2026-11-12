@@ -12,11 +12,13 @@
 // `plain-html-demo`'s Vite dev server on it unless something already answers there; OUT_DIR
 // overrides the output folder.
 //
-// ONE SOURCE FOR THE NUMBERS: `measureSizes()` runs `size-limit --json` on the real fixtures in
-// packages/core/size-limit/ (the same measurement CI enforces) and everything below derives from
+// ONE SOURCE FOR THE NUMBERS: `measureSizes()` runs `scripts/size.mjs --json` (size-limit over both the hard and
+// the soft config, all eleven fixtures in packages/core/size-limit/, the same measurement CI runs) and everything below derives from
 // it: gallery-2's bars, and every `sz` marker in SYNC_FILES (rewritten in place by
 // `syncCopy()`). The only literals are the two competitor figures, which come from
 // tooling/scripts/measure-competitor-bundles.mjs (needs the npm registry, so not re-run here).
+// Every FluxGantt figure EXCLUDES the Temporal polyfill (~45.8 KiB gzip, see CLAUDE.md golden rule 5);
+// copy that quotes these sizes must say so.
 //
 // Copy marker syntax, so prose can stay readable while the value is machine-owned:
 //   Markdown:  <!--sz:editable.2-->19.02<!--/sz-->      (key.decimals; unit stays outside)
@@ -70,11 +72,11 @@ const SIZE_KEYS = [
 ];
 /** KiB per key, from `size-limit --json` (gzip bytes / 1024). */
 function measureSizes() {
-  const raw = execFileSync('pnpm', ['--filter', '@fluxgantt/core', 'exec', 'size-limit', '--json'], {
+  const raw = execFileSync('pnpm', ['--filter', '@fluxgantt/core', 'exec', 'node', 'scripts/size.mjs', '--json'], {
     cwd: ROOT, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, stdio: ['ignore', 'pipe', 'ignore'],
   });
-  // esbuild prints warnings into the same stream; the report is the one `[ { ... } ]` block.
-  const json = raw.match(/\[\s*\{[\s\S]*?\n\]/)?.[0];
+  // `size.mjs --json` prints the combined hard + soft report (all eleven fixtures) as one line.
+  const json = raw.match(/^\[.*\]$/m)?.[0];
   if (!json) throw new Error('could not find the size-limit JSON report in its output');
   const rows = JSON.parse(json);
   const out = {};
