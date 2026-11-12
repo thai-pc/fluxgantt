@@ -81,7 +81,10 @@ describe('SVG row focus frame', () => {
     expect(css).not.toContain('/*');
     expect(css).toMatch(/\.fg-timeline__focus-row\{stroke:none;pointer-events:none\}/);
     const hasRule = css.split('}').find((r) => r.includes(':has('))!;
-    expect(hasRule).toContain('.fg-timeline__focus-row{stroke:var(--fg-task-focus,#0369a1)');
+    // Not painted at all until a row has keyboard focus: an unpainted-but-present rect in the pinned
+    // column was enough to make linux Chromium drop LCD text antialiasing there (PR #139 CI probe).
+    expect(css).toContain('.fg-timeline__focus-row{display:none}');
+    expect(hasRule).toContain('.fg-timeline__focus-row{display:inline;stroke:var(--fg-task-focus,#0369a1)');
     expect(hasRule).not.toContain('.fg-task__focus-ring');
     expect(css).toContain('.fg-timeline__row:focus-visible .fg-task__focus-ring{stroke:var(--fg-task-focus,#0369a1)');
   });

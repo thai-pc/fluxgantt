@@ -282,9 +282,9 @@ const FOCUS_RING_OFFSET_PX = 5;
 // without `:has` drops only the frame's), and the pinned column takes the forced Canvas ground like the chart.
 const FOCUS_STYLE_TEXT =
   '.fg-timeline__row:focus-visible{outline:none}' +
-  '.fg-task__focus-ring,.fg-timeline__focus-row{stroke:none;pointer-events:none}' +
+  '.fg-task__focus-ring,.fg-timeline__focus-row{stroke:none;pointer-events:none}.fg-timeline__focus-row{display:none}' +
   '.fg-timeline__row:focus-visible .fg-task__focus-ring{stroke:var(--fg-task-focus,#0369a1);stroke-width:var(--fg-task-focus-width,2px)}' +
-  '.fg-timeline__layer:has(.fg-timeline__row:focus-visible) .fg-timeline__focus-row{stroke:var(--fg-task-focus,#0369a1);stroke-width:min(var(--fg-task-focus-width,2px),2px)}' +
+  '.fg-timeline__layer:has(.fg-timeline__row:focus-visible) .fg-timeline__focus-row{display:inline;stroke:var(--fg-task-focus,#0369a1);stroke-width:min(var(--fg-task-focus-width,2px),2px)}' +
   '@media (forced-colors:active){.fg-timeline__row:focus-visible .fg-task__focus-ring{stroke:Highlight}' +
   '.fg-timeline__layer:has(.fg-timeline__row:focus-visible) .fg-timeline__focus-row{stroke:Highlight}' +
   '.fg-timeline__sticky-column{background:Canvas!important}}';
@@ -890,7 +890,7 @@ let patch: ((ids: readonly TaskId[], focus: TaskId | undefined) => void) | undef
       }),
       // Own element, not a clone of the chart's: only as wide as the column (clipped at the divider, so
       // open on that side) instead of a `totalWidth` rect overflowing a 160 px svg.
-      frame(offsetX - 2),
+      frame(offsetX + 1),
     );
     currentOptions.onPaint?.(svg, overlay, column, corner);
 
