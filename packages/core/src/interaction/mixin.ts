@@ -99,6 +99,17 @@ function wireInto(
     getCollapsedIds: () => new Set(internal.fold.all()),
   });
 
+  // One callbacks object for both renderers: SVG hands each recognizer its own slice, Canvas passes
+  // the lot to `attachDrag`. Registration order never sets priority (explicit numbers do).
+  const callbacks = {
+    onTaskResized: (taskId: TaskId, newEnd: Temporal.ZonedDateTime) => commitResize(instance, internal, taskId, newEnd),
+    onTaskMoved: (taskId: TaskId, newStart: Temporal.ZonedDateTime, newEnd: Temporal.ZonedDateTime) =>
+      commitDrag(internal, taskId, newStart, newEnd),
+    onDependencyCreated:
+      config.enableDependencyDrag !== false
+        ? (fromTaskId: TaskId, toTaskId: TaskId) => commitCreateDep(instance, internal, fromTaskId, toTaskId)
+        : undefined,
+  };
   // Registered UNCONDITIONALLY (spec-keyboard-nav.md §6.2), same group as enableClickSelect
   // above, NOT gated by readOnly — Arrow/Space/Shift+Arrow/Tab-entry and Ctrl/Cmd+Plus/Minus
   // (zoom) are all non-mutating and must stay active even in a readOnly chart; only the
@@ -123,6 +134,10 @@ function wireInto(
     onZoomIn: () => instance.zoomIn(),
     onZoomOut: () => instance.zoomOut(),
     // Read at keypress time so composition order is irrelevant; inert without `withViewport`.
+    // Keyboard alternative to drag (SC 2.5.7): same commit points as the pointer path, gated by readOnly
+    // inside keyboard-nav and by enableDependencyDrag here.
+    onShift: (id, days, edge) => commitShift(instance, internal, id, days, edge),
+    onLink: callbacks.onDependencyCreated,
     onReveal: (id) => (instance as { scrollToTask?: (id: TaskId) => boolean }).scrollToTask?.(id),
     getTasks: () => internal.tasks.all(),
     // Live, not the construction-time constant: `setDensity()` and `withResponsive` change the
@@ -168,17 +183,6 @@ function wireInto(
   // never get pushed in Canvas mode).
   const disposers = [clickSelectDispose, collapseToggleDispose, keyboardNav.dispose];
 
-  // One callbacks object for both renderers: SVG hands each recognizer its own slice, Canvas passes
-  // the lot to `attachDrag`. Registration order never sets priority (explicit numbers do).
-  const callbacks = {
-    onTaskResized: (taskId: TaskId, newEnd: Temporal.ZonedDateTime) => commitResize(instance, internal, taskId, newEnd),
-    onTaskMoved: (taskId: TaskId, newStart: Temporal.ZonedDateTime, newEnd: Temporal.ZonedDateTime) =>
-      commitDrag(internal, taskId, newStart, newEnd),
-    onDependencyCreated:
-      config.enableDependencyDrag !== false
-        ? (fromTaskId: TaskId, toTaskId: TaskId) => commitCreateDep(instance, internal, fromTaskId, toTaskId)
-        : undefined,
-  };
   if (renderer === 'svg') {
     // Cast, not a narrow: `renderer`/`handle` are separate parameters, so TypeScript cannot
     // correlate them; renderer === 'svg' implies an SVG handle by construction in `render/mixin.ts`.
@@ -232,6 +236,34 @@ function commitDrag(
   // instant delta (drag-move's own contract), so the instant span (end − start) is preserved →
   // the diff/emit step never fires task:resized from a drag.
   internal.reschedule(taskId, { start: newStart, end: newEnd }, true);
+}
+
+/**
+ * Alt+Arrow / Alt+Shift+Arrow (keyboard alternative to drag-move / drag-resize). Same calendar-day
+ * arithmetic as drag (`.add({ days })`, wall-clock and DST safe) and the same one-day resize floor,
+ * then the shared commit points. Declines what drag declines: a rolled-up summary (fail-closed:
+ * any parent when `config.rollup` is set) and, for resize, a milestone.
+ */
+function commitShift(
+  instance: GanttInstance,
+  internal: GanttInternal,
+  id: TaskId,
+  days: number,
+  edge?: 'end',
+): void {
+  const task = internal.tasks.get(id);
+  if (!task || (internal.config.rollup && task.type !== 'milestone' && internal.withKids([id]).length > 1)) return;
+  const tz = internal.calendar.timezone;
+  const end = normalizeDate(task.end, tz);
+  if (!edge) {
+    commitDrag(internal, id, normalizeDate(task.start, tz).add({ days }), end.add({ days }));
+  } else if (task.type !== 'milestone') {
+    // Floor: the EARLIER of start + 1 day and the current end, as `computeClampedResizedEnd`.
+    const floor = normalizeDate(task.start, tz).add({ days: 1 });
+    const min = floor.epochNanoseconds < end.epochNanoseconds ? floor : end;
+    const next = end.add({ days });
+    commitResize(instance, internal, id, next.epochNanoseconds < min.epochNanoseconds ? min : next);
+  }
 }
 
 function commitResize(
