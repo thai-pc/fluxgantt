@@ -13,13 +13,17 @@ const newTaskId = (): TaskId => toTaskId(`task-${globalThis.crypto.randomUUID()}
 
 export class TaskStore {
   readonly #tasks = new Map<TaskId, Task>();
+  // parent -> direct children (unordered); `#pos` restores global insertion order in children().
+  readonly #kids = new Map<TaskId, Set<TaskId>>();
+  readonly #pos = new Map<TaskId, number>();
+  #seq = 0;
   // Coarse-grained revision for Wave 1. Fine-grained per-task deltas (spec principle 2)
   // will come later via the event layer.
   readonly #rev = signal(0);
 
   constructor(initial?: readonly Task[]) {
     if (initial) {
-      for (const t of initial) this.#tasks.set(t.id, { ...t });
+      for (const t of initial) this.#put({ ...t });
     }
   }
 
@@ -43,7 +47,7 @@ export class TaskStore {
     const now = new Date();
     const id = input.id ?? newTaskId();
     const task: Task = { ...input, id, createdAt: now, updatedAt: now };
-    this.#tasks.set(id, task);
+    this.#put(task);
     this.#bump();
     return task;
   }
@@ -52,7 +56,7 @@ export class TaskStore {
     const current = this.#tasks.get(id);
     if (!current) throw new Error(`TaskStore.update: task ${id} not found`);
     const next: Task = { ...current, ...patch, id, updatedAt: new Date() };
-    this.#tasks.set(id, next);
+    this.#put(next);
     this.#bump();
     return next;
   }
@@ -67,22 +71,48 @@ export class TaskStore {
    * near-identical one with drifted timestamps. Bumps `revision` like every other mutation.
    */
   restore(task: Task): Task {
-    this.#tasks.set(task.id, task);
+    this.#put(task);
     this.#bump();
     return task;
   }
 
   /** Remove a task; cascade-removes all descendants in the hierarchy. */
   remove(id: TaskId): void {
-    if (!this.#tasks.has(id)) return;
-    for (const child of this.#childrenOf(id)) this.remove(child.id);
-    this.#tasks.delete(id);
+    const root = this.#tasks.get(id);
+    if (!root) return;
+    const doomed = this.subtree(id);
+    if (root.parent !== undefined) this.#kids.get(root.parent)?.delete(id);
+    for (const d of doomed) {
+      this.#tasks.delete(d);
+      this.#pos.delete(d);
+      this.#kids.delete(d);
+    }
     this.#bump();
   }
 
+  /**
+   * `id` and all its descendants, deepest first, siblings in global insertion order (the order
+   * `task:removed` is emitted in). Iterative, so a deep parent chain cannot overflow the stack;
+   * the visited check also stops a host-made parent cycle from looping forever.
+   *
+   * @internal Shared by `remove()` and `Gantt.removeTask`; not part of the stable API.
+   */
+  subtree(id: TaskId): TaskId[] {
+    const out = new Set<TaskId>();
+    const stack = [id];
+    for (let n = stack.pop(); n !== undefined; n = stack.pop()) {
+      if (out.has(n)) continue;
+      out.add(n);
+      for (const child of this.#childrenOf(n)) stack.push(child.id);
+    }
+    return [...out].reverse(); // node then children right-to-left, reversed = post-order
+  }
+
   clear(): void {
+    this.#kids.clear(); // also drops empty sets left by dangling parent ids
     if (this.#tasks.size === 0) return;
     this.#tasks.clear();
+    this.#pos.clear();
     this.#bump();
   }
 
@@ -124,7 +154,25 @@ export class TaskStore {
 
   // --- Internal ------------------------------------------------------------
 
+  /** Insert or replace a task, keeping the parent index and insertion position in step. */
+  #put(task: Task): void {
+    const prev = this.#tasks.get(task.id);
+    if (!prev) this.#pos.set(task.id, this.#seq++);
+    if (prev?.parent !== task.parent) {
+      if (prev?.parent !== undefined) this.#kids.get(prev.parent)?.delete(task.id);
+      if (task.parent !== undefined) {
+        const set = this.#kids.get(task.parent);
+        if (set) set.add(task.id);
+        else this.#kids.set(task.parent, new Set([task.id]));
+      }
+    }
+    this.#tasks.set(task.id, task);
+  }
+
+  /** Direct children in global insertion order (what a filter over `#tasks` would give). */
   #childrenOf(id: TaskId): Task[] {
-    return [...this.#tasks.values()].filter((t) => t.parent === id);
+    const kids = this.#kids.get(id);
+    if (!kids) return [];
+    return [...kids].sort((a, b) => this.#pos.get(a)! - this.#pos.get(b)!).map((k) => this.#tasks.get(k)!);
   }
 }

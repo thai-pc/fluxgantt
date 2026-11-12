@@ -732,7 +732,7 @@ class Gantt implements GanttInstance {
 
   /**
    * Shared load pipeline: duplicate-id-check + `TaskStore.add()` loop +
-   * `DependencyStore.link()` loop. The ONE validated path for "load a whole
+   * one bulk `DependencyStore.linkAll()`. The ONE validated path for "load a whole
    * `{tasks, dependencies}` set into a store pair" — used by the constructor (against the
    * live, freshly-constructed `#taskStore`/`#dependencyStore` — a throw here means
    * `createGantt()` itself throws, no instance is ever returned, atomic for free) AND by
@@ -765,10 +765,8 @@ class Gantt implements GanttInstance {
       }
       taskStore.add(t); // stamps id (if absent)/createdAt/updatedAt, no event emitted
     }
-    for (const d of dependencies) {
-      // May throw (self-link / duplicate pair / cycle) — DependencyLinkError, propagated as-is.
-      dependencyStore.link(d.from, d.to, d.type ?? 'FS', d.lag === undefined ? {} : { lag: d.lag });
-    }
+    // May throw (self-link / duplicate pair / cycle) — DependencyLinkError, propagated as-is.
+    dependencyStore.linkAll(dependencies);
   }
 
   /**
@@ -1004,11 +1002,10 @@ class Gantt implements GanttInstance {
 
   unlinkTasks(from: TaskId, to: TaskId): void {
     this.#assertAlive('unlinkTasks');
-    const matches = this.#dependencyStore.all().filter((d) => d.from === from && d.to === to);
-    if (matches.length === 0) return;
-    this.#dependencyStore.unlink(from, to);
-    this.#recordOps(matches.map((dependency) => ({ kind: 'dependency-remove', dependency }) as const));
-    for (const d of matches) this.#emit('dependency:removed', d.id);
+    const dependency = this.#dependencyStore.unlink(from, to); // at most one per pair
+    if (!dependency) return;
+    this.#recordOp({ kind: 'dependency-remove', dependency });
+    this.#emit('dependency:removed', dependency.id);
   }
 
   getDependencies(): Dependency[] {
@@ -1427,13 +1424,7 @@ class Gantt implements GanttInstance {
   }
 
   #collectWithDescendants(id: TaskId): TaskId[] {
-    const out: TaskId[] = [];
-    const visit = (tid: TaskId): void => {
-      for (const child of this.#taskStore.children(tid)) visit(child.id);
-      out.push(tid);
-    };
-    visit(id);
-    return out;
+    return this.#taskStore.subtree(id);
   }
 
   /**

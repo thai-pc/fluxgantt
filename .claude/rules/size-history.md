@@ -272,3 +272,30 @@ alternating no-break space so repeated announcements are re-read) cost +164 B (`
 now 20841, 919 B left), +172 B (kitchen sink 25630, 1250 B left) and +174 B (`+ withResponsive` 22334); other
 fixtures +0. Total against master after #127: +909 / +899 / +938. A hidden-anchor "cannot link" announcement was
 not built (it would need a third `onLink` outcome across the keyboard-nav boundary); it is documented instead.
+
+The 2026-11 TaskStore index pass (`#kids` parent -> children index, `#pos` insertion counter so `children()` keeps
+global insertion order, iterative single-bump `remove`, iterative `#collectWithDescendants`; `mutation-batching` PR 2) is
+a performance + stack-safety fix and spends hard-gate headroom under the exemption rule. Cost against master 5b7bed3
+(gzip bytes): hello world 7830 -> 8027 (+197, 421 B left), `+ withRender + withInteraction` 20840 -> 21042 (+202,
+718 B left), kitchen sink 25629 -> 25823 (+194, 1057 B left); soft fixtures +189..+204. About twice the spec's
++60..+110 B estimate: the sorted `children()` and the cycle-safe iterative `remove` are the cost of preserving
+`task:removed` / history op order.
+
+The 2026-11 DependencyStore index pass (`#out` / `#in` pair indices, `#seq` insertion counter so `of()` keeps global
+order, iterative Kahn `hasCycle`, bulk `linkAll` used by `#loadDataset` for the constructor and import staging;
+`mutation-batching` PR 3) is a performance + security (linear import, no stack overflow) fix and spends hard-gate
+headroom under the exemption rule. Cost on top of the TaskStore pass (gzip bytes): hello world 8027 -> 8227 (+200,
+221 B left), `+ withRender + withInteraction` 21042 -> 21248 (+206, 512 B left), kitchen sink 25823 -> 26024 (+201,
+856 B left); soft fixtures +210..+235. Both store passes against master 5b7bed3: +397 / +408 / +395. One lever
+kept: a shared `#reject` for the self-link / duplicate-pair messages and one `#edge` set-or-delete helper for the two
+adjacency maps (-19..-24 B together). A constructor-path dependency cap (`MAX_DEPENDENCY_COUNT`) was not added: the
+data is host-supplied and the load is linear now, so it is no longer a hang vector.
+
+PR #129 review round (gzip bytes, against the 662860b figures 8227 / 21248 / 26024): hello world 8259 (+32),
+`+ withRender + withInteraction` 21284 (+36), kitchen sink 26045 (+21); headroom 189 / 476 / 835 B. Both store
+passes against master 5b7bed3 are now +429 / +444 / +416. Net of: a cycle error that names an edge really on the
+cycle (backward walk over the Kahn residue, linear, error path only), `unlink()` returning the removed dependency
+so `unlinkTasks` drops its `all().filter` scan, one `TaskStore.subtree()` for both descendant walks, dropping the
+pair displacement in `#put`, and `clear()` also resetting `#kids` (+5 B). The reviewer measured the zero-behaviour
+levers at about -60 B in isolation; with the M1 walk added they came out as a net +21..+36 B. `#pos` and `#seq` are
+kept on purpose (event and history order is a compatibility commitment).
