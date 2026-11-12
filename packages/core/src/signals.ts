@@ -187,10 +187,10 @@ export function effect(fn: () => void): () => void {
 /** Batch multiple writes into a single effect flush. */
 export function batch<T>(fn: () => T): T {
   batchDepth++;
-  let threw = true;
+  let ok = false;
   try {
     const result = fn();
-    threw = false;
+    ok = true;
     return result;
   } finally {
     batchDepth--;
@@ -198,9 +198,8 @@ export function batch<T>(fn: () => T): T {
       try {
         flush();
       } catch (err) {
-        // `fn`'s own error wins over an effect error raised by the flush; report the latter.
-        if (!threw) throw err; // eslint-disable-line no-unsafe-finally -- fn succeeded: surface the effect error
-        console.error('signals: effect threw during flush', err);
+        if (ok) throw err; // eslint-disable-line no-unsafe-finally -- fn's own error wins
+        console.error(err);
       }
     }
   }

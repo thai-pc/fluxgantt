@@ -216,7 +216,7 @@ describe('property: exactly-once delivery with a re-entrant listener', () => {
                   gantt.duplicateTask(tid(c.n));
                   break;
                 case 'link':
-                  gantt.linkTasks(tid(c.n), tid(c.n === 4 ? 0 : c.n + 1));
+                  gantt.linkTasks(tid(c.a), tid(c.b));
                   break;
                 case 'undo':
                   gantt.undo();
