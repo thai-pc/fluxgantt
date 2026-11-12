@@ -142,6 +142,11 @@ export class DependencyStore {
    * Skipping validation is safe SPECIFICALLY in the undo/redo context (not a general-purpose
    * "trust me" escape hatch): a replay only ever reconstructs a graph state the store was
    * ALREADY validly in at the exact moment of the original mutation.
+   *
+   * Caller contract: the pair must be free (or held by this same id), and restoring an id that is
+   * already stored must keep its endpoints. A second dependency on an occupied pair is kept (as
+   * before the pair indices existed) but the pair lookups (`linkExists`, `unlink`, `of`, ...) only
+   * see the latest one.
    */
   restore(dependency: Dependency): Dependency {
     this.#put(dependency);
@@ -256,8 +261,6 @@ export class DependencyStore {
     if (prev) {
       if (prev.from !== dep.from || prev.to !== dep.to) this.#unindex(prev);
     } else this.#seq.set(dep.id, this.#n++);
-    const holder = this.#out.get(dep.from)?.get(dep.to);
-    if (holder && holder.id !== dep.id) this.#drop(holder); // pair slot taken: displace it
     this.#deps.set(dep.id, dep);
     this.#edge(this.#out, dep.from, dep.to, dep);
     this.#edge(this.#in, dep.to, dep.from, dep);

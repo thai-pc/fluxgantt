@@ -4,7 +4,7 @@
 import { describe, it, expect } from 'vitest';
 import fc from 'fast-check';
 import { DependencyLinkError, DependencyStore } from '../../src/store/dependency-store.js';
-import { toTaskId, type Dependency, type TaskId } from '../../src/types.js';
+import { toDependencyId, toTaskId, type Dependency, type TaskId } from '../../src/types.js';
 
 const ids = Array.from({ length: 6 }, (_, i) => toTaskId(`t${i}`));
 const pick = fc.integer({ min: 0, max: ids.length - 1 });
@@ -69,6 +69,9 @@ describe('DependencyStore indices vs brute force', () => {
             const d = removed[op.n % Math.max(removed.length, 1)];
             // Only replay a dependency whose id is free and whose pair slot is free (undo/redo does).
             if (d && !store.get(d.id) && !store.linkExists(d.from, d.to)) store.restore(d);
+            // Re-restore of an EXISTING id with the same endpoints (new type/lag): replaced in place.
+            const live = store.all()[op.n % Math.max(store.size, 1)];
+            if (live) store.restore({ ...live, lag: live.lag + 1 });
           } else store.clear();
 
           const all = store.all();
@@ -225,5 +228,35 @@ describe('DependencyStore.linkAll precondition', () => {
     expect(s.size).toBe(2);
     expect(s.linkExists(x, y)).toBe(false);
     expect(s.link(x, y)).toBeDefined(); // sequential link is still fine
+  });
+});
+
+describe('DependencyStore raw constructor / restore keep duplicate pairs (unchanged contract)', () => {
+  const [a, b] = ids as [TaskId, TaskId];
+  const dep = (id: string): Dependency => ({ id: toDependencyId(id), from: a, to: b, type: 'FS', lag: 0 });
+
+  it('the constructor keeps both dependencies of a duplicated pair', () => {
+    const s = new DependencyStore([dep('d1'), dep('d2')]);
+    expect(s.size).toBe(2);
+    expect(s.all().map((d) => d.id)).toEqual(['d1', 'd2']);
+  });
+
+  it('restore() keeps both, and the all() / get() model matches a plain Map for any restore sequence', () => {
+    fc.assert(
+      fc.property(fc.array(fc.record({ id: fc.nat(4), a: fc.nat(1), b: fc.nat(1) }), { maxLength: 20 }), (ops) => {
+        const s = new DependencyStore();
+        const model = new Map<string, Dependency>();
+        for (const o of ops) {
+          const d: Dependency = { id: toDependencyId(`d${o.id}`), from: ids[o.a]!, to: ids[2 + o.b]!, type: 'FS', lag: 0 };
+          // an existing id must keep its endpoints (documented contract)
+          const prev = model.get(d.id);
+          if (prev && (prev.from !== d.from || prev.to !== d.to)) continue;
+          s.restore(d);
+          model.set(d.id, d);
+        }
+        expect(s.all().map((d) => d.id)).toEqual([...model.keys()]);
+        expect(s.size).toBe(model.size);
+      }),
+    );
   });
 });
