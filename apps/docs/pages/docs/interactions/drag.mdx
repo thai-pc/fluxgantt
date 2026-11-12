@@ -119,8 +119,10 @@ same commit path as the pointer (same events, same cascade, same undo), and are 
 - Holding the key repeats, one day per tick, and **each press is its own undo step**. Auto-repeat
   fires about 30 times a second, so a few seconds of holding fills the history limit (`historyLimit`,
   default 100) and evicts older undo entries. Tap the key for single steps.
-- Resizing steps past weekends and holidays: one press changes the working-hours duration, so a
-  task ending on a Friday ends on the next working day afterwards.
+- Resizing steps past weekends and holidays: one press changes the working time of the painted
+  span (up to 366 days of stepping), so a task ending on a Friday ends on the next working day
+  afterwards. If nothing can change (the one-day minimum, a milestone, a rolled-up summary) nothing is
+  written and the live region says "cannot resize" / "cannot move".
 - Left/right are **logical** on the time axis: in an [RTL chart](/docs/rtl) later dates are visually
   on the left, so <kbd>Alt</kbd>+<kbd>←</kbd> moves the task later there.
 - Only the end edge is resizable, exactly like dragging (the start edge never moves).
@@ -137,11 +139,13 @@ same commit path as the pointer (same events, same cascade, same undo), and are 
   after linking removes all of them. Press <kbd>↑</kbd>/<kbd>↓</kbd> once to collapse the selection.
 - A source row hidden by a collapse is not linked from.
 - Results are announced to screen readers through a polite live region (moved / resized with the new
-  start and end including times, linked, "link not created"). Translate or reword them with
+  start and end including times, "cannot move" / "cannot resize", linked, "link not created" with a
+  `reason` of `duplicate` or `cycle`). Translate or reword them with
   `messages.announce`, which receives a `GanttAnnouncement`. Pointer drags are not announced; hosts
   that want that listen to `task:moved` / `task:resized`, which carry no keyboard-versus-pointer flag.
-- Invalid links (to itself, a duplicate, or one that would create a cycle) are dropped silently,
-  exactly like a rejected drop. Listen for `dependency:added` to confirm.
+- Invalid links (to itself, a duplicate, or one that would create a cycle) are dropped without an
+  event, like a rejected drop; the keyboard path announces "link not created". Linking from a source
+  hidden by a collapse does nothing (and is not announced).
 
 See also [read-only charts](/docs/interactions/read-only).
 
