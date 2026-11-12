@@ -84,10 +84,10 @@ drag, dependencies, critical path, React/Vue wrappers, export, docs. Also landed
 facade/mixin split, theming, i18n scaffold, responsive/touch, and the size budgets.
 
 Releases are now routine: land a changeset, and merging the bot's "Version Packages" PR publishes.
-`docs-deploy.yml` exists but the docs site is **not deployed yet** — its first run is a
-`workflow_dispatch` and remains the owner's explicit go/no-go, so every `thai-pc.github.io/fluxgantt`
-link in the repo (including the `homepage` field of all three published packages) is currently
-dead. See `RELEASING.md`. No Pro yet unless explicitly requested.
+The docs site is hosted on **Cloudflare Pages at `https://fluxgantt.thai-pc.com` once the owner
+connects the project** (Git integration: push to `master` deploys, PRs get previews). Until then
+every link to it in the repo (including the `homepage` field of all three published packages) is
+dead. See `RELEASING.md` → Docs site. No Pro yet unless explicitly requested.
 
 **2026-11 strategy revision** (owner-approved, from `.claude/work/audit-architecture-fable.md` S1/S3/S4):
 the MIT-tier rivals are DHTMLX Gantt 10 Community, SVAR Gantt and Bryntum 8 Community, not Frappe;
