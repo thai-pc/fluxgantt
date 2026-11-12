@@ -1,5 +1,49 @@
 # @fluxgantt/core
 
+## 0.6.0
+
+### Minor Changes
+
+- 62ec467: In Canvas mode (>= 2000 tasks) the label column and the top-left corner now stay pinned on horizontal scroll, like SVG. Visible and structural changes:
+  
+  - A new internal `canvas.fg-timeline-canvas-labels` element (`aria-hidden`, `pointer-events: none`, `position: sticky`) is added after the chart canvas, so `container > canvas` selectors match more than one element: use `.fg-timeline-canvas`. The chart canvas is now `display: block` (the inline descender gap under it is gone, so `scrollHeight` is a few px smaller). `pointerEventTarget` is still the chart canvas.
+  - A name wider than `labelColumnWidth` is cut at the column edge on screen instead of spilling over the grid and bars (exports keep the full name). The column ground is `var(--fg-bg, #fff)`: set `--fg-bg` on a non-white page.
+  - Pointer hits on the pinned column act on the label (`part: 'label'`, toggle, selection), never on a bar underneath, a drag cannot start there and a link cannot be dropped there (a bar moved or resized by a drag that ends over the column still commits by its delta, as in SVG). The zone is the label canvas's own box, so a padded container is handled. `getRowAnchor` (keyboard context-menu requests) anchors on the pinned column.
+  - Horizontal scrolling no longer repaints the chart: only vertical scroll, resize and option changes do. Cheaper per scroll frame.
+  - Horizontal `scrollToTask`/`scrollToDate` numerics for Canvas shift by the label width: the bar now parks right of the column, not under it (the same as SVG).
+  - In RTL the column pins to the visual right. WebKit does not pin sticky elements inside an RTL scroll container, so there it follows scroll about one frame late.
+  - No API, option or event change; exports are unchanged.
+  - A Canvas click on a row's collapse toggle now only collapses/expands: it no longer also fires `selection:changed` (SVG already behaved so).
+- 941bc00: Keyboard navigation: Home / End jump to the first / last row, PageUp / PageDown move a page of rows,
+  and `g` scrolls the focused row's bar into view horizontally (requires `withViewport`; honors the
+  pinned label column, RTL, milestones and reduced motion). ArrowUp / ArrowDown intentionally keep
+  scrolling vertically only, so scrubbing rows never moves the timeline sideways. Adds an optional
+  `onReveal` to `KeyboardNavOptions`; return `true` from it to mark the key handled (the key is then
+  `preventDefault()`ed).
+
+### Patch Changes
+
+- 2a87076: Fix: editing a task on a long date range no longer stalls the chart. The critical-path slack loop walked every day between each task's early and late start, so one `updateTask` on 2000 tasks over a 520-working-day window cost about 8 s of CPU on a quiet machine. Slack now reads from one shared working-hours table, and the same edit costs about 0.7 s (about 12x less). Two smaller causes of the same cost are fixed too: date-only strings such as `'2026-03-02'` no longer go through a thrown-and-caught `Instant.from` on every normalization, and the aria-label date cache no longer clears mid-paint on ranges with more than 512 distinct dates (the cap is now 4096, and the cache is emptied when the last chart is destroyed).
+  
+  Results match the previous per-pair day walk for every input CPM and `differenceInWorkingHours` produce, including DST, holidays and ZonedDateTimes in another zone or calendar. One historical edge differs for a table built wider than the reading: a day a zone skipped entirely (Pacific/Apia, 2011-12-30). No API, option or event change.
+- c4d4d6a: Docs: the README bundle-size table now shows current figures and states that they exclude the Temporal polyfill (about 45.8 KiB gzip, needed where Temporal is not native, e.g. Node 22/24).
+- 0109f02: SVG charts at 2000 tasks no longer repaint the whole chart when only the selection or the keyboard focus changes. `select()`, a click, Shift+Arrow and ArrowUp/ArrowDown now rebuild just the rows whose selection or roving-tabindex state changed (one to four rows) instead of ~16k SVG nodes plus the pinned header and label-column clones. Zoom, density, collapse, `updateTask` and data changes still repaint once; `selectAll()` / `deselect()` rebuild every row but skip the rest of the chart.
+  
+  - `SvgRendererInput` gains an optional `rev` data-revision token. Equal tokens across two `update()` calls assert that tasks, dependencies, critical path, calendar, collapsed ids and rollup are unchanged, which allows the row patch. Omitted, every `update()` is a full render exactly as before. `withRender()` supplies it; `refresh()` still recomputes and repaints everything.
+  - Behaviour to know: because a selection change no longer repaints everything, mutating a task object in place (`gantt.getTasks()[i].name = ...`) or the clock crossing local midnight (the today wash and rule) now shows only after the next full render. Call `gantt.refresh()` after an in-place mutation; data edits through `updateTask()` etc., zoom and collapse are unaffected.
+  - `SvgRendererOptions.onPaint` is now also called after a row patch, with the chart svg only. It must be idempotent and cheap. `withRtl()` (the only in-repo user) re-mirrors the rebuilt rows; `mirrorSvg()` is now incrementally idempotent.
+  - Output is byte-identical to a full render (property-tested over random operation sequences, LTR and RTL). Not repeated on a patch: the clock read for the today wash (stale across local midnight until the next full render) and the "end before start" `console.warn`.
+  - Bytes were found elsewhere first (row builder as a closure, single-caller builders inlined, `append(string)` instead of `createTextNode`, shorter diagnostics); see the table in CLAUDE.md golden rule 5. No limit changed.
+  
+  Timings (2000 SVG tasks, p50 of fresh pages to two animation frames, ms, dev machine, before -> after):
+  
+  | | Chromium | Firefox | WebKit |
+  |---|---|---|---|
+  | `select(id)` | 1102 -> 38 | 3592 -> 23 | 3034 -> 24 |
+  | ArrowDown | 1670 -> 53 | 1703 -> 33 | 1234 -> 33 |
+  
+  Programmatic `row.focus()` already repainted nothing before this change (about 20-40 ms of frame time either way). The "before" runs were taken on a more heavily loaded machine than the "after" runs, so only the order of magnitude is meaningful.
+
 ## 0.5.0
 
 ### Minor Changes
