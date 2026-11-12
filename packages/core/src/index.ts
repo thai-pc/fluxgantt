@@ -13,6 +13,8 @@ export type {
   UnsubscribeFn,
   DependencyInput,
   EventMeta,
+  TaskField,
+  TaskUpdatedPayload,
   ImportSummary,
   ViewportChangedPayload,
   RendererSelectedPayload,
