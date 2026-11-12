@@ -73,7 +73,7 @@ for (const [name, query] of [
       await page.evaluate(() => {
         const w = window as unknown as { __prevented: boolean[] };
         w.__prevented = [];
-        window.addEventListener('keydown', (e) => w.__prevented.push(e.defaultPrevented));
+        window.addEventListener('keydown', (e) => e.key.startsWith('Arrow') && w.__prevented.push(e.defaultPrevented));
       });
       await focusRow(page, 'a');
       await page.keyboard.press('Alt+ArrowLeft');
