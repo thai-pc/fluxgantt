@@ -17,9 +17,10 @@
 import { readFile, writeFile, readdir } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, resolve } from 'node:path';
+import { VERSION_PATTERN } from './version-constant.mjs';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
-const PATTERN = /(export const VERSION(?:: string)? = ')([^']*)(')/;
+const PATTERN = VERSION_PATTERN;
 
 const updated = [];
 
