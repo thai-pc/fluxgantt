@@ -66,12 +66,7 @@ export class DependencyStore {
     type: DependencyType = 'FS',
     options: LinkOptions = {},
   ): Dependency {
-    if (from === to) {
-      throw new DependencyLinkError(`DependencyStore.link: cannot self-link task ${from}`);
-    }
-    if (this.#out.get(from)?.has(to)) {
-      throw new DependencyLinkError(`DependencyStore.link: link ${from} → ${to} already exists`);
-    }
+    this.#reject(from, to);
     if (!options.allowCycle && this.#canReach(to, from)) {
       throw new DependencyLinkError(`DependencyStore.link: link ${from} → ${to} would create a cycle`);
     }
@@ -98,12 +93,7 @@ export class DependencyStore {
     const made: Dependency[] = [];
     try {
       for (const { from, to, type, lag } of inputs) {
-        if (from === to) {
-          throw new DependencyLinkError(`DependencyStore.link: cannot self-link task ${from}`);
-        }
-        if (this.#out.get(from)?.has(to)) {
-          throw new DependencyLinkError(`DependencyStore.link: link ${from} → ${to} already exists`);
-        }
+        this.#reject(from, to);
         const dep: Dependency = { id: newDependencyId(), from, to, type: type ?? 'FS', lag: lag ?? 0 };
         this.#put(dep);
         made.push(dep);
@@ -229,6 +219,15 @@ export class DependencyStore {
 
   // --- Internal ------------------------------------------------------------
 
+  #reject(from: TaskId, to: TaskId): void {
+    if (from === to) {
+      throw new DependencyLinkError(`DependencyStore.link: cannot self-link task ${from}`);
+    }
+    if (this.#out.get(from)?.has(to)) {
+      throw new DependencyLinkError(`DependencyStore.link: link ${from} → ${to} already exists`);
+    }
+  }
+
   /** Every dependency touching a task, each once (a stored self-loop would otherwise repeat). */
   #touching(taskId: TaskId): Set<Dependency> {
     return new Set([...(this.#out.get(taskId)?.values() ?? []), ...(this.#in.get(taskId)?.values() ?? [])]);
@@ -243,11 +242,8 @@ export class DependencyStore {
     const holder = this.#out.get(dep.from)?.get(dep.to);
     if (holder && holder.id !== dep.id) this.#drop(holder); // pair slot taken: displace it
     this.#deps.set(dep.id, dep);
-    for (const [m, a, b] of [[this.#out, dep.from, dep.to], [this.#in, dep.to, dep.from]] as const) {
-      const inner = m.get(a);
-      if (inner) inner.set(b, dep);
-      else m.set(a, new Map([[b, dep]]));
-    }
+    this.#edge(this.#out, dep.from, dep.to, dep);
+    this.#edge(this.#in, dep.to, dep.from, dep);
   }
 
   #drop(dep: Dependency): void {
@@ -257,10 +253,17 @@ export class DependencyStore {
   }
 
   #unindex(dep: Dependency): void {
-    for (const [m, a, b] of [[this.#out, dep.from, dep.to], [this.#in, dep.to, dep.from]] as const) {
-      const inner = m.get(a);
+    this.#edge(this.#out, dep.from, dep.to);
+    this.#edge(this.#in, dep.to, dep.from);
+  }
+
+  /** Set (`dep` given) or delete one `a -> b` entry of an adjacency index. */
+  #edge(m: Map<TaskId, Map<TaskId, Dependency>>, a: TaskId, b: TaskId, dep?: Dependency): void {
+    const inner = m.get(a);
+    if (!dep) {
       if (inner?.delete(b) && inner.size === 0) m.delete(a);
-    }
+    } else if (inner) inner.set(b, dep);
+    else m.set(a, new Map([[b, dep]]));
   }
 
   /** Kahn's algorithm: the nodes that never reach in-degree zero (on a cycle or downstream of one). */

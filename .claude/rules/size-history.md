@@ -280,3 +280,13 @@ a performance + stack-safety fix and spends hard-gate headroom under the exempti
 718 B left), kitchen sink 25629 -> 25823 (+194, 1057 B left); soft fixtures +189..+204. About twice the spec's
 +60..+110 B estimate: the sorted `children()` and the cycle-safe iterative `remove` are the cost of preserving
 `task:removed` / history op order.
+
+The 2026-11 DependencyStore index pass (`#out` / `#in` pair indices, `#seq` insertion counter so `of()` keeps global
+order, iterative Kahn `hasCycle`, bulk `linkAll` used by `#loadDataset` for the constructor and import staging;
+`mutation-batching` PR 3) is a performance + security (linear import, no stack overflow) fix and spends hard-gate
+headroom under the exemption rule. Cost on top of the TaskStore pass (gzip bytes): hello world 8027 -> 8227 (+200,
+221 B left), `+ withRender + withInteraction` 21042 -> 21248 (+206, 512 B left), kitchen sink 25823 -> 26024 (+201,
+856 B left); soft fixtures +210..+235. Both store passes against master 5b7bed3: +397 / +408 / +395. One lever
+kept: a shared `#reject` for the self-link / duplicate-pair messages and one `#edge` set-or-delete helper for the two
+adjacency maps (-19..-24 B together). A constructor-path dependency cap (`MAX_DEPENDENCY_COUNT`) was not added: the
+data is host-supplied and the load is linear now, so it is no longer a hang vector.

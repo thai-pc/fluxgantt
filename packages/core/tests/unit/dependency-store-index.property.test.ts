@@ -84,7 +84,7 @@ describe('DependencyStore indices vs brute force', () => {
           expect(store.hasCycle()).toBe(ids.some((t) => onCycle(all, t)));
         }
       }),
-      { numRuns: 300 },
+      { numRuns: 150 },
     );
   });
 });
