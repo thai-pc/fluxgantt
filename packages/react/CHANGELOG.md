@@ -1,5 +1,20 @@
 # @fluxgantt/react
 
+## 0.4.3
+
+### Patch Changes
+
+- 2306ca7: `homepage` and docs links now point to https://fluxgantt.thai-pc.com.
+- ce96e51: Fix TypeScript types for CommonJS consumers. Every entry point shared one `.d.ts` for both the `import` and `require` conditions, so a `node16`/`nodenext` project compiling to CJS saw the ESM declarations of a CJS file ("masquerading as ESM"). The `exports` map now nests `types` per condition: `.d.ts` for `import`, the already-emitted `.d.cts` for `require`. No runtime change.
+  
+  Heads-up for projects that mix `.cts` and `.mts` files under `nodenext`: the `require` and `import` conditions now resolve to separate declaration files, so classes such as `TaskStore`, `DependencyStore`, `SelectionStore`, `CollapseStore`, `CyclicDependencyError` and `IoValidationError` are distinct types across that boundary at compile time. At runtime they were already two distinct classes (`instanceof` fails across formats); the types now say so. Interfaces such as `GanttInstance` are unaffected.
+- Updated dependencies [01cfd73]
+- Updated dependencies [2306ca7]
+- Updated dependencies [ce96e51]
+- Updated dependencies [01cfd73]
+- Updated dependencies [ce96e51]
+  - @fluxgantt/core@0.7.1
+
 ## 0.4.2
 
 ### Patch Changes
