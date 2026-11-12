@@ -84,14 +84,28 @@ function wireInto(
   live.setAttribute('aria-live', 'polite');
   live.style.cssText = 'position:absolute;top:0;left:0;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap';
   handle.container.append(live);
-  const say = (a: GanttAnnouncement) => {
-    let text: string | undefined;
+  // `say(kind, task)` announces a move / resize; `say(kind, from, to)` a link result.
+  const say = (kind: GanttAnnouncement['kind'], a: Task, b?: Task) => {
+    const locale = config.locale ?? 'en';
+    const n = (t: Task) => t.name.slice(0, MAX_ARIA_TASK_NAME_LENGTH);
+    const f = (d: Task['start']) =>
+      normalizeDate(d, internal.calendar.timezone).toLocaleString(locale, { dateStyle: 'medium', timeStyle: 'short' });
+    const [x, y] = b ? [n(a), n(b)] : [f(a.start), f(a.end)];
+    let text: unknown;
     try {
-      text = config.messages?.announce?.(a);
+      text = config.messages?.announce?.(
+        (b ? { kind, from: x, to: y, locale } : { kind, name: n(a), startLabel: x, endLabel: y, locale }) as GanttAnnouncement,
+      );
     } catch {
-      text = undefined;
+      /* fall back to English */
     }
-    live.textContent = (typeof text === 'string' ? text : english(a)).slice(0, 400);
+    live.textContent = String(
+      typeof text === 'string'
+        ? text
+        : b
+          ? `${kind === 'linked' ? 'Linked' : 'Link not created from'} ${x} to ${y}`
+          : `${n(a)} ${kind}: ${x} to ${y}`,
+    ).slice(0, 400);
   };
 
   // Selection is NOT gated by readOnly (confirmed): readOnly disables drag-move/drag-resize/
@@ -154,12 +168,12 @@ function wireInto(
     onShift: (id, days, edge) => {
       if (commitShift(instance, internal, id, days, edge)) {
         const t = internal.tasks.get(id);
-        if (t) say({ kind: edge ? 'resized' : 'moved', name: nameOf(t), ...span(internal, t), locale: config.locale ?? 'en' });
+        if (t) say(edge ? 'resized' : 'moved', t);
       }
     },
     onLink: callbacks.onDependencyCreated && ((from, to) => {
       const [a, b] = [internal.tasks.get(from), internal.tasks.get(to)];
-      if (a && b) say({ kind: callbacks.onDependencyCreated!(from, to) ? 'linked' : 'link-failed', from: nameOf(a), to: nameOf(b), locale: config.locale ?? 'en' });
+      if (a && b) say(callbacks.onDependencyCreated!(from, to) ? 'linked' : 'link-failed', a, b);
     }),
     onReveal: (id) => (instance as { scrollToTask?: (id: TaskId) => boolean }).scrollToTask?.(id),
     getTasks: () => internal.tasks.all(),
@@ -262,28 +276,6 @@ function commitDrag(
   // instant delta (drag-move's own contract), so the instant span (end − start) is preserved →
   // the diff/emit step never fires task:resized from a drag.
   internal.reschedule(taskId, { start: newStart, end: newEnd }, true);
-}
-
-const nameOf = (t: Task): string => t.name.slice(0, MAX_ARIA_TASK_NAME_LENGTH);
-
-/** Localized start / end WITH times: a keyboard resize or move can change only the time of day. */
-function span(internal: GanttInternal, t: Task, locale = internal.config.locale ?? 'en') {
-  const f = (d: Task['start']) => {
-    try {
-      return normalizeDate(d, internal.calendar.timezone).toLocaleString(locale, { dateStyle: 'medium', timeStyle: 'short' });
-    } catch {
-      return String(d);
-    }
-  };
-  return { startLabel: f(t.start), endLabel: f(t.end) };
-}
-
-function english(a: GanttAnnouncement): string {
-  return 'from' in a
-    ? a.kind === 'linked'
-      ? `Linked ${a.from} to ${a.to}`
-      : `Link not created from ${a.from} to ${a.to}`
-    : `${a.name} ${a.kind}: ${a.startLabel} to ${a.endLabel}`;
 }
 
 /** The drag gate: a bar is rolled up exactly when the renderer's own provider call has an entry for it
