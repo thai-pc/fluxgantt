@@ -199,7 +199,7 @@ describe('pinned label column', () => {
     const column = part(h, 'column');
     expect([...column.querySelectorAll('.fg-timeline__row-label')].map((l) => l.textContent)).toEqual(nasty);
     expect(column.querySelector('img,script')).toBeNull();
-    expect(column.querySelectorAll('*').length).toBe(1 + nasty.length); // divider + labels only
+    expect(column.querySelectorAll('*').length).toBe(2 + nasty.length); // divider + focus frame + labels only
   });
 
   it('refreshes the clones when a task is renamed or removed', () => {
@@ -213,9 +213,9 @@ describe('pinned label column', () => {
     expect(column.querySelectorAll('.fg-timeline__row-toggle')).toHaveLength(0);
   });
 
-  it('an empty chart leaves only the divider in the column', () => {
+  it('an empty chart leaves only the divider and the focus frame in the column', () => {
     const h = mount({ timeRange: { start: '2026-01-05T09:00', end: '2026-02-05T09:00' } }, []);
-    expect(part(h, 'column').children).toHaveLength(1);
+    expect(part(h, 'column').children).toHaveLength(2);
     expect(part(h, 'column').getAttribute('height')).toBe(h.svg.getAttribute('height'));
   });
 

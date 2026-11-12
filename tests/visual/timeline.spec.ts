@@ -73,7 +73,7 @@ async function focusFirstRow(page: Page): Promise<void> {
   await page.locator('svg.fg-timeline [tabindex="0"]').first().focus();
 }
 
-test('a focused-only (not selected, not critical) task renders the sky-blue focus ring', async ({
+test('a focused-only (not selected, not critical) task renders the focus ring', async ({
   page,
 }) => {
   await page.goto('/selection.html');

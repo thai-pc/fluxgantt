@@ -271,10 +271,23 @@ const FOCUS_RING_OFFSET_PX = 5;
 // Arrow/Space navigation stays active there).
 // `.fg-timeline__row:focus-visible{outline:none}`: the row <g> itself is not the visual target,
 // so the default UA outline on it is suppressed (the ring is the `.fg-task__focus-ring` rect).
+// `.fg-timeline__focus-row` is the row focus frame (spec-focus-visible-offscreen.md): a rect the
+// full width of the focused row, also cloned into the pinned column, so focus stays visible when the
+// bar is scrolled away or under the column. The `:has()` rule is its OWN rule: a UA without `:has`
+// drops the whole rule, and must not take the bar-ring rule down with it. The default colour
+// is #0369a1 (5.9:1 on white); the old #0ea5e9 was 2.8:1. The frame's stroke is clamped to 2px so a wider
+// host token cannot spill into the neighbouring rows (the inset is fixed at 1px). Chromium does not
+// recolour SVG `stroke` in forced colors, and a dark blue is under 3:1 on some Windows contrast grounds
+// (#202020, #2D3236), so both strokes become `Highlight` there (separate rules inside one @media: a UA
+// without `:has` drops only the frame's), and the pinned column takes the forced Canvas ground like the chart.
 const FOCUS_STYLE_TEXT =
   '.fg-timeline__row:focus-visible{outline:none}' +
-  '.fg-task__focus-ring{stroke:none;pointer-events:none}' +
-  '.fg-timeline__row:focus-visible .fg-task__focus-ring{stroke:var(--fg-task-focus,#0ea5e9);stroke-width:var(--fg-task-focus-width,2px)}';
+  '.fg-task__focus-ring,.fg-timeline__focus-row{stroke:none;pointer-events:none}.fg-timeline__focus-row{display:none}' +
+  '.fg-timeline__row:focus-visible .fg-task__focus-ring{stroke:var(--fg-task-focus,#0369a1);stroke-width:var(--fg-task-focus-width,2px)}' +
+  '.fg-timeline__layer:has(.fg-timeline__row:focus-visible) .fg-timeline__focus-row{display:inline;stroke:var(--fg-task-focus,#0369a1);stroke-width:min(var(--fg-task-focus-width,2px),2px)}' +
+  '@media (forced-colors:active){.fg-timeline__row:focus-visible .fg-task__focus-ring{stroke:Highlight}' +
+  '.fg-timeline__layer:has(.fg-timeline__row:focus-visible) .fg-timeline__focus-row{stroke:Highlight}' +
+  '.fg-timeline__sticky-column{background:Canvas!important}}';
 
 /**
  * Creates and mounts an SVG renderer into `container` — appends one
@@ -299,7 +312,9 @@ export function createSvgRenderer(
   let currentLabelColumnWidth = LABEL_COLUMN_WIDTH;
   // Set as the last step of a full render() and cleared as its first, so a render that threw never
   // leaves a closure over a half-built DOM.
-  let patch: ((ids: readonly TaskId[], focus: TaskId | undefined) => void) | undefined;
+  // Moves the row focus frame (to `id`'s row, default the rendered focus); set by every full render.
+let place: ((id?: TaskId) => void) | undefined;
+let patch: ((ids: readonly TaskId[], focus: TaskId | undefined) => void) | undefined;
 
   // `display:block`: no inline descender gap (kept for the export root). `grid-area:1/1` puts the chart in
   // the layer's single grid cell; `exportSvg` strips it from the clone.
@@ -316,6 +331,12 @@ export function createSvgRenderer(
   // its own height and sticky stops pinning at the cell's bottom. `max-content`: the wrapper is exactly
   // the chart's width, so blank container space beside a narrow chart is not part of the event target.
   const layer = document.createElement('div');
+  // On the HTML layer, not the svg: Chromium makes an SVG element with focus listeners a Tab stop.
+  // DOM focus can move without a render (AT cursor, host `.focus()`): the frame follows it.
+  layer.addEventListener('focusin', (e) => {
+    const id = (e.target as Element).closest('[data-task-id]')?.getAttribute('data-task-id');
+    if (id) place?.(id as TaskId);
+  });
   layer.className = 'fg-timeline__layer';
   layer.style.cssText = 'display:grid;width:max-content;align-self:start';
 
@@ -395,7 +416,7 @@ export function createSvgRenderer(
   };
 
   function render(): void {
-    patch = undefined;
+    patch = place = undefined;
     // Captured BEFORE the repaint destroys the row elements: the gate that stops a programmatic
     // mutation (e.g. `gantt.addTask()` while the Gantt is not focused) from stealing focus.
     const hadFocusInside = svg.contains(document.activeElement);
@@ -804,6 +825,16 @@ export function createSvgRenderer(
     const rowsGroup = el('g', { class: 'fg-timeline__rows' });
     for (const row of rows) rowsGroup.append(makeRow(row));
     svg.append(rowsGroup);
+    // Row focus frame: inset 1px in the focused row's band. An absent/stale id resolves to row 0 but
+    // then no row is `:focus-visible`, so it stays inert. `aria-hidden` for the same reason as the today line.
+    const fy = (id = focusedTaskId) => offsetY + (rows.find((r) => r.task.id === id)?.y ?? 0) + 1;
+    const frame = (width: number) =>
+      el(
+        'rect',
+        { class: 'fg-timeline__focus-row', 'aria-hidden': 'true', x: 1, y: fy(), width, height: rowHeight - 2 },
+        { fill: 'none' },
+      );
+    svg.append(frame(totalWidth - 2));
     // Today marker (spec §9.1). Appended after the rows so it crosses OVER bars and
     // dependency arrows — document order is z-order — but before the label divider, which must
     // stay the topmost thing along the label column's own edge.
@@ -857,6 +888,9 @@ export function createSvgRenderer(
         Object.assign(c.dataset, n.closest<SVGElement>('[data-row-index]')?.dataset);
         return c;
       }),
+      // Own element, not a clone of the chart's: only as wide as the column (clipped at the divider, so
+      // open on that side) instead of a `totalWidth` rect overflowing a 160 px svg.
+      frame(offsetX + 1),
     );
     currentOptions.onPaint?.(svg, overlay, column, corner);
 
@@ -868,6 +902,13 @@ export function createSvgRenderer(
     if (hadFocusInside)
       svg.querySelector<SVGElement>('[tabindex="0"]')?.focus({ preventScroll: true });
 
+    // Guarded: an identical setAttribute still queues a MutationObserver record.
+    place = (id) => {
+      const y = String(fy(id));
+      layer.querySelectorAll('.fg-timeline__focus-row').forEach((m) => {
+        if (m.getAttribute('y') !== y) m.setAttribute('y', y);
+      });
+    };
     patch = (ids, focus) => {
       const had = svg.contains(document.activeElement);
       selectedIds = new Set(ids);
@@ -884,6 +925,7 @@ export function createSvgRenderer(
           old.replaceWith(makeRow(row));
         }
       });
+      place!();
       currentOptions.onPaint?.(svg);
       if (had) svg.querySelector<SVGElement>('[tabindex="0"]')?.focus({ preventScroll: true });
     };

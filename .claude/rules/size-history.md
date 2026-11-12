@@ -299,3 +299,20 @@ so `unlinkTasks` drops its `all().filter` scan, one `TaskStore.subtree()` for bo
 pair displacement in `#put`, and `clear()` also resetting `#kids` (+5 B). The reviewer measured the zero-behaviour
 levers at about -60 B in isolation; with the M1 walk added they came out as a net +21..+36 B. `#pos` and `#seq` are
 kept on purpose (event and history order is a compatibility commitment).
+
+The 2026-11 row focus frame pass (a 2 px frame across the focused row in the chart and the pinned label column, SVG and
+Canvas, so keyboard focus stays visible when the bar is off screen or under the column; WCAG 2.4.7 / 2.4.11;
+`spec-focus-visible-offscreen.md`) is an accessibility fix and spends hard-gate headroom under the exemption rule. Final
+cost against master c1c1b74 (gzip bytes): hello world 8380 -> 8380 (+0, 68 B left), `+ withRender + withInteraction`
+21396 -> 21642 (+246, 118 B left), kitchen sink 26164 -> 26422 (+258, 458 B left); soft: `+ withIo` +9 (export selector),
+`+ withRender` +258, `+ withTheme` +272, `+ withResponsive` +244, `+ withViewport` +245, `+ withEditHooks` +245,
+`+ withRtl` +257, `+ withConflicts` +0. The first cut cost +130 / +129; review added a `focusin` listener so the SVG frame
+follows DOM focus that moves without a render (M1), SVG forced-colors rules (`Highlight` on the ring and the frame, the
+pinned column on `Canvas`; M4) and a 2 px stroke clamp (L1), about +120 B. Still under the spec's 320 B ceiling. The Canvas
+half lives in the lazy chunk (0 B in every fixture). What kept it small: the frame's base CSS joins the existing ring
+selector, the element reuses `el()`, and the row patch and the focus listener share one guarded `place()` (an identical-value
+`setAttribute` still queues a MutationObserver record). The pinned-column frame is its own `offsetX + 1` wide rect, not a
+clone of the `totalWidth` chart rect (a clone overflowing the 160 px column coincided with a linux LCD-antialiasing loss in
+`timeline-scrolled-dark-header-pinned`). The `:has()` rule, and every `@media` rule using it, must stay a separate rule (a UA
+without `:has` drops the whole rule it appears in). The `focusin` listener sits on the HTML layer, not the `<svg>`: Chromium makes an SVG element with focus listeners a Tab stop (the a11y keyboard-nav specs caught it). The injected `<style>` test cap went 1000 -> 1400. Playwright resolves
+`@fluxgantt/core` from `dist`, so rebuild the package before an e2e mutation check.

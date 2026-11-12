@@ -29,9 +29,12 @@ export type ResolvedTheme = 'light' | 'dark';
  * adequate contrast against both grounds, and re-tinting them per theme would change what
  * "critical red" means depending on the host's OS setting.
  *
+ * `--fg-task-focus` is the exception: it is a thin stroke that must reach 3:1 on the ground, not a
+ * filled accent, and the light default (#0369a1) is only 3.0:1 on `--fg-bg-subtle` here.
+ *
  * There is no `LIGHT_TOKENS` counterpart on purpose — every hardcoded renderer fallback is
  * already the light value, so applying light means REMOVING these properties, not setting
- * thirteen more.
+ * fourteen more.
  */
 export const DARK_TOKENS: Readonly<Record<string, string>> = Object.freeze({
   // Surfaces — spec §8.2 `*-dark`.
@@ -56,4 +59,5 @@ export const DARK_TOKENS: Readonly<Record<string, string>> = Object.freeze({
   // The one token whose renderer fallback is literally `#ffffff` (svg-renderer.ts's link
   // handle) — without this override it stays a white dot in dark mode.
   '--fg-link-handle-fill': '#18181b',
+  '--fg-task-focus': '#38bdf8',
 });
