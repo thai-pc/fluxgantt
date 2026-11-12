@@ -250,7 +250,7 @@ describe('Canvas row focus frame', () => {
     const names = recs.get(labelCanvas())!.calls.map((k) => k.name);
     const frame = names.lastIndexOf('strokeRect');
     expect(frame).toBeGreaterThan(-1);
-    const mirrored = recs.get(labelCanvas())!.calls.findLastIndex((k) => k.name === 'transform' || k.name === 'scale' || k.name === 'setTransform');
+    const mirrored = names.map((n) => n === 'transform' || n === 'scale' || n === 'setTransform').lastIndexOf(true);
     expect(mirrored).toBeGreaterThan(-1);
     expect(mirrored).toBeLessThan(frame);
   });
