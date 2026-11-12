@@ -70,6 +70,16 @@ describe('workingHoursMeter', () => {
     expect(m(z('2026-03-07T00:00', tz), z('2026-03-09T23:00', tz))).toBe(3 + 2 + 3);
   });
 
+  it('clips inside the shortened spring-forward window (01:30 and 03:30 EDT on 2026-03-08)', () => {
+    const night: WorkingCalendar = { ...METER_CALENDARS.newYorkNight!, holidays: [] };
+    const tz = night.timezone;
+    const m = workingHoursMeter(night, z('2026-03-07T00:00', tz), z('2026-03-09T23:00', tz));
+    const t0 = z('2026-03-08T01:30', tz);
+    const t1 = z('2026-03-08T03:30', tz); // 03:30 EDT: the 02:00-03:00 hour does not exist
+    expect(m(t0, t1)).toBe(1); // 01:30 EST -> 03:00 EDT is 30 min, then 30 min more
+    expect(m(t0, t1)).toBeCloseTo(dayWalkDifference(t0, t1, night), 9);
+  });
+
   it('is exact across the America/New_York fall-back day (a 03:00 window gains an hour)', () => {
     const night: WorkingCalendar = { ...METER_CALENDARS.newYorkNight!, holidays: [] };
     const tz = night.timezone;
@@ -99,6 +109,33 @@ describe('workingHoursMeter', () => {
       expect(m(b, a), name).toBeCloseTo(dayWalkDifference(b, a, c), 9);
     }
   });
+});
+
+describe('workingHoursMeter — holidays at the span edges (fast-check)', () => {
+  const BASE = Temporal.Instant.from('2026-02-01T00:00:00Z').epochMilliseconds;
+  const ms = fc.integer({ min: 0, max: 200 * 24 * 60 }).map((m) => BASE + m * 60_000);
+  for (const name of ['utc', 'hcm', 'newYorkSplit', 'newYorkNight', 'lordHowe']) {
+    it(`date-only and instant-typed holidays on and around lo/hi (${name})`, () => {
+      const c0 = METER_CALENDARS[name]!;
+      fc.assert(
+        fc.property(ms, ms, fc.array(fc.tuple(fc.integer({ min: -1, max: 1 }), fc.boolean(), fc.boolean()), { maxLength: 4 }), (m1, m2, hs) => {
+          const mk = (t: number) => Temporal.Instant.fromEpochMilliseconds(t).toZonedDateTimeISO(c0.timezone);
+          const [a, b] = [mk(Math.min(m1, m2)), mk(Math.max(m1, m2))];
+          const holidays = hs.map(([off, atHi, asInstant]) => {
+            const day = (atHi ? b : a).toPlainDate().add({ days: off });
+            return asInstant
+              ? day.toZonedDateTime({ timeZone: c0.timezone, plainTime: '12:00' }).toInstant().toString()
+              : day.toString();
+          });
+          const c: WorkingCalendar = { ...c0, holidays };
+          const m = workingHoursMeter(c, a, b);
+          expect(m(a, b)).toBeCloseTo(dayWalkDifference(a, b, c), 9);
+          expect(differenceInWorkingHours(b, a, c)).toBeCloseTo(dayWalkDifference(b, a, c), 9);
+        }),
+        { numRuns: 25 },
+      );
+    });
+  }
 });
 
 describe('workingHoursMeter — equivalence with the old day walk (fast-check)', () => {

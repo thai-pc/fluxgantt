@@ -18,11 +18,21 @@ export function dayWalkDifference(
   if (cmp === 0) return 0;
   const lo = cmp < 0 ? a : b;
   const hi = cmp < 0 ? b : a;
-  const holidays = new Set(cal.holidays.map((h) => Temporal.PlainDate.from(h as string).toString()));
+  const isoDay = (t: Temporal.ZonedDateTime): Temporal.PlainDate => t.toPlainDate().withCalendar('iso8601');
+  // Date-only holidays are calendar dates; instant-typed ones ("...Z" / "+hh:mm") land on their
+  // date in the calendar's zone.
+  const holidays = new Set(
+    cal.holidays.map((h) => {
+      const str = h as string;
+      return /(Z|[+-]\d\d:?\d\d)$/.test(str) && str.length > 10
+        ? Temporal.Instant.from(str).toZonedDateTimeISO(cal.timezone).toPlainDate().toString()
+        : Temporal.PlainDate.from(str.slice(0, 10)).toString();
+    }),
+  );
   let total = 0n;
   for (
-    let day = lo.toPlainDate();
-    Temporal.PlainDate.compare(day, hi.toPlainDate()) <= 0;
+    let day = isoDay(lo);
+    Temporal.PlainDate.compare(day, isoDay(hi)) <= 0;
     day = day.add({ days: 1 })
   ) {
     if (!cal.workingDays.includes(CODES[day.dayOfWeek - 1] as WeekdayCode)) continue;
@@ -72,11 +82,12 @@ export const METER_CALENDARS: Record<string, WorkingCalendar> = {
   newYorkNight: {
     workingDays: ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'],
     workingHours: [{ start: '01:00', end: '04:00' }],
-    holidays: ['2026-03-08', '2026-06-01'],
+    holidays: ['2026-06-01'], // NOT the 03-08 spring-forward day: its 01:00-04:00 window must be built
     timezone: 'America/New_York',
   },
+  // Lord Howe's 2026 transitions (04-05, 10-04) are Sundays, so Sunday must be a working day.
   lordHowe: {
-    workingDays: ['mon', 'tue', 'wed', 'thu', 'fri'],
+    workingDays: ['mon', 'tue', 'wed', 'thu', 'fri', 'sun'],
     workingHours: [{ start: '01:30', end: '03:30' }],
     holidays: [],
     timezone: 'Australia/Lord_Howe',

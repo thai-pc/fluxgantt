@@ -41,12 +41,22 @@ function makeTasks(durations: number[], start: string): Task[] {
 
 interface Spec {
   durations: number[];
+  seam: Array<string | null>;
+  seamDays: number[];
+  starts: number[];
   edges: Array<{ from: number; to: number; type: DependencyType; lag: number }>;
 }
 
+// null = the seam leaves ES alone; otherwise it returns ES (+ days) expressed in another zone and,
+// for even-indexed tasks, in the Japanese calendar.
+const SEAM_ZONES: Array<string | null> = [null, null, 'UTC', 'Pacific/Kiritimati', 'Pacific/Pago_Pago', 'Asia/Ho_Chi_Minh', 'America/New_York'];
+
 const specArb: fc.Arbitrary<Spec> = fc.integer({ min: 2, max: 8 }).chain((n) =>
   fc.record({
-    durations: fc.array(fc.integer({ min: 1, max: 60 }), { minLength: n, maxLength: n }),
+    durations: fc.array(fc.integer({ min: 0, max: 60 }), { minLength: n, maxLength: n }), // 0 = milestone
+    seam: fc.array(fc.constantFrom(...SEAM_ZONES), { minLength: n, maxLength: n }),
+    seamDays: fc.array(fc.integer({ min: 0, max: 6 }), { minLength: n, maxLength: n }),
+    starts: fc.array(fc.integer({ min: 0, max: 6 }), { minLength: n, maxLength: n }),
     edges: fc.array(
       fc.integer({ min: 0, max: n - 2 }).chain((from) =>
         fc.record({
@@ -76,13 +86,24 @@ describe('computeCriticalPath slack == day-walk oracle', () => {
     it(`random graphs incl. negative lag (${name})`, () => {
       fc.assert(
         fc.property(specArb, (spec) => {
-          const tasks = makeTasks(spec.durations, start);
-          const result = computeCriticalPath(tasks, link(tasks, spec.edges), cal);
+          const tasks = makeTasks(spec.durations, start).map((t, i) => ({
+            ...t,
+            start: Temporal.PlainDateTime.from(start).add({ days: spec.starts[i]! }).toString(),
+          }));
+          const result = computeCriticalPath(tasks, link(tasks, spec.edges), cal, {
+            resolveConstraint: (task, early) => {
+              const i = tasks.findIndex((t) => t.id === task.id);
+              const zone = spec.seam[i]!;
+              if (zone === null) return early;
+              const moved = early.add({ days: spec.seamDays[i]! }).withTimeZone(zone);
+              return i % 2 === 0 ? moved.withCalendar('japanese') : moved;
+            },
+          });
           for (const s of result.schedule.values()) {
             expect(s.slackHours).toBeCloseTo(dayWalkDifference(s.earlyStart, s.lateStart, cal), 9);
           }
         }),
-        { numRuns: 12 },
+        { numRuns: 50 },
       );
     });
   }
