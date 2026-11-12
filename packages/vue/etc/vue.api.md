@@ -26,6 +26,7 @@ import { TaskHitPart } from '@fluxgantt/core';
 import { TaskId } from '@fluxgantt/core';
 import { TaskInput } from '@fluxgantt/core';
 import { TaskPatch } from '@fluxgantt/core';
+import { TaskUpdatedPayload } from '@fluxgantt/core';
 import { ThemeCapability } from '@fluxgantt/core/theme';
 import { UnsubscribeFn } from '@fluxgantt/core';
 import { ViewMode } from '@fluxgantt/core';
@@ -125,6 +126,7 @@ export const FluxGantt: vue.DefineComponent<vue.ExtractPropTypes<{
     [key: string]: any;
 }>, {}, {}, {}, vue.ComponentOptionsMixin, vue.ComponentOptionsMixin, {
     'task-added': (_task: Task) => true;
+    'task-updated': (_payload: TaskUpdatedPayload) => true;
     'task-moved': (_task: Task, _prevStart: DateInput) => true;
     'task-resized': (_task: Task, _prevDuration: number) => true;
     'task-progressed': (_task: Task, _prevProgress: number) => true;
@@ -213,6 +215,7 @@ export const FluxGantt: vue.DefineComponent<vue.ExtractPropTypes<{
     };
 }>> & Readonly<{
     "onTask-added"?: (_task: Task) => any;
+    "onTask-updated"?: (_payload: TaskUpdatedPayload) => any;
     "onTask-moved"?: (_task: Task, _prevStart: DateInput) => any;
     "onTask-resized"?: (_task: Task, _prevDuration: number) => any;
     "onTask-progressed"?: (_task: Task, _prevProgress: number) => any;
@@ -232,6 +235,8 @@ export const FluxGantt: vue.DefineComponent<vue.ExtractPropTypes<{
 export interface FluxGanttEmits {
     // (undocumented)
     (event: 'task-added', task: Task): void;
+    // @beta
+    (event: 'task-updated', payload: TaskUpdatedPayload): void;
     (event: 'task-moved', task: Task, prevStart: DateInput): void;
     // (undocumented)
     (event: 'task-resized', task: Task, prevDuration: number): void;
@@ -276,6 +281,8 @@ export { TaskId }
 export { TaskInput }
 
 export { TaskPatch }
+
+export { TaskUpdatedPayload }
 
 export { UnsubscribeFn }
 

@@ -154,6 +154,7 @@ export function useFluxGantt(config: UseFluxGanttConfig): UseFluxGanttResult {
     // headless, pre-mount).
     const unsubs = [
       instance.on('task:added', (task) => configRef.current.onTaskAdded?.(task)),
+      instance.on('task:updated', (payload) => configRef.current.onTaskUpdated?.(payload)),
       instance.on('task:moved', (task, prevStart) =>
         configRef.current.onTaskMoved?.(task, prevStart),
       ),

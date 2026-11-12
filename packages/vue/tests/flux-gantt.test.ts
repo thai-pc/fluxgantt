@@ -233,7 +233,7 @@ describe('<FluxGantt>', () => {
   // have no compiler-enforced link (§9's "genuinely new open question", resolved as a required
   // guard, not optional). This is a cheap runtime tripwire against the two lists silently
   // drifting apart as @fluxgantt/core's GanttConfig/GanttEventMap evolve.
-  it('runtime props/emits declarations match GanttConfig / the 10 bridged GanttEventMap events (drift guard)', () => {
+  it('runtime props/emits declarations match GanttConfig / the 11 bridged GanttEventMap events (drift guard)', () => {
     const componentOptions = FluxGantt as unknown as {
       props: Record<string, unknown>;
       emits: Record<string, unknown>;
@@ -261,6 +261,7 @@ describe('<FluxGantt>', () => {
     ].sort();
     const expectedEmitKeys = [
       'task-added',
+      'task-updated',
       'task-moved',
       'task-resized',
       'task-progressed',

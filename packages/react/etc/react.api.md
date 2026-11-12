@@ -23,6 +23,7 @@ import { TaskHitPart } from '@fluxgantt/core';
 import { TaskId } from '@fluxgantt/core';
 import { TaskInput } from '@fluxgantt/core';
 import { TaskPatch } from '@fluxgantt/core';
+import { TaskUpdatedPayload } from '@fluxgantt/core';
 import { ThemeCapability } from '@fluxgantt/core/theme';
 import { UnsubscribeFn } from '@fluxgantt/core';
 import { ViewMode } from '@fluxgantt/core';
@@ -73,6 +74,8 @@ export { TaskInput }
 
 export { TaskPatch }
 
+export { TaskUpdatedPayload }
+
 export { UnsubscribeFn }
 
 // @public
@@ -90,6 +93,7 @@ export interface UseFluxGanttConfig extends GanttConfig {
     // (undocumented)
     readonly onTaskAdded?: (task: Task) => void;
     readonly onTaskContextRequested?: (payload: TaskContextRequestedPayload) => void;
+    // (undocumented)
     readonly onTaskMoved?: (task: Task, prevStart: DateInput) => void;
     // (undocumented)
     readonly onTaskProgressed?: (task: Task, prevProgress: number) => void;
@@ -97,6 +101,8 @@ export interface UseFluxGanttConfig extends GanttConfig {
     readonly onTaskRemoved?: (taskId: TaskId) => void;
     // (undocumented)
     readonly onTaskResized?: (task: Task, prevDuration: number) => void;
+    // @beta
+    readonly onTaskUpdated?: (payload: TaskUpdatedPayload) => void;
 }
 
 // @public

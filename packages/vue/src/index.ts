@@ -21,6 +21,7 @@ export type {
   UnsubscribeFn,
   TaskActivatedPayload,
   TaskContextRequestedPayload,
+  TaskUpdatedPayload,
   TaskHitPart,
   Task,
   TaskId,

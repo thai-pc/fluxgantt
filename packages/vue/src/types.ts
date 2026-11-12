@@ -16,6 +16,7 @@ import type {
   TaskContextRequestedPayload,
   TaskId,
   TaskInput,
+  TaskUpdatedPayload,
   ViewMode,
   WorkingCalendar,
 } from '@fluxgantt/core';
@@ -26,7 +27,7 @@ import type {
  * via `setTheme`, defaults to `'light'` here, not core's `'auto'`) and `onTaskChange`.
  *
  * Unlike react's `UseFluxGanttConfig`, this does NOT add discrete `onX` callback fields for
- * the 10 bridged `GanttEventMap` events (resolution #1: Vue's idiom for that is `defineEmits`/template
+ * the 11 bridged `GanttEventMap` events (resolution #1: Vue's idiom for that is `defineEmits`/template
  * `@x` listeners, wired by `<FluxGantt>` itself — see `FluxGantt.ts` — NOT a composable-level
  * config field, since `emit` only exists inside a component's `setup()` context, not inside a
  * freestanding composable). `onTaskChange` is inherited unchanged from `GanttConfig` — the
@@ -67,7 +68,7 @@ export interface UseFluxGanttResult {
 export type FluxGanttProps = GanttConfig;
 
 /**
- * The 10 discrete typed emits — one per bridged `GanttEventMap` event (resolution #1).
+ * The 11 discrete typed emits — one per bridged `GanttEventMap` event (resolution #1).
  *
  * Declared as a plain call-signature interface, NOT via `defineEmits<T>()` — that's a
  * `<script setup>`-only compiler macro, unavailable to this package's plain-`.ts`
@@ -80,6 +81,11 @@ export type FluxGanttProps = GanttConfig;
  */
 export interface FluxGanttEmits {
   (event: 'task-added', task: Task): void;
+  /** Field-level change of an existing task (`updateTask`/`moveTask`/`resizeTask`/`setProgress`,
+   *  cascade shifts, undo/redo). Not emitted for `addTask`/`removeTask`. Payload is core's
+   *  `task:updated` payload (`taskId`, `task`, `prev`, `changed`).
+   *  @beta */
+  (event: 'task-updated', payload: TaskUpdatedPayload): void;
   /** `prevStart` is `DateInput`, not a plain `Date` — matches `GanttEventMap['task:moved']`. */
   (event: 'task-moved', task: Task, prevStart: DateInput): void;
   (event: 'task-resized', task: Task, prevDuration: number): void;

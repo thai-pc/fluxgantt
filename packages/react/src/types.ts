@@ -13,6 +13,7 @@ import type {
   TaskActivatedPayload,
   TaskContextRequestedPayload,
   TaskId,
+  TaskUpdatedPayload,
 } from '@fluxgantt/core';
 
 /**
@@ -20,7 +21,7 @@ import type {
  * forwarded to `createGantt` (see `gantt-config.ts`). All are construction-time-only (resolution
  * #1) except `theme` (reactive via `setTheme`; defaults to `'light'` here, not core's `'auto'`)
  * and `onTaskChange` (always-latest). On top of `GanttConfig` it adds one discrete callback prop
- * per `GanttEventMap` event that exists on the facade today (resolution #4+#7).
+ * per `GanttEventMap` event (11 bridged: the original 10 plus the `@beta` `task:updated`) that exists on the facade today (resolution #4+#7).
  * `onTaskChange` is inherited unchanged from `GanttConfig` — it is the facade's own
  * "any field changed" catch-all, a different layer from the discrete events below; both
  * coexist (see `FluxGantt.tsx`).
@@ -28,6 +29,11 @@ import type {
 export interface UseFluxGanttConfig extends GanttConfig {
   readonly onTaskAdded?: (task: Task) => void;
   /** `prevStart` is `DateInput`, not a plain `Date` — matches `GanttEventMap['task:moved']`. */
+  /** Field-level change of an existing task (`updateTask`/`moveTask`/`resizeTask`/`setProgress`,
+   *  cascade shifts, undo/redo). Not fired for `addTask`/`removeTask`. Payload is core's
+   *  `task:updated` payload (`taskId`, `task`, `prev`, `changed`).
+   *  @beta */
+  readonly onTaskUpdated?: (payload: TaskUpdatedPayload) => void;
   readonly onTaskMoved?: (task: Task, prevStart: DateInput) => void;
   readonly onTaskResized?: (task: Task, prevDuration: number) => void;
   readonly onTaskProgressed?: (task: Task, prevProgress: number) => void;
