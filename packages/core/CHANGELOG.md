@@ -1,5 +1,38 @@
 # @fluxgantt/core
 
+## 0.7.1
+
+### Patch Changes
+
+- 01cfd73: Performance and security (DoS): `DependencyStore` keeps from/to pair indices. Loading dependencies is now
+  linear (`createGantt({ dependencies })` and `importJson`/`importCsv` staging use one bulk `linkAll`: a
+  self-link and duplicate check in one pass, then a single Kahn cycle check), where it used to be quadratic
+  (4x the edges cost 16x the work). `MAX_DEPENDENCY_COUNT` stays at 100,000, and importing a worst-case
+  100,000-edge / 50,000-task file now spends under half a second in the dependency store. `hasCycle()` is
+  iterative (a 100,000-edge chain no longer throws `RangeError`), and `of()`, `predecessors()`, `successors()`,
+  `unlink()` and `removeForTask()` no longer scan every dependency. Event and result order is unchanged.
+  
+  Error text: for input that is invalid in more than one way, the error class is still `DependencyLinkError`
+  but the message can name a different edge than the old edge-by-edge loader did (a self-link or duplicate
+  anywhere in the list is reported before a cycle). A cycle error always names an edge that lies on a real
+  cycle (the last such input edge, which is the one the old loader rejected). A constructor `dependencies` list
+  to `createGantt` that repeats the same `from`/`to` pair still throws, as before. The raw
+  `new DependencyStore(initial)` constructor and `restore()` keep duplicate pairs exactly as before.
+  
+  Indices: `getTask()` / `getDependencies()` return the stored objects, and the stores now index
+  `task.parent` and `dependency.from` / `to`. Do not mutate those fields in place; use `updateTask`, or
+  `unlinkTasks` + `linkTasks`. `DependencyStore.unlink()` now returns the removed dependency (or `undefined`).
+  `DependencyStore.linkAll` and `TaskStore.subtree` are new and marked `@internal`. Costs about 0.25 KiB gzip.
+- 2306ca7: `homepage` and docs links now point to https://fluxgantt.thai-pc.com.
+- ce96e51: Fix TypeScript types for CommonJS consumers. Every entry point shared one `.d.ts` for both the `import` and `require` conditions, so a `node16`/`nodenext` project compiling to CJS saw the ESM declarations of a CJS file ("masquerading as ESM"). The `exports` map now nests `types` per condition: `.d.ts` for `import`, the already-emitted `.d.cts` for `require`. No runtime change.
+  
+  Heads-up for projects that mix `.cts` and `.mts` files under `nodenext`: the `require` and `import` conditions now resolve to separate declaration files, so classes such as `TaskStore`, `DependencyStore`, `SelectionStore`, `CollapseStore`, `CyclicDependencyError` and `IoValidationError` are distinct types across that boundary at compile time. At runtime they were already two distinct classes (`instanceof` fails across formats); the types now say so. Interfaces such as `GanttInstance` are unaffected.
+- 01cfd73: Performance and stack safety: `TaskStore` keeps a parent to children index. `children()` is no longer a scan
+  of every task (global insertion order is preserved, so `task:removed` and history order are unchanged),
+  `collapseAll()` is no longer quadratic, and removing a task with descendants is iterative with a single
+  revision bump, so a very deep parent chain no longer overflows the stack. Costs about 0.2 KiB gzip.
+- ce96e51: `VERSION` is now typed `string` instead of the literal release type (for example `'0.7.0'`). The literal changed on every release and would have made the published type declarations churn; nothing can usefully depend on it.
+
 ## 0.7.0
 
 ### Minor Changes
