@@ -290,3 +290,12 @@ headroom under the exemption rule. Cost on top of the TaskStore pass (gzip bytes
 kept: a shared `#reject` for the self-link / duplicate-pair messages and one `#edge` set-or-delete helper for the two
 adjacency maps (-19..-24 B together). A constructor-path dependency cap (`MAX_DEPENDENCY_COUNT`) was not added: the
 data is host-supplied and the load is linear now, so it is no longer a hang vector.
+
+PR #129 review round (gzip bytes, against the 662860b figures 8227 / 21248 / 26024): hello world 8259 (+32),
+`+ withRender + withInteraction` 21284 (+36), kitchen sink 26045 (+21); headroom 189 / 476 / 835 B. Both store
+passes against master 5b7bed3 are now +429 / +444 / +416. Net of: a cycle error that names an edge really on the
+cycle (backward walk over the Kahn residue, linear, error path only), `unlink()` returning the removed dependency
+so `unlinkTasks` drops its `all().filter` scan, one `TaskStore.subtree()` for both descendant walks, dropping the
+pair displacement in `#put`, and `clear()` also resetting `#kids` (+5 B). The reviewer measured the zero-behaviour
+levers at about -60 B in isolation; with the M1 walk added they came out as a net +21..+36 B. `#pos` and `#seq` are
+kept on purpose (event and history order is a compatibility commitment).

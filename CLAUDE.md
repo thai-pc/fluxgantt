@@ -27,19 +27,19 @@ This file is the context entry point for AI. Details are split into rules under 
 
    | Fixture | Tier | Measured (B / KiB) | Limit |
    |---|---|---|---|
-   | `createGantt()` only (hello world) | **hard** | 8227 / 8.03 | 8.25 KiB |
-   | `+ withRender + withInteraction` | **hard** | 21248 / 20.75 | 21.25 KiB |
-   | kitchen sink (everything) | **hard** | 26024 / 25.41 | 26.25 KiB |
-   | `+ withIo` | soft | 13395 / 13.08 | 14 KiB |
-   | `+ withRender` | soft | 15579 / 15.21 | 15 KiB |
-   | `+ withRender + withTheme` | soft | 16264 / 15.88 | 16 KiB |
-   | `+ withRender + withInteraction + withResponsive` | soft | 22751 / 22.22 | 21 KiB |
-   | `+ withRender + withViewport` | soft | 16490 / 16.10 | 16 KiB |
-   | `+ withConflicts` (headless) | soft | 10191 / 9.95 | 10 KiB |
-   | `+ withRender + withEditHooks` | soft | 16940 / 16.54 | 16 KiB |
-   | `+ withRender + withRtl` | soft | 16024 / 15.65 | 15.5 KiB |
+   | `createGantt()` only (hello world) | **hard** | 8259 / 8.07 | 8.25 KiB |
+   | `+ withRender + withInteraction` | **hard** | 21284 / 20.79 | 21.25 KiB |
+   | kitchen sink (everything) | **hard** | 26045 / 25.43 | 26.25 KiB |
+   | `+ withIo` | soft | 13405 / 13.09 | 14 KiB |
+   | `+ withRender` | soft | 15582 / 15.22 | 15 KiB |
+   | `+ withRender + withTheme` | soft | 16269 / 15.89 | 16 KiB |
+   | `+ withRender + withInteraction + withResponsive` | soft | 22769 / 22.24 | 21 KiB |
+   | `+ withRender + withViewport` | soft | 16501 / 16.11 | 16 KiB |
+   | `+ withConflicts` (headless) | soft | 10197 / 9.96 | 10 KiB |
+   | `+ withRender + withEditHooks` | soft | 16951 / 16.55 | 16 KiB |
+   | `+ withRender + withRtl` | soft | 16030 / 15.65 | 15.5 KiB |
 
-   Measured after the DependencyStore index PR (`perf/dependency-indexes`) on top of the TaskStore index PR (`perf/store-indexes`) on top of the keyboard move/resize/link PR. Together the two store PRs cost +397 / +408 / +395 B on the three hard fixtures (+189..+439 B on the soft ones), spent under the exemption rule: hello world 7830 -> 8227, `+ withInteraction` 20840 -> 21248, kitchen sink 25629 -> 26024. Soft fixtures over their reference limit now (warnings only): `+ withResponsive` (22751 vs 21504 B) and `+ withEditHooks` (16940 vs 16384 B); `+ withRender` (15579 vs 15360 B), `+ withViewport` (16490 vs 16384 B) and `+ withRtl` (16024 vs 15872 B) crossed their references too; the second was already over on master.
+   Measured after the DependencyStore index PR (`perf/dependency-indexes`) on top of the TaskStore index PR (`perf/store-indexes`) on top of the keyboard move/resize/link PR. Together the two store PRs cost +429 / +444 / +416 B on the three hard fixtures (+189..+439 B on the soft ones), spent under the exemption rule: hello world 7830 -> 8259, `+ withInteraction` 20840 -> 21284, kitchen sink 25629 -> 26045. Soft fixtures over their reference limit now (warnings only): `+ withResponsive` (22769 vs 21504 B) and `+ withEditHooks` (16951 vs 16384 B); `+ withRender` (15582 vs 15360 B), `+ withViewport` (16501 vs 16384 B) and `+ withRtl` (16030 vs 15872 B) crossed their references too; the second was already over on master.
 
    **Exemption rule.** A correctness, security, accessibility or performance fix MAY consume hard-gate headroom; state the byte cost in the PR. New features must still find their own bytes: "change the shape, not the budget" stays the default for features (see `.claude/rules/size-history.md` for which levers win under gzip). **Raising a hard limit again requires an explicit owner decision recorded here**, with the date and reason. Do not raise a limit to fit a feature.
 
