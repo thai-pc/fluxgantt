@@ -19,8 +19,10 @@
 import { readFile, readdir, access } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, resolve } from 'node:path';
+import { VERSION_PATTERN } from './version-constant.mjs';
 
-const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
+// FLUXGANTT_REPO_ROOT lets the unit test point the check at a scratch copy of the manifests.
+const repoRoot = process.env.FLUXGANTT_REPO_ROOT ?? resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const REPO_URL = 'https://github.com/thai-pc/fluxgantt';
 
 const changesetConfig = JSON.parse(
@@ -152,10 +154,10 @@ for (const entry of await readdir(resolve(repoRoot, 'packages'), { withFileTypes
   const versionFile = resolve(repoRoot, dir, 'src/index.ts');
   try {
     const src = await readFile(versionFile, 'utf8');
-    const m = src.match(/export const VERSION = '([^']*)'/);
-    if (m && m[1] !== pkg.version) {
+    const m = src.match(VERSION_PATTERN);
+    if (m && m[2] !== pkg.version) {
       fail(
-        `src/index.ts exports VERSION '${m[1]}' but package.json says '${pkg.version}' — ` +
+        `src/index.ts exports VERSION '${m[2]}' but package.json says '${pkg.version}' — ` +
           'bump the constant with the release',
       );
     }

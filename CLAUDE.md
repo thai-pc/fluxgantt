@@ -70,6 +70,7 @@ pnpm -r test           # unit tests (vitest)
 pnpm test:e2e          # playwright
 pnpm lint && pnpm typecheck
 pnpm changeset         # create a changeset before releasing
+pnpm api:update        # after a build: regenerate packages/*/etc/*.api.md (public API lock; `pnpm api:check` verifies)
 ```
 
 ## Current stage
