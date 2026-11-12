@@ -16,6 +16,7 @@ import {
   isKnownTaskKind,
   isKnownDependencyType,
   buildTaskAriaLabel,
+  retainDateLabels,
   type RolledUpRow,
   type TimeScale,
   type TaskBarLayout,
@@ -643,6 +644,26 @@ describe('buildTaskAriaLabel — date label memo on a long range', () => {
 
     expect(second).toEqual(first);
     expect(formatted).toBe(0);
+  });
+});
+
+describe('retainDateLabels — release on destroy', () => {
+  it('empties the label memo when the last live renderer is released, not before', () => {
+    const t = task('r', '2026-01-05T09:00', '2026-01-06T17:00');
+    const releaseA = retainDateLabels();
+    const releaseB = retainDateLabels();
+    const proto = Object.getPrototypeOf(normalizeDate('2026-01-05T09:00', cal.timezone).toPlainDate()) as {
+      toLocaleString: (...a: unknown[]) => string;
+    };
+    buildTaskAriaLabel(t, false, false, cal, 'it');
+    const spy = vi.spyOn(proto, 'toLocaleString');
+    releaseA();
+    buildTaskAriaLabel(t, false, false, cal, 'it');
+    expect(spy).not.toHaveBeenCalled(); // one renderer still alive: memo kept
+    releaseB();
+    buildTaskAriaLabel(t, false, false, cal, 'it');
+    expect(spy).toHaveBeenCalled(); // last one gone: memo was emptied
+    spy.mockRestore();
   });
 });
 
