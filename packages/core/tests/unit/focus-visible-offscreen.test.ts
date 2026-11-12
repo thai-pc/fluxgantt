@@ -5,7 +5,7 @@
 // are the Playwright specs' job.
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { createSvgRenderer, type SvgRendererHandle, type SvgRendererInput } from '../../src/render/svg-renderer.js';
-import { createCanvasRenderer } from '../../src/render/canvas-renderer.js';
+import { createCanvasRenderer, resolveDesignTokens } from '../../src/render/canvas-renderer.js';
 import { exportSvg } from '../../src/io/export-svg.js';
 import { DARK_TOKENS } from '../../src/theme/tokens.js';
 import { toTaskId, type Task, type TaskId } from '../../src/types.js';
@@ -284,18 +284,22 @@ describe('focus token contrast', () => {
     return (hi + 0.05) / (lo + 0.05);
   };
 
-  it('light default reaches 3:1 on every light ground and wash', () => {
-    for (const g of ['#ffffff', '#f3f4f6', '#f9fafb', '#fef3c7', '#fee2e2']) {
-      expect(ratio('#0369a1', g)).toBeGreaterThanOrEqual(3);
-    }
+  it('light default (read from the renderer fallbacks) reaches 3:1 on every light ground and wash', () => {
+    const t = resolveDesignTokens(container);
+    const grounds = ['#ffffff', t.bgSubtle, t.gridToday, t.gridHoliday, t.gridWeekend, t.gridLine];
+    for (const g of grounds) expect(ratio(t.taskFocus, g)).toBeGreaterThanOrEqual(3);
+    // The SVG CSS fallback is the same colour as the Canvas one.
+    const h = createSvgRenderer(container, input(id('a')), {});
+    expect([...h.svg.querySelectorAll('style')].map((x) => x.textContent).join('')).toContain(`--fg-task-focus,${t.taskFocus})`);
   });
   it('the old default failed (documents why it changed)', () => {
     expect(ratio('#0ea5e9', '#ffffff')).toBeLessThan(3);
   });
-  it('dark token reaches 3:1 on every dark ground and wash', () => {
-    expect(DARK_TOKENS['--fg-task-focus']).toBe('#38bdf8');
-    for (const g of ['#0a0a0a', '#18181b', '#422006', '#450a0a']) {
-      expect(ratio('#38bdf8', g)).toBeGreaterThanOrEqual(3);
+  it('dark token reaches 3:1 on every dark ground and wash in DARK_TOKENS', () => {
+    const focus = DARK_TOKENS['--fg-task-focus']!;
+    expect(focus).toBe('#38bdf8');
+    for (const k of ['--fg-bg', '--fg-bg-subtle', '--fg-grid-today', '--fg-grid-holiday', '--fg-grid-weekend', '--fg-grid-line']) {
+      expect(ratio(focus, DARK_TOKENS[k]!), k).toBeGreaterThanOrEqual(3);
     }
   });
 });

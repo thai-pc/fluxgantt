@@ -34,7 +34,7 @@ export type ResolvedTheme = 'light' | 'dark';
  *
  * There is no `LIGHT_TOKENS` counterpart on purpose — every hardcoded renderer fallback is
  * already the light value, so applying light means REMOVING these properties, not setting
- * thirteen more.
+ * fourteen more.
  */
 export const DARK_TOKENS: Readonly<Record<string, string>> = Object.freeze({
   // Surfaces — spec §8.2 `*-dark`.

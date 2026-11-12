@@ -302,15 +302,17 @@ kept on purpose (event and history order is a compatibility commitment).
 
 The 2026-11 row focus frame pass (a 2 px frame across the focused row in the chart and the pinned label column, SVG and
 Canvas, so keyboard focus stays visible when the bar is off screen or under the column; WCAG 2.4.7 / 2.4.11;
-`spec-focus-visible-offscreen.md`) is an accessibility fix and spends hard-gate headroom under the exemption rule. Cost
-against master c1c1b74 (gzip bytes): hello world 8380 -> 8380 (+0, 68 B left), `+ withRender + withInteraction` 21396 ->
-21526 (+130, 234 B left), kitchen sink 26164 -> 26293 (+129, 587 B left); soft fixtures: `+ withIo` +9 (export selector),
-`+ withRender` +134, `+ withTheme` +152 (dark token included), `+ withResponsive` +118, `+ withViewport` +123,
-`+ withEditHooks` +124, `+ withRtl` +131, `+ withConflicts` +0. About 190 B under the spec's 320 B ceiling, so none of the
-spec's levers were needed and the column-only fallback was not considered. The Canvas half lives in the lazy Canvas chunk
-(0 B in every fixture). What kept it small: the frame's CSS joins the existing ring selector (`.fg-task__focus-ring,
-.fg-timeline__focus-row{stroke:none;pointer-events:none}`), the element reuses `el()`, the pinned-column clone reuses the
-existing clone selector, and the row patch moves the frame with one guarded `setAttribute` (an identical-value write still
-queues a MutationObserver record). The injected `<style>` grew from ~1000 to ~1018 chars, so the unit test cap went from 1000
-to 1100. The `:has()` rule must stay its own rule (a UA without `:has` drops the whole rule it appears in). Playwright
-resolves `@fluxgantt/core` from `dist`, so rebuild the package before an e2e mutation check.
+`spec-focus-visible-offscreen.md`) is an accessibility fix and spends hard-gate headroom under the exemption rule. Final
+cost against master c1c1b74 (gzip bytes): hello world 8380 -> 8380 (+0, 68 B left), `+ withRender + withInteraction`
+21396 -> 21648 (+252, 112 B left), kitchen sink 26164 -> 26425 (+261, 455 B left); soft: `+ withIo` +9 (export selector),
+`+ withRender` +262, `+ withTheme` +276, `+ withResponsive` +250, `+ withViewport` +248, `+ withEditHooks` +250,
+`+ withRtl` +261, `+ withConflicts` +0. The first cut cost +130 / +129; review added a `focusin` listener so the SVG frame
+follows DOM focus that moves without a render (M1), SVG forced-colors rules (`Highlight` on the ring and the frame, the
+pinned column on `Canvas`; M4) and a 2 px stroke clamp (L1), about +120 B. Still under the spec's 320 B ceiling. The Canvas
+half lives in the lazy chunk (0 B in every fixture). What kept it small: the frame's base CSS joins the existing ring
+selector, the element reuses `el()`, and the row patch and the focus listener share one guarded `place()` (an identical-value
+`setAttribute` still queues a MutationObserver record). The pinned-column frame is its own `offsetX + 1` wide rect, not a
+clone of the `totalWidth` chart rect (a clone overflowing the 160 px column coincided with a linux LCD-antialiasing loss in
+`timeline-scrolled-dark-header-pinned`). The `:has()` rule, and every `@media` rule using it, must stay a separate rule (a UA
+without `:has` drops the whole rule it appears in). The injected `<style>` test cap went 1000 -> 1400. Playwright resolves
+`@fluxgantt/core` from `dist`, so rebuild the package before an e2e mutation check.

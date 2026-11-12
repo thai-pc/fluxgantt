@@ -202,7 +202,7 @@ describe('keyboard-nav — ARIA grid/row/gridcell structure (spec-keyboard-nav.m
     const h = createSvgRenderer(container, { tasks: baseTasks, dependencies: baseDeps });
     const styles = [...h.svg.querySelectorAll('style')].map((s) => s.textContent ?? '').join('');
     expect(styles).not.toContain('/*');
-    expect(styles.length).toBeLessThan(1100);
+    expect(styles.length).toBeLessThan(1400);
   });
 });
 

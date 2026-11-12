@@ -1070,7 +1070,7 @@ Prefer:
   --fg-task-focus:          #0369a1;   /* keyboard focus ring + row frame; dark theme: #38bdf8 */
   --fg-task-focus-width:    2px;
   /* 2026-11-12: --fg-task-focus default changed from #0ea5e9 (2.8:1 on white, fails the 3:1 of WCAG
-     1.4.11) to #0369a1 (5.9:1 on #fff); the dark theme sets its own #38bdf8 (9.4:1 on #0a0a0a). The
+     1.4.11) to #0369a1 (5.9:1 on #fff); the dark theme sets its own #38bdf8 (9.2:1 on #0a0a0a). The
      token now also colours the row focus frame (WCAG 2.4.7 / 2.4.11). */
 
   /* Resource colors */
