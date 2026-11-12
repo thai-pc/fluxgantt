@@ -19,5 +19,12 @@
     "config": "size-limit/kitchen-sink.esbuild-config.mjs",
     "limit": "26.25 KiB",
     "gzip": true
+  },
+  {
+    "name": "Everything composed (all mixins incl. grid + grid editing, gzip)",
+    "path": "size-limit/everything.js",
+    "config": "size-limit/everything.esbuild-config.mjs",
+    "limit": "35.25 KiB",
+    "gzip": true
   }
 ]

@@ -949,8 +949,9 @@ let patch: ((ids: readonly TaskId[], focus: TaskId | undefined) => void) | undef
           `${old.getAttribute('aria-selected')}${old.tabIndex}` !==
           `${selectedIds.has(id)}${id === focusedTaskId ? 0 : -1}`
         ) {
-          rebuilt.push(makeRow(row));
-          old.replaceWith(rebuilt[rebuilt.length - 1]!);
+          const fresh = makeRow(row);
+          rebuilt.push(fresh);
+          old.replaceWith(fresh);
         }
       });
       place!();
