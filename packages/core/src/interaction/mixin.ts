@@ -105,6 +105,7 @@ function wireInto(
     // The trailing no-break space alternates so two identical announcements in a row still differ as
     // strings: browsers and screen readers (VoiceOver, NVDA) skip a live-region update whose text is unchanged, and it is
     // silent (whitespace). Clearing first would need a timer, which NVDA can coalesce away.
+    flip = !flip;
     live.textContent = (
       typeof text === 'string'
         ? text
@@ -113,7 +114,7 @@ function wireInto(
           : kind[0] === 'c'
             ? `${n(a)}: ${kind.replace('-', ' ')}`
             : `${n(a)} ${kind}: ${x} to ${y}`
-    ).slice(0, 400) + ((flip = !flip) ? '\u00A0' : '');
+    ).slice(0, 400) + (flip ? '\u00A0' : '');
   };
 
   // Selection is NOT gated by readOnly (confirmed): readOnly disables drag-move/drag-resize/
