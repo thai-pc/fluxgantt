@@ -16,6 +16,7 @@ export interface TaskActivatedPayload {
     readonly clientX: number;
     // (undocumented)
     readonly clientY: number;
+    readonly columnId?: string;
     // (undocumented)
     readonly part: TaskHitPart;
     // (undocumented)
@@ -32,6 +33,7 @@ export interface TaskContextRequestedPayload {
     readonly clientX: number;
     // (undocumented)
     readonly clientY: number;
+    readonly columnId?: string;
     // (undocumented)
     readonly part: TaskHitPart;
     preventDefault(): void;
@@ -42,7 +44,7 @@ export interface TaskContextRequestedPayload {
 }
 
 // @public
-export type TaskHitPart = 'bar' | 'label' | 'row';
+export type TaskHitPart = 'bar' | 'label' | 'row' | 'cell';
 
 // Warning: (ae-forgotten-export) The symbol "GanttInstance" needs to be exported by the entry point index.d.ts
 //

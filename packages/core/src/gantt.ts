@@ -281,9 +281,7 @@ export interface ViewportChangedPayload {
 /** What a pointer/keyboard gesture hit (`task:activated` / `task:context-requested`). Keyboard
  *  gestures always report `'row'`; the Canvas renderer never reports `'bar'` (its hit-test is
  *  row-wide). `'cell'` (a grid cell, with `columnId`) is reserved for the upcoming grid-columns
- *  mixin and is never reported yet.
- *
- *  @beta */
+ *  mixin and is never reported yet. */
 export type TaskHitPart = 'bar' | 'label' | 'row' | 'cell';
 
 /** Payload of `task:activated` (opt-in `withEditHooks()`, `@fluxgantt/core/edit-hooks`). Fires in a

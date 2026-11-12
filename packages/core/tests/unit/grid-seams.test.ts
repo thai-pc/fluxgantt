@@ -174,7 +174,7 @@ describe('handle.fixedLabelWidth versus withResponsive', () => {
     stubs(393);
     const g = withResponsive(withRender(createGantt({ tasks: TASKS })));
     g.mount(container);
-    expect(g.getLabelColumnWidth()).toBeLessThan(160);
+    expect(svgHandle(g).getLabelColumnWidth()).toBeLessThan(160);
   });
 
   it('with the flag set before the first measure, the column keeps the width the owner gave it', () => {
@@ -186,20 +186,20 @@ describe('handle.fixedLabelWidth versus withResponsive', () => {
     });
     withResponsive(g);
     g.mount(container);
-    expect(g.getLabelColumnWidth()).toBe(160);
+    expect(svgHandle(g).getLabelColumnWidth()).toBe(160);
     ro.fire();
-    expect(g.getLabelColumnWidth()).toBe(160);
+    expect(svgHandle(g).getLabelColumnWidth()).toBe(160);
   });
 
   it('setting the flag after responsive narrowed the column stops further writes', () => {
     const ro = stubs(393);
     const g = withResponsive(withRender(createGantt({ tasks: TASKS })));
     g.mount(container);
-    const narrow = g.getLabelColumnWidth();
+    const narrow = svgHandle(g).getLabelColumnWidth();
     svgHandle(g).fixedLabelWidth = true;
     Object.defineProperty(container, 'clientWidth', { value: 1440, configurable: true });
     ro.fire();
-    expect(g.getLabelColumnWidth()).toBe(narrow);
+    expect(svgHandle(g).getLabelColumnWidth()).toBe(narrow);
   });
 });
 

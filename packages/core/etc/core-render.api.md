@@ -80,6 +80,7 @@ export interface GridColumn {
 // @beta
 export interface InteractiveRendererHandle {
     readonly container: HTMLElement;
+    fixedLabelWidth?: boolean;
     getLabelColumnWidth(): number;
     getRowAnchor?(rowIndex: number): {
         readonly clientX: number;
@@ -92,6 +93,7 @@ export interface InteractiveRendererHandle {
         hitToggle: boolean;
         onBar?: boolean;
         onLabel?: boolean;
+        columnId?: string;
     } | undefined;
     // (undocumented)
     readonly interactionRoot: Element;
@@ -118,6 +120,18 @@ export function layoutTaskBar(task: Task, timeScale: TimeScale, row: RowLayout, 
 
 // @beta @deprecated
 export const MAX_GRID_COLUMNS = 20000;
+
+// @beta
+export interface PaintEvent {
+    readonly column?: SVGSVGElement;
+    readonly corner?: SVGSVGElement;
+    readonly overlay?: SVGSVGElement;
+    readonly rows?: readonly SVGElement[];
+    readonly svg: SVGSVGElement;
+}
+
+// @beta
+export type PaintHook = (event: PaintEvent) => void;
 
 // @beta @deprecated
 export const PIXELS_PER_DAY: Readonly<Record<ViewMode, number>>;
@@ -155,6 +169,7 @@ export interface SvgRendererHandle extends InteractiveRendererHandle {
     getLabelColumnWidth(): number;
     getTimeScale(): TimeScale;
     readonly interactionRoot: SVGSVGElement;
+    readonly paintHooks: PaintHook[];
     readonly pointerEventTarget: HTMLElement;
     setOptions(options: Partial<SvgRendererOptions>): void;
     readonly svg: SVGSVGElement;
@@ -187,7 +202,6 @@ export interface SvgRendererOptions {
     readonly locale?: string;
     // Warning: (ae-forgotten-export) The symbol "GanttMessages" needs to be exported by the entry point index.d.ts
     readonly messages?: GanttMessages;
-    readonly onPaint?: (svg: SVGSVGElement, ...overlays: SVGSVGElement[]) => void;
     readonly showLinkHandles?: boolean;
     readonly timeRange?: {
         readonly start: DateInput;
@@ -243,7 +257,7 @@ export function withRender<T extends GanttInstance>(instance: T): T & RenderCapa
 
 // Warnings were encountered during analysis:
 //
-// dist/svg-renderer-1T-6Z6DE.d.ts:396:9 - (ae-forgotten-export) The symbol "DateInput" needs to be exported by the entry point index.d.ts
+// dist/svg-renderer-DbMUSKRM.d.ts:403:9 - (ae-forgotten-export) The symbol "DateInput" needs to be exported by the entry point index.d.ts
 
 // (No @packageDocumentation comment for this package)
 
