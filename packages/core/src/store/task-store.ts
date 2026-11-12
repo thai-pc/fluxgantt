@@ -80,10 +80,7 @@ export class TaskStore {
   remove(id: TaskId): void {
     const root = this.#tasks.get(id);
     if (!root) return;
-    // Iterative (a deep parent chain must not overflow the stack) and one bump in total.
-    // The Set also stops a (host-made) parent cycle from looping forever.
-    const doomed = new Set([id]);
-    for (const d of doomed) for (const kid of this.#kids.get(d) ?? []) doomed.add(kid);
+    const doomed = this.subtree(id);
     if (root.parent !== undefined) this.#kids.get(root.parent)?.delete(id);
     for (const d of doomed) {
       this.#tasks.delete(d);
@@ -93,10 +90,28 @@ export class TaskStore {
     this.#bump();
   }
 
+  /**
+   * `id` and all its descendants, deepest first, siblings in global insertion order (the order
+   * `task:removed` is emitted in). Iterative, so a deep parent chain cannot overflow the stack;
+   * the visited check also stops a host-made parent cycle from looping forever.
+   *
+   * @internal Shared by `remove()` and `Gantt.removeTask`; not part of the stable API.
+   */
+  subtree(id: TaskId): TaskId[] {
+    const out = new Set<TaskId>();
+    const stack = [id];
+    for (let n = stack.pop(); n !== undefined; n = stack.pop()) {
+      if (out.has(n)) continue;
+      out.add(n);
+      for (const child of this.#childrenOf(n)) stack.push(child.id);
+    }
+    return [...out].reverse(); // node then children right-to-left, reversed = post-order
+  }
+
   clear(): void {
+    this.#kids.clear(); // also drops empty sets left by dangling parent ids
     if (this.#tasks.size === 0) return;
     this.#tasks.clear();
-    this.#kids.clear();
     this.#pos.clear();
     this.#bump();
   }
