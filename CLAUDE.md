@@ -32,20 +32,20 @@ The API report is the lock and the TSDoc tag decides the tier (stable, `@beta`, 
    | Fixture | Tier | Measured (B / KiB) | Limit |
    |---|---|---|---|
    | `createGantt()` only (hello world) | **hard** | 8380 / 8.18 | 8.25 KiB |
-   | `+ withRender + withInteraction` | **hard** | 21642 / 21.13 | 21.25 KiB |
-   | kitchen sink (everything) | **hard** | 26422 / 25.80 | 26.25 KiB |
+   | `+ withRender + withInteraction` | **hard** | 21655 / 21.15 | 21.25 KiB |
+   | kitchen sink (everything) | **hard** | 26432 / 25.81 | 26.25 KiB |
    | `+ withIo` | soft | 13528 / 13.21 | 14 KiB |
-   | `+ withRender` | soft | 15957 / 15.58 | 15 KiB |
-   | `+ withRender + withTheme` | soft | 16656 / 16.27 | 16 KiB |
-   | `+ withRender + withInteraction + withResponsive` | soft | 23123 / 22.58 | 21 KiB |
-   | `+ withRender + withViewport` | soft | 16867 / 16.47 | 16 KiB |
+   | `+ withRender` | soft | 15967 / 15.59 | 15 KiB |
+   | `+ withRender + withTheme` | soft | 16667 / 16.28 | 16 KiB |
+   | `+ withRender + withInteraction + withResponsive` | soft | 23136 / 22.59 | 21 KiB |
+   | `+ withRender + withViewport` | soft | 16878 / 16.48 | 16 KiB |
    | `+ withConflicts` (headless) | soft | 10322 / 10.08 | 10 KiB |
-   | `+ withRender + withEditHooks` | soft | 17306 / 16.90 | 16 KiB |
-   | `+ withRender + withRtl` | soft | 16402 / 16.02 | 15.5 KiB |
+   | `+ withRender + withEditHooks` | soft | 17317 / 16.91 | 16 KiB |
+   | `+ withRender + withRtl` | soft | 16414 / 16.03 | 15.5 KiB |
 
    Measured after the DependencyStore index PR (`perf/dependency-indexes`) on top of the TaskStore index PR (`perf/store-indexes`) on top of the keyboard move/resize/link PR. Together the two store PRs cost +429 / +444 / +416 B on the three hard fixtures (+189..+439 B on the soft ones), spent under the exemption rule: hello world 7830 -> 8259, `+ withInteraction` 20840 -> 21284, kitchen sink 25629 -> 26045. Soft fixtures over their reference limit (warnings only, as measured 2026-11-12 on the focus-frame branch): `+ withRender` (15957 vs 15360 B), `+ withTheme` (16656 vs 16384 B), `+ withResponsive` (23123 vs 21504 B), `+ withViewport` (16867 vs 16384 B), `+ withConflicts` (10322 vs 10240 B), `+ withEditHooks` (17306 vs 16384 B) and `+ withRtl` (16402 vs 15872 B); mostly master drift, the frame adds +248..+272 to the render ones.
 
-   Table re-measured 2026-11-12 after the row focus frame PR (`fix/focus-visible-offscreen`, WCAG 2.4.7 / 2.4.11, renderer-only, spent under the exemption rule): hello world +0 (8380, 68 B left), `+ withRender + withInteraction` 21396 -> 21642 (+246, 118 B left), kitchen sink 26164 -> 26422 (+258, 458 B left); soft fixtures +0..+272 (review round: focus-follow listener, own column rect, forced-colors rules). Master had drifted from the previous paragraph's figures (the `task:updated` work, among others); the table now shows master + this PR.
+   Table re-measured 2026-11-12 after the row focus frame PR (`fix/focus-visible-offscreen`, WCAG 2.4.7 / 2.4.11, renderer-only, spent under the exemption rule): hello world +0 (8380, 68 B left), `+ withRender + withInteraction` 21396 -> 21655 (+259, 105 B left), kitchen sink 26164 -> 26432 (+268, 448 B left); soft fixtures +0..+283 (review round: focus-follow listener, own column rect, forced-colors rules). Master had drifted from the previous paragraph's figures (the `task:updated` work, among others); the table now shows master + this PR.
 
    **Exemption rule.** A correctness, security, accessibility or performance fix MAY consume hard-gate headroom; state the byte cost in the PR. New features must still find their own bytes: "change the shape, not the budget" stays the default for features (see `.claude/rules/size-history.md` for which levers win under gzip). **Raising a hard limit again requires an explicit owner decision recorded here**, with the date and reason. Do not raise a limit to fit a feature.
 
