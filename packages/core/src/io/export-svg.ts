@@ -101,7 +101,7 @@ export function exportSvg(svg: SVGSVGElement, options?: ExportSvgOptions): strin
   //    Also strips the collapse/expand toggle glyph (spec-collapse-expand.md §6.5) — an
   //    exported static SVG has no click handler behind it, so leaving it in would render a
   //    dead, misleading affordance in the output file.
-  clone.querySelectorAll('.fg-task__link-handle, .fg-timeline__row-toggle').forEach((el) => el.remove());
+  clone.querySelectorAll('.fg-task__link-handle, .fg-timeline__row-toggle, .fg-timeline__focus-row').forEach((el) => el.remove());
 
   // 5. Strip every interactive-only `<style>` block — link-handle hover-reveal AND the
   //    selection-outline rule (spec-selection.md §7.3/§11: selection is transient UI state,

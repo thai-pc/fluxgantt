@@ -271,10 +271,16 @@ const FOCUS_RING_OFFSET_PX = 5;
 // Arrow/Space navigation stays active there).
 // `.fg-timeline__row:focus-visible{outline:none}`: the row <g> itself is not the visual target,
 // so the default UA outline on it is suppressed (the ring is the `.fg-task__focus-ring` rect).
+// `.fg-timeline__focus-row` is the row focus frame (spec-focus-visible-offscreen.md): a rect the
+// full width of the focused row, also cloned into the pinned column, so focus stays visible when the
+// bar is scrolled away or under the column. The `:has()` rule is its OWN rule: a UA without `:has`
+// drops the whole rule, and must not take the bar-ring rule down with it. The default colour
+// is #0369a1 (5.9:1 on white); the old #0ea5e9 was 2.8:1.
 const FOCUS_STYLE_TEXT =
   '.fg-timeline__row:focus-visible{outline:none}' +
-  '.fg-task__focus-ring{stroke:none;pointer-events:none}' +
-  '.fg-timeline__row:focus-visible .fg-task__focus-ring{stroke:var(--fg-task-focus,#0ea5e9);stroke-width:var(--fg-task-focus-width,2px)}';
+  '.fg-task__focus-ring,.fg-timeline__focus-row{stroke:none;pointer-events:none}' +
+  '.fg-timeline__row:focus-visible .fg-task__focus-ring{stroke:var(--fg-task-focus,#0369a1);stroke-width:var(--fg-task-focus-width,2px)}' +
+  '.fg-timeline__layer:has(.fg-timeline__row:focus-visible) .fg-timeline__focus-row{stroke:var(--fg-task-focus,#0369a1);stroke-width:var(--fg-task-focus-width,2px)}';
 
 /**
  * Creates and mounts an SVG renderer into `container` — appends one
@@ -804,6 +810,23 @@ export function createSvgRenderer(
     const rowsGroup = el('g', { class: 'fg-timeline__rows' });
     for (const row of rows) rowsGroup.append(makeRow(row));
     svg.append(rowsGroup);
+    // Row focus frame: inset 1px in the focused row's band. An absent/stale id resolves to row 0 but
+    // then no row is `:focus-visible`, so it stays inert. `aria-hidden` for the same reason as the today line.
+    const fy = () => offsetY + (rows.find((r) => r.task.id === focusedTaskId)?.y ?? 0) + 1;
+    svg.append(
+      el(
+        'rect',
+        {
+          class: 'fg-timeline__focus-row',
+          'aria-hidden': 'true',
+          x: 1,
+          y: fy(),
+          width: totalWidth - 2,
+          height: rowHeight - 2,
+        },
+        { fill: 'none' },
+      ),
+    );
     // Today marker (spec §9.1). Appended after the rows so it crosses OVER bars and
     // dependency arrows — document order is z-order — but before the label divider, which must
     // stay the topmost thing along the label column's own edge.
@@ -851,7 +874,7 @@ export function createSvgRenderer(
     column.replaceChildren(
       ...[
         divider,
-        ...svg.querySelectorAll<SVGElement>('.fg-timeline__row-toggle,.fg-timeline__row-label'),
+        ...svg.querySelectorAll<SVGElement>('.fg-timeline__row-toggle,.fg-timeline__row-label,.fg-timeline__focus-row'),
       ].map((n) => {
         const c = n.cloneNode(true) as SVGElement;
         Object.assign(c.dataset, n.closest<SVGElement>('[data-row-index]')?.dataset);
@@ -883,6 +906,11 @@ export function createSvgRenderer(
         ) {
           old.replaceWith(makeRow(row));
         }
+      });
+      // Guarded: an identical setAttribute still queues a MutationObserver record.
+      const y = String(fy());
+      layer.querySelectorAll('.fg-timeline__focus-row').forEach((m) => {
+        if (m.getAttribute('y') !== y) m.setAttribute('y', y);
       });
       currentOptions.onPaint?.(svg);
       if (had) svg.querySelector<SVGElement>('[tabindex="0"]')?.focus({ preventScroll: true });

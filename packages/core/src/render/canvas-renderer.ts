@@ -676,7 +676,7 @@ export function resolveDesignTokens(container: HTMLElement): DesignTokens {
     taskSelected: color('--fg-task-selected', '#4338ca'),
     taskSelectedWidth: num('--fg-task-selected-width', 2),
     taskSelectedOffset: num('--fg-task-selected-offset', 2),
-    taskFocus: color('--fg-task-focus', '#0ea5e9'),
+    taskFocus: color('--fg-task-focus', '#0369a1'),
     taskFocusWidth: num('--fg-task-focus-width', 2),
     depLine: color('--fg-dep-line', '#64748b'),
   };
@@ -1574,6 +1574,7 @@ export function createCanvasRenderer(
     // the window boundary (e.g. one endpoint currently scrolled out of view); the canvas's own
     // bounded physical rect already clips anything painted outside it for free (no explicit
     // `ctx.clip()` call needed), so this stays cheap regardless of how many dependencies exist.
+    const focusRowY = hadFocusInside ? rows[focusedIndex]?.y : undefined;
     ctx.save();
     try {
       // Clip to the row band BEFORE translating (clip is in the untransformed space): the
@@ -1601,6 +1602,9 @@ export function createCanvasRenderer(
       // is never obscured by a bar, dependency arrow, or critical-path dash.
       const focusBar = focusedTaskId !== undefined ? barByTaskId.get(focusedTaskId) : undefined;
       paintFocusRing(ctx, focusBar, hadFocusInside, offsetX, 0, tokens);
+      // Row focus frame (spec-focus-visible-offscreen.md): the whole row band, so focus stays visible
+      // when the bar is scrolled away. The label-canvas copy below covers the pinned column.
+      paintFocusRow(ctx, focusRowY, 0, totalWidth, rowHeight, tokens);
     } finally {
       ctx.restore();
     }
@@ -1619,6 +1623,8 @@ export function createCanvasRenderer(
         labelCtx.clip();
         labelCtx.translate(0, HEADER_HEIGHT - scrollTop);
         paintRowLabels(labelCtx, windowedRows, rowHeight, 0, tokens);
+        // Before the divider, which stays last; the closing edge falls outside the bitmap (open at the divider side).
+        paintFocusRow(labelCtx, focusRowY, 0, offsetX + 2, rowHeight, tokens);
       } finally {
         labelCtx.restore();
       }
@@ -2021,6 +2027,28 @@ function paintFocusRing(
     ctx.setLineDash([]);
     drawRoundedRect(ctx, x - 2, y - 2, bar.width + 4, bar.height + 4, 3);
     ctx.stroke();
+  } finally {
+    ctx.restore();
+  }
+}
+
+/** Row focus frame: a stroked rect inset by half the line so the stroke fills the band exactly. */
+function paintFocusRow(
+  ctx: CanvasRenderingContext2D,
+  y: number | undefined,
+  x: number,
+  width: number,
+  rowHeight: number,
+  tokens: DesignTokens,
+): void {
+  if (y === undefined) return;
+  const w = tokens.taskFocusWidth;
+  ctx.save();
+  try {
+    ctx.strokeStyle = tokens.taskFocus;
+    ctx.lineWidth = w;
+    ctx.setLineDash([]);
+    ctx.strokeRect(x + w / 2, y + w / 2, width - w, rowHeight - w);
   } finally {
     ctx.restore();
   }
