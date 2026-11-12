@@ -214,9 +214,10 @@ export function enableKeyboardNav(
   // included, which focuses the row natively) and a programmatic `.focus()` both land here. The
   // renderer's own post-repaint focus restore targets `focusedTaskId` itself, so it is a no-op.
   function onFocusIn(event: Event): void {
-    // Only a row element is ever focusable (roving tabindex), and it carries `data-task-id`.
+    // Only a row element is ever focusable (roving tabindex), and it carries `data-task-id`. Not checked
+    // with `contains()`: the Canvas renderer rebuilds its a11y layer on this same focusin, detaching the target.
     const t = event.target as Element;
-    const id = handle.interactionRoot.contains(t) ? t.getAttribute('data-task-id') : null;
+    const id = t.hasAttribute('data-row-index') ? t.getAttribute('data-task-id') : null;
     if (id !== null && id !== focusedTaskId) focusTask(toTaskId(id));
   }
 

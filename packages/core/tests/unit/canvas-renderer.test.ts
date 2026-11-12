@@ -448,6 +448,18 @@ describe('hidden ARIA layer', () => {
     expect(document.activeElement).toBe(newRowB);
   });
 
+  it('focus landing on a NON-roving row makes it the roving row and keeps focus there (AT cursor)', () => {
+    const mock = createMockContext2D();
+    installMockContext(mock);
+    const h = createCanvasRenderer(container, { tasks: baseTasks, dependencies: baseDeps, focusedTaskId: toTaskId('a') });
+    h.interactionRoot.querySelector<HTMLElement>('.fg-timeline-canvas__row[data-task-id="a"]')!.focus();
+    h.interactionRoot.querySelector<HTMLElement>('.fg-timeline-canvas__row[data-task-id="b"]')!.focus();
+    const rowB = h.interactionRoot.querySelector<HTMLElement>('.fg-timeline-canvas__row[data-task-id="b"]')!;
+    expect(document.activeElement).toBe(rowB);
+    expect(rowB.getAttribute('tabindex')).toBe('0');
+    expect(h.interactionRoot.querySelector('.fg-timeline-canvas__row[data-task-id="a"]')!.getAttribute('tabindex')).toBe('-1');
+  });
+
   describe('SECURITY', () => {
     it('a malicious task name reaches textContent verbatim, never markup — no <img>/<script> under interactionRoot', () => {
       const mock = createMockContext2D();

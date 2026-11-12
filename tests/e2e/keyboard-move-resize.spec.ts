@@ -7,12 +7,9 @@ import { openRtl } from '../helpers/rtl.js';
 // `rtl.html` (`?pad=0` SVG, `?pad=2100` Canvas). Dates are read through the public API.
 
 const row = (page: Page, id: string) => page.locator(`[role="row"][data-task-id="${id}"]`);
-// Reaches a row the way a keyboard user does: focus the first row, then ArrowDown. (A programmatic
-// `.focus()` on a later Canvas row is not used: it moves the roving id and repaints.)
+// A programmatic `.focus()`, as an AT cursor does: the focused row becomes the roving one in both renderers.
 const focusRow = async (page: Page, id: string) => {
-  const index = Number(await row(page, id).getAttribute('data-row-index'));
-  await page.locator('[role="row"][data-row-index="0"]').focus();
-  for (let i = 0; i < index; i++) await page.keyboard.press('ArrowDown');
+  await row(page, id).focus();
   await expect(row(page, id)).toBeFocused();
 };
 // `?pad=0` is the SVG twin of the Canvas fixture.
@@ -71,16 +68,27 @@ for (const [name, query] of [
       await expect.poll(() => dependencyCount(page)).toBe(n + 1);
     });
 
-    test('Alt+ArrowLeft does not trigger browser Back', async ({ page }) => {
-      await page.goto('/selection.html');
-      await openCanvasDrag(page, query);
-      const url = page.url();
-      const len = await page.evaluate(() => history.length);
+    test('Alt+ArrowLeft / Alt+ArrowRight are default-prevented (no browser Back / Forward)', async ({ page }) => {
+      // A page listener in the bubble phase, registered after mount, sees the final `defaultPrevented`.
+      await page.evaluate(() => {
+        const w = window as unknown as { __prevented: boolean[] };
+        w.__prevented = [];
+        window.addEventListener('keydown', (e) => w.__prevented.push(e.defaultPrevented));
+      });
       await focusRow(page, 'a');
       await page.keyboard.press('Alt+ArrowLeft');
-      await page.waitForTimeout(300);
-      expect(page.url()).toBe(url);
-      expect(await page.evaluate(() => history.length)).toBe(len);
+      await page.keyboard.press('Alt+ArrowRight');
+      expect(await page.evaluate(() => (window as unknown as { __prevented: boolean[] }).__prevented)).toEqual([true, true]);
+    });
+
+    test('focus moved programmatically to another row (AT cursor): Alt+ArrowRight moves THAT task', async ({ page }) => {
+      await focusRow(page, 'a');
+      const [a0, b0] = [await taskMs(page, 'a', 'start'), await taskMs(page, 'b', 'start')];
+      await focusRow(page, 'b');
+      await page.keyboard.press('Alt+ArrowRight');
+      await expect.poll(() => taskMs(page, 'b', 'start')).toBe(b0 + DAY_MS);
+      expect(await taskMs(page, 'a', 'start')).toBe(a0);
+      await expect(row(page, 'b')).toBeFocused();
     });
   });
 }

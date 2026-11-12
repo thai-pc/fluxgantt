@@ -1108,10 +1108,17 @@ export function createCanvasRenderer(
     },
   };
 
-  function handleFocusChange(): void {
+  function handleFocusChange(e: Event): void {
     // Ignore focus events caused by our OWN DOM rebuild inside render() (spec §5.2/§8.3), and
     // any stray event arriving after destroy().
     if (isRendering || destroyed) return;
+    // Focus moving to another row of this layer: the focusin that follows does the one rebuild. Rebuilding
+    // on this focusout would detach the row that is about to receive focus.
+    if (e.type === 'focusout' && a11yLayer.contains((e as FocusEvent).relatedTarget as Node | null)) return;
+    // Focus that lands on another row (an AT cursor, a programmatic focus) makes THAT row the roving
+    // one; otherwise the rebuild below would snap focus back to the old row.
+    const id = e.type === 'focusin' ? (e.target as Element).getAttribute('data-task-id') : null;
+    if (id !== null && id !== state.input.focusedTaskId) state = { ...state, input: { ...state.input, focusedTaskId: id as TaskId } };
     render();
   }
 
