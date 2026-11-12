@@ -12,6 +12,12 @@ iterative (a 100,000-edge chain no longer throws `RangeError`), and `of()`, `pre
 
 Error text: for input that is invalid in more than one way, the error class is still `DependencyLinkError`
 but the message can name a different edge than the old edge-by-edge loader did (a self-link or duplicate
-anywhere in the list is reported before a cycle, and a cycle names the first edge on or downstream of it).
-A constructor `dependencies` list that repeats the same `from`/`to` pair still throws, as before.
-`DependencyStore.linkAll` is new and marked `@internal`. Costs about 0.2 KiB gzip.
+anywhere in the list is reported before a cycle). A cycle error always names an edge that lies on a real
+cycle (the last such input edge, which is the one the old loader rejected). A constructor `dependencies` list
+to `createGantt` that repeats the same `from`/`to` pair still throws, as before. The raw
+`new DependencyStore(initial)` constructor and `restore()` keep duplicate pairs exactly as before.
+
+Indices: `getTask()` / `getDependencies()` return the stored objects, and the stores now index
+`task.parent` and `dependency.from` / `to`. Do not mutate those fields in place; use `updateTask`, or
+`unlinkTasks` + `linkTasks`. `DependencyStore.unlink()` now returns the removed dependency (or `undefined`).
+`DependencyStore.linkAll` and `TaskStore.subtree` are new and marked `@internal`. Costs about 0.25 KiB gzip.
