@@ -27,17 +27,17 @@ This file is the context entry point for AI. Details are split into rules under 
 
    | Fixture | Tier | Measured (B / KiB) | Limit |
    |---|---|---|---|
-   | `createGantt()` only (hello world) | **hard** | 7553 / 7.38 | 8.25 KiB |
-   | `+ withRender + withInteraction` | **hard** | 19645 / 19.18 | 21.25 KiB |
-   | kitchen sink (everything) | **hard** | 24451 / 23.88 | 26.25 KiB |
-   | `+ withIo` | soft | 12706 / 12.41 | 14 KiB |
-   | `+ withRender` | soft | 14859 / 14.51 | 15 KiB |
-   | `+ withRender + withTheme` | soft | 15552 / 15.19 | 16 KiB |
-   | `+ withRender + withInteraction + withResponsive` | soft | 21094 / 20.60 | 21 KiB |
-   | `+ withRender + withViewport` | soft | 15780 / 15.41 | 16 KiB |
-   | `+ withConflicts` (headless) | soft | 9483 / 9.26 | 10 KiB |
-   | `+ withRender + withEditHooks` | soft | 16209 / 15.83 | 16 KiB |
-   | `+ withRender + withRtl` | soft | 15304 / 14.95 | 15.5 KiB |
+   | `createGantt()` only (hello world) | **hard** | 7645 / 7.47 | 8.25 KiB |
+   | `+ withRender + withInteraction` | **hard** | 19770 / 19.31 | 21.25 KiB |
+   | kitchen sink (everything) | **hard** | 24565 / 23.99 | 26.25 KiB |
+   | `+ withIo` | soft | 12793 / 12.49 | 14 KiB |
+   | `+ withRender` | soft | 14976 / 14.62 | 15 KiB |
+   | `+ withRender + withTheme` | soft | 15670 / 15.30 | 16 KiB |
+   | `+ withRender + withInteraction + withResponsive` | soft | 21228 / 20.73 | 21 KiB |
+   | `+ withRender + withViewport` | soft | 15904 / 15.53 | 16 KiB |
+   | `+ withConflicts` (headless) | soft | 9574 / 9.35 | 10 KiB |
+   | `+ withRender + withEditHooks` | soft | 16347 / 15.96 | 16 KiB |
+   | `+ withRender + withRtl` | soft | 15431 / 15.07 | 15.5 KiB |
 
    The tightest soft fixtures at the re-base are `+ withEditHooks` (190 B under its reference limit) and `+ withResponsive` (429 B); they will warn first.
 

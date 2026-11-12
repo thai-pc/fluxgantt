@@ -246,3 +246,11 @@ invariant message. Measured and rejected: a merged duration/lag validator (+14 B
 (+12 B), `new ZonedDateTime(ns, tz)` (+-0 B). The `parseString` date-only fast path and the `dateLabel` cap
 512 -> 16384 are +0 B. Effect for one `updateTask` at 2000 tasks / 520-day span / 20 holidays (Chromium CPU):
 ~8.4 s -> ~0.7 s.
+
+The PR #125 review fixes (meter day keys normalized to the calendar zone and ISO calendar, a clear `RangeError`
+outside the table, `-0` kept, the `dateLabel` memo released with the last renderer and capped at 4096) cost
+more than the first pass. Final gzip bytes against the #124 re-base: hello world 7526 -> 7645 (+119),
+`+ withRender + withInteraction` 19616 -> 19770 (+154), kitchen sink 24421 -> 24565 (+144); soft fixtures
++93..+160 B, `+ withRender + withEditHooks` 16347 (37 B under its 16 KiB reference, so it will warn first).
+Spent under the exemption rule as a correctness + performance fix (one `updateTask` at 2000 tasks / 520 days:
+~8.4 s -> ~0.7 s CPU).
