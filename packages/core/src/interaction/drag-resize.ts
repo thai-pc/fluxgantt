@@ -194,6 +194,7 @@ export function enableDragResize(
         ctx.state.e0,
         deltaDays,
       );
+      recognizer.cancel(ctx); // drop the live preview: a skipped commit must not leave a stale bar
       options.onTaskResized(ctx.state.taskId, newEnd);
     },
     cancel(ctx) {

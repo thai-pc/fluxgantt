@@ -246,3 +246,47 @@ describe('resize commit -> facade event wiring', () => {
     expect(gantt.getTask(toTaskId('t1'))!.start.toString()).toContain('2026-01-20');
   });
 });
+
+describe('resize commit skips only what resizeTask would not write (keyboard-resize review R2-H1/H2)', () => {
+  function drag(groupEl: Element, dxDays: number, rightEdgeX: number): void {
+    dispatchPointer(groupEl, 'pointerdown', { pointerId: 1, clientX: rightEdgeX, clientY: 50, bubbles: true });
+    dispatchPointer(window, 'pointermove', { pointerId: 1, clientX: rightEdgeX + dxDays * 24, clientY: 50 });
+    dispatchPointer(window, 'pointerup', { pointerId: 1, clientX: rightEdgeX + dxDays * 24, clientY: 50 });
+  }
+  const mountTask = (extra: Partial<TaskInput>, s = '2026-01-05T09:00', e = '2026-01-12T09:00') => {
+    const gantt = createGantt({ tasks: [taskInput('t1', s, e, extra)] });
+    gantt.mount(container);
+    const groupEl = container.querySelector('.fg-task[data-task-id="t1"]') as SVGGElement;
+    const { x, width } = barGeometry(container, 't1');
+    return { gantt, groupEl, edge: x + width, width };
+  };
+
+  it('a drop on a weekend from a Monday-09:00 end still commits Friday 17:00 (task:resized)', () => {
+    const { gantt, groupEl, edge } = mountTask({});
+    const resized = vi.fn();
+    gantt.on('task:resized', resized);
+    drag(groupEl, -2, edge); // Mon 09:00 -> Sat 09:00
+    expect(String(gantt.getTask(toTaskId('t1'))!.end)).toContain('2026-01-09T17:00');
+    expect(resized).toHaveBeenCalledTimes(1);
+  });
+
+  it('a skipped commit restores the live preview width', () => {
+    const { gantt, groupEl, edge, width } = mountTask({ duration: 40 }, '2026-01-05T09:00', '2026-01-09T17:00');
+    drag(groupEl, 1, edge); // Fri 17:00 -> Sat 17:00: resolves to the same end and the same duration
+    expect(gantt.canUndo()).toBe(false);
+    expect(barGeometry(container, 't1').width).toBe(width);
+  });
+
+  it('after a move across a weekend the stored duration is stale: dragging back to it still commits', () => {
+    const { gantt, groupEl } = mountTask({ duration: 24 }, '2026-01-05T09:00', '2026-01-07T17:00');
+    for (let i = 0; i < 3; i++) {
+      container.querySelector('.fg-timeline__row[data-task-id="t1"]')!.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', altKey: true, bubbles: true, cancelable: true }));
+    }
+    expect(String(gantt.getTask(toTaskId('t1'))!.end)).toContain('2026-01-10T17:00'); // Thu to Sat
+    const g2 = container.querySelector('.fg-task[data-task-id="t1"]') as SVGGElement;
+    const { x, width } = barGeometry(container, 't1');
+    drag(g2, 2, x + width); // Sat 17:00 -> Mon 17:00 = 24 working hours = the stale stored value
+    expect(String(gantt.getTask(toTaskId('t1'))!.end)).toContain('2026-01-12T17:00');
+    void groupEl;
+  });
+});

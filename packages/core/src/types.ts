@@ -207,6 +207,38 @@ export interface TaskLabelParams {
 }
 
 /**
+ * What a keyboard move, resize or link just did, for the polite live region (`GanttMessages.announce`).
+ * Discriminated by `kind`. New kinds and fields MAY be added in a minor release, so a host `switch` should
+ * keep a `default`.
+ */
+export type GanttAnnouncement =
+  /** After a keyboard move or resize (`moved`, `resized`), or when one changed nothing (`cannot-move`,
+   *  `cannot-resize`: a summary, a milestone resize, the one-day minimum, or no working time to extend into).
+   *  `start` / `end` are the task's span as ZonedDateTime strings; `startLabel` / `endLabel` are those
+   *  instants localized with times. */
+  | {
+      readonly kind: 'moved' | 'resized' | 'cannot-move' | 'cannot-resize';
+      readonly id: TaskId;
+      readonly name: string;
+      readonly start: string;
+      readonly end: string;
+      readonly startLabel: string;
+      readonly endLabel: string;
+      readonly locale: string;
+    }
+  /** After Alt+Enter: `linked` when the dependency was created, `link-failed` when it was rejected
+   *  (`reason`). `from` / `to` are task names. */
+  | {
+      readonly kind: 'linked' | 'link-failed';
+      readonly fromId: TaskId;
+      readonly toId: TaskId;
+      readonly from: string;
+      readonly to: string;
+      readonly reason?: 'duplicate' | 'cycle' | 'self';
+      readonly locale: string;
+    };
+
+/**
  * Host-supplied accessible-name builders (`GanttConfig.messages`).
  *
  * Every entry is a COMPLETE sentence produced by one function — deliberately not a table of
@@ -216,24 +248,10 @@ export interface TaskLabelParams {
  * Handing the host all of the state and none of the grammar is what actually makes the string
  * translatable, and it costs zero parser bytes.
  *
- * ONE key at launch, because the audited translatable surface of core is exactly one composed
- * sentence. The scaffold value is the shape: adding `gridColumnLabel`, `emptyState`, `tooltip`
- * or `dependencyLabel` later is a new optional key on an existing optional interface —
- * non-breaking by construction, no architectural change.
+ * Two keys so far (`taskLabel`, `announce`). The scaffold value is the shape: adding `gridColumnLabel`,
+ * `emptyState`, `tooltip` or `dependencyLabel` later is a new optional key on an existing optional
+ * interface — non-breaking by construction, no architectural change.
  */
-export type GanttAnnouncement =
-  /** After a keyboard move / resize: the task's new span, localized with times. */
-  | {
-      readonly kind: 'moved' | 'resized';
-      readonly name: string;
-      readonly startLabel: string;
-      readonly endLabel: string;
-      readonly locale: string;
-    }
-  /** After Alt+Enter: `linked` when the dependency was created, `link-failed` when it was rejected
-   *  (duplicate, or it would form a cycle). `from` / `to` are task names. */
-  | { readonly kind: 'linked' | 'link-failed'; readonly from: string; readonly to: string; readonly locale: string };
-
 export interface GanttMessages {
   /** Text for the polite live region that announces keyboard move, resize and link results
    *  (`withInteraction`). Return a complete sentence; throwing or returning a non-string falls back
