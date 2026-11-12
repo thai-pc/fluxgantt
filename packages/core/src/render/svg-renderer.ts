@@ -319,11 +319,6 @@ let patch: ((ids: readonly TaskId[], focus: TaskId | undefined) => void) | undef
   // `display:block`: no inline descender gap (kept for the export root). `grid-area:1/1` puts the chart in
   // the layer's single grid cell; `exportSvg` strips it from the clone.
   const svg = el('svg', { class: 'fg-timeline' });
-  // DOM focus can move without a render (AT cursor, host `.focus()`): the frame follows it.
-  svg.addEventListener('focusin', (e) => {
-    const id = (e.target as Element).closest('[data-task-id]')?.getAttribute('data-task-id');
-    if (id) place?.(id as TaskId);
-  });
   svg.style.cssText = 'display:block;grid-area:1/1';
   // `role`/`aria-rowcount`/`aria-multiselectable` are set INSIDE render() (spec-keyboard-nav.md
   // §3.2 point 1) — `aria-rowcount` depends on the row count, which isn't known until the
@@ -336,6 +331,12 @@ let patch: ((ids: readonly TaskId[], focus: TaskId | undefined) => void) | undef
   // its own height and sticky stops pinning at the cell's bottom. `max-content`: the wrapper is exactly
   // the chart's width, so blank container space beside a narrow chart is not part of the event target.
   const layer = document.createElement('div');
+  // On the HTML layer, not the svg: Chromium makes an SVG element with focus listeners a Tab stop.
+  // DOM focus can move without a render (AT cursor, host `.focus()`): the frame follows it.
+  layer.addEventListener('focusin', (e) => {
+    const id = (e.target as Element).closest('[data-task-id]')?.getAttribute('data-task-id');
+    if (id) place?.(id as TaskId);
+  });
   layer.className = 'fg-timeline__layer';
   layer.style.cssText = 'display:grid;width:max-content;align-self:start';
 
