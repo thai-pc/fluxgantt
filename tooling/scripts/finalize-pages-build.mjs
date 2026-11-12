@@ -78,7 +78,7 @@ const withBase = htmlFiles.filter((file) => baseTag.test(readFileSync(file, 'utf
 if (withBase.length > 0) {
   fail(
     `${withBase.length} HTML file(s) carry an absolute <base href>, which loads assets from\n` +
-      "  production on every preview. Keep `head.base: false` in apps/docs/vocs.config.ts.",
+      '  production on every preview. Keep `head.base: false` in apps/docs/vocs.config.ts.',
   );
 }
 
