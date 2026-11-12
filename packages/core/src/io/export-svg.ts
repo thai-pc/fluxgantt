@@ -11,7 +11,11 @@
 // escapes text-node content automatically, so no code path here can turn task data into markup.
 // The one thing THIS file adds is baked `getComputedStyle()` values — gated through
 // `isSafeStyleValue()` (a hard whitelist) before ever being written into the clone.
-import { assertValidBackground, isValidBackground, resolveChartBackground } from './export-background.js';
+import {
+  assertValidBackground,
+  isValidBackground,
+  resolveChartBackground,
+} from './export-background.js';
 import type { ExportSvgOptions } from './types.js';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
@@ -101,7 +105,9 @@ export function exportSvg(svg: SVGSVGElement, options?: ExportSvgOptions): strin
   //    Also strips the collapse/expand toggle glyph (spec-collapse-expand.md §6.5) — an
   //    exported static SVG has no click handler behind it, so leaving it in would render a
   //    dead, misleading affordance in the output file.
-  clone.querySelectorAll('.fg-task__link-handle, .fg-timeline__row-toggle, .fg-timeline__focus-row').forEach((el) => el.remove());
+  clone
+    .querySelectorAll('.fg-task__link-handle, .fg-timeline__row-toggle, .fg-timeline__focus-row')
+    .forEach((el) => el.remove());
 
   // 5. Strip every interactive-only `<style>` block — link-handle hover-reveal AND the
   //    selection-outline rule (spec-selection.md §7.3/§11: selection is transient UI state,
@@ -166,7 +172,10 @@ export function exportSvg(svg: SVGSVGElement, options?: ExportSvgOptions): strin
  * opt into. Warns (at most once per property per call) and leaves the clone's original
  * declaration untouched when a resolved value fails `isSafeStyleValue`.
  */
-function bakeComputedStyles(liveEls: NodeListOf<SVGElement>, cloneEls: NodeListOf<SVGElement>): void {
+function bakeComputedStyles(
+  liveEls: NodeListOf<SVGElement>,
+  cloneEls: NodeListOf<SVGElement>,
+): void {
   const warnedProps = new Set<string>();
   for (let i = 0; i < liveEls.length; i++) {
     const live = liveEls[i]!;

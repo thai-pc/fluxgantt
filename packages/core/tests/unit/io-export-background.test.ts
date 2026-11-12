@@ -90,8 +90,9 @@ describe('exportSvg — background rect', () => {
     const h = mount();
     const liveRects = h.svg.querySelectorAll('rect').length;
     const doc = parse(exportSvg(h.svg, { background: 'transparent' }));
-    // The bake never adds a rect: the count equals the live one, and none is a full-size ground.
-    expect(doc.querySelectorAll('rect')).toHaveLength(liveRects);
+    // The bake never adds a rect: the count equals the live one minus the row focus frame (stripped
+    // from exports), and none is a full-size ground.
+    expect(doc.querySelectorAll('rect')).toHaveLength(liveRects - 1);
     expect(doc.querySelector('rect[width="100%"]')).toBeNull();
   });
 
