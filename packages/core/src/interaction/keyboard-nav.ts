@@ -26,6 +26,11 @@ import type { InteractiveRendererHandle } from '../render/index.js';
 import { layoutRows, ROW_HEIGHT, type RowLayout } from '../render/renderer-base.js';
 import { toTaskId, type Density, type Task, type TaskId } from '../types.js';
 
+/**
+ * Options for `enableKeyboardNav`.
+ *
+ * @beta
+ */
 export interface KeyboardNavOptions {
   /** Arrow Up/Down: replace selection with exactly the newly focused task. */
   onSelect: (id: TaskId) => void;
@@ -102,6 +107,11 @@ export interface KeyboardNavOptions {
   getSelection: () => readonly TaskId[];
 }
 
+/**
+ * The handle `enableKeyboardNav` returns.
+ *
+ * @beta
+ */
 export interface KeyboardNavHandle {
   dispose: () => void;
   getFocusedTaskId: () => TaskId | undefined;
@@ -135,6 +145,8 @@ export interface KeyboardNavHandle {
  * the current focus state on every render to thread `focusedTaskId` through
  * `SvgRendererInput`/`CanvasRendererInput` and restore DOM focus after each full repaint —
  * spec §4.5 point 2).
+ *
+ * @beta
  */
 export function enableKeyboardNav(
   handle: InteractiveRendererHandle,
@@ -264,7 +276,10 @@ export function enableKeyboardNav(
         if (mod || event.altKey) return;
         const k = event.key;
         // One row of overlap per page; 32 = HEADER_HEIGHT (as in revealFocusedRow).
-        const page = Math.max(1, (((focusRoot.clientHeight - 32) / ROW_HEIGHT[options.density]) | 0) - 1);
+        const page = Math.max(
+          1,
+          (((focusRoot.clientHeight - 32) / ROW_HEIGHT[options.density]) | 0) - 1,
+        );
         handleMove(
           event,
           rows,
@@ -285,12 +300,17 @@ export function enableKeyboardNav(
         // unprevented; Ctrl/Meta+Alt belongs to the OS/screen readers. preventDefault even when the
         // commit is a clamped no-op, or Alt+Left would fall through to the browser's History Back.
         // Direction is LOGICAL: `mirrorX` is read per event (withRtl assigns it after setup).
-        if (!event.altKey || mod || event.isComposing || options.isReadOnly() || !options.onShift) return;
+        if (!event.altKey || mod || event.isComposing || options.isReadOnly() || !options.onShift)
+          return;
         {
           const id = rows[currentIndex]?.task.id; // the resolved VISIBLE focused row, as `g` does
           if (id === undefined) return;
           event.preventDefault();
-          options.onShift(id, (event.key === 'ArrowRight') === !handle.mirrorX ? 1 : -1, event.shiftKey ? 'end' : undefined);
+          options.onShift(
+            id,
+            (event.key === 'ArrowRight') === !handle.mirrorX ? 1 : -1,
+            event.shiftKey ? 'end' : undefined,
+          );
           if (!disposed) options.onReveal?.(id); // re-reads the task after the commit
         }
         return;
@@ -374,7 +394,13 @@ export function enableKeyboardNav(
         if (event.altKey && !mod) {
           // Alt+Enter links anchor -> focus (never toggles collapse).
           const to = rows[currentIndex]?.task.id;
-          if (to && anchorTaskId && anchorTaskId !== to && !options.isReadOnly() && options.onLink) {
+          if (
+            to &&
+            anchorTaskId &&
+            anchorTaskId !== to &&
+            !options.isReadOnly() &&
+            options.onLink
+          ) {
             event.preventDefault();
             // A source hidden by a collapse is not linked from (drag cannot target hidden bars either).
             if (rows.some((r) => r.task.id === anchorTaskId)) options.onLink(anchorTaskId, to);

@@ -20,7 +20,11 @@
 import type { SvgRendererHandle } from '../render/index.js';
 import type { DateInput, Task, TaskId } from '../types.js';
 import type { Temporal } from '@js-temporal/polyfill';
-import { DEFAULT_DRAG_THRESHOLD_PX, computeDraggedDates, snapDeltaToDay } from '../internal/drag-math.js';
+import {
+  DEFAULT_DRAG_THRESHOLD_PX,
+  computeDraggedDates,
+  snapDeltaToDay,
+} from '../internal/drag-math.js';
 import { getPointerDragController, findGroupTask } from './pointer-drag.js';
 import type { PointerGestureRecognizer } from './pointer-drag.js';
 
@@ -28,6 +32,11 @@ import type { PointerGestureRecognizer } from './pointer-drag.js';
 // so existing import paths keep resolving.
 export { snapDeltaToDay, computeDraggedDates } from '../internal/drag-math.js';
 
+/**
+ * Options for `enableDragMove`.
+ *
+ * @beta
+ */
 export interface DragMoveOptions {
   /**
    * Called EXACTLY ONCE when a drag that exceeded the threshold (`dragThresholdPx`) is
@@ -37,7 +46,11 @@ export interface DragMoveOptions {
    * `TaskStore`, call `taskStore.update(taskId, { start: newStart, end: newEnd })` inside
    * this callback.
    */
-  onTaskMoved(taskId: TaskId, newStart: Temporal.ZonedDateTime, newEnd: Temporal.ZonedDateTime): void;
+  onTaskMoved(
+    taskId: TaskId,
+    newStart: Temporal.ZonedDateTime,
+    newEnd: Temporal.ZonedDateTime,
+  ): void;
 
   /**
    * Movement threshold (px, client coordinates) before a pointerdown is treated as a drag
@@ -75,6 +88,8 @@ interface MoveState {
  * Returns a disposer — unregisters this recognizer. Calling the disposer mid-drag cancels
  * that drag (no commit), equivalent to Escape. Calling the disposer multiple times is a safe
  * no-op.
+ *
+ * @beta
  */
 export function enableDragMove(
   handle: SvgRendererHandle,

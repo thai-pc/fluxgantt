@@ -30,6 +30,11 @@ import type { PointerGestureRecognizer } from './pointer-drag.js';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
+/**
+ * Options for `enableDragCreateDep`.
+ *
+ * @beta
+ */
 export interface DragCreateDepOptions {
   /**
    * Called EXACTLY ONCE on a past-threshold `pointerup` whose drop point resolved (via
@@ -93,6 +98,8 @@ interface LinkState {
  * Returns a disposer — unregisters this recognizer. Calling the disposer mid-drag cancels that
  * gesture (no commit, preview removed), equivalent to Escape. Calling the disposer multiple
  * times is a safe no-op.
+ *
+ * @beta
  */
 export function enableDragCreateDep(
   handle: SvgRendererHandle,
@@ -125,7 +132,14 @@ export function enableDragCreateDep(
       const cy = Number(handleEl.getAttribute('cy'));
       if (!Number.isFinite(cx) || !Number.isFinite(cy)) return null;
 
-      return { from: fromTaskId, edge: handleEnd, ox: handle.mirrorX?.(cx) ?? cx, oy: cy, line: null, xf: null };
+      return {
+        from: fromTaskId,
+        edge: handleEnd,
+        ox: handle.mirrorX?.(cx) ?? cx,
+        oy: cy,
+        line: null,
+        xf: null,
+      };
     },
 
     start(ctx) {
@@ -152,10 +166,7 @@ export function enableDragCreateDep(
 
       const path = document.createElementNS(SVG_NS, 'path') as SVGPathElement;
       path.setAttribute('class', 'fg-dependency-preview');
-      path.setAttribute(
-        'd',
-        `M ${ctx.state.ox} ${ctx.state.oy} L ${ctx.state.ox} ${ctx.state.oy}`,
-      );
+      path.setAttribute('d', `M ${ctx.state.ox} ${ctx.state.oy} L ${ctx.state.ox} ${ctx.state.oy}`);
       path.setAttribute('marker-end', `url(#${ARROWHEAD_MARKER_ID})`);
       path.style.setProperty('fill', 'none');
       path.style.setProperty('stroke', 'var(--fg-dep-line, #64748b)');
@@ -219,6 +230,10 @@ function resolveDropTarget(event: PointerEvent, fromTaskId: TaskId): TaskId | un
   return candidate;
 }
 
-function applyTransform(t: ClientToUserTransform, clientX: number, clientY: number): { x: number; y: number } {
+function applyTransform(
+  t: ClientToUserTransform,
+  clientX: number,
+  clientY: number,
+): { x: number; y: number } {
   return { x: (clientX - t.left) / t.scaleX, y: (clientY - t.top) / t.scaleY };
 }

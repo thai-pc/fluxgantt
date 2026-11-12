@@ -15,6 +15,11 @@ import type { Density, Task, TaskId } from '../types.js';
 import { toTaskId } from '../types.js';
 import { DEFAULT_DRAG_THRESHOLD_PX } from '../internal/drag-math.js';
 
+/**
+ * Options for `enableClickSelect`.
+ *
+ * @beta
+ */
 export interface SelectionOptions {
   /** Plain click (no modifier): replace the selection with this one task (facade expands
    *  descendants). */
@@ -75,6 +80,8 @@ interface DownState {
  * (Canvas path), matching exactly what's on screen. It is accepted for API symmetry with the
  * other `enableDragXxx` functions and to leave room for a future resilience check without a
  * signature change.
+ *
+ * @beta
  */
 export function enableClickSelect(
   handle: InteractiveRendererHandle,
@@ -100,7 +107,10 @@ export function enableClickSelect(
 
   /** Branches on `handle.hitTestRow`'s presence — the Canvas/SVG discriminator
    *  (spec-canvas-renderer-ticket2.md §7.3). */
-  function resolveHit(event: PointerEvent, target: Element): { taskId: TaskId; rowIndex: number; hitToggle?: boolean } | undefined {
+  function resolveHit(
+    event: PointerEvent,
+    target: Element,
+  ): { taskId: TaskId; rowIndex: number; hitToggle?: boolean } | undefined {
     if (handle.hitTestRow) {
       return handle.hitTestRow(event.clientX, event.clientY);
     }

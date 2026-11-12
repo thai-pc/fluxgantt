@@ -9,6 +9,11 @@ import {
   type TaskId,
 } from '../types.js';
 
+/**
+ * Options for `DependencyStore.link`.
+ *
+ * @beta
+ */
 export interface LinkOptions {
   lag?: number; // hours; negative = lead time
   /** Allow creating a link even if it introduces a cycle (default false → throw). */
@@ -28,6 +33,11 @@ export class DependencyLinkError extends Error {
 
 const newDependencyId = (): DependencyId => toDependencyId(`dep-${globalThis.crypto.randomUUID()}`);
 
+/**
+ * Reactive store of dependencies. Prefer the `GanttInstance` methods; direct use is for headless tooling.
+ *
+ * @beta
+ */
 export class DependencyStore {
   readonly #deps = new Map<DependencyId, Dependency>();
   // from -> to -> dependency, and to -> from -> dependency. At most one dependency per pair.
@@ -68,7 +78,9 @@ export class DependencyStore {
   ): Dependency {
     this.#reject(from, to);
     if (!options.allowCycle && this.#canReach(to, from)) {
-      throw new DependencyLinkError(`DependencyStore.link: link ${from} → ${to} would create a cycle`);
+      throw new DependencyLinkError(
+        `DependencyStore.link: link ${from} → ${to} would create a cycle`,
+      );
     }
     const dep: Dependency = { id: newDependencyId(), from, to, type, lag: options.lag ?? 0 };
     this.#put(dep);
@@ -98,7 +110,13 @@ export class DependencyStore {
     try {
       for (const { from, to, type, lag } of inputs) {
         this.#reject(from, to);
-        const dep: Dependency = { id: newDependencyId(), from, to, type: type ?? 'FS', lag: lag ?? 0 };
+        const dep: Dependency = {
+          id: newDependencyId(),
+          from,
+          to,
+          type: type ?? 'FS',
+          lag: lag ?? 0,
+        };
         this.#put(dep);
         made.push(dep);
       }
@@ -115,7 +133,12 @@ export class DependencyStore {
           n = [...this.#in.get(n)!.keys()].find((p) => stuck.has(p));
         }
         const cycle = new Set<TaskId>(); // the repeating tail of the walk, starting at n
-        for (let m = n; m !== undefined && !cycle.has(m); m = [...this.#in.get(m)!.keys()].find((p) => stuck.has(p))) cycle.add(m);
+        for (
+          let m = n;
+          m !== undefined && !cycle.has(m);
+          m = [...this.#in.get(m)!.keys()].find((p) => stuck.has(p))
+        )
+          cycle.add(m);
         let bad = inputs[0]!;
         for (const d of inputs) if (cycle.has(d.from) && cycle.has(d.to)) bad = d;
         throw new DependencyLinkError(
@@ -147,6 +170,8 @@ export class DependencyStore {
    * already stored must keep its endpoints. A second dependency on an occupied pair is kept (as
    * before the pair indices existed) but the pair lookups (`linkExists`, `unlink`, `of`, ...) only
    * see the latest one.
+   *
+   * @deprecated History replay only: bypasses validation and events. No replacement; will be removed no earlier than 2 minor releases and 30 days after this release.
    */
   restore(dependency: Dependency): Dependency {
     this.#put(dependency);
@@ -253,7 +278,10 @@ export class DependencyStore {
 
   /** Every dependency touching a task, each once (a stored self-loop would otherwise repeat). */
   #touching(taskId: TaskId): Set<Dependency> {
-    return new Set([...(this.#out.get(taskId)?.values() ?? []), ...(this.#in.get(taskId)?.values() ?? [])]);
+    return new Set([
+      ...(this.#out.get(taskId)?.values() ?? []),
+      ...(this.#in.get(taskId)?.values() ?? []),
+    ]);
   }
 
   /** Insert or replace a dependency, keeping the pair indices and insertion order in step. */

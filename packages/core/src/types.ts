@@ -5,17 +5,47 @@ import type { Temporal } from '@js-temporal/polyfill';
 export type Brand<T, B> = T & { readonly __brand: B };
 
 export type TaskId = Brand<string, 'TaskId'>;
+/**
+ * Branded resource identifier (reserved for the Pro resource view).
+ *
+ * @beta
+ */
 export type ResourceId = Brand<string, 'ResourceId'>;
 export type DependencyId = Brand<string, 'DependencyId'>;
+/**
+ * Branded baseline identifier (reserved for the Pro baseline feature).
+ *
+ * @beta
+ */
 export type BaselineId = Brand<string, 'BaselineId'>;
+/**
+ * Branded project identifier (reserved for Cloud).
+ *
+ * @beta
+ */
 export type ProjectId = Brand<string, 'ProjectId'>;
 
 // Coercion at the boundary: the public API accepts plain strings, the core brands
 // them internally (spec §6.1). Callers never need to write `as TaskId`.
 export const toTaskId = (s: string): TaskId => s as TaskId;
+/**
+ * Brands a string as a `ResourceId`.
+ *
+ * @beta
+ */
 export const toResourceId = (s: string): ResourceId => s as ResourceId;
 export const toDependencyId = (s: string): DependencyId => s as DependencyId;
+/**
+ * Brands a string as a `BaselineId`.
+ *
+ * @beta
+ */
 export const toBaselineId = (s: string): BaselineId => s as BaselineId;
+/**
+ * Brands a string as a `ProjectId`.
+ *
+ * @beta
+ */
 export const toProjectId = (s: string): ProjectId => s as ProjectId;
 
 // Schedule instants accept several input shapes; normalized to Temporal internally (spec §6.2).
@@ -29,6 +59,11 @@ export type DependencyType =
 
 export type TaskKind = 'task' | 'summary' | 'milestone' | 'project';
 
+/**
+ * A scheduling constraint on a task, discriminated by `kind`.
+ *
+ * @beta
+ */
 export type TaskConstraint =
   | { kind: 'asap' }
   | { kind: 'alap' }
@@ -39,6 +74,11 @@ export type TaskConstraint =
   | { kind: 'finish-no-earlier-than'; date: DateInput }
   | { kind: 'finish-no-later-than'; date: DateInput };
 
+/**
+ * Assignment of a resource to a task with a utilisation `units` fraction.
+ *
+ * @beta
+ */
 export interface ResourceAssignment {
   resourceId: ResourceId;
   units: number; // 0..1 = % allocation
@@ -210,6 +250,8 @@ export interface TaskLabelParams {
  * What a keyboard move, resize or link just did, for the polite live region (`GanttMessages.announce`).
  * Discriminated by `kind`. New kinds and fields MAY be added in a minor release, so a host `switch` should
  * keep a `default`.
+ *
+ * @beta
  */
 export type GanttAnnouncement =
   /** After a keyboard move or resize (`moved`, `resized`), or when one changed nothing (`cannot-move`,
@@ -255,6 +297,8 @@ export type GanttAnnouncement =
 export interface GanttMessages {
   /** Text for the polite live region that announces keyboard move, resize and link results
    *  (`withInteraction`). Return a complete sentence; throwing or returning a non-string falls back
+   *
+   * @beta
    *  to the English default. Inserted with `textContent`, never as HTML. */
   readonly announce?: (announcement: GanttAnnouncement) => string;
   /** Replaces the per-task `aria-label` sentence wholesale. Throwing, or returning a

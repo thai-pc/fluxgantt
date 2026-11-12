@@ -11,6 +11,11 @@ export type TaskPatch = Partial<Omit<Task, 'id' | 'createdAt' | 'updatedAt'>>;
 
 const newTaskId = (): TaskId => toTaskId(`task-${globalThis.crypto.randomUUID()}`);
 
+/**
+ * Reactive store of tasks. Prefer the `GanttInstance` methods; direct use is for headless tooling.
+ *
+ * @beta
+ */
 export class TaskStore {
   readonly #tasks = new Map<TaskId, Task>();
   // parent -> direct children (unordered); `#pos` restores global insertion order in children().
@@ -69,6 +74,8 @@ export class TaskStore {
    * a bit-for-bit-identical prior `Task`, which undo/redo needs so that "undo, then redo" lands
    * on an object equal (by value, all fields) to the one that existed before the undo, not a
    * near-identical one with drifted timestamps. Bumps `revision` like every other mutation.
+   *
+   * @deprecated History replay only: bypasses validation and events. No replacement; will be removed no earlier than 2 minor releases and 30 days after this release.
    */
   restore(task: Task): Task {
     this.#put(task);
@@ -173,6 +180,8 @@ export class TaskStore {
   #childrenOf(id: TaskId): Task[] {
     const kids = this.#kids.get(id);
     if (!kids) return [];
-    return [...kids].sort((a, b) => this.#pos.get(a)! - this.#pos.get(b)!).map((k) => this.#tasks.get(k)!);
+    return [...kids]
+      .sort((a, b) => this.#pos.get(a)! - this.#pos.get(b)!)
+      .map((k) => this.#tasks.get(k)!);
   }
 }

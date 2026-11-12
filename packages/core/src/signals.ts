@@ -6,6 +6,11 @@
 // This is the Wave 1 skeleton — correct enough for dependency tracking + batching;
 // glitch-free/diamond optimization is deferred (see note at the end of the file).
 
+/**
+ * A read-only reactive value: reading `value` inside an `effect` or `computed` subscribes to it.
+ *
+ * @beta
+ */
 export interface ReadonlySignal<T> {
   readonly value: T;
   /** Read the value WITHOUT registering a dependency. */
@@ -38,6 +43,12 @@ function link(subscribers: DepSet): void {
   }
 }
 
+/**
+ * The writable reactive cell `signal()` creates.
+ *
+ * @deprecated Implementation detail of `signal()`. Annotate with the `ReadonlySignal` type instead; the class will stop being exported (a type-only export remains) no earlier than 2 minor releases and 30 days after this release.
+ * @beta
+ */
 export class Signal<T> implements ReadonlySignal<T> {
   readonly #subs: DepSet = new Set();
   #value: T;
@@ -168,23 +179,39 @@ function flush(): void {
   if (errs.length) throw errs[0];
 }
 
-/** Create a reactive signal that can be read/written through `.value`. */
+/**
+ * Create a reactive signal that can be read/written through `.value`.
+ *
+ * @beta
+ */
 export function signal<T>(value: T): Signal<T> {
   return new Signal(value);
 }
 
-/** A derived, memoized value that updates automatically when its dependencies change. */
+/**
+ * A derived, memoized value that updates automatically when its dependencies change.
+ *
+ * @beta
+ */
 export function computed<T>(fn: () => T): ReadonlySignal<T> {
   return new ComputedImpl(fn);
 }
 
-/** Run `fn` immediately and re-run it whenever its dependencies change. Returns a dispose fn. */
+/**
+ * Run `fn` immediately and re-run it whenever its dependencies change. Returns a dispose fn.
+ *
+ * @beta
+ */
 export function effect(fn: () => void): () => void {
   const e = new EffectImpl(fn);
   return () => e.dispose();
 }
 
-/** Batch multiple writes into a single effect flush. */
+/**
+ * Batch multiple writes into a single effect flush.
+ *
+ * @beta
+ */
 export function batch<T>(fn: () => T): T {
   batchDepth++;
   let ok = false;
@@ -205,7 +232,11 @@ export function batch<T>(fn: () => T): T {
   }
 }
 
-/** Run `fn` WITHOUT registering dependencies for the current subscriber. */
+/**
+ * Run `fn` WITHOUT registering dependencies for the current subscriber.
+ *
+ * @beta
+ */
 export function untracked<T>(fn: () => T): T {
   const prev = activeSub;
   activeSub = null;

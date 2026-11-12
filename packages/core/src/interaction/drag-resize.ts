@@ -35,6 +35,11 @@ import type { PointerGestureRecognizer } from './pointer-drag.js';
 
 export { computeClampedResizedEnd } from '../internal/drag-math.js';
 
+/**
+ * Options for `enableDragResize`.
+ *
+ * @beta
+ */
 export interface DragResizeOptions {
   /** Called EXACTLY ONCE on a past-threshold `pointerup` that started in the right-edge
    *  hit-zone. Delivers ONLY the snapped new END — calendar-free, mirrors `onTaskMoved`'s
@@ -86,6 +91,8 @@ interface ResizeState {
  * Returns a disposer — unregisters this recognizer. Calling the disposer mid-resize cancels
  * that resize (no commit, width attribute reverted), equivalent to Escape. Calling the
  * disposer multiple times is a safe no-op.
+ *
+ * @beta
  */
 export function enableDragResize(
   handle: SvgRendererHandle,
@@ -142,13 +149,15 @@ export function enableDragResize(
       const rightEdgeX = left + (handle.mirrorX?.(endX) ?? endX) * scaleX;
       // Defensive bound only: in production `closest()` already guarantees the pointerdown
       // landed on `barEl`, so `event.clientX` is already within the bar's client-space span.
-      if (event.clientX < rightEdgeX - edgeHitZonePx || event.clientX > rightEdgeX + edgeHitZonePx) return null;
+      if (event.clientX < rightEdgeX - edgeHitZonePx || event.clientX > rightEdgeX + edgeHitZonePx)
+        return null;
 
       const progressEl = groupEl.querySelector('.fg-task__progress');
       const progressWidth = progressEl ? Number(progressEl.getAttribute('width')) : NaN;
       // Guarded to 0 on a missing or malformed attribute — a NaN ratio would write `NaN` widths
       // into the DOM for the rest of the gesture.
-      const progressRatio = barWidth > 0 && Number.isFinite(progressWidth) ? progressWidth / barWidth : 0;
+      const progressRatio =
+        barWidth > 0 && Number.isFinite(progressWidth) ? progressWidth / barWidth : 0;
 
       return {
         taskId: task.id,
@@ -162,12 +171,7 @@ export function enableDragResize(
     },
     move(ctx, dxPixels) {
       const deltaDays = snapDeltaToDay(dxPixels, ctx.ts);
-      const tentativeEnd = computeClampedResizedEnd(
-        ctx.ts,
-        ctx.state.s0,
-        ctx.state.e0,
-        deltaDays,
-      );
+      const tentativeEnd = computeClampedResizedEnd(ctx.ts, ctx.state.s0, ctx.state.e0, deltaDays);
       // Live pixel width derived from the SAME clamp via the already-captured `TimeScale`
       // (`dateToX`) — single source of truth, avoids "two clamp implementations that must
       // agree". MUST be computed entirely in offset-free `dateToX` space: the bar's rendered
@@ -176,10 +180,7 @@ export function enableDragResize(
       // (the earlier `dateToX(end) - originalX`) under-sized the live bar by exactly
       // `LABEL_COLUMN_WIDTH` (collapsing sub-160px bars to 0 mid-drag). `end - start` in one
       // space is offset-independent and correct.
-      const newWidth = Math.max(
-        0,
-        ctx.ts.dateToX(tentativeEnd) - ctx.ts.dateToX(ctx.state.s0),
-      );
+      const newWidth = Math.max(0, ctx.ts.dateToX(tentativeEnd) - ctx.ts.dateToX(ctx.state.s0));
       ctx.state.bar.setAttribute('width', String(newWidth));
       if (ctx.state.fill) {
         ctx.state.fill.setAttribute('width', String(newWidth * ctx.state.ratio));
@@ -188,12 +189,7 @@ export function enableDragResize(
     },
     commit(ctx, dxPixels) {
       const deltaDays = snapDeltaToDay(dxPixels, ctx.ts);
-      const newEnd = computeClampedResizedEnd(
-        ctx.ts,
-        ctx.state.s0,
-        ctx.state.e0,
-        deltaDays,
-      );
+      const newEnd = computeClampedResizedEnd(ctx.ts, ctx.state.s0, ctx.state.e0, deltaDays);
       recognizer.cancel(ctx); // drop the live preview: a skipped commit must not leave a stale bar
       options.onTaskResized(ctx.state.taskId, newEnd);
     },

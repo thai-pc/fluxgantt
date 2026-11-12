@@ -26,6 +26,8 @@ export const NS_PER_HOUR = 3_600_000_000_000n;
  * `getTemporal()` itself so callers outside this file (render/interaction layer) never
  * need to touch `getTemporal()`/`TemporalApi` directly. Does not change `normalize`'s
  * behaviour or signature — additive export only (spec-svg-renderer.md §3.1).
+ *
+ * @beta
  */
 export function normalizeDate(input: DateInput, timezone: string): Temporal.ZonedDateTime {
   return normalize(input, timezone, getTemporal());
@@ -143,7 +145,8 @@ export function workingHoursMeter(
 ): (from: ZDT, to: ZDT) => number {
   const api = getTemporal();
   const holidays = holidaySet(cal, api);
-  const dayOf = (t: ZDT): PlainDate => t.withTimeZone(cal.timezone).toPlainDate().withCalendar('iso8601');
+  const dayOf = (t: ZDT): PlainDate =>
+    t.withTimeZone(cal.timezone).toPlainDate().withCalendar('iso8601');
   const before = new Map<string, bigint>();
   const last = dayOf(hi);
   let total = 0n;
@@ -156,7 +159,8 @@ export function workingHoursMeter(
   const at = (t: ZDT): bigint => {
     const day = dayOf(t);
     const base = before.get(day.toString());
-    if (base === undefined) throw new RangeError(`working-hours meter: ${day} is outside the table`);
+    if (base === undefined)
+      throw new RangeError(`working-hours meter: ${day} is outside the table`);
     return base + workingNsUpTo(day, t.epochNanoseconds, cal, holidays, api);
   };
   return (from, to) => Number(at(to) - at(from)) / Number(NS_PER_HOUR);
@@ -171,7 +175,11 @@ export function weekdayCode(dayOfWeek: number): WeekdayCode {
   return WEEKDAYS[dayOfWeek % 7]!;
 }
 
-export function isWorkingPlainDate(day: PlainDate, cal: WorkingCalendar, holidays: Set<string>): boolean {
+export function isWorkingPlainDate(
+  day: PlainDate,
+  cal: WorkingCalendar,
+  holidays: Set<string>,
+): boolean {
   return cal.workingDays.includes(weekdayCode(day.dayOfWeek)) && !holidays.has(day.toString());
 }
 
@@ -190,7 +198,11 @@ export function holidaySet(cal: WorkingCalendar, api: T): Set<string> {
   return set;
 }
 
-export function windowsFor(day: PlainDate, cal: WorkingCalendar, api: T): Array<{ start: ZDT; end: ZDT }> {
+export function windowsFor(
+  day: PlainDate,
+  cal: WorkingCalendar,
+  api: T,
+): Array<{ start: ZDT; end: ZDT }> {
   return cal.workingHours
     .map((w) => ({
       start: day.toZonedDateTime({ timeZone: cal.timezone, plainTime: parseTime(w.start, api) }),
@@ -214,7 +226,13 @@ export function dayAt(day: PlainDate, tz: string, time: string, api: T): ZDT {
 }
 
 /** Working ns on `day` up to instant `now` (epoch ns): each window clipped at `now`. */
-export function workingNsUpTo(day: PlainDate, now: bigint, cal: WorkingCalendar, holidays: Set<string>, api: T): bigint {
+export function workingNsUpTo(
+  day: PlainDate,
+  now: bigint,
+  cal: WorkingCalendar,
+  holidays: Set<string>,
+  api: T,
+): bigint {
   let ns = 0n;
   if (isWorkingPlainDate(day, cal, holidays)) {
     for (const w of windowsFor(day, cal, api)) {

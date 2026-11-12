@@ -20,12 +20,22 @@ import type { Dependency, Task, TaskId, WorkingCalendar } from '../types.js';
 
 const CALLER_NAME = 'computeCascade';
 
+/**
+ * One task moved by a cascade: its previous and new span.
+ *
+ * @beta
+ */
 export interface CascadeShift {
   readonly taskId: TaskId;
   readonly start: Temporal.ZonedDateTime;
   readonly end: Temporal.ZonedDateTime;
 }
 
+/**
+ * What `computeCascade` returns: the shifts to apply, in application order.
+ *
+ * @beta
+ */
 export interface CascadeResult {
   /**
    * Successors that must move, in the order they were resolved (a valid topological
@@ -57,6 +67,8 @@ export interface CascadeResult {
  * from `computeCriticalPath`/`dependency-math.ts` — should be unreachable via `linkTasks`,
  * which already rejects cycles at edge-creation time; only reachable via
  * `DependencyStore.link(..., { allowCycle: true })` used directly).
+ *
+ * @beta
  */
 export function computeCascade(
   tasks: readonly Task[],
@@ -125,7 +137,14 @@ export function computeCascade(
     const candidateEs = preds
       .map((dep) => {
         const predPos = current.get(dep.from)!; // always present: earlier in topo order, or untouched original
-        return earliestStartFromPredecessor(predPos.start, predPos.end, dep.type, dep.lag ?? 0, taskDuration, calendar);
+        return earliestStartFromPredecessor(
+          predPos.start,
+          predPos.end,
+          dep.type,
+          dep.lag ?? 0,
+          taskDuration,
+          calendar,
+        );
       })
       .reduce((acc, candidate) => laterOf(acc, candidate));
 
