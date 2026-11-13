@@ -524,6 +524,7 @@ export interface TaskActivatedPayload {
     readonly clientX: number;
     // (undocumented)
     readonly clientY: number;
+    // @beta
     readonly columnId?: string;
     // (undocumented)
     readonly part: TaskHitPart;
@@ -564,6 +565,7 @@ export interface TaskContextRequestedPayload {
     readonly clientX: number;
     // (undocumented)
     readonly clientY: number;
+    // @beta
     readonly columnId?: string;
     // (undocumented)
     readonly part: TaskHitPart;

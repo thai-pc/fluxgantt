@@ -38,7 +38,7 @@ The API report is the lock and the TSDoc tag decides the tier (stable, `@beta`, 
    | `+ withIo` | soft | 13528 / 13.21 | 14 KiB |
    | `+ withRender` | soft | 16048 / 15.67 | 15 KiB |
    | `+ withRender + withTheme` | soft | 16742 / 16.35 | 16 KiB |
-   | `+ withRender + withInteraction + withResponsive` | soft | 23255 / 22.71 | 21 KiB |
+   | `+ withRender + withInteraction + withResponsive` | soft | 23256 / 22.71 | 21 KiB |
    | `+ withRender + withViewport` | soft | 16967 / 16.57 | 16 KiB |
    | `+ withConflicts` (headless) | soft | 10322 / 10.08 | 10 KiB |
    | `+ withRender + withEditHooks` | soft | 17397 / 16.99 | 16 KiB |

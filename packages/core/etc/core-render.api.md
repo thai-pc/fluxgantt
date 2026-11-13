@@ -202,6 +202,7 @@ export interface SvgRendererOptions {
     readonly locale?: string;
     // Warning: (ae-forgotten-export) The symbol "GanttMessages" needs to be exported by the entry point index.d.ts
     readonly messages?: GanttMessages;
+    readonly paintHooks?: PaintHook[] | undefined;
     readonly showLinkHandles?: boolean;
     readonly timeRange?: {
         readonly start: DateInput;
@@ -257,7 +258,7 @@ export function withRender<T extends GanttInstance>(instance: T): T & RenderCapa
 
 // Warnings were encountered during analysis:
 //
-// dist/svg-renderer-DbMUSKRM.d.ts:403:9 - (ae-forgotten-export) The symbol "DateInput" needs to be exported by the entry point index.d.ts
+// dist/svg-renderer-D_t1EOjq.d.ts:403:9 - (ae-forgotten-export) The symbol "DateInput" needs to be exported by the entry point index.d.ts
 
 // (No @packageDocumentation comment for this package)
 

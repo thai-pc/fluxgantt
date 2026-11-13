@@ -90,7 +90,8 @@ function wireInto(
     // The trailing no-break space alternates so two identical announcements in a row still differ as
     // strings: browsers and screen readers (VoiceOver, NVDA) skip a live-region update whose text is unchanged, and it is
     // silent (whitespace). Clearing first would need a timer, which NVDA can coalesce away.
-    live.textContent = s.slice(0, 400) + ((flip = !flip) ? '\u00A0' : '');
+    flip = !flip;
+    live.textContent = s.slice(0, 400) + (flip ? '\u00A0' : '');
   });
   const say = (kind: GanttAnnouncement['kind'], a: Task, b?: Task, reason?: string) => {
     const locale = config.locale ?? 'en';
