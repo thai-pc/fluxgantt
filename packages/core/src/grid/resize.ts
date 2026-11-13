@@ -80,7 +80,9 @@ export function beginDrag(env: ResizeEnv, el: HTMLElement, start: PointerEvent, 
   // Viewport-fixed (position:fixed) so one guide serves both renderers and any scroll offset; a border,
   // not a fill, so forced colors recolour it.
   const guide = div('fg-grid__guide');
-  guide.style.cssText = `position:fixed;pointer-events:none;top:${box.top}px;height:${box.height}px;margin-left:-1px;border-left:2px solid var(--fg-task-focus,#0369a1)`;
+  guide.style.cssText = 'position:fixed;pointer-events:none;margin-left:-1px;border-left:2px solid var(--fg-task-focus,#0369a1)';
+  guide.style.top = `${box.top}px`;
+  guide.style.height = `${box.height}px`;
   let width = col.width;
   const place = (): void => {
     guide.style.left = `${x0 + sign * (width - col.width)}px`;
@@ -146,7 +148,8 @@ export function sizerPaint(env: ResizeEnv): PaintHook {
     const layer = e.corner.parentElement!;
     layer.querySelector(':scope > .fg-grid__ov')?.remove();
     const ov = div('fg-grid__ov');
-    ov.style.cssText = `width:${v.width}px;height:${HEADER_HEIGHT}px`;
+    ov.style.width = `${v.width}px`;
+    ov.style.height = `${HEADER_HEIGHT}px`;
     ov.append(document.createElement('style'));
     ov.firstElementChild!.append(STYLE);
     v.cols.forEach((c, i) => {
@@ -222,7 +225,9 @@ export function attachHeaderKeys(env: ResizeEnv, ring: boolean): () => void {
     const ov = ring ? container.querySelector('.fg-grid__ov') : null;
     if (!ov) return;
     const r = div('fg-grid__ring');
-    r.style.cssText = `--fg-x:${v.offs[i]}px;--fg-w:${v.cols[i]!.width}px;height:${HEADER_HEIGHT}px`;
+    r.style.setProperty('--fg-x', `${v.offs[i]}px`);
+    r.style.setProperty('--fg-w', `${v.cols[i]!.width}px`);
+    r.style.height = `${HEADER_HEIGHT}px`;
     ov.append(r);
   };
   container.addEventListener('keydown', onKey);
