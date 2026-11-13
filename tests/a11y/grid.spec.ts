@@ -124,10 +124,12 @@ for (const [label, query] of [
   });
 }
 
-test('exactly one column header is a tab stop and the handles are not focusable', async ({ page }) => {
+test('the chart is one Tab stop: headers are script-focusable only and the handles are not focusable', async ({ page }) => {
   await open(page);
-  const stops = await page.locator('#gantt [role=columnheader]').evaluateAll((hs) => hs.filter((h) => h.getAttribute('tabindex') === '00').length);
-  expect(stops).toBe(1);
+  const tabindexes = await page.locator('#gantt [role=columnheader]').evaluateAll((hs) => hs.map((h) => h.getAttribute('tabindex')));
+  expect(tabindexes).toEqual(['-1', '-1', '-1', '-1', '-1']);
+  const stops = await page.locator('#gantt svg.fg-timeline [tabindex]').evaluateAll((es) => es.filter((e) => Number(e.getAttribute('tabindex')) >= 0).map((e) => e.getAttribute('role')));
+  expect(stops).toEqual(['row']);
   await expect(page.locator('.fg-grid__sizer')).toHaveCount(5);
   expect(await page.locator('.fg-grid__sizer').evaluateAll((s) => s.some((e) => e.hasAttribute('tabindex')))).toBe(false);
 });

@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 
-// Keyboard move/resize/link (WCAG 2.2 SC 2.5.7, spec-keyboard-move-resize.md): after a keyboard move
+// Keyboard move/resize/link (WCAG 2.1.1 Keyboard, spec-keyboard-move-resize.md): after a keyboard move
 // the chart stays axe-clean, focus stays on the same row, the row's accessible name carries the new
 // date, and no new Tab stop appears. Fixture: `canvas-drag.html?pad=0` (SVG twin).
 

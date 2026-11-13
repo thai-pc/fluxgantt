@@ -70,6 +70,7 @@ test('a column header focused with the keyboard shows its frame', async ({ page 
   await open(page);
   await page.locator('#gantt [role=columnheader][data-column-id=start]').focus();
   await page.keyboard.press('Alt+ArrowRight');
+  await expect(page.locator('.fg-grid__ring')).toHaveCount(1); // drawn by the lazy half
   await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => r(undefined)))));
   await expect(page.locator('#gantt')).toHaveScreenshot('grid-header-focus.png');
 });
@@ -77,5 +78,6 @@ test('a column header focused with the keyboard shows its frame', async ({ page 
 test('RTL: the focused header frame', async ({ page }) => {
   await open(page, 'rtl=1');
   await page.locator('#gantt [role=columnheader][data-column-id=start]').focus();
+  await expect(page.locator('.fg-grid__ring')).toHaveCount(1);
   await expect(page.locator('#gantt')).toHaveScreenshot('grid-header-focus-rtl.png');
 });

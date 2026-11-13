@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 //
-// Keyboard alternative to drag (WCAG 2.2 SC 2.5.7, spec-keyboard-move-resize.md): Alt+Arrow moves,
+// Keyboard alternative to drag (WCAG 2.1.1 Keyboard, spec-keyboard-move-resize.md): Alt+Arrow moves,
 // Alt+Shift+Arrow resizes the end, Shift+Arrow then Alt+Enter links. Facade-level, jsdom.
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import fc from 'fast-check';

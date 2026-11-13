@@ -121,7 +121,7 @@ gantt.duplicateTask();
 With `withInteraction()` and a mounted chart, the same operations are bound to
 <kbd>Ctrl/Cmd+Z</kbd>, <kbd>Ctrl/Cmd+Shift+Z</kbd>, <kbd>Ctrl/Cmd+D</kbd>,
 <kbd>Ctrl/Cmd+±</kbd> and <kbd>Ctrl</kbd>+wheel. Drag also has a keyboard alternative on the
-focused row (WCAG 2.2 SC 2.5.7): <kbd>Alt+←/→</kbd> moves it one day, <kbd>Alt+Shift+←/→</kbd>
+focused row (WCAG 2.1.1 Keyboard; the single-pointer alternative to dragging that SC 2.5.7 asks for is a control in your own UI that calls `moveTask()` / `resizeTask()`): <kbd>Alt+←/→</kbd> moves it one day, <kbd>Alt+Shift+←/→</kbd>
 resizes its end, and <kbd>Shift+↑/↓</kbd> then <kbd>Alt+Enter</kbd> links the range anchor to the
 focused row. These are off under `readOnly`.
 

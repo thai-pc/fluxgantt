@@ -7,7 +7,7 @@
 // SVG parity of the cell text. Real pixels, sticky pinning and the CDP accessibility tree are Playwright's.
 // The renderer is built directly and wired through the real `withGrid` mixin (`renderer:selected`), so the
 // lazy `canvas-grid` chunk is loaded exactly as a Canvas mount loads it.
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, beforeAll, beforeEach, afterEach, vi } from 'vitest';
 import { createGantt } from '../../src/gantt.js';
 import { withRender } from '../../src/render/mixin.js';
 import { withIo } from '../../src/io/mixin.js';
@@ -152,9 +152,12 @@ const up = (target: Element, clientX: number): void => {
   target.dispatchEvent(e);
 };
 const heads = (layer: Element) => [...layer.querySelectorAll<HTMLElement>('[role=columnheader]')];
-const key = (el: Element, k: string, alt = false): KeyboardEvent => {
+beforeAll(() => import('../../src/grid/resize-ui.js'));
+const flush = () => new Promise<void>((r) => setTimeout(r, 0));
+const key = async (el: Element, k: string, alt = false): Promise<KeyboardEvent> => {
   const e = new KeyboardEvent('keydown', { key: k, altKey: alt, bubbles: true, cancelable: true });
   el.dispatchEvent(e);
+  await flush(); // the header actions run in the lazy half
   return e;
 };
 const widthOf = (g: { getGridColumns(): readonly { id: string; width: number }[] }, c: string) => g.getGridColumns().find((x) => x.id === c)!.width;
@@ -228,15 +231,30 @@ describe('pointer resize in the header band', () => {
 });
 
 describe('keyboard resize on a Canvas column header', () => {
-  it('has a roving tab stop on the headers', async () => {
+  it('makes the headers script-focusable only: the chart stays one Tab stop', async () => {
     const { layer } = await mountCanvas();
-    expect(heads(layer).map((h) => h.getAttribute('tabindex'))).toEqual(['0', '-1', '-1', '-1', '-1']);
+    expect(heads(layer).map((h) => h.getAttribute('tabindex'))).toEqual(['-1', '-1', '-1', '-1', '-1']);
+    expect([...layer.querySelectorAll('[tabindex="0"]')].every((e) => e.getAttribute('role') === 'row')).toBe(true);
+  });
+
+  it('ArrowUp on the first row enters the headers, ArrowDown returns to row 0, Escape to the roving row', async () => {
+    const { layer } = await mountCanvas();
+    const row0 = layer.querySelector<HTMLElement>('[role=row][data-row-index="0"]')!;
+    row0.focus();
+    const up = await key(document.activeElement!, 'ArrowUp');
+    expect(up.defaultPrevented).toBe(true);
+    expect(document.activeElement!.getAttribute('data-column-id')).toBe('name');
+    await key(document.activeElement!, 'ArrowDown');
+    expect(document.activeElement!.getAttribute('data-row-index')).toBe('0');
+    await key(document.activeElement!, 'ArrowUp');
+    await key(document.activeElement!, 'Escape');
+    expect(document.activeElement!.getAttribute('role')).toBe('row');
   });
 
   it('Alt+Right resizes, the header keeps focus through the a11y rebuild and the row focus does not take it', async () => {
     const { g, layer } = await mountCanvas();
     heads(layer)[1]!.focus();
-    key(document.activeElement!, 'ArrowRight', true);
+    await key(document.activeElement!, 'ArrowRight', true);
     expect(widthOf(g, 'start')).toBe(136);
     const active = document.activeElement as HTMLElement;
     expect(active.getAttribute('role')).toBe('columnheader');
@@ -258,9 +276,50 @@ describe('keyboard resize on a Canvas column header', () => {
   it('Left/Right move between headers', async () => {
     const { layer } = await mountCanvas();
     heads(layer)[0]!.focus();
-    key(document.activeElement!, 'ArrowRight');
+    await key(document.activeElement!, 'ArrowRight');
     expect(document.activeElement!.getAttribute('data-column-id')).toBe('start');
-    key(document.activeElement!, 'End');
+    await key(document.activeElement!, 'End');
     expect(document.activeElement!.getAttribute('data-column-id')).toBe('progress');
+  });
+});
+
+describe('hover cursor and fixed columns', () => {
+  it('shows the resize cursor over a divider and hides the hover from competing pointermove listeners (canvas-drag resets the cursor)', async () => {
+    const { handle, label } = await mountCanvas();
+    label.getBoundingClientRect = () => rect(0, W);
+    const canvas = handle.pointerEventTarget;
+    const rival = vi.fn(() => {
+      canvas.style.cursor = ''; // what canvas-drag's hover does with no bar claim
+    });
+    canvas.addEventListener('pointermove', rival);
+    const move = (x: number, y: number) => canvas.dispatchEvent(Object.assign(new MouseEvent('pointermove', { bubbles: true, clientX: x, clientY: y }), { pointerType: 'mouse' }));
+    move(340, 10);
+    expect(canvas.style.cursor).toBe('col-resize');
+    move(341, 10);
+    expect(rival).not.toHaveBeenCalled();
+    expect(canvas.style.cursor).toBe('col-resize');
+    move(300, 10);
+    expect(rival).toHaveBeenCalledTimes(1);
+    expect(canvas.style.cursor).toBe('');
+  });
+
+  it('has no hot zone for a fixed column', async () => {
+    const { handle, label } = await mountCanvas({ columns: [{ id: 'name' }, { id: 'start', width: 100, minWidth: 100, maxWidth: 100 }, { id: 'end' }] });
+    label.getBoundingClientRect = () => rect(0, 440);
+    const other = vi.fn();
+    handle.pointerEventTarget.addEventListener('pointerdown', other);
+    handle.pointerEventTarget.dispatchEvent(down(320, 10)); // the fixed start column ends at 320
+    expect(other).toHaveBeenCalledTimes(1);
+    expect(container.querySelector('.fg-grid__guide')).toBeNull();
+  });
+
+  it('a repaint mid-drag does not break the drag', async () => {
+    const { g, handle, label } = await mountCanvas();
+    label.getBoundingClientRect = () => rect(0, W);
+    handle.pointerEventTarget.dispatchEvent(down(340, 10));
+    handle.setOptions({}); // a full repaint
+    up(handle.pointerEventTarget, 380);
+    expect(container.querySelector('.fg-grid__guide')).toBeNull();
+    expect(widthOf(g, 'start')).toBe(160);
   });
 });

@@ -1,7 +1,7 @@
 import { test, expect, type Page } from '@playwright/test';
 
 // Real-browser coverage for grid column resize (spec-grid-columns.md section 7, PR G3), SVG and Canvas,
-// LTR and RTL: the drag handles, the guide, Escape, the keyboard path on a focused column header (WCAG 2.5.7),
+// LTR and RTL: the drag handles, the guide, Escape, the keyboard path on a focused column header (WCAG 2.1.1; the single-pointer alternative is the host's `resizeGridColumn()`),
 // the focus frame, the announcement, and that nothing leaks to selection. Fixture: `grid.html` (`?rows=2100`
 // mounts the Canvas renderer through the real `mount()`). Chromium only (the project's `e2e` device).
 
@@ -125,16 +125,32 @@ for (const canvas of [false, true]) {
   }
 
   test.describe(canvas ? 'Canvas' : 'SVG', () => {
-    test('Shift+Tab from a row lands on a column header without scrolling the chart', async ({ page }) => {
+    test('the chart is one Tab stop (the row), ArrowUp from row 0 enters the headers, ArrowDown and Escape return', async ({ page }) => {
       await open(page, 'rows=60', canvas);
-      await page.evaluate(() => (document.getElementById('gantt')!.scrollTop = 300));
+      await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+      await page.keyboard.press('Tab');
+      const focused = page.locator('#gantt [role=row]:focus');
+      await expect(focused).toHaveCount(1); // Tab lands on the row, not on a header
+      await page.evaluate(() => (document.querySelector('#gantt [role=row][data-row-index="0"]') as HTMLElement).focus());
+      await page.keyboard.press('ArrowUp');
+      await expect(page.locator('#gantt [role=columnheader][data-column-id=name]')).toBeFocused();
+      await page.keyboard.press('ArrowDown');
+      await expect(page.locator('#gantt [role=row][data-row-index="0"]')).toBeFocused();
+      await page.keyboard.press('ArrowUp');
+      await page.keyboard.press('Escape');
+      await expect(page.locator('#gantt [role=row]:focus')).toHaveCount(1);
+      // a second Tab leaves the chart: no second stop
+      await page.keyboard.press('Tab');
+      expect(await page.evaluate(() => document.getElementById('gantt')!.contains(document.activeElement))).toBe(false);
+    });
+
+    test('a host-driven repaint keeps focus on the focused header', async ({ page }) => {
+      await open(page, q, canvas);
+      const head = page.locator('#gantt [role=columnheader][data-column-id=end]');
+      await head.focus();
+      await page.evaluate(() => (window as unknown as { __gantt: { zoomTo(m: string): void } }).__gantt.zoomTo('month'));
       await frames(page);
-      const row = page.locator('#gantt [data-row-index]').first();
-      await row.focus({ timeout: 5000 }).catch(() => undefined);
-      const before = await page.evaluate(() => document.getElementById('gantt')!.scrollTop);
-      await page.keyboard.press('Shift+Tab');
-      await expect(page.locator('#gantt [role=columnheader]').first()).toBeFocused();
-      expect(await page.evaluate(() => document.getElementById('gantt')!.scrollTop)).toBe(before);
+      await expect(head).toBeFocused();
     });
 
     test('resizable:false: no handles, headers are not focusable and the keys do nothing', async ({ page }) => {
@@ -162,4 +178,18 @@ test('SVG: zoom and a selection repaint keep one set of handles', async ({ page 
   await page.evaluate(() => (window as unknown as { __gantt: { zoomTo(m: string): void } }).__gantt.zoomTo('month'));
   await frames(page);
   await expect(page.locator('.fg-grid__sizer')).toHaveCount(5);
+});
+
+test('Canvas: the resize cursor shows over a divider with withInteraction composed (canvas-drag resets it elsewhere)', async ({ page }) => {
+  await open(page, '', true);
+  const l = await labelsBox(page);
+  await page.mouse.move(l.left + 100, l.top + 14);
+  await page.mouse.move(l.left + 340, l.top + 14);
+  await frames(page);
+  await page.mouse.move(l.left + 341, l.top + 14);
+  await frames(page);
+  expect(await page.evaluate(() => (document.querySelector('canvas.fg-timeline-canvas') as HTMLCanvasElement).style.cursor)).toBe('col-resize');
+  await page.mouse.move(l.left + 100, l.top + 14);
+  await frames(page);
+  expect(await page.evaluate(() => (document.querySelector('canvas.fg-timeline-canvas') as HTMLCanvasElement).style.cursor)).not.toBe('col-resize');
 });

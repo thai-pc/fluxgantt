@@ -118,8 +118,9 @@ export interface GridOptions {
   readonly collapseBelow?: number;
   /** Unit of the built-in `duration` column. Default `'days'`. */
   readonly durationUnit?: 'hours' | 'days';
-  /** Default true. `false` freezes the widths: no drag handles, Alt+Arrow on a column header does
-   *  nothing, the headers take no focus, and `resizeGridColumn` returns false. */
+  /** Default true. `false` freezes the widths: no drag handles, no header keyboard mode (ArrowUp on the
+   *  first row stays inert), and `resizeGridColumn` returns false. A column whose `minWidth` equals its
+   *  `maxWidth` has no handle either. */
   readonly resizable?: boolean;
 }
 
@@ -138,10 +139,19 @@ export interface GridCapability {
    *  one `column:resized` event. Returns true when the width changed; false for an unknown id, a
    *  non-finite width, an unchanged width, or when `resizable` is false. Works headless and is not
    *  gated by `readOnly` (widths are view state, not data). Widths are never persisted by the library:
-   *  save them from `column:resized` and pass them back as `width` in `columns`. Pointer: drag a header
-   *  divider (Escape cancels, the width commits on release). Keyboard: Tab to the column headers,
-   *  Left/Right/Home/End move between them, Alt+Left/Right resizes by 16 px (Alt+Shift 2 px; toward
-   *  the chart grows, so Alt+Left in RTL). */
+   *  save them from `column:resized` and pass them back as `width` in `columns`.
+   *
+   *  Pointer: drag a column header's inline-end divider (Escape cancels, the width commits on release).
+   *  Keyboard (WCAG 2.1.1): ArrowUp on the first row enters the column headers, Left/Right/Home/End move
+   *  between them, Alt+Left/Right resizes by 16 px (Alt+Shift 2 px; toward the chart grows, so Alt+Left
+   *  in RTL), ArrowDown or Escape returns to the rows. The single-pointer alternative to dragging that
+   *  WCAG 2.2 SC 2.5.7 asks for is this method: wire it to a control of your own (for example a column
+   *  menu with "wider" and "narrower").
+   *
+   *  Limits: the sum of the widths is not bounded by the container, so a grid can be widened until it
+   *  covers the timeline (drag or Alt+Left back). The drag's guide line is `position: fixed`, so inside a
+   *  host ancestor with `transform`, `filter` or `contain: paint` it is drawn offset (the commit is
+   *  unaffected). */
   resizeGridColumn(id: string, width: number): boolean;
   /** A CSV report of the configured columns: one row per task in tree order (collapsed rows
    *  included), built-in dates as `YYYY-MM-DD` in the calendar zone, duration in the column unit,

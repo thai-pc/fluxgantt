@@ -243,7 +243,9 @@ export type GanttAnnouncement =
     readonly locale: string;
 }
 /** After a keyboard resize of a grid column (`withGrid`, Alt+Arrow on a focused column header);
-*  `width` is the resulting width in px (unchanged at a limit). Pointer drags are not announced. */
+*  `width` is the resulting width in px (unchanged at a limit). Pointer drags are not announced.
+*
+*  @beta */
 | {
     readonly kind: 'column-resized';
     readonly columnId: string;

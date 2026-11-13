@@ -15,7 +15,8 @@ import { fillTextAt } from '../render/canvas-mirror.js';
 import type { CanvasGridPainter, CanvasRendererHandle } from '../render/canvas-renderer.js';
 import { HEADER_FONT_PX, TOGGLE_GLYPH_GUTTER_PX } from '../render/renderer-base.js';
 import { HEADER_HEIGHT, PAD, makeCut, makeHeaderName, place, type GridView } from './fit.js';
-import { beginDrag, type ResizeEnv } from './resize.js';
+import type { ResizeEnv } from './resize.js';
+import { beginDrag } from './resize-ui.js';
 import type { GridValues } from './values.js';
 
 /** Compile-time constant, never built from data. Same size and family as the SVG grid text. */
@@ -40,8 +41,8 @@ export function createCanvasGrid(
   internal: GanttInternal,
   view: () => GridView,
   values: GridValues,
-  /** Set when the headers are keyboard-resizable: they become a roving tab stop. */
-  tabs?: Pick<ResizeEnv, 'nav' | 'tabValue'>,
+  /** Set when the headers are keyboard-resizable: they become script-focusable (`tabindex=-1`). */
+  focusable?: boolean,
 ): CanvasGridPainter {
   const cut = makeCut();
   const headerName = makeHeaderName(internal);
@@ -117,7 +118,6 @@ export function createCanvasGrid(
     appendHeader(layer) {
       const v = view();
       const head = div('row', { 'aria-rowindex': '1' });
-      const stop = Math.min(tabs?.nav.tab ?? 0, v.cols.length - 1);
       v.cols.forEach((col, i) => {
         const h = div(
           'columnheader',
@@ -128,7 +128,7 @@ export function createCanvasGrid(
           },
           col.header,
         );
-        if (tabs) h.setAttribute('tabindex', i === stop ? tabs.tabValue : '-1');
+        if (focusable) h.setAttribute('tabindex', '-1');
         head.append(h);
       });
       layer.prepend(head);
@@ -166,7 +166,8 @@ export function attachCanvasResize(handle: CanvasRendererHandle, env: ResizeEnv)
     if (!(y >= r.top && y < r.top + HEADER_HEIGHT)) return undefined;
     const d = handle.mirrorX ? r.right - x : x - r.left; // layout x inside the pinned column
     const v = env.view();
-    return v.cols.find((c, i) => Math.abs(d - (v.offs[i]! + c.width)) <= (touch ? 8 : 4))?.id;
+    // a fixed column (min === max) has nothing to drag
+    return v.cols.find((c, i) => c.minWidth !== c.maxWidth && Math.abs(d - (v.offs[i]! + c.width)) <= (touch ? 8 : 4))?.id;
   };
   const down = (e: PointerEvent): void => {
     if (e.button !== 0 || !e.isPrimary) return;
@@ -174,14 +175,21 @@ export function attachCanvasResize(handle: CanvasRendererHandle, env: ResizeEnv)
     if (id === undefined) return;
     e.preventDefault();
     e.stopImmediatePropagation();
-    beginDrag(env, canvas, e, id);
+    beginDrag(env, e, id);
   };
   let hot = false;
   const hover = (e: PointerEvent): void => {
-    const over = e.pointerType !== 'touch' && edgeAt(e.clientX, e.clientY, false) !== undefined;
+    const over = e.pointerType !== 'touch' && !e.buttons && edgeAt(e.clientX, e.clientY, false) !== undefined;
+    // Over a divider the hover belongs to us: `canvas-drag` (withInteraction) would reset the cursor on the
+    // next frame, so it does not get to see the move.
+    if (over) e.stopImmediatePropagation();
     if (over === hot) return;
     hot = over;
     canvas.style.cursor = over ? 'col-resize' : '';
+    // and re-assert after a hover frame that was already scheduled by the move before this one
+    if (over) requestAnimationFrame(() => {
+      if (hot) canvas.style.cursor = 'col-resize';
+    });
   };
   // A finger on a divider must drag, not pan the chart: `touch-action` cannot be set per region.
   const touch = (e: TouchEvent): void => {
@@ -189,11 +197,11 @@ export function attachCanvasResize(handle: CanvasRendererHandle, env: ResizeEnv)
     if (t && e.cancelable && edgeAt(t.clientX, t.clientY, true) !== undefined) e.preventDefault();
   };
   canvas.addEventListener('pointerdown', down, true);
-  canvas.addEventListener('pointermove', hover);
+  canvas.addEventListener('pointermove', hover, true);
   canvas.addEventListener('touchstart', touch, { passive: false });
   return () => {
     canvas.removeEventListener('pointerdown', down, true);
-    canvas.removeEventListener('pointermove', hover);
+    canvas.removeEventListener('pointermove', hover, true);
     canvas.removeEventListener('touchstart', touch);
     if (hot) canvas.style.cursor = '';
   };
