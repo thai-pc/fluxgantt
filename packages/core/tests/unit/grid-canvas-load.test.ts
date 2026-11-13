@@ -19,7 +19,7 @@ describe('Canvas painter chunk failure', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(new Proxy({}, { get: () => () => {}, set: () => true }) as never);
     vi.stubGlobal('requestAnimationFrame', () => 0);
-    const g = withGrid(withRender(createGantt({ tasks: [{ id: toTaskId('a'), name: 'a', start: '2026-01-05', end: '2026-01-09' }] })));
+    const g = withGrid(withRender(createGantt({ tasks: [{ id: toTaskId('a'), name: 'a', start: '2026-01-05', end: '2026-01-09', progress: 0, type: 'task' }] })));
     const internal = getInternal(g);
     const host = document.createElement('div');
     document.body.appendChild(host);

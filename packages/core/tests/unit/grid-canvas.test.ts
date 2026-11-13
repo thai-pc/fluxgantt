@@ -104,7 +104,7 @@ interface Setup {
 }
 /** A Canvas chart wired through the real mixin; resolves once the lazy painter has repainted it. */
 async function mountCanvas(s: Setup = {}) {
-  const base = withIo(withRender(createGantt({ tasks: s.tasks ?? TASKS, rtl: s.rtl, ...s.config })));
+  const base = withIo(withRender(createGantt({ tasks: s.tasks ?? TASKS, ...(s.rtl ? { rtl: true } : {}), ...s.config })));
   const g = withGrid(s.rtl ? withRtl(base) : base, { ...(s.columns ? { columns: s.columns } : {}), ...s.grid });
   const internal = getInternal(g);
   const input = {
