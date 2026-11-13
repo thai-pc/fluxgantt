@@ -1,9 +1,9 @@
 // Bundle-size runner. Two size-limit configs, two policies (see CLAUDE.md golden rule 5):
 //   .size-limit.json       HARD gates (4 fixtures): over the limit fails the run.
-//   .size-limit.soft.json  REPORT-ONLY (8 fixtures): printed, never fails; warns when a fixture is
+//   .size-limit.soft.json  REPORT-ONLY (9 fixtures): printed, never fails; warns when a fixture is
 //                          over its reference limit or grew > SOFT_GROWTH_PCT vs size-limit/baselines.json.
 //
-//   node scripts/size.mjs                    all twelve fixtures; exit 1 only if a hard gate fails
+//   node scripts/size.mjs                    all thirteen fixtures; exit 1 only if a hard gate fails
 //   node scripts/size.mjs --soft             soft set only; always exit 0 (CI "report" step)
 //   node scripts/size.mjs --json             combined JSON array (for tooling/scripts)
 //   node scripts/size.mjs --update-baseline  rewrite the "soft" baselines from the current build

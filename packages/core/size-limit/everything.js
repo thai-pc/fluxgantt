@@ -18,11 +18,11 @@ import { withConflicts } from '@fluxgantt/core/conflicts';
 import { withEditHooks } from '@fluxgantt/core/edit-hooks';
 import { withRtl } from '@fluxgantt/core/rtl';
 import { withResponsive } from '@fluxgantt/core/responsive';
-// import { withGrid } from '@fluxgantt/core/grid';                  // joins in the grid PR
+import { withGrid } from '@fluxgantt/core/grid';
 // import { withGridEditing } from '@fluxgantt/core/grid-editing';   // joins in the grid-editing PR
 
-const gantt = withRtl(withResponsive(withEditHooks(withConflicts(withViewport(withTheme(
-  withInteraction(withIo(withRender(createGantt({ tasks: [], dependencies: [], rtl: true }))))))))));
+const gantt = withGrid(withRtl(withResponsive(withEditHooks(withConflicts(withViewport(withTheme(
+  withInteraction(withIo(withRender(createGantt({ tasks: [], dependencies: [], rtl: true })))))))))));
 gantt.mount(document.body);
 gantt.on('conflict:detected', () => {});
 gantt.on('task:activated', (p) => p.taskId);
@@ -30,4 +30,4 @@ gantt.setTheme('dark');
 gantt.setDensity('compact');
 gantt.scrollToTask('a');
 gantt.detectConflicts();
-globalThis.out = [gantt.exportJson(), gantt.isCoarsePointer()];
+globalThis.out = [gantt.exportJson(), gantt.isCoarsePointer(), gantt.exportGridCsv(), gantt.getGridColumns, gantt.setGridColumns];

@@ -347,6 +347,14 @@ export interface GanttInstance {
 export interface GanttMessages {
     // @beta
     readonly announce?: (announcement: GanttAnnouncement) => string;
+    // @beta
+    readonly gridColumnLabel?: (params: {
+        readonly columnId: string;
+        readonly header: string;
+        readonly index: number;
+        readonly count: number;
+        readonly locale: string;
+    }) => string;
     readonly taskLabel?: (params: TaskLabelParams) => string;
 }
 

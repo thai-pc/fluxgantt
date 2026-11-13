@@ -125,7 +125,7 @@ function cellValue(task: Task, col: CsvColumn, timezone: string): string {
   }
 }
 
-function writeRow(cells: readonly string[]): string {
+export function writeRow(cells: readonly string[]): string {
   return cells.map((c) => rfc4180Quote(escapeCsvValue(c))).join(',');
 }
 

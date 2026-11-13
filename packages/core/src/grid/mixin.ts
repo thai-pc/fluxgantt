@@ -1,0 +1,140 @@
+// Opt-in grid columns (spec-grid-columns.md; PR G1: the columns, the SVG painter and the CSV report).
+//
+//   const gantt = withGrid(withRender(createGantt({ tasks })), { columns: [...] });
+//
+// The pinned label column becomes N sub-columns and `labelColumnWidth` becomes their sum, so the
+// viewport math, RTL, the zoom anchor and the PNG export (which all key on that one number) need no
+// change. Same shape as `edit-hooks/mixin.ts`: wired from the public `renderer:selected` event (so
+// application order vs `withRender`/`withInteraction` is irrelevant) and imports nothing from
+// `interaction/`. The paint hook is registered at COMPOSITION time (`internal.paints`), so it sees
+// every mount's paint and `withRtl`'s mirror still runs after it in any composition order.
+//
+// The width is applied after the first paint (the renderer reads its options at construction and the
+// facade passes none for the width), so a mount paints twice; the first paint is skipped by the hook.
+import type { GanttInstance } from '../gantt.js';
+import { getInternal } from '../gantt-internal.js';
+import { resolveColumns, publicColumn, type Column } from './columns.js';
+import { gridCsv } from './csv.js';
+import { createGridPaint, type GridView } from './svg-grid.js';
+import type { GridCapability, GridColumnInput, GridOptions } from './types.js';
+import { createGridValues } from './values.js';
+
+const HYSTERESIS_PX = 16;
+/** Instances `withGrid` has been applied to (a second application would paint a second grid). */
+const composed = new WeakSet<object>();
+
+const viewOf = (all: readonly Column[], cols: readonly Column[]): GridView => {
+  let width = 0;
+  const offs = cols.map((c) => {
+    const off = width;
+    width += c.width;
+    return off;
+  });
+  return { all, cols, offs, width };
+};
+
+/**
+ * Replaces the pinned label column with configurable columns (SVG renderer). Apply it ONCE, before the
+ * first `mount()` (a second application throws).
+ *
+ * - The chart's text is pinned to 12px system-ui (the width estimate that decides where text is cut is
+ *   calibrated for it); a host CSS rule on the row labels can invalidate that and text may then spill
+ *   into the next column.
+ * - The duration column shows an AUTHORED `task.duration` (or a summary's rolled-up duration) when there
+ *   is one, exactly as the critical path reads it, and otherwise the working hours between start and end.
+ *   It can therefore disagree with the bar when a host's `duration` disagrees with its dates.
+ * - `collapseBelow` hides every column but `name` in a narrow container, for assistive technology too;
+ *   a container that shrinks to fit its content may not re-expand.
+ * - Known cost: with `config.rollup` set, the provider runs twice per data revision (once for the
+ *   renderer, once for the grid's summary rows). The grid never alters the host's config.
+ *
+ * @beta
+ */
+export function withGrid<T extends GanttInstance>(
+  instance: T,
+  options: GridOptions = {},
+): T & GridCapability {
+  const internal = getInternal(instance);
+  if (composed.has(internal)) throw new Error('@fluxgantt/core: withGrid is already applied to this instance.');
+  composed.add(internal);
+  const unit = options.durationUnit === 'hours' ? 'hours' : 'days';
+  const below = Number.isFinite(options.collapseBelow) ? Math.max(0, options.collapseBelow!) : 480;
+  let all = resolveColumns(options.columns); // throws at composition time on a bad definition
+  let collapsed = false;
+  let warnedCanvas = false;
+  let view = viewOf(all, all);
+  const values = createGridValues(internal, () => unit);
+
+  (internal.paints ??= []).push(createGridPaint(internal, () => view, values));
+
+  /** Pushes the pinned width to the live SVG renderer; that is also the repaint. */
+  const apply = (): void => {
+    const handle = internal.mountOf()?.handle;
+    if (handle && 'paintHooks' in handle) {
+      handle.fixedLabelWidth = true;
+      handle.setOptions({ labelColumnWidth: view.width });
+    }
+  };
+  const rebuild = (): void => {
+    view = viewOf(all, collapsed ? all.slice(0, 1) : all);
+  };
+
+  instance.on('renderer:selected', () => {
+    const handle = internal.mountOf()?.handle; // a listener before this one may have unmounted
+    if (!handle) return;
+    if (!('paintHooks' in handle)) {
+      if (!warnedCanvas) console.warn('@fluxgantt/core: withGrid paints on the SVG renderer only; this chart shows no grid.');
+      warnedCanvas = true; // once per instance, not once per mount
+      return;
+    }
+    // Decide from the container's width right away (0 = not laid out yet: keep all columns), so a
+    // narrow container paints the name column once instead of all columns and then the name column.
+    const watch = below > 0 && typeof ResizeObserver === 'function';
+    const w0 = handle.container.clientWidth;
+    collapsed = watch && w0 > 0 && w0 < below;
+    rebuild();
+    apply();
+    if (watch) {
+      // The repaint is deferred to the next frame: it can change the container's own size (a
+      // shrink-to-fit host), and doing that inside the callback raises "ResizeObserver loop completed
+      // with undelivered notifications".
+      let frame = 0;
+      const ro = new ResizeObserver(() => {
+        if (frame) return;
+        frame = requestAnimationFrame(() => {
+          frame = 0;
+          const w = handle.container.clientWidth;
+          if (w === 0) return; // hidden: nothing to measure
+          const next = collapsed ? w < below + HYSTERESIS_PX : w < below;
+          if (next !== collapsed) {
+            collapsed = next;
+            rebuild();
+            apply();
+          }
+        });
+      });
+      ro.observe(handle.container);
+      const inner = handle.destroy;
+      handle.destroy = (): void => {
+        ro.disconnect();
+        cancelAnimationFrame(frame);
+        inner.call(handle);
+      };
+    }
+  });
+
+  const capability: GridCapability = {
+    getGridColumns: () => all.map(publicColumn),
+    setGridColumns(columns: readonly GridColumnInput[]): void {
+      internal.alive('setGridColumns');
+      all = resolveColumns(columns); // throws before anything changes
+      rebuild();
+      apply();
+    },
+    exportGridCsv(): string {
+      internal.alive('exportGridCsv');
+      return gridCsv(internal.tasks.all(), all, values);
+    },
+  };
+  return Object.assign(instance, capability);
+}

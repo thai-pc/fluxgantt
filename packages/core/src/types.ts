@@ -321,6 +321,18 @@ export interface GanttMessages {
    *  task per paint, so a `console.warn` would emit thousands of identical lines in a single
    *  paint of a large chart, and the fallback is correct English rather than a broken chart. */
   readonly taskLabel?: (params: TaskLabelParams) => string;
+  /** Accessible name of a grid column header (`withGrid`). Default the header
+   *  text (assistive technology adds the column position from `aria-colindex`). Throwing or returning a non-string falls back to it.
+   *
+   * @beta */
+  readonly gridColumnLabel?: (params: {
+    readonly columnId: string;
+    readonly header: string;
+    /** 1-based. */
+    readonly index: number;
+    readonly count: number;
+    readonly locale: string;
+  }) => string;
 }
 
 // --- Conflicts (spec-detect-conflicts.md) ---------------------------------------------------
