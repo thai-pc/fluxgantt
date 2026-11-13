@@ -95,7 +95,7 @@ describe('the Canvas painter chunk resolving late', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const unhandled = vi.fn();
     process.on('unhandledRejection', unhandled);
-    const { g, mountCanvas, settle } = await fresh();
+    const { mountCanvas, settle } = await fresh();
     const { handle } = mountCanvas();
     vi.spyOn(handle, 'setOptions').mockImplementation(() => {
       throw new Error('render failed');

@@ -63,7 +63,6 @@ const makeCtx = (): { ctx: CanvasRenderingContext2D; rec: Rec } => {
 };
 const recOf = (c: HTMLCanvasElement): Rec => ctxByCanvas.get(c)!.rec;
 const texts = (r: Rec): string[] => r.calls.filter((c) => c.name === 'fillText').map((c) => c.args[0] as string);
-const count = (r: Rec, n: string): number => r.calls.filter((c) => c.name === n).length;
 
 let container: HTMLElement;
 let png: Rec | undefined;
