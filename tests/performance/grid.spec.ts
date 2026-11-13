@@ -121,3 +121,19 @@ test.describe('the duration column does not reintroduce the per-row walk (PR #12
     expect(ms).toBeLessThan(800);
   });
 });
+
+test.describe('long cell text (the cost of cutting it with an ellipsis)', () => {
+  test('2000 rows x 6 columns of ~1000-character values: mount and zoom stay bounded', async ({ page }) => {
+    test.setTimeout(240_000);
+    const mounts: number[] = [];
+    const zooms: number[] = [];
+    for (let i = 0; i < RUNS; i++) {
+      mounts.push((await open(page, 'rows=2000&wide=1&longcols=1&collapse=0')).mountMs);
+      zooms.push(await timed(page, "g.zoomTo('month')"));
+    }
+    console.log(`long columns, 2000 rows x 6: mount median ${median(mounts).toFixed(0)} ms, zoom median ${median(zooms).toFixed(0)} ms`);
+    // before the pre-cut and the cut cache this was ~2.7 s of fit() per repaint on top of the paint
+    expect(median(mounts)).toBeLessThan(6000);
+    expect(median(zooms)).toBeLessThan(4000);
+  });
+});

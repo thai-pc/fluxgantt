@@ -64,12 +64,17 @@ const textEl = (x: number, y: number, anchor: string, content: string, full?: st
 
 let segmenter: Intl.Segmenter | undefined;
 
+/** The narrowest an estimated character can be (0.35 em at the grid font), in px. */
+const MIN_CHAR_PX = 0.35 * HEADER_FONT_PX;
+
 /** `text` cut with an ellipsis to fit `max` px (6 % margin, on a grapheme boundary), or `text` itself. */
 export function fit(text: string, max: number): string {
   const budget = max * 0.94;
-  if (estimateTextWidth(text) <= budget) return text;
+  if (text.length * MIN_CHAR_PX <= budget && estimateTextWidth(text) <= budget) return text;
+  // Only this many code units can ever fit, so a long text is cut BEFORE the (slow) segmentation.
+  const head = text.slice(0, Math.ceil(budget / MIN_CHAR_PX) + 2);
   segmenter ??= typeof Intl.Segmenter === 'function' ? new Intl.Segmenter() : undefined;
-  const parts = segmenter ? Array.from(segmenter.segment(text), (s) => s.segment) : Array.from(text);
+  const parts = segmenter ? Array.from(segmenter.segment(head), (s) => s.segment) : Array.from(head);
   let lo = 0;
   let hi = parts.length;
   while (lo < hi) {
@@ -94,6 +99,18 @@ export function createGridPaint(
 ): PaintHook {
   const locale = internal.config.locale ?? 'en';
   const label = internal.config.messages?.gridColumnLabel;
+  // The cut is a pure function of (text, width): remembered across repaints (zoom, collapse, patches),
+  // bounded so a data set of long unique texts cannot grow it without limit.
+  const cuts = new Map<string, string>();
+  const cut = (text: string, max: number): string => {
+    const key = `${max}|${text}`;
+    let out = cuts.get(key);
+    if (out === undefined) {
+      if (cuts.size >= 4096) cuts.clear();
+      cuts.set(key, (out = fit(text, max)));
+    }
+    return out;
+  };
 
   const headerName = (c: Column, i: number, n: number): string => {
     let name = `${c.header}, column ${i + 1} of ${n}`;
@@ -130,25 +147,25 @@ export function createGridPaint(
       if (i === 0) {
         row.querySelector('.fg-timeline__row-cell')?.setAttribute('aria-colindex', '1');
         const max = col.width - (Number(name?.getAttribute('x')) || PAD) - PAD;
-        const cut = fit(full, max);
-        if (cut !== full && name) {
-          name.replaceChildren(el('title', {}), cut);
+        const shown = cut(full, max);
+        if (shown !== full && name) {
+          name.replaceChildren(el('title', {}), shown);
           name.firstElementChild!.append(full);
           if (cloneLabel) {
-            cloneLabel.replaceChildren(el('title', {}), cut);
+            cloneLabel.replaceChildren(el('title', {}), shown);
             cloneLabel.firstElementChild!.append(full);
           }
         }
         return;
       }
       const [x, anchor] = place(col, v.offs[i]!);
-      const cut = fit(full, col.width - 2 * PAD);
-      const t = textEl(x, y, anchor, cut, cut !== full ? full : undefined);
+      const shown = cut(full, col.width - 2 * PAD);
+      const t = textEl(x, y, anchor, shown, shown !== full ? full : undefined);
       out?.append(t.cloneNode(true));
       t.setAttribute('role', 'gridcell');
       t.setAttribute('aria-colindex', String(i + 1));
       t.setAttribute('data-column-id', col.id);
-      if (cut !== full) t.setAttribute('aria-label', full);
+      if (shown !== full) t.setAttribute('aria-label', full);
       real.append(t);
     });
     return out;
@@ -194,7 +211,7 @@ export function createGridPaint(
     const cornerRows = g({}, HEAD_STYLE);
     v.cols.forEach((col, i) => {
       const [x, anchor] = place(col, v.offs[i]!);
-      const cut = fit(col.header, col.width - 2 * PAD);
+      const shown = cut(col.header, col.width - 2 * PAD);
       const h = g(
         {
           class: 'fg-grid__head-text',
@@ -205,9 +222,9 @@ export function createGridPaint(
         },
         HEAD_STYLE,
       );
-      h.append(textEl(x, HEADER_HEIGHT / 2, anchor, cut, cut !== col.header ? col.header : undefined));
+      h.append(textEl(x, HEADER_HEIGHT / 2, anchor, shown, shown !== col.header ? col.header : undefined));
       head.append(h);
-      cornerRows.append(textEl(x, HEADER_HEIGHT / 2, anchor, cut));
+      cornerRows.append(textEl(x, HEADER_HEIGHT / 2, anchor, shown));
     });
     const rule = el('line', { x1: 0, x2: v.width, y1: HEADER_HEIGHT - 0.5, y2: HEADER_HEIGHT - 0.5 });
     rule.style.stroke = 'var(--fg-border-strong,#d4d4d8)';

@@ -13,6 +13,7 @@
 //   ?responsive=1 also compose `withResponsive`
 //   ?tz=Zone      calendar time zone (default UTC)
 //   ?wide=1       spread the filler tasks over ~520 days and add 20 holidays (the PR #125 duration trap)
+//   ?longcols=1   name + five custom columns whose values are ~1000 characters (the fit() cost budget)
 //   ?grid=0       do not compose withGrid (the baseline for the performance budgets)
 import './temporal.js'; // must stay first: installs globalThis.Temporal where it is not native
 import { createGantt, computeRollup, toTaskId, type TaskInput, type WorkingCalendar } from '@fluxgantt/core';
@@ -86,8 +87,17 @@ const extras: GridColumnInput[] = [
   { id: 'c3', header: 'Col 3', width: 80, value: (t) => t.id.length },
 ];
 const NAMES = ['name', 'start', 'end', 'duration', 'progress'] as const;
+const FILL = 'lorem ipsum dolor sit amet '.repeat(40);
+const longColumns: GridColumnInput[] = Array.from({ length: 5 }, (_, i) => ({
+  id: `l${i}`,
+  header: `Long ${i}`,
+  width: 140,
+  value: (t) => `${t.id} ${i} ${FILL}`.slice(0, 1000),
+}));
 const columns: GridColumnInput[] =
-  cols <= 1
+  params.get('longcols') === '1'
+    ? [{ id: 'name' }, ...longColumns]
+    : cols <= 1
     ? [{ id: 'name' }]
     : cols === 3
       ? [{ id: 'name' }, { id: 'start' }, { id: 'progress' }]

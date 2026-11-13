@@ -61,3 +61,15 @@ describe('fit', () => {
     expect(() => fit('x'.repeat(1000), 0)).not.toThrow();
   });
 });
+
+describe('fit on long text', () => {
+  it('cuts 1000-character text at the same place as the untruncated algorithm, and fast', () => {
+    const long = 'The quick brown fox jumps over the lazy dog. '.repeat(25);
+    const t0 = performance.now();
+    for (let i = 0; i < 2000; i++) fit(long, 140);
+    expect(performance.now() - t0).toBeLessThan(1500); // ~0.23 ms each before the pre-cut
+    const out = fit(long, 140);
+    expect(long.startsWith(out.slice(0, -1))).toBe(true);
+    expect(estimateTextWidth(out)).toBeLessThanOrEqual(140 * 0.94);
+  });
+});

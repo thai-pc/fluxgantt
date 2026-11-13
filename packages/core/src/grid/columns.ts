@@ -113,7 +113,9 @@ export function resolveColumns(input: readonly GridColumnInput[] | undefined): r
     const maxWidth = def.maxWidth === undefined ? 600 : Math.max(minWidth, finite(def.maxWidth, 'maxWidth'));
     const width =
       def.width === undefined
-        ? DEFAULT_WIDTHS[id as BuiltInColumnId] ?? 120
+        ? builtIn
+          ? DEFAULT_WIDTHS[id as BuiltInColumnId]
+          : 120 // never a lookup by a host id: `__proto__` would hit Object.prototype
         : finite(def.width, 'width');
     return {
       id,

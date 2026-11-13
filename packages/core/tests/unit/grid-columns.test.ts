@@ -43,6 +43,12 @@ describe('resolveColumns', () => {
     expect(() => resolveColumns('nope' as never)).toThrow(RangeError);
   });
 
+  it('a custom column whose id is __proto__ gets the ordinary defaults', () => {
+    const col = resolveColumns([custom('__proto__')])[1]!;
+    expect(col.width).toBe(120);
+    expect(col.header).toBe('__proto__');
+  });
+
   it('rejects duplicates, a custom column reusing a built-in id, and a custom column without value()', () => {
     expect(() => resolveColumns([custom('a'), custom('a')])).toThrow(/duplicate/);
     expect(() => resolveColumns([custom('start')])).toThrow(/built-in/);
