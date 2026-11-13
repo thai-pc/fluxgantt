@@ -172,6 +172,37 @@ describe('hostile values and definitions', () => {
   });
 });
 
+describe('an export always parses as XML (characters XML 1.0 forbids never reach it)', () => {
+  const BAD = ['x\uffffy', 'x\ufffey', 'x\ud800y', 'x\udc00y', 'x\ud83dy', 'a\u0000b', 'a\u0001b', 'a\u000bb', 'a\u001fb', 'tail\ud800'];
+  const parses = (svg: string): boolean => new DOMParser().parseFromString(svg, 'image/svg+xml').querySelector('parsererror') === null;
+  const cases = BAD.map((b) => [JSON.stringify(b), b] as const);
+
+  it.each(cases)('value() returning %s', (_l, bad) => {
+    const g = mountWith('n', [{ id: 'name' }, { id: 'x', header: 'X', value: () => bad } as GridColumnInput]);
+    expect(parses(g.exportSvg())).toBe(true);
+  });
+
+  it.each(cases)('format() returning %s', (_l, bad) => {
+    const g = mountWith('n', [{ id: 'name' }, { id: 'x', header: 'X', value: () => 1, format: () => bad } as GridColumnInput]);
+    expect(parses(g.exportSvg())).toBe(true);
+  });
+
+  it.each(cases)('messages.gridColumnLabel returning %s', (_l, bad) => {
+    const g = withGrid(withIo(withRender(createGantt({
+      tasks: [{ id: toTaskId('a'), name: 'n', start: '2026-01-05', end: '2026-01-09', progress: 0, type: 'task' }],
+      messages: { gridColumnLabel: () => bad },
+    }))));
+    g.mount(container);
+    expect(parses(g.exportSvg())).toBe(true);
+    expect(container.querySelector('[role=columnheader]')!.getAttribute('aria-label')).not.toMatch(UNSAFE_TEXT);
+  });
+
+  it.each(cases)('a header %s', (_l, bad) => {
+    const g = mountWith('n', [{ id: 'name' }, { id: 'x', header: bad, value: () => 1 } as GridColumnInput]);
+    expect(parses(g.exportSvg())).toBe(true);
+  });
+});
+
 describe('static source scan: no markup sinks in the grid sources', () => {
   const dir = resolve(import.meta.dirname, '../../src/grid') + '/';
   const strip = (s: string) => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '').replace(/([^:])\/\/.*$/gm, '$1');

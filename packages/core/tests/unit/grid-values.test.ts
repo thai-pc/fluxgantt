@@ -218,7 +218,12 @@ describe('custom columns', () => {
 
   it('caps output at 1000 characters and replaces controls and bidi overrides', () => {
     expect(cell(() => 'a'.repeat(5000))).toHaveLength(1000);
-    expect(cell(() => 'a\nb\tc\u0000d‮e⁦f')).toBe('a b c d e f');
+    expect(cell(() => 'a\nb\tc\u0000d\u202ee\u2066f')).toBe('a b\tc d e f'); // tab is valid XML and stays
+  });
+
+  it('keeps valid surrogate pairs and strips lone ones and the XML non-characters', () => {
+    expect(cell(() => 'a😀b')).toBe('a😀b');
+    expect(cell(() => 'x\ud800y\udc00z\uffffw\ufffe')).toBe('x y z w ');
   });
 
   it('keeps markup-looking text as inert text (it is only ever written with a Text node)', () => {

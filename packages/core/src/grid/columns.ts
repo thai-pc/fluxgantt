@@ -39,9 +39,11 @@ const DEFAULT_WIDTHS: Record<BuiltInColumnId, number> = {
   progress: 96,
 };
 const ALIGNS: readonly string[] = ['start', 'center', 'end'];
-// C0/C1 controls, line/paragraph separators and the bidi override/isolate characters: a cell is one line.
+// Characters that are not valid in XML 1.0 (C0 controls except tab, U+FFFE, U+FFFF, lone surrogates: an
+// export would not parse), C1 controls, line/paragraph separators and the bidi override/isolate characters:
+// a cell is one line of plain text. Tab is allowed (valid in XML, and the text collapses it anyway).
 // eslint-disable-next-line no-control-regex
-export const UNSAFE_TEXT = /[\u0000-\u001f\u007f-\u009f\u2028\u2029\u202a-\u202e\u2066-\u2069]/g;
+export const UNSAFE_TEXT = /[\u0000-\u0008\u000a-\u001f\u007f-\u009f\u2028\u2029\u202a-\u202e\u2066-\u2069\ufffe\uffff]|[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/g;
 
 /** A resolved column plus the host callbacks of a custom one. Internal. */
 export interface Column extends GridColumn {

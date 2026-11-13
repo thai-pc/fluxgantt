@@ -13,7 +13,7 @@ import { HEADER_FONT_PX, estimateTextWidth } from '../render/renderer-base.js';
 import type { PaintEvent, PaintHook } from '../render/svg-renderer.js';
 import type { GanttInternal } from '../gantt-internal.js';
 import { toTaskId, type Task } from '../types.js';
-import type { Column } from './columns.js';
+import { UNSAFE_TEXT, type Column } from './columns.js';
 import type { GridValues } from './values.js';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
@@ -120,7 +120,7 @@ export function createGridPaint(
     } catch {
       // a throwing host function falls back to the English name
     }
-    return name.slice(0, 400);
+    return name.slice(0, 400).replace(UNSAFE_TEXT, ' ');
   };
 
   /** Decorates one row of the chart svg; returns the clone row for the pinned column. */
