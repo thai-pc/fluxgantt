@@ -199,8 +199,9 @@ export interface CanvasGridPainter {
   readonly colCount: number;
   /** The name cell's text for `row`, already cut with an ellipsis to the name column. */
   nameText(row: RowLayout): string;
-  /** The header band, the column headers and the full-height column dividers; `height` is the canvas's. */
-  paintHeader(ctx: CanvasRenderingContext2D, height: number, tokens: DesignTokens): void;
+  /** The header band, the column headers and the full-height column dividers; `height` is the canvas's.
+   *  `focusColumn` is the id of the keyboard-focused column header, which gets a focus ring. */
+  paintHeader(ctx: CanvasRenderingContext2D, height: number, tokens: DesignTokens, focusColumn?: string): void;
   /** The sub-column cells (every column but `name`) of the row whose top is at `y`. */
   paintRow(ctx: CanvasRenderingContext2D, row: RowLayout, y: number, rowHeight: number, tokens: DesignTokens): void;
   /** Prepends the `columnheader` row to the hidden a11y layer. */
@@ -1471,7 +1472,11 @@ export function createCanvasRenderer(
     // Captured BEFORE the full rebuild below destroys every existing row element — the gate
     // that prevents this render pass from ever STEALING focus during a purely programmatic/
     // headless mutation: focus is only ever RESTORED, never newly grabbed.
-    const hadFocusInside = a11yLayer.contains(document.activeElement);
+    // A focused grid column header (`withGrid`) is not a row: it survives the rebuild (re-focused by id
+    // below), is never replaced by the row focus, and gets its own ring from the grid painter.
+    const active = document.activeElement;
+    const headFocus = a11yLayer.contains(active) && active?.getAttribute('role') === 'columnheader' ? active.getAttribute('data-column-id') : null;
+    const hadFocusInside = a11yLayer.contains(active) && headFocus === null;
 
     // Reuses the EXACT SAME `windowRange`/`windowedRows` the paint pass above just computed —
     // ONE shared window per render, not two independently-computed ones (spec §5.1). Only
@@ -1596,6 +1601,11 @@ export function createCanvasRenderer(
     canvas.removeAttribute('role');
     canvas.removeAttribute('aria-label');
 
+    if (headFocus !== null) {
+      for (const h of a11yLayer.querySelectorAll<HTMLElement>('[role=columnheader]')) {
+        if (h.getAttribute('data-column-id') === headFocus) h.focus({ preventScroll: true });
+      }
+    }
     if (hadFocusInside && focusedTaskId !== undefined) {
       // Attribute-only selector (not `.fg-timeline-canvas__row[...]`) — `data-task-id` alone is
       // already unique within this layer, and staying attribute-only keeps this lookup decoupled
@@ -1662,7 +1672,7 @@ export function createCanvasRenderer(
       labelCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
       if (state.options.rtl) applyMirror(labelCtx, offsetX);
       // The grid's header band and column dividers go first, so the row focus frame below has no gaps.
-      grid?.paintHeader(labelCtx, resolvedViewportHeightPx, tokens);
+      grid?.paintHeader(labelCtx, resolvedViewportHeightPx, tokens, headFocus ?? undefined);
       labelCtx.save();
       try {
         labelCtx.beginPath();

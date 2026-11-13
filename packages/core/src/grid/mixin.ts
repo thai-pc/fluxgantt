@@ -10,16 +10,21 @@
 // `interaction/`. The paint hook is registered at COMPOSITION time (`internal.paints`), so it sees
 // every mount's paint and `withRtl`'s mirror still runs after it in any composition order.
 //
+// Resize (G3, `resize.ts`): `resizeGridColumn` is the one write path; a pointer drag on a sizer (SVG) or the
+// header band (Canvas), and Alt+Arrow on a focused column header, all end in it.
+//
 // The width is applied after the first paint (the renderer reads its options at construction and the
 // facade passes none for the width), so a mount paints twice; the first paint is skipped by the hook.
 // On a Canvas mount (2000+ tasks) the painter chunk is fetched first, so the first Canvas paint may show
 // the plain label column for the moment the chunk takes to arrive.
 import type { GanttInstance } from '../gantt.js';
-import type { CanvasGridPainter } from '../render/canvas-renderer.js';
+import type { CanvasGridPainter, CanvasRendererHandle } from '../render/canvas-renderer.js';
 import { getInternal } from '../gantt-internal.js';
 import { resolveColumns, publicColumn, type Column } from './columns.js';
 import { gridCsv } from './csv.js';
 import type { GridView } from './fit.js';
+import { attachHeaderKeys, sizerPaint, type ResizeEnv } from './resize.js';
+import type * as ResizeUi from './resize-ui.js';
 import { createGridPaint } from './svg-grid.js';
 import type { GridCapability, GridColumnInput, GridOptions } from './types.js';
 import { createGridValues } from './values.js';
@@ -74,11 +79,44 @@ export function withGrid<T extends GanttInstance>(
   let all = resolveColumns(options.columns); // throws at composition time on a bad definition
   let collapsed = false;
   let painter: CanvasGridPainter | undefined; // the Canvas painter, once its chunk has loaded
+  let canvasResize: ((handle: CanvasRendererHandle, env: ResizeEnv) => () => void) | undefined;
   let loading: Promise<void> | undefined;
   let view = viewOf(all, all);
   const values = createGridValues(internal, () => unit);
+  const resizable = options.resizable !== false;
+  // Header focus bookkeeping shared with the resize code (`ResizeEnv.nav`).
+  const nav: ResizeEnv['nav'] = { tab: 0 };
+  // The lazy half of the resize code (`resize-ui.ts`), fetched once; a failure is warned once and retried.
+  let ui: Promise<typeof ResizeUi | undefined> | undefined;
+  const loadUi = (): Promise<typeof ResizeUi | undefined> =>
+    (ui ??= import('./resize-ui.js').then(
+      (m) => m,
+      (e: unknown) => {
+        ui = undefined;
+        console.warn('@fluxgantt/core: withGrid could not load its column resize code.', e);
+        return undefined;
+      },
+    ));
+  const envOf = (handle: { container: HTMLElement; mirrorX?: unknown }): ResizeEnv => ({
+    container: handle.container,
+    mirrored: () => handle.mirrorX !== undefined,
+    view: () => view,
+    resize: (id, width) => capability.resizeGridColumn(id, width),
+    internal,
+    nav,
+    ui: loadUi,
+  });
+  // The SVG mount's env: the drag handles are painted only for the live SVG chart (not for the throwaway
+  // renderer a Canvas `exportSvg()` builds, which receives the same paint hooks).
+  let svgEnv: ResizeEnv | undefined;
 
-  (internal.paints ??= []).push(createGridPaint(internal, () => view, values));
+  const paints = (internal.paints ??= []);
+  paints.push(createGridPaint(internal, () => view, values));
+  if (resizable) {
+    paints.push((e) => {
+      if (svgEnv) sizerPaint(svgEnv, e);
+    });
+  }
 
   /** Pushes the pinned width (and, on Canvas, the painter) to the live renderer; that is also the repaint. */
   const apply = (): void => {
@@ -107,7 +145,8 @@ export function withGrid<T extends GanttInstance>(
   const loadPainter = (): Promise<void> =>
     (loading ??= import('./canvas-grid.js').then(
       (m) => {
-        painter = m.createCanvasGrid(internal, () => view, values);
+        canvasResize = m.attachCanvasResize;
+        painter = m.createCanvasGrid(internal, () => view, values, resizable);
       },
       (e: unknown) => {
         loading = undefined;
@@ -127,8 +166,31 @@ export function withGrid<T extends GanttInstance>(
     const w0 = handle.container.clientWidth;
     collapsed = watch && w0 > 0 && w0 < below;
     rebuild();
-    if ('paintHooks' in handle) apply();
-    else void loadPainter().then(() => applyLater(handle));
+    // Everything this mount sets up is undone by the wrapped destroy (there is no unmount event).
+    const stops: (() => void)[] = [() => nav.stop?.()];
+    const inner = handle.destroy;
+    handle.destroy = (): void => {
+      for (const stop of stops) stop();
+      inner.call(handle);
+    };
+    const svg = 'paintHooks' in handle;
+    const env = envOf(handle);
+    if (resizable) {
+      stops.push(attachHeaderKeys(env));
+      if (svg) {
+        svgEnv = env;
+        stops.push(() => {
+          if (svgEnv === env) svgEnv = undefined;
+        });
+      }
+    }
+    if (svg) apply();
+    else
+      void loadPainter().then(() => {
+        applyLater(handle);
+        // After `applyLater`, which only runs for the live mount: a late chunk must not wire a dead handle.
+        if (resizable && canvasResize && internal.mountOf()?.handle === handle) stops.push(canvasResize(handle as CanvasRendererHandle, env));
+      });
     if (watch) {
       // The repaint is deferred to the next frame: it can change the container's own size (a
       // shrink-to-fit host), and doing that inside the callback raises "ResizeObserver loop completed
@@ -149,12 +211,10 @@ export function withGrid<T extends GanttInstance>(
         });
       });
       ro.observe(handle.container);
-      const inner = handle.destroy;
-      handle.destroy = (): void => {
+      stops.push(() => {
         ro.disconnect();
         cancelAnimationFrame(frame);
-        inner.call(handle);
-      };
+      });
     }
   });
 
@@ -165,6 +225,23 @@ export function withGrid<T extends GanttInstance>(
       all = resolveColumns(columns); // throws before anything changes
       rebuild();
       apply();
+    },
+    resizeGridColumn(id: string, width: number): boolean {
+      internal.alive('resizeGridColumn');
+      const i = all.findIndex((c) => c.id === id);
+      const c = all[i];
+      if (!resizable || !c || !Number.isFinite(width)) return false;
+      const next = Math.min(c.maxWidth, Math.max(c.minWidth, Math.round(width)));
+      if (next === c.width) return false;
+      all = all.map((x, j) => (j === i ? { ...x, width: next } : x));
+      rebuild();
+      apply(); // the one repaint
+      internal.emit('column:resized', {
+        columnId: id,
+        width: next,
+        widths: Object.fromEntries(all.map((x) => [x.id, x.width])),
+      });
+      return true;
     },
     exportGridCsv(): string {
       internal.alive('exportGridCsv');

@@ -1165,7 +1165,7 @@ Prefer:
 | Right click | Emits `task:context-requested` — **host-driven**, see below |
 
 Drag gestures (move, resize, create dependency) work in both renderers and are off under
-`readOnly`. Each has a keyboard alternative (WCAG 2.2 SC 2.5.7), see the table below. A Canvas chart (≥2,000 tasks) draws a translucent ghost on an overlay while you drag
+`readOnly`. Each has a keyboard alternative (WCAG 2.1.1 Keyboard), see the table below. A Canvas chart (≥2,000 tasks) draws a translucent ghost on an overlay while you drag
 (the original bar stays painted until you drop), shows hover cursors, and has no auto-scroll near
 the edges (same as SVG). Ctrl+wheel zoom is still SVG-only there.
 
@@ -1177,7 +1177,7 @@ the edges (same as SVG). Ctrl+wheel zoom is still SVG-only there.
 | Home / End | Focus the first / last visible row (selection follows; Shift extends the range) |
 | PageUp / PageDown | Move focus a page of rows (one row of overlap), clamped at the ends; Shift extends the range |
 | g / G | Scroll the focused row's bar into view horizontally (needs `withViewport`; honors the pinned label column, RTL, milestones and reduced motion). Does not move focus or selection. ArrowUp / ArrowDown never scroll horizontally |
-| Alt + ArrowLeft / ArrowRight | Move the focused task one calendar day earlier / later (the keyboard alternative to drag-move, WCAG 2.2 SC 2.5.7). Acts on the focused task only; same arithmetic and cascade as drag; rolled-up summaries are not movable; one undo step per press; off under `readOnly`. RTL: the direction is logical, so ArrowLeft is later. `preventDefault()` keeps Alt+Left from navigating the browser Back. Ctrl/Cmd+Alt+Arrow is ignored |
+| Alt + ArrowLeft / ArrowRight | Move the focused task one calendar day earlier / later (the keyboard alternative to drag-move, WCAG 2.1.1 Keyboard). Acts on the focused task only; same arithmetic and cascade as drag; rolled-up summaries are not movable; one undo step per press; off under `readOnly`. RTL: the direction is logical, so ArrowLeft is later. `preventDefault()` keeps Alt+Left from navigating the browser Back. Ctrl/Cmd+Alt+Arrow is ignored |
 | Alt + Shift + ArrowLeft / ArrowRight | Shorten / lengthen the focused task by moving its END one day (drag-resize's edge: drag only ever moves the end, so there is no start-edge key). Never shorter than one day, or than the task already is (as drag); each press changes the working-hours duration, stepping past weekends and holidays; milestones and rolled-up summaries do not resize; RTL logical |
 | Shift + ArrowUp / ArrowDown to the target row, then Alt + Enter | Create a finish-to-start dependency FROM the range anchor (the row where Shift+Arrow began) TO the focused row. Off with `enableDependencyDrag: false` or under `readOnly`; invalid links (self, duplicate, cycle) are silently dropped, as in drag |
 | Tab | Enters / leaves the chart. Rows use a roving tabindex (exactly one row is a tab stop); there are no cells to Tab between |

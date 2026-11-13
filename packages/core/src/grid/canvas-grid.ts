@@ -12,9 +12,11 @@
 // validated before `setAttribute('data-column-id')`; nothing is concatenated into markup or a font string.
 import type { GanttInternal } from '../gantt-internal.js';
 import { fillTextAt } from '../render/canvas-mirror.js';
-import type { CanvasGridPainter } from '../render/canvas-renderer.js';
+import type { CanvasGridPainter, CanvasRendererHandle } from '../render/canvas-renderer.js';
 import { HEADER_FONT_PX, TOGGLE_GLYPH_GUTTER_PX } from '../render/renderer-base.js';
 import { HEADER_HEIGHT, PAD, makeCut, makeHeaderName, place, type GridView } from './fit.js';
+import type { ResizeEnv } from './resize.js';
+import { beginDrag } from './resize-ui.js';
 import type { GridValues } from './values.js';
 
 /** Compile-time constant, never built from data. Same size and family as the SVG grid text. */
@@ -39,6 +41,8 @@ export function createCanvasGrid(
   internal: GanttInternal,
   view: () => GridView,
   values: GridValues,
+  /** Set when the headers are keyboard-resizable: they become script-focusable (`tabindex=-1`). */
+  focusable?: boolean,
 ): CanvasGridPainter {
   const cut = makeCut();
   const headerName = makeHeaderName(internal);
@@ -54,7 +58,7 @@ export function createCanvasGrid(
       const x = PAD + row.depth * INDENT + TOGGLE_GLYPH_GUTTER_PX;
       return cut(values.text(row.task, v.all)[0]!, v.cols[0]!.width - x - PAD);
     },
-    paintHeader(ctx, height, tokens) {
+    paintHeader(ctx, height, tokens, focusColumn) {
       const v = view();
       ctx.save();
       try {
@@ -81,6 +85,14 @@ export function createCanvasGrid(
         ctx.moveTo(0, HEADER_HEIGHT - 0.5);
         ctx.lineTo(v.width, HEADER_HEIGHT - 0.5);
         ctx.stroke();
+        // The focused column header's frame (WCAG 2.4.7), inside its cell so the neighbours do not clip it.
+        const f = v.cols.findIndex((c) => c.id === focusColumn);
+        if (f >= 0) {
+          const w = tokens.taskFocusWidth;
+          ctx.strokeStyle = tokens.taskFocus;
+          ctx.lineWidth = w;
+          ctx.strokeRect(v.offs[f]! + w / 2, w / 2, v.cols[f]!.width - w, HEADER_HEIGHT - w);
+        }
       } finally {
         ctx.restore();
       }
@@ -107,17 +119,17 @@ export function createCanvasGrid(
       const v = view();
       const head = div('row', { 'aria-rowindex': '1' });
       v.cols.forEach((col, i) => {
-        head.append(
-          div(
-            'columnheader',
-            {
-              'aria-colindex': String(i + 1),
-              'data-column-id': col.id,
-              'aria-label': headerName(col, i, v.cols.length),
-            },
-            col.header,
-          ),
+        const h = div(
+          'columnheader',
+          {
+            'aria-colindex': String(i + 1),
+            'data-column-id': col.id,
+            'aria-label': headerName(col, i, v.cols.length),
+          },
+          col.header,
         );
+        if (focusable) h.setAttribute('tabindex', '-1');
+        head.append(h);
       });
       layer.prepend(head);
     },
@@ -135,5 +147,62 @@ export function createCanvasGrid(
       for (let i = v.cols.length - 1; i >= 0; i--) if (x >= v.offs[i]!) return v.cols[i]!.id;
       return undefined;
     },
+  };
+}
+
+/**
+ * Pointer resize on the Canvas chart: a capture-phase `pointerdown` on the chart canvas (the pinned label
+ * canvas is `pointer-events:none`, so every pointer event lands there) that starts a drag when the press
+ * is in the header band within the hot zone of a column divider (8 px, 16 px for touch). It swallows the
+ * event, so selection, drag and edit hooks never see it. Returns the disposer.
+ */
+export function attachCanvasResize(handle: CanvasRendererHandle, env: ResizeEnv): () => void {
+  const canvas = handle.pointerEventTarget;
+  const labels = handle.container.querySelector<HTMLElement>('canvas.fg-timeline-canvas-labels');
+  /** The column whose inline-end edge is under the point, or undefined. */
+  const edgeAt = (x: number, y: number, touch: boolean): string | undefined => {
+    if (!labels) return undefined;
+    const r = labels.getBoundingClientRect();
+    if (!(y >= r.top && y < r.top + HEADER_HEIGHT)) return undefined;
+    const d = handle.mirrorX ? r.right - x : x - r.left; // layout x inside the pinned column
+    const v = env.view();
+    // a fixed column (min === max) has nothing to drag
+    return v.cols.find((c, i) => c.minWidth !== c.maxWidth && Math.abs(d - (v.offs[i]! + c.width)) <= (touch ? 8 : 4))?.id;
+  };
+  const down = (e: PointerEvent): void => {
+    if (e.button !== 0 || !e.isPrimary) return;
+    const id = edgeAt(e.clientX, e.clientY, e.pointerType === 'touch');
+    if (id === undefined) return;
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    beginDrag(env, e, id);
+  };
+  let hot = false;
+  const hover = (e: PointerEvent): void => {
+    const over = e.pointerType !== 'touch' && !e.buttons && edgeAt(e.clientX, e.clientY, false) !== undefined;
+    // Over a divider the hover belongs to us: `canvas-drag` (withInteraction) would reset the cursor on the
+    // next frame, so it does not get to see the move.
+    if (over) e.stopImmediatePropagation();
+    if (over === hot) return;
+    hot = over;
+    canvas.style.cursor = over ? 'col-resize' : '';
+    // and re-assert after a hover frame that was already scheduled by the move before this one
+    if (over) requestAnimationFrame(() => {
+      if (hot) canvas.style.cursor = 'col-resize';
+    });
+  };
+  // A finger on a divider must drag, not pan the chart: `touch-action` cannot be set per region.
+  const touch = (e: TouchEvent): void => {
+    const t = e.touches[0];
+    if (t && e.cancelable && edgeAt(t.clientX, t.clientY, true) !== undefined) e.preventDefault();
+  };
+  canvas.addEventListener('pointerdown', down, true);
+  canvas.addEventListener('pointermove', hover, true);
+  canvas.addEventListener('touchstart', touch, { passive: false });
+  return () => {
+    canvas.removeEventListener('pointerdown', down, true);
+    canvas.removeEventListener('pointermove', hover, true);
+    canvas.removeEventListener('touchstart', touch);
+    if (hot) canvas.style.cursor = '';
   };
 }

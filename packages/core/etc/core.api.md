@@ -52,6 +52,14 @@ export class CollapseStore {
 }
 
 // @beta
+export interface ColumnResizedPayload {
+    // (undocumented)
+    readonly columnId: string;
+    readonly width: number;
+    readonly widths: Readonly<Record<string, number>>;
+}
+
+// @beta
 export function computeCascade(tasks: readonly Task[], dependencies: readonly Dependency[], calendar: WorkingCalendar, changedTaskIds: readonly TaskId[]): CascadeResult;
 
 // Warning: (ae-incompatible-release-tags) The symbol "computeCriticalPath" is marked as @public, but its signature references "ComputeCriticalPathOptions" which is marked as @beta
@@ -233,6 +241,17 @@ export type GanttAnnouncement =
     readonly to: string;
     readonly reason?: 'duplicate' | 'cycle' | 'self';
     readonly locale: string;
+}
+/** After a keyboard resize of a grid column (`withGrid`, Alt+Arrow on a focused column header);
+*  `width` is the resulting width in px (unchanged at a limit). Pointer drags are not announced.
+*
+*  @beta */
+| {
+    readonly kind: 'column-resized';
+    readonly columnId: string;
+    readonly header: string;
+    readonly width: number;
+    readonly locale: string;
 };
 
 // @public
@@ -260,6 +279,8 @@ export interface GanttConfig {
 // @public
 export interface GanttEventMap {
     'collapse:changed': [collapsedTaskIds: readonly TaskId[]];
+    // @beta
+    'column:resized': [payload: ColumnResizedPayload];
     'conflict:detected': [conflicts: readonly Conflict[]];
     'critical-path:computed': [criticalTaskIds: readonly TaskId[]];
     'data:imported': [summary: ImportSummary];

@@ -10,7 +10,7 @@
 // measurement tool's default config doesn't).
 //
 // The same applies to `io/mixin.ts`'s `import('./export-canvas-png.js')` (Canvas-mode PNG export,
-// loaded on first use) and to `grid/mixin.ts`'s `import('./canvas-grid.js')` (the Canvas grid painter).
+// loaded on first use) and to `grid/mixin.ts`'s `import('./canvas-grid.js')` (the Canvas grid painter) and `import('./resize-ui.js')` (grid column resize, loaded on first use).
 // Marking the Canvas-renderer, Canvas-PNG and Canvas-grid modules `external` reproduces that real-world behavior: esbuild
 // leaves the `import()` call as-is (a few bytes of inert glue) instead of inlining ~20 KB of
 // Canvas rendering logic a consumer only pays for above the auto-switch threshold. Apart from
@@ -38,7 +38,7 @@ export function fixtureConfig(fixture) {
     bundle: true,
     // Matches the specifier text `render/mixin.ts`'s dynamic `import()` resolves to inside the
     // built output — a single `*` wildcard suffix match, per esbuild's `external` syntax.
-    external: ['*canvas-renderer.js', '*export-canvas-png.js', '*canvas-grid.js'],
+    external: ['*canvas-renderer.js', '*export-canvas-png.js', '*canvas-grid.js', '*resize-ui.js'],
     metafile: true,
     minifyIdentifiers: true,
     minifySyntax: true,

@@ -175,7 +175,7 @@ function wireInto(
     onZoomIn: () => instance.zoomIn(),
     onZoomOut: () => instance.zoomOut(),
     // Read at keypress time so composition order is irrelevant; inert without `withViewport`.
-    // Keyboard alternative to drag (SC 2.5.7): same commit points as the pointer path, gated by readOnly
+    // Keyboard alternative to drag (WCAG 2.1.1): same commit points as the pointer path, gated by readOnly
     // inside keyboard-nav and by enableDependencyDrag here.
     onShift: (id, days, edge) => {
       const ok = commitShift(instance, internal, id, days, edge);

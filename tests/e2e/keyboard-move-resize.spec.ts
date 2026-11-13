@@ -2,7 +2,7 @@ import { test, expect, type Page } from '@playwright/test';
 import { DAY_MS, dependencyCount, events, openCanvasDrag as openCanvas, taskMs } from '../helpers/canvas-drag.js';
 import { openRtl } from '../helpers/rtl.js';
 
-// Keyboard alternative to drag (WCAG 2.2 SC 2.5.7, spec-keyboard-move-resize.md). Fixtures:
+// Keyboard alternative to drag (WCAG 2.1.1 Keyboard, spec-keyboard-move-resize.md). Fixtures:
 // `canvas-drag.html` (`?pad=0` = SVG twin, default = Canvas; rows a b c d ms sum x y, c -> d) and
 // `rtl.html` (`?pad=0` SVG, `?pad=2100` Canvas). Dates are read through the public API.
 

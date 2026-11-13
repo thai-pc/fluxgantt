@@ -30,6 +30,8 @@ export default defineConfig({
     // The Canvas grid painter: `grid/mixin.ts`'s dynamic `import('./canvas-grid.js')`, fetched only for a
     // Canvas mount. Internal, not in `exports`.
     'grid/canvas-grid': 'src/grid/canvas-grid.ts',
+    // The lazy interactive half of grid column resize: `grid/mixin.ts` / `grid/resize.ts` `import('./resize-ui.js')`.
+    'grid/resize-ui': 'src/grid/resize-ui.ts',
   },
   format: ['esm', 'cjs'],
   // Required for esbuild to point the ESM output's dynamic import at this same compiled

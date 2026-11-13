@@ -14,6 +14,7 @@
 //   ?tz=Zone      calendar time zone (default UTC)
 //   ?wide=1       spread the filler tasks over ~520 days and add 20 holidays (the PR #125 duration trap)
 //   ?longcols=1   name + five custom columns whose values are ~1000 characters (the fit() cost budget)
+//   ?resizable=0  `resizable: false` (no drag handles, no header keys)
 //   ?grid=0       do not compose withGrid (the baseline for the performance budgets)
 //   ?deps=1       keep the four dependencies even when ?rows pads the plan, and keep the filler tasks inside Mar-May so
 //                 the plan's chain stays the critical path (a truncated critical row on the Canvas renderer)
@@ -146,6 +147,7 @@ const gantt = params.get('grid') === '0'
       columns,
       collapseBelow: collapse,
       durationUnit: params.get('hours') === '1' ? 'hours' : 'days',
+      resizable: params.get('resizable') !== '0',
     });
 
 const t0 = performance.now();

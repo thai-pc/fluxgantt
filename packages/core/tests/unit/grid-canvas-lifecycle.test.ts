@@ -34,7 +34,7 @@ async function fresh() {
   const settle = async (): Promise<void> => {
     release();
     for (let i = 0; i < 10; i++) await Promise.resolve();
-    await new Promise((r) => setTimeout(r, 20));
+    await new Promise((r) => setTimeout(r, 250));
   };
   return { g, internal, mountCanvas, settle };
 }
