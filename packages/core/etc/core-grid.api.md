@@ -40,6 +40,7 @@ export const DEFAULT_GRID_COLUMNS: readonly GridColumnInput[];
 export interface GridCapability {
     exportGridCsv(): string;
     getGridColumns(): readonly GridColumn[];
+    resizeGridColumn(id: string, width: number): boolean;
     setGridColumns(columns: readonly GridColumnInput[]): void;
 }
 
@@ -84,6 +85,7 @@ export interface GridOptions {
     readonly collapseBelow?: number;
     readonly columns?: readonly GridColumnInput[];
     readonly durationUnit?: 'hours' | 'days';
+    readonly resizable?: boolean;
 }
 
 // @beta

@@ -15,6 +15,7 @@ export type {
   EventMeta,
   TaskField,
   TaskUpdatedPayload,
+  ColumnResizedPayload,
   ImportSummary,
   ViewportChangedPayload,
   RendererSelectedPayload,

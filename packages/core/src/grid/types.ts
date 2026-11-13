@@ -118,6 +118,9 @@ export interface GridOptions {
   readonly collapseBelow?: number;
   /** Unit of the built-in `duration` column. Default `'days'`. */
   readonly durationUnit?: 'hours' | 'days';
+  /** Default true. `false` freezes the widths: no drag handles, Alt+Arrow on a column header does
+   *  nothing, the headers take no focus, and `resizeGridColumn` returns false. */
+  readonly resizable?: boolean;
 }
 
 /**
@@ -131,6 +134,15 @@ export interface GridCapability {
   getGridColumns(): readonly GridColumn[];
   /** Replaces the columns with one repaint. Throws a `RangeError` for invalid input and then changes nothing. */
   setGridColumns(columns: readonly GridColumnInput[]): void;
+  /** Sets one column's width (px, rounded, clamped to its `[minWidth, maxWidth]`) with one repaint and
+   *  one `column:resized` event. Returns true when the width changed; false for an unknown id, a
+   *  non-finite width, an unchanged width, or when `resizable` is false. Works headless and is not
+   *  gated by `readOnly` (widths are view state, not data). Widths are never persisted by the library:
+   *  save them from `column:resized` and pass them back as `width` in `columns`. Pointer: drag a header
+   *  divider (Escape cancels, the width commits on release). Keyboard: Tab to the column headers,
+   *  Left/Right/Home/End move between them, Alt+Left/Right resizes by 16 px (Alt+Shift 2 px; toward
+   *  the chart grows, so Alt+Left in RTL). */
+  resizeGridColumn(id: string, width: number): boolean;
   /** A CSV report of the configured columns: one row per task in tree order (collapsed rows
    *  included), built-in dates as `YYYY-MM-DD` in the calendar zone, duration in the column unit,
    *  progress as an integer percent, custom columns as the raw `value()`. Every header and cell is

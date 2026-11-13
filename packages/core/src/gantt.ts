@@ -428,6 +428,23 @@ export interface GanttEventMap {
    *  right-click, ContextMenu / Shift+F10, or touch long-press. Call `payload.preventDefault()` to
    *  suppress the native menu. Fires in `readOnly` charts. */
   'task:context-requested': [payload: TaskContextRequestedPayload];
+  /** Fires from the opt-in `withGrid()` mixin (`@fluxgantt/core/grid`) once per width change a pointer
+   *  drag, a keyboard resize or `resizeGridColumn()` made, after the repaint. `widths` maps every
+   *  configured column id to its width in px. The library never persists widths: save them here and
+   *  pass them back as `width` in `columns`. @beta */
+  'column:resized': [payload: ColumnResizedPayload];
+}
+
+/** Payload of `column:resized`.
+ *
+ * @beta
+ */
+export interface ColumnResizedPayload {
+  readonly columnId: string;
+  /** The new width in px, clamped to the column's `[minWidth, maxWidth]`. */
+  readonly width: number;
+  /** Every configured column's width in px, keyed by column id. */
+  readonly widths: Readonly<Record<string, number>>;
 }
 
 /** Any event name `GanttInstance.on` accepts. */
