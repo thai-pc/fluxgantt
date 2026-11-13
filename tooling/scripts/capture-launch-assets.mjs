@@ -268,7 +268,7 @@ const V = (s) => `<span style="color:#f78c6c">${s}</span>`;
 const sizeBars = (sz) => {
   const rows = [
     ['dhtmlx-gantt Community (JS + CSS)', COMPETITORS.dhtmlx, '#a1a1aa'],
-    ['FluxGantt, everything composed', sz.kitchen, '#6366f1'],
+    ['FluxGantt, io + render + interaction', sz.kitchen, '#6366f1'],
     ['FluxGantt, editable chart (render + drag)', sz.editable, '#6366f1'],
     ['Frappe Gantt (JS + CSS)', COMPETITORS.frappe, '#a1a1aa'],
     ['FluxGantt, headless engine', sz.hello, '#6366f1'],
