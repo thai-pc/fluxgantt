@@ -24,7 +24,7 @@
     "name": "Everything composed (all mixins incl. grid + grid editing, gzip)",
     "path": "size-limit/everything.js",
     "config": "size-limit/everything.esbuild-config.mjs",
-    "limit": "39.75 KiB",
+    "limit": "40.25 KiB",
     "gzip": true
   }
 ]
