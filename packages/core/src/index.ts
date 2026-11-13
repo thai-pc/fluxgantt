@@ -96,7 +96,6 @@ export type {
   RollupProvider,
   GanttMessages,
   GanttAnnouncement,
-  EditErrorReason,
   TaskLabelParams,
   ViewMode,
   Density,
