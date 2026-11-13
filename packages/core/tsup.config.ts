@@ -27,6 +27,9 @@ export default defineConfig({
     // Same reason as `render/canvas-renderer`: a deterministic chunk for `io/mixin.ts`'s dynamic
     // `import('./export-canvas-png.js')`. Not in package.json `exports` (internal).
     'io/export-canvas-png': 'src/io/export-canvas-png.ts',
+    // The Canvas grid painter: `grid/mixin.ts`'s dynamic `import('./canvas-grid.js')`, fetched only for a
+    // Canvas mount. Internal, not in `exports`.
+    'grid/canvas-grid': 'src/grid/canvas-grid.ts',
   },
   format: ['esm', 'cjs'],
   // Required for esbuild to point the ESM output's dynamic import at this same compiled

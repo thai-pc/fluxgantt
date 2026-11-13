@@ -1,7 +1,7 @@
 // Ellipsis truncation of grid text (spec-grid-columns.md 5.3): property tests.
 import { describe, it, expect } from 'vitest';
 import fc from 'fast-check';
-import { fit } from '../../src/grid/svg-grid.js';
+import { fit } from '../../src/grid/fit.js';
 import { estimateTextWidth } from '../../src/render/renderer-base.js';
 
 const text = fc.oneof(

@@ -3,7 +3,7 @@
     "Hello world (createGantt only, tree-shaken, gzip)": 7526,
     "Base + withRender + withInteraction (editable chart, gzip)": 19616,
     "Kitchen sink (every capability composed, gzip)": 24421,
-    "Everything composed (all mixins incl. grid + grid editing, gzip)": 37274
+    "Everything composed (all mixins incl. grid + grid editing, gzip)": 37397
   },
   "soft": {
     "Base + withIo (import/export, no rendering, gzip)": 12678,
@@ -14,6 +14,6 @@
     "Base + withConflicts (headless conflict detector + watcher, gzip)": 9423,
     "Base + withRender + withEditHooks (dblclick/contextmenu/keyboard host hooks, gzip)": 16194,
     "Base + withRender + withRtl (mirrored right-to-left chart, gzip)": 15284,
-    "Base + withRender + withGrid (pinned columns grid + CSV report, gzip)": 20555
+    "Base + withRender + withGrid (pinned columns grid + CSV report, gzip)": 20639
   }
 }
