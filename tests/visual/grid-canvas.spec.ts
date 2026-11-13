@@ -64,3 +64,10 @@ test('canvas: collapsed to the name column on a narrow container', async ({ page
   await open(page, '', 220);
   await expect(page.locator('#gantt')).toHaveScreenshot('grid-canvas-narrow.png');
 });
+
+test('canvas: a column header focused with the keyboard shows its frame', async ({ page }) => {
+  await open(page);
+  await page.locator('#gantt [role=columnheader][data-column-id=start]').focus();
+  await frames(page);
+  await expect(page.locator('#gantt')).toHaveScreenshot('grid-canvas-header-focus.png');
+});

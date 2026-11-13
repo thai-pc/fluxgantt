@@ -108,3 +108,26 @@ test('a truncated, critical, selected row is still announced as critical path an
   // the cut text is really cut on this row
   expect(await page.locator('#gantt svg.fg-timeline .fg-timeline__row[data-task-id="plan"] .fg-timeline__row-label').evaluate((e) => e.lastChild!.textContent)).toContain('…');
 });
+
+// G3: the column headers are a roving tab stop (so the keyboard can resize) and the drag handles sit over the pinned,
+// aria-hidden corner; neither may introduce a violation, with or without a focused header.
+for (const [label, query] of [
+  ['resizable headers, LTR', ''],
+  ['resizable headers, RTL', 'rtl=1'],
+  ['resizable:false', 'resizable=0'],
+] as const) {
+  test(`no axe violations with a column header focused: ${label}`, async ({ page }) => {
+    await open(page, query);
+    await page.locator('#gantt [role=columnheader][data-column-id=start]').focus();
+    await page.keyboard.press(query.includes('rtl') ? 'Alt+ArrowLeft' : 'Alt+ArrowRight');
+    expect((await scan(page)).violations).toEqual([]);
+  });
+}
+
+test('exactly one column header is a tab stop and the handles are not focusable', async ({ page }) => {
+  await open(page);
+  const stops = await page.locator('#gantt [role=columnheader]').evaluateAll((hs) => hs.filter((h) => h.getAttribute('tabindex') === '00').length);
+  expect(stops).toBe(1);
+  await expect(page.locator('.fg-grid__sizer')).toHaveCount(5);
+  expect(await page.locator('.fg-grid__sizer').evaluateAll((s) => s.some((e) => e.hasAttribute('tabindex')))).toBe(false);
+});
