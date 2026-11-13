@@ -113,17 +113,60 @@ describe('SvgRendererHandle.paintHooks', () => {
     expect(hook).not.toHaveBeenCalled();
   });
 
-  it('each mount has its own (empty) list and a destroyed renderer paints nothing', () => {
+  it('a destroyed renderer paints nothing; a composition-time hook survives a remount', () => {
     const g = mount();
     const first = svgHandle(g);
-    const hook = vi.fn();
-    first.paintHooks.push(hook);
+    const late = vi.fn();
+    first.paintHooks.push(late);
+    const early = vi.fn();
+    (getInternal(g).paints ??= []).push(early);
     g.unmount();
-    hook.mockClear();
+    late.mockClear();
+    early.mockClear();
     first.setOptions({});
-    expect(hook).not.toHaveBeenCalled();
+    expect(late).not.toHaveBeenCalled();
     g.mount(container);
-    expect(svgHandle(g).paintHooks).toHaveLength(0);
+    expect(early).toHaveBeenCalled(); // registered on the instance: sees the new mount's first paint
+  });
+
+  it('a hook registered at composition time sees the mount paint', () => {
+    const g = withRender(createGantt({ tasks: TASKS }));
+    const seen: PaintEvent[] = [];
+    (getInternal(g).paints ??= []).push((e) => seen.push(e));
+    g.mount(container);
+    expect(seen.length).toBeGreaterThan(0);
+    expect(seen[0]!.column).toBeDefined();
+  });
+
+  it('a throwing hook is reported, the others still run, and the renderer stays patchable', () => {
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const g = withInteraction(withRender(createGantt({ tasks: TASKS })));
+    const after = vi.fn();
+    getInternal(g).paints = [
+      () => {
+        throw new Error('boom');
+      },
+      after,
+    ];
+    g.mount(container);
+    expect(err).toHaveBeenCalled();
+    expect(after).toHaveBeenCalled();
+    after.mockClear();
+    g.select(toTaskId('b')); // patch path: still dispatches
+    expect(after.mock.calls.at(-1)![0].rows).toBeDefined();
+    err.mockRestore();
+  });
+
+  it('dispatch runs over a snapshot: a hook removing itself does not skip the next one', () => {
+    const g = mount();
+    const h = svgHandle(g);
+    const next = vi.fn();
+    const self = (): void => {
+      h.paintHooks.splice(h.paintHooks.indexOf(self), 1);
+    };
+    h.paintHooks.push(self, next);
+    h.setOptions({});
+    expect(next).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -132,7 +175,6 @@ describe('withRtl through paintHooks', () => {
     const g = withRtl(withInteraction(withRender(createGantt({ tasks: TASKS, rtl: true }))));
     g.mount(container);
     const h = svgHandle(g);
-    expect(h.paintHooks).toHaveLength(1);
     const before = h.svg.querySelectorAll('g.fg-rtl').length;
     expect(before).toBeGreaterThan(0);
     const column = container.querySelector('.fg-timeline__sticky-column')!;
@@ -142,6 +184,21 @@ describe('withRtl through paintHooks', () => {
     // The rebuilt rows sit inside the mirror group, not beside it.
     const row = h.svg.querySelector('.fg-timeline__row[aria-selected="true"]')!;
     expect(row.closest('g.fg-rtl')).not.toBeNull();
+  });
+
+  const probe = (e: PaintEvent): void => {
+    const t = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+    t.setAttribute('class', 'probe');
+    if (e.column && !e.column.querySelector('.probe')) e.column.append(t);
+  };
+  it.each([['before withRtl'], ['after withRtl']])('content a hook adds to the column is mirrored (hook composed %s)', (when) => {
+    const base = withRender(createGantt({ tasks: TASKS, rtl: true }));
+    if (when === 'before withRtl') (getInternal(base).paints ??= []).push(probe);
+    const g = withRtl(base);
+    if (when === 'after withRtl') (getInternal(g).paints ??= []).push(probe);
+    g.mount(container); // no extra repaint is needed: the mount paint already ran both
+    const p = container.querySelector('.fg-timeline__sticky-column .probe')!;
+    expect(p.closest('g.fg-rtl')).not.toBeNull();
   });
 
   it('a second consumer added by another mixin runs alongside the mirror hook', () => {
@@ -189,6 +246,42 @@ describe('handle.fixedLabelWidth versus withResponsive', () => {
     expect(svgHandle(g).getLabelColumnWidth()).toBe(160);
     ro.fire();
     expect(svgHandle(g).getLabelColumnWidth()).toBe(160);
+  });
+
+  it('after unmount + mount, getLabelColumnWidth reports the painted width (remount memo reset)', () => {
+    stubs(393);
+    const g = withResponsive(withRender(createGantt({ tasks: TASKS })));
+    g.mount(container);
+    const narrow = g.getLabelColumnWidth();
+    expect(narrow).toBeLessThan(160);
+    g.unmount();
+    g.mount(container);
+    expect(g.getLabelColumnWidth()).toBe(svgHandle(g).getLabelColumnWidth());
+    expect(Number(container.querySelector('.fg-timeline__sticky-column')!.getAttribute('width'))).toBe(g.getLabelColumnWidth());
+  });
+
+  it('the owner winning the width holds in either listener order, and the getter reports the painted width', () => {
+    for (const ownerFirst of [true, false]) {
+      const c = document.createElement('div');
+      document.body.appendChild(c);
+      Object.defineProperty(c, 'clientWidth', { value: 393, configurable: true });
+      stubs(393);
+      const base = withRender(createGantt({ tasks: TASKS }));
+      const own = (): void => {
+        base.on('renderer:selected', () => {
+          const h = svgHandle(base);
+          h.fixedLabelWidth = true;
+          h.setOptions({ labelColumnWidth: 300 }); // what a grid does: write its own sum
+        });
+      };
+      if (ownerFirst) own();
+      const g = withResponsive(base);
+      if (!ownerFirst) own();
+      g.mount(c);
+      expect(svgHandle(base).getLabelColumnWidth()).toBe(300);
+      expect(g.getLabelColumnWidth()).toBe(300);
+      c.remove();
+    }
   });
 
   it('setting the flag after responsive narrowed the column stops further writes', () => {

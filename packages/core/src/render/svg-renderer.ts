@@ -119,6 +119,13 @@ export interface SvgRendererOptions {
    *  Default `true`. The facade sets this to `false` for a `readOnly` Gantt so a
    *  non-editable chart shows no interactive link affordance. */
   readonly showLinkHandles?: boolean;
+  /** Paint consumers, called in array order. Pass the array at construction so hooks see the FIRST
+   *  paint; it is kept by reference and read live (`SvgRendererHandle.paintHooks` is this array, or a
+   *  fresh one when omitted). See `PaintHook` for the contract. Set by the facade from the mixins. */
+  readonly paintHooks?: PaintHook[];
+  /** One hook that always runs after every `paintHooks` entry (the RTL mirror, which must flip what
+   *  the others added). Same contract as `PaintHook`. */
+  readonly paintLast?: PaintHook;
 }
 
 /**
@@ -140,7 +147,15 @@ export interface PaintEvent {
 }
 
 /**
- * A paint consumer. Synchronous, must not throw, idempotent and cheap.
+ * A paint consumer.
+ *
+ * Contract: hooks run in registration (array) order, then `SvgRendererOptions.paintLast`, so a hook
+ * that adds content to a pinned layer is still mirrored by `withRtl`, whatever order the mixins were
+ * composed in. Register at COMPOSITION time (push onto `GanttInternal.paints` from the mixin factory,
+ * not from `renderer:selected`) and the hook sees the mount paint, with no repaint of its own. The
+ * array is copied before each dispatch, so a hook may add or remove hooks without disturbing the pass.
+ * A hook that throws is reported with `console.error` and the remaining hooks still run, but it
+ * should catch host callbacks itself. Synchronous, idempotent and cheap: it runs on every paint.
  *
  * @beta
  */
@@ -157,10 +172,10 @@ export interface SvgRendererHandle extends InteractiveRendererHandle {
   /** Same node as `svg` — `enableClickSelect`/`enableKeyboardNav` query `.fg-timeline__row`
    *  structure and attach their `keydown` listener here (spec-canvas-renderer-ticket2.md §3.3). */
   readonly interactionRoot: SVGSVGElement;
-  /** Consumers called, in array order, at the end of every paint: after a full repaint (every pinned
-   *  layer filled from clones, before focus restoration) with all four roots, and after a row patch
-   *  with `svg` and the rebuilt `rows`. Push to add one; the array is read live. For `withRtl`; do not
-   *  rely on it. */
+  /** Consumers called at the end of every paint: after a full repaint (every pinned layer filled from
+   *  clones, before focus restoration) with all four roots, and after a row patch with `svg` and the
+   *  rebuilt `rows`. Order and registration timing: see `PaintHook`. Prefer passing the array via
+   *  `SvgRendererOptions.paintHooks` so hooks see the first paint. Do not rely on it. */
   readonly paintHooks: PaintHook[];
   /** The `div.fg-timeline__layer` wrapper that holds the chart `<svg>` AND the pinned overlays, so a
    *  pointer event on any of them bubbles to one listener target. */
@@ -327,7 +342,7 @@ export function createSvgRenderer(
   let currentInput = input;
   let currentOptions: SvgRendererOptions = { ...options };
   let destroyed = false;
-  const paintHooks: PaintHook[] = [];
+  const paintHooks = options.paintHooks ?? [];
   const releaseDateLabels = retainDateLabels();
   // Assigned inside render(), which always runs synchronously below before the handle is
   // returned — never read while unassigned (definite-assignment asserted).
@@ -440,6 +455,16 @@ let patch: ((ids: readonly TaskId[], focus: TaskId | undefined) => void) | undef
       return currentTimeScale;
     },
   };
+
+  function paint(e: PaintEvent): void {
+    for (const h of [...paintHooks, currentOptions.paintLast]) {
+      try {
+        h?.(e);
+      } catch (x) {
+        console.error(x);
+      }
+    }
+  }
 
   function render(): void {
     patch = place = undefined;
@@ -918,7 +943,7 @@ let patch: ((ids: readonly TaskId[], focus: TaskId | undefined) => void) | undef
       // open on that side) instead of a `totalWidth` rect overflowing a 160 px svg.
       frame(offsetX + 1),
     );
-    for (const h of paintHooks) h({ svg, overlay, column, corner });
+    paint({ svg, overlay, column, corner });
 
     // Focus restoration (spec §4.5 point 4), after every element is appended: the roving tab stop IS the
     // focused row, so it is found by its `tabindex` (none for a stale id: nothing is focused). Only ever
@@ -955,7 +980,7 @@ let patch: ((ids: readonly TaskId[], focus: TaskId | undefined) => void) | undef
         }
       });
       place!();
-      for (const h of paintHooks) h({ svg, rows: rebuilt });
+      paint({ svg, rows: rebuilt });
       if (had) svg.querySelector<SVGElement>('[tabindex="0"]')?.focus({ preventScroll: true });
     };
   }

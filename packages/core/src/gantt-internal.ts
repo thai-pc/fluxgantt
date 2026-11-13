@@ -28,7 +28,7 @@ import type {
   TaskPatch,
 } from './store/index.js';
 import type { CanvasRendererHandle } from './render/canvas-renderer.js';
-import type { SvgRendererHandle } from './render/svg-renderer.js';
+import type { PaintHook, SvgRendererHandle } from './render/svg-renderer.js';
 import type {
   Dependency,
   Density,
@@ -149,6 +149,13 @@ export interface GanttInternal {
    *  resolves `messages.announce` itself. Undefined without `withInteraction`. The only valid call form is
    *  `internal.announce?.(text)`: a mount can be disposed while a caller is mid-gesture. */
   announce?: (text: string) => void;
+
+  /** SVG paint consumers registered by mixins AT COMPOSITION TIME (`(internal.paints ??= []).push(h)`),
+   *  so every mount's first paint sees them and no mixin repaints on its own. Registration order is
+   *  call order. Passed to the SVG renderer by `render/mixin.ts`; Canvas ignores it. */
+  paints?: PaintHook[];
+  /** The one hook that always runs after `paints` (`withRtl`'s mirror), whatever the composition order. */
+  mirror?: PaintHook;
 
   // --- Mount slot (writer: render/mixin.ts) ---
   mountOf(): MountState | undefined;

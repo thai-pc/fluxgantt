@@ -23,6 +23,13 @@ export function withRtl<T extends GanttInstance>(instance: T): T {
   const internal = getInternal(instance);
   if (internal.config.rtl !== true) return instance;
 
+  // The SVG mirror is a composition-time hook (see `GanttInternal.mirror`): it runs after every other
+  // paint hook, on the mount paint too, so no repaint is needed and application order is irrelevant.
+  internal.mirror = (e) => {
+    for (const root of [e.svg, e.overlay, e.column, e.corner])
+      if (root) mirrorSvg(root, Number(root.getAttribute('width')));
+  };
+
   instance.on('renderer:selected', () => {
     const mount = internal.mountOf();
     if (!mount) return; // a listener registered before this one may have unmounted during the emit
@@ -66,12 +73,6 @@ export function withRtl<T extends GanttInstance>(instance: T): T {
         return src;
       };
       handle.setOptions({ rtl: true });
-    } else {
-      handle.paintHooks.push((e) => {
-        for (const root of [e.svg, e.overlay, e.column, e.corner])
-          if (root) mirrorSvg(root, Number(root.getAttribute('width')));
-      });
-      handle.setOptions({}); // repaint so the hook sees the current paint
     }
   });
 
