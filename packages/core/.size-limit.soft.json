@@ -54,5 +54,12 @@
     "config": "size-limit/with-rtl.esbuild-config.mjs",
     "limit": "15.5 KiB",
     "gzip": true
+  },
+  {
+    "name": "Base + withRender + withGrid (pinned columns grid + CSV report, gzip)",
+    "path": "size-limit/with-grid.js",
+    "config": "size-limit/with-grid.esbuild-config.mjs",
+    "limit": "20 KiB",
+    "gzip": true
   }
 ]

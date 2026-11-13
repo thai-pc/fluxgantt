@@ -122,6 +122,16 @@
         "default": "./dist/rtl/index.cjs"
       }
     },
+    "./grid": {
+      "import": {
+        "types": "./dist/grid/index.d.ts",
+        "default": "./dist/grid/index.js"
+      },
+      "require": {
+        "types": "./dist/grid/index.d.cts",
+        "default": "./dist/grid/index.cjs"
+      }
+    },
     "./conflicts": {
       "import": {
         "types": "./dist/conflicts/index.d.ts",

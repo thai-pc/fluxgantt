@@ -293,7 +293,41 @@ export type GanttAnnouncement =
       readonly to: string;
       readonly reason?: 'duplicate' | 'cycle' | 'self';
       readonly locale: string;
+    }
+  /** After a grid column was resized (`withGrid`; reserved, nothing emits it yet). */
+  | {
+      readonly kind: 'column-resized';
+      readonly columnId: string;
+      readonly header: string;
+      readonly width: number;
+      readonly locale: string;
+    }
+  /** After a grid cell edit committed (`text` is the new display text) or failed (`reason`);
+   *  reserved for the grid editing mixin, nothing emits it yet. */
+  | {
+      readonly kind: 'cell-edited' | 'cell-edit-failed';
+      readonly id: TaskId;
+      readonly name: string;
+      readonly columnId: string;
+      readonly header: string;
+      readonly text?: string;
+      readonly reason?: EditErrorReason;
+      readonly locale: string;
     };
+
+/**
+ * Why a grid cell edit was refused (`GanttMessages.gridEditError`, `'cell-edit-failed'`).
+ *
+ * @beta
+ */
+export type EditErrorReason =
+  | 'empty'
+  | 'not-a-number'
+  | 'out-of-range'
+  | 'not-a-date'
+  | 'end-before-start'
+  | 'too-long'
+  | 'rejected';
 
 /**
  * Host-supplied accessible-name builders (`GanttConfig.messages`).
@@ -321,6 +355,39 @@ export interface GanttMessages {
    *  task per paint, so a `console.warn` would emit thousands of identical lines in a single
    *  paint of a large chart, and the fallback is correct English rather than a broken chart. */
   readonly taskLabel?: (params: TaskLabelParams) => string;
+  /** Accessible name of a grid column header (`withGrid`). Default
+   *  `${header}, column ${index} of ${count}`. Throwing or returning a non-string falls back to it.
+   *
+   * @beta */
+  readonly gridColumnLabel?: (params: {
+    readonly columnId: string;
+    readonly header: string;
+    /** 1-based. */
+    readonly index: number;
+    readonly count: number;
+    readonly locale: string;
+  }) => string;
+  /** Accessible name of the cell editor input (reserved for the grid editing mixin). Default
+   *  `${header}, ${taskName}`.
+   *
+   * @beta */
+  readonly gridEditLabel?: (params: {
+    readonly columnId: string;
+    readonly header: string;
+    readonly taskName: string;
+    readonly locale: string;
+  }) => string;
+  /** Validation message of the cell editor (reserved for the grid editing mixin).
+   *
+   * @beta */
+  readonly gridEditError?: (params: {
+    readonly reason: EditErrorReason;
+    readonly columnId: string;
+    readonly header: string;
+    readonly locale: string;
+    readonly min?: number;
+    readonly max?: number;
+  }) => string;
 }
 
 // --- Conflicts (spec-detect-conflicts.md) ---------------------------------------------------

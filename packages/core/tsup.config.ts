@@ -22,6 +22,7 @@ export default defineConfig({
     'conflicts/index': 'src/conflicts/index.ts',
     'edit-hooks/index': 'src/edit-hooks/index.ts',
     'rtl/index': 'src/rtl/index.ts',
+    'grid/index': 'src/grid/index.ts',
     'render/canvas-renderer': 'src/render/canvas-renderer.ts',
     // Same reason as `render/canvas-renderer`: a deterministic chunk for `io/mixin.ts`'s dynamic
     // `import('./export-canvas-png.js')`. Not in package.json `exports` (internal).
