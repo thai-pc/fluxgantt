@@ -25,29 +25,34 @@ The API report is the lock and the TSDoc tag decides the tier (stable, `@beta`, 
 5. **Tree-shakable + bundle budget** — the `Gantt` facade is a base class plus opt-in mixins on their own subpath exports (`@fluxgantt/core/io`, `/render`, `/interaction`, ...), because class prototype methods never tree-shake. Non-core features are plugins. Fixtures live in `packages/core/size-limit/` and are measured as ESM gzip by `size-limit`.
 
    **Policy (re-based 2026-11, owner-approved).** The budget protects the order of magnitude (we are 4-6x smaller than the nearest competitors), not every hundred bytes. Byte-level limits on every fixture had begun to block performance fixes and push architecture toward monkey-patching.
-   - **Three HARD gates fail CI** (`.size-limit.json`, `pnpm --filter @fluxgantt/core size:hard`): hello world, `+ withRender + withInteraction`, and the kitchen sink. Each limit is ~10% over the size measured at the re-base, rounded up to the next 0.25 KiB.
+   - **Four HARD gates fail CI** (`.size-limit.json`, `pnpm --filter @fluxgantt/core size:hard`): hello world, `+ withRender + withInteraction`, the kitchen sink, and everything composed (`size-limit/everything.js`: every opt-in mixin, incl. grid and grid editing once they ship). Each limit is ~10% over the size measured at the re-base, rounded up to the next 0.25 KiB.
    - **Eight SOFT fixtures are report-only** (`.size-limit.soft.json`, `size:soft`): measured and printed on every CI run, never failing it. Their old limits stay as reference budgets. The report warns (GitHub `::warning`) when a soft fixture is over its reference limit or grew more than 5% against `size-limit/baselines.json` (the master sizes at the re-base; refresh with `pnpm --filter @fluxgantt/core size:baseline` when a change is deliberate).
-   - `pnpm size` (from `packages/core`, or the root via turbo) prints all eleven fixtures and exits non-zero only if a hard gate fails. `size:headroom` (non-fatal CI step) warns when a hard gate has less than 25% of its allotted headroom (limit minus re-base size) left.
+   - `pnpm size` (from `packages/core`, or the root via turbo) prints all twelve fixtures and exits non-zero only if a hard gate fails. `size:headroom` (non-fatal CI step) warns when a hard gate has less than 25% of its allotted headroom (limit minus re-base size) left.
 
    | Fixture | Tier | Measured (B / KiB) | Limit |
    |---|---|---|---|
    | `createGantt()` only (hello world) | **hard** | 8380 / 8.18 | 8.25 KiB |
-   | `+ withRender + withInteraction` | **hard** | 21655 / 21.15 | 21.25 KiB |
-   | kitchen sink (everything) | **hard** | 26432 / 25.81 | 26.25 KiB |
+   | `+ withRender + withInteraction` | **hard** | 21749 / 21.24 | 21.25 KiB |
+   | kitchen sink (io + render + interaction) | **hard** | 26535 / 25.91 | 26.25 KiB |
+   | everything composed (every mixin, `size-limit/everything.js`) | **hard (4th)** | 32877 / 32.11 | 35.5 KiB |
    | `+ withIo` | soft | 13528 / 13.21 | 14 KiB |
-   | `+ withRender` | soft | 15967 / 15.59 | 15 KiB |
-   | `+ withRender + withTheme` | soft | 16667 / 16.28 | 16 KiB |
-   | `+ withRender + withInteraction + withResponsive` | soft | 23136 / 22.59 | 21 KiB |
-   | `+ withRender + withViewport` | soft | 16878 / 16.48 | 16 KiB |
+   | `+ withRender` | soft | 16048 / 15.67 | 15 KiB |
+   | `+ withRender + withTheme` | soft | 16742 / 16.35 | 16 KiB |
+   | `+ withRender + withInteraction + withResponsive` | soft | 23256 / 22.71 | 21 KiB |
+   | `+ withRender + withViewport` | soft | 16967 / 16.57 | 16 KiB |
    | `+ withConflicts` (headless) | soft | 10322 / 10.08 | 10 KiB |
-   | `+ withRender + withEditHooks` | soft | 17317 / 16.91 | 16 KiB |
-   | `+ withRender + withRtl` | soft | 16414 / 16.03 | 15.5 KiB |
+   | `+ withRender + withEditHooks` | soft | 17397 / 16.99 | 16 KiB |
+   | `+ withRender + withRtl` | soft | 16542 / 16.15 | 15.5 KiB |
+
+   Table re-measured 2026-11-13 after the grid-columns seam PR (G0: multi-consumer `handle.paintHooks`, `fixedLabelWidth`, `internal.announce`, the inert Canvas `grid` option and the `part: 'cell'` types). Against master 5440bf3 (gzip bytes): hello world +0 (8380, 68 B left), `+ withRender + withInteraction` 21655 -> 21749 (+94, 11 B left), kitchen sink 26432 -> 26535 (+103, 345 B left); soft fixtures +0 (`+ withIo`, `+ withConflicts`) .. +128 (`+ withRtl`). A feature seam, NOT an exemption claim; it is over the spec's +90 B per hard fixture by 4 / 13 B because the review asked for composition-time registration (hooks see the mount paint, `withRtl` always last, isolated dispatch, a writer that survives unmount), which cost about +14 / +21 B on top of the first cut. The new fourth gate is measured, not compared.
 
    Measured after the DependencyStore index PR (`perf/dependency-indexes`) on top of the TaskStore index PR (`perf/store-indexes`) on top of the keyboard move/resize/link PR. Together the two store PRs cost +429 / +444 / +416 B on the three hard fixtures (+189..+439 B on the soft ones), spent under the exemption rule: hello world 7830 -> 8259, `+ withInteraction` 20840 -> 21284, kitchen sink 25629 -> 26045. Soft fixtures over their reference limit (warnings only, as measured 2026-11-12 on the focus-frame branch): `+ withRender` (15957 vs 15360 B), `+ withTheme` (16656 vs 16384 B), `+ withResponsive` (23123 vs 21504 B), `+ withViewport` (16867 vs 16384 B), `+ withConflicts` (10322 vs 10240 B), `+ withEditHooks` (17306 vs 16384 B) and `+ withRtl` (16402 vs 15872 B); mostly master drift, the frame adds +248..+272 to the render ones.
 
    Table re-measured 2026-11-12 after the row focus frame PR (`fix/focus-visible-offscreen`, WCAG 2.4.7 / 2.4.11, renderer-only, spent under the exemption rule): hello world +0 (8380, 68 B left), `+ withRender + withInteraction` 21396 -> 21655 (+259, 105 B left), kitchen sink 26164 -> 26432 (+268, 448 B left); soft fixtures +0..+283 (review round: focus-follow listener, own column rect, forced-colors rules). Master had drifted from the previous paragraph's figures (the `task:updated` work, among others); the table now shows master + this PR.
 
    **Exemption rule.** A correctness, security, accessibility or performance fix MAY consume hard-gate headroom; state the byte cost in the PR. New features must still find their own bytes: "change the shape, not the budget" stays the default for features (see `.claude/rules/size-history.md` for which levers win under gzip). **Raising a hard limit again requires an explicit owner decision recorded here**, with the date and reason. Do not raise a limit to fit a feature.
+
+   Decision log: 2026-11-13 fourth hard gate (owner decision): added "Everything composed (all mixins incl. grid + grid editing)" (`size-limit/everything.js`), which composes every opt-in mixin that exists (io, render, interaction, theme, viewport, conflicts, edit-hooks, rtl, responsive; `withGrid` and `withGridEditing` join in their own PRs). The kitchen sink is unchanged and stays WITHOUT the opt-in mixins. Limit = measured x 1.10 rounded up to the next 0.25 KiB (256 B): at G0, 32877 B x 1.10 = 36165 B -> 35.5 KiB (36352 B, +10.6%). The gate is created before any grid code merges so the grid never lands unguarded. Build-out window: each grid PR that adds code to the fixture (G1 columns, G3 resize, G4 keyboard, G6 editing) re-bases the limit and the `size-limit/baselines.json` value with the same formula against its own measurement, arithmetic in the PR body, capped at 44 KiB; the limit is frozen once G6 merges, after which raising it needs an explicit owner decision recorded here. The grid soft fixtures are report-only.
 
    Decision log: 2026-11 re-base: 9 / 19.5 / 24 KiB -> 8.25 / 21.25 / 26.25 KiB (hello world was tightened, the other two loosened). Arithmetic: 7526 B x 1.10 = 8279 B -> 8.25 KiB (8448 B, +12.2%); 19616 B x 1.10 = 21578 B -> 21.25 KiB (21760 B, +10.9%); 24421 B x 1.10 = 26863 B -> 26.25 KiB (26880 B, +10.1%).
 

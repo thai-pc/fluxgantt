@@ -186,6 +186,22 @@ export interface CanvasRendererInput {
   readonly rollup?: ReadonlyMap<TaskId, RolledUpRow>;
 }
 
+/**
+ * Painter a grid mixin hands the Canvas renderer to draw its pinned columns. Not consumed yet.
+ *
+ * @beta
+ */
+export interface CanvasGridPainter {
+  /** Width (px) of the name column; the default label+toggle is clipped to it. */
+  readonly nameWidth: number;
+  paintHeader(ctx: CanvasRenderingContext2D, tokens: DesignTokens): void;
+  paintRow(ctx: CanvasRenderingContext2D, row: RowLayout, y: number, rowHeight: number, tokens: DesignTokens): void;
+  /** Appends the row's cells to its element in the hidden a11y layer. */
+  appendCells(rowEl: Element, row: RowLayout): void;
+  /** The column id under a label-column x, or undefined. */
+  columnAt(x: number): string | undefined;
+}
+
 export interface CanvasRendererOptions {
   readonly viewMode?: ViewMode; // default 'week'
   readonly density?: Density; // default 'default'
@@ -222,6 +238,9 @@ export interface CanvasRendererOptions {
   /** Paint mirrored: earliest date at the right, label column at the right, upright glyphs. Set
    *  only by `withRtl`; also read by `export-canvas-png.ts` through `getRenderState()`. */
   readonly rtl?: boolean;
+  /** Grid-column painter (reserved for the upcoming grid-columns mixin; accepted and ignored until
+   *  then). Lives in this lazy chunk only. */
+  readonly grid?: CanvasGridPainter;
   // NOTE: no `showLinkHandles` — Canvas never paints connector handles on the main bitmap. When a
   // drag is attached they are drawn on the interaction overlay only (hovered / selected bars).
 }

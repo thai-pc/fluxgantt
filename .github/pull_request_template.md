@@ -17,7 +17,7 @@ diff: a trade-off taken, an alternative rejected, a constraint that forced the s
 - [ ] `pnpm lint && pnpm typecheck && pnpm test` pass locally.
 - [ ] **Changeset added** (`pnpm changeset`) if a published package changed. Changes scoped
       entirely to `apps/*`, `examples/*`, `docs/` or tooling need none.
-- [ ] **Bundle budgets** (`pnpm size`) if this touches `packages/core`: the three hard gates
+- [ ] **Bundle budgets** (`pnpm size`) if this touches `packages/core`: the four hard gates
       must pass; soft-fixture warnings are fine but note them. A correctness/security/a11y/perf
       fix may spend hard headroom (state the byte cost here); a feature must find its own bytes.
       Raising a hard limit needs an owner decision — see CLAUDE.md golden rule 5.

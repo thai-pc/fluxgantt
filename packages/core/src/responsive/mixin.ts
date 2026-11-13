@@ -396,7 +396,7 @@ export function withResponsive<T extends GanttInstance>(
    *  content-sized geometry depends on container width. */
   function applyLabelWidth(containerWidth: number): void {
     const mount = internal.mountOf();
-    if (disposed || !mount) return;
+    if (disposed || !mount || mount.handle.fixedLabelWidth) return;
     const next = clampLabelWidth(containerWidth);
     if (next === labelColumnWidth) return; // no repaint for a resize that changes nothing
     labelColumnWidth = next;
@@ -453,6 +453,7 @@ export function withResponsive<T extends GanttInstance>(
     if (disposed) return;
     // The previous mount's nodes are gone; forget them before re-installing on the new ones.
     teardownCoarse();
+    labelColumnWidth = DEFAULT_LABEL_COLUMN_WIDTH; // a new handle paints the default
     applyCoarse();
     observeContainer();
   });
@@ -462,7 +463,9 @@ export function withResponsive<T extends GanttInstance>(
       return isCoarse();
     },
     getLabelColumnWidth(): number {
-      return labelColumnWidth;
+      // A mixin that owns the width (the grid) wins: report what is actually painted.
+      const h = internal.mountOf()?.handle;
+      return h?.fixedLabelWidth ? h.getLabelColumnWidth() : labelColumnWidth;
     },
   };
 

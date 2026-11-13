@@ -65,6 +65,11 @@ export interface InteractiveRendererHandle {
    */
   getLabelColumnWidth(): number;
   /**
+   * Set by a mixin that owns the pinned column's width (the grid); `withResponsive` then stops
+   * writing `labelColumnWidth`. Absent otherwise. Do not rely on it.
+   */
+  fixedLabelWidth?: boolean;
+  /**
    * Canvas only. Client-space anchor (label column, vertical centre of the painted row, clamped
    * into the visible canvas) for the row at `rowIndex`. The hidden ARIA layer's own rects are
    * meaningless, so keyboard-driven host UI (edit hooks) anchors here instead.
@@ -84,7 +89,15 @@ export interface InteractiveRendererHandle {
     clientX: number,
     clientY: number,
   ):
-    | { taskId: TaskId; rowIndex: number; hitToggle: boolean; onBar?: boolean; onLabel?: boolean }
+    | {
+        taskId: TaskId;
+        rowIndex: number;
+        hitToggle: boolean;
+        onBar?: boolean;
+        onLabel?: boolean;
+        /** Set by a grid painter: the column under the point (never on the toggle). */
+        columnId?: string;
+      }
     | undefined;
   /**
    * Present ONLY when the chart is painted mirrored (set by `withRtl`; do not rely on it). An

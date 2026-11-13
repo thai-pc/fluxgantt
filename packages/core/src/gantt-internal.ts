@@ -28,7 +28,7 @@ import type {
   TaskPatch,
 } from './store/index.js';
 import type { CanvasRendererHandle } from './render/canvas-renderer.js';
-import type { SvgRendererHandle } from './render/svg-renderer.js';
+import type { PaintHook, SvgRendererHandle } from './render/svg-renderer.js';
 import type {
   Dependency,
   Density,
@@ -143,6 +143,21 @@ export interface GanttInternal {
   density?: Density;
   /** True once the host called `setDensity()`; `withResponsive` then stops pushing density. */
   densityPinned?: boolean;
+
+  /** Polite live-region writer, assigned by `withInteraction` on every mount (so other mixins announce
+   *  through the one region). It is NOT cleared on unmount: a stale writer only touches a detached
+   *  element, and the next mount replaces it. Undefined without `withInteraction`, so the only valid
+   *  call form is `internal.announce?.(text)`.
+   *  Takes FINAL text (owner decision, review of the G0 PR): grid mixins build it through one shared
+   *  helper that applies `messages.announce`, its English fallback and the length cap, instead of
+   *  each repeating that logic. */
+  announce?: (text: string) => void;
+
+  /** SVG paint consumers registered by mixins AT COMPOSITION TIME (`(internal.paints ??= []).push(h)`;
+   *  `push` is the only supported registration), so every mount's first paint sees them and no mixin
+   *  repaints on its own. Hooks run in registration order, except that `withRtl`'s mirror is always
+   *  kept last. Passed to the SVG renderer by `render/mixin.ts`; Canvas ignores it. */
+  paints?: PaintHook[];
 
   // --- Mount slot (writer: render/mixin.ts) ---
   mountOf(): MountState | undefined;

@@ -9,7 +9,7 @@
 //
 // What it does on each mount: sets `dir="rtl"` on the container (restored when the handle is
 // destroyed), exposes `handle.mirrorX` (the single "is mirrored" predicate the interaction and
-// viewport layers consult), mirrors the painted svg through the renderer's `onPaint` seam (or
+// viewport layers consult), mirrors the painted svg through the renderer's `paintHooks` seam (or
 // flips the Canvas renderer natively), and swaps the zoom anchor for a logical-scroll variant.
 //
 // Scroll model: evergreen browsers count `scrollLeft` from 0 at the inline-start (right) edge down
@@ -22,6 +22,16 @@ import { mirrorSvg } from './mirror-svg.js';
 export function withRtl<T extends GanttInstance>(instance: T): T {
   const internal = getInternal(instance);
   if (internal.config.rtl !== true) return instance;
+
+  // The SVG mirror is a composition-time paint hook (see `GanttInternal.paints`): it sees the mount
+  // paint, so no repaint is needed, and it stays LAST however the mixins were composed: `push` is
+  // wrapped to insert before it, so content other hooks add to a pinned layer is mirrored too.
+  const hooks = (internal.paints ??= []);
+  hooks.push((e) => {
+    for (const root of [e.svg, e.overlay, e.column, e.corner])
+      if (root) mirrorSvg(root, Number(root.getAttribute('width')));
+  });
+  hooks.push = (...h) => (hooks.splice(hooks.length - 1, 0, ...h), hooks.length);
 
   instance.on('renderer:selected', () => {
     const mount = internal.mountOf();
@@ -66,12 +76,6 @@ export function withRtl<T extends GanttInstance>(instance: T): T {
         return src;
       };
       handle.setOptions({ rtl: true });
-    } else {
-      handle.setOptions({
-        onPaint: (...roots) => {
-          for (const root of roots) mirrorSvg(root, Number(root.getAttribute('width')));
-        },
-      });
     }
   });
 

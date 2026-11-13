@@ -524,6 +524,8 @@ export interface TaskActivatedPayload {
     readonly clientX: number;
     // (undocumented)
     readonly clientY: number;
+    // @beta
+    readonly columnId?: string;
     // (undocumented)
     readonly part: TaskHitPart;
     // (undocumented)
@@ -563,6 +565,8 @@ export interface TaskContextRequestedPayload {
     readonly clientX: number;
     // (undocumented)
     readonly clientY: number;
+    // @beta
+    readonly columnId?: string;
     // (undocumented)
     readonly part: TaskHitPart;
     preventDefault(): void;
@@ -576,7 +580,7 @@ export interface TaskContextRequestedPayload {
 export type TaskField = keyof TaskPatch;
 
 // @public
-export type TaskHitPart = 'bar' | 'label' | 'row';
+export type TaskHitPart = 'bar' | 'label' | 'row' | 'cell';
 
 // @public
 export type TaskId = Brand<string, 'TaskId'>;
