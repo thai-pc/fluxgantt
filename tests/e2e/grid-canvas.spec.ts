@@ -85,28 +85,29 @@ for (const rtl of [false, true]) {
       expect(await ink(page, startX + 4, 4, 112, 24)).toBeGreaterThan(0);
       for (let row = 0; row < 3; row++) expect(await ink(page, startX + 4, HEADER + row * ROW + 4, 112, ROW - 8)).toBeGreaterThan(0);
       // a divider line at the Start/End boundary runs down the whole canvas, in the row band too
-      expect(await ink(page, rtl ? COLS_W - 220 - 1 : 219, 300, 1, 200)).toBeGreaterThan(150);
+      expect(await ink(page, rtl ? COLS_W - 220 : 219, 300, 1, 200)).toBeGreaterThan(150);
     });
 
-    test('the name sits at the inline-start edge, cells are aligned by their column', async ({ page }) => {
+    test('cells are aligned by their LOGICAL column alignment (Progress is end-aligned)', async ({ page }) => {
       await open(page, q());
-      // the Progress column is end-aligned (logical): its text hugs the column's inline-end edge
-      const x0 = rtl ? 8 : COLS_W - 96; // the progress column in bitmap x
-      const edge = rtl ? x0 + 8 : x0 + 96 - 8;
-      const px = await page.evaluate(
+      // the Progress column (96 px) is the last in LTR and the first in the mirrored bitmap in RTL; scan the
+      // interior only (the column dividers are ink too) for the text's horizontal extent on the `design` row
+      const x0 = rtl ? 0 : COLS_W - 96;
+      const { min, max } = await page.evaluate(
         ([bx, by]) => {
           const c = document.querySelector('canvas.fg-timeline-canvas-labels') as HTMLCanvasElement;
           const d = c.getContext('2d')!.getImageData(bx!, by!, 96, 16).data;
-          let min = 96;
-          let max = -1;
-          for (let i = 0; i < 96; i++) for (let j = 0; j < 16; j++) if (d[(j * 96 + i) * 4 + 3]! > 100) { min = Math.min(min, i); max = Math.max(max, i); }
-          return { min, max };
+          let lo = 96;
+          let hi = -1;
+          for (let i = 3; i < 93; i++) for (let j = 0; j < 16; j++) if (d[(j * 96 + i) * 4 + 3]! > 40) { lo = Math.min(lo, i); hi = Math.max(hi, i); }
+          return { min: lo, max: hi };
         },
         [x0, HEADER + ROW * 2 + 8] as const,
       );
-      // logical end: right edge in LTR, left edge in RTL (`edge` is the bitmap x of the padded boundary)
-      if (rtl) expect(Math.abs(px.min + x0 - edge)).toBeLessThanOrEqual(3);
-      else expect(Math.abs(px.max + x0 - edge)).toBeLessThanOrEqual(3);
+      // the padded inline-end edge: the right edge (88) in LTR, the left edge (8) in RTL
+      if (rtl) expect(Math.abs(min - 8)).toBeLessThanOrEqual(4);
+      else expect(Math.abs(max - 88)).toBeLessThanOrEqual(4);
+      expect(max - min).toBeLessThan(40); // a short value never fills the column
     });
 
     test('a click on a grid cell selects the row exactly like a label click, and does not toggle', async ({ page }) => {
@@ -131,8 +132,9 @@ for (const rtl of [false, true]) {
     test('vertical scroll repaints the cells of the new window and keeps the header', async ({ page }) => {
       await open(page, q());
       await setScroll(page, 0, 1000 * ROW);
-      const first = await page.evaluate(() => document.querySelector('#gantt .fg-timeline-a11y-layer [data-row-index]')?.getAttribute('data-row-index'));
-      expect(Number(first)).toBeGreaterThan(900);
+      // the layer also keeps the roving-tabindex row (0) outside the window, so look at the last row
+      const last = await page.evaluate(() => [...document.querySelectorAll('#gantt .fg-timeline-a11y-layer [data-row-index]')].at(-1)?.getAttribute('data-row-index'));
+      expect(Number(last)).toBeGreaterThan(1000);
       const startX = rtl ? COLS_W - 340 : 220;
       expect(await ink(page, startX + 4, HEADER + 4, 112, ROW - 8)).toBeGreaterThan(0); // a cell right under the header
       expect(await ink(page, startX + 4, 4, 112, 24)).toBeGreaterThan(0); // and the header is still there

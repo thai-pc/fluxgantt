@@ -15,7 +15,8 @@
 //   ?wide=1       spread the filler tasks over ~520 days and add 20 holidays (the PR #125 duration trap)
 //   ?longcols=1   name + five custom columns whose values are ~1000 characters (the fit() cost budget)
 //   ?grid=0       do not compose withGrid (the baseline for the performance budgets)
-//   ?deps=1       keep the four dependencies even when ?rows pads the plan (a critical path on the Canvas renderer)
+//   ?deps=1       keep the four dependencies even when ?rows pads the plan, and keep the filler tasks inside Mar-May so
+//                 the plan's chain stays the critical path (a truncated critical row on the Canvas renderer)
 //   Canvas:       ?rows=2100 (anything above 2000 tasks) mounts the Canvas renderer through the real mount()
 import './temporal.js'; // must stay first: installs globalThis.Temporal where it is not native
 import { createGantt, computeRollup, toTaskId, type TaskInput, type WorkingCalendar } from '@fluxgantt/core';
@@ -65,11 +66,12 @@ const named: TaskInput[] = [
   task('test', 'Testing', '2026-05-18', '2026-06-05', { parent: toTaskId('plan'), progress: 0 }),
   task('launch', 'Launch', '2026-06-08', '2026-06-08', { type: 'milestone', progress: 0 }),
 ];
+const fillerMonths = params.get('deps') === '1' ? 3 : 8;
 const filler: TaskInput[] = Array.from({ length: Math.max(0, rows - named.length) }, (_, i) => ({
   id: toTaskId(`filler-${i}`),
   name: `Filler task ${i}`,
-  start: wide ? isoDay((i * 7) % 500) : `2026-${String((i % 8) + 3).padStart(2, '0')}-${String((i % 20) + 1).padStart(2, '0')}`,
-  end: wide ? isoDay(((i * 7) % 500) + 3 + (i % 17)) : `2026-${String((i % 8) + 3).padStart(2, '0')}-${String((i % 20) + 6).padStart(2, '0')}`,
+  start: wide ? isoDay((i * 7) % 500) : `2026-${String((i % fillerMonths) + 3).padStart(2, '0')}-${String((i % 20) + 1).padStart(2, '0')}`,
+  end: wide ? isoDay(((i * 7) % 500) + 3 + (i % 17)) : `2026-${String((i % fillerMonths) + 3).padStart(2, '0')}-${String((i % 20) + 6).padStart(2, '0')}`,
   progress: (i % 10) / 10,
   type: 'task' as const,
   meta: { owner: ['Ana', 'Ben', 'Chi', 'Dee'][i % 4], status: i % 3 ? 'open' : 'done' },
