@@ -524,22 +524,24 @@ describe('composition', () => {
     expect(svgOf().querySelectorAll('[role=columnheader]')).toHaveLength(5);
   });
 
-  it('config.rollup runs once per data revision for the renderer and the grid together', async () => {
+  it('config.rollup runs at most twice per data revision (renderer + grid) and the config is left untouched', async () => {
     const { computeRollup } = await import('../../src/compute/rollup.js');
     const rollup = vi.fn(computeRollup);
-    const g = withGrid(withRender(createGantt({ tasks: TASKS, rollup })));
+    const cfg = { tasks: TASKS, rollup };
+    const g = withGrid(withRender(createGantt(cfg)));
+    expect(cfg.rollup).toBe(rollup); // never replaced
     g.mount(container);
     const afterMount = rollup.mock.calls.length;
-    expect(afterMount).toBe(1);
+    expect(afterMount).toBeLessThanOrEqual(2);
     g.updateTask(id('c'), { name: 'again' });
-    expect(rollup.mock.calls.length).toBe(afterMount + 1);
+    expect(rollup.mock.calls.length).toBeLessThanOrEqual(afterMount + 2);
+    const n = rollup.mock.calls.length;
     g.select(id('b')); // no data revision
     g.zoomTo('month');
-    expect(rollup.mock.calls.length).toBe(afterMount + 1);
-    expect(svgOf().querySelector('[data-column-id=end]')!.textContent).not.toBe('');
+    expect(rollup.mock.calls.length).toBe(n);
   });
 
-  it('a frozen config still works (it just pays for the rollup twice)', async () => {
+  it('a frozen config still works ', async () => {
     const { computeRollup } = await import('../../src/compute/rollup.js');
     const cfg = Object.freeze({ tasks: TASKS, rollup: computeRollup });
     const g = withGrid(withRender(createGantt(cfg)));

@@ -12,7 +12,6 @@
 // The width is applied after the first paint (the renderer reads its options at construction and the
 // facade passes none for the width), so a mount paints twice; the first paint is skipped by the hook.
 import type { GanttInstance } from '../gantt.js';
-import type { RollupProvider } from '../types.js';
 import { getInternal } from '../gantt-internal.js';
 import { resolveColumns, publicColumn, type Column } from './columns.js';
 import { gridCsv } from './csv.js';
@@ -46,7 +45,8 @@ const viewOf = (all: readonly Column[], cols: readonly Column[]): GridView => {
  *   It can therefore disagree with the bar when a host's `duration` disagrees with its dates.
  * - `collapseBelow` hides every column but `name` in a narrow container, for assistive technology too;
  *   a container that shrinks to fit its content may not re-expand.
- * - `config.rollup` is called once per data revision for the renderer and the grid together.
+ * - Known cost: with `config.rollup` set, the provider runs twice per data revision (once for the
+ *   renderer, once for the grid's summary rows). The grid never alters the host's config.
  *
  * @beta
  */
@@ -64,21 +64,6 @@ export function withGrid<T extends GanttInstance>(
   let warnedCanvas = false;
   let view = viewOf(all, all);
   const values = createGridValues(internal, () => unit);
-
-  // `config.rollup` is pure by contract, and the renderer and the grid both need it for the same data
-  // revision: share one call per (revision, calendar) instead of two. (Replaces the property on the
-  // config object the instance already holds; skipped for a frozen config, which then pays twice.)
-  const rollup = internal.config.rollup;
-  if (rollup && !Object.isFrozen(internal.config)) {
-    let hit: { rev: number; cal: object; n: number; out: ReturnType<RollupProvider> } | undefined;
-    (internal.config as { rollup?: RollupProvider }).rollup = (tasks, cal) => {
-      const rev = internal.tasks.revision.peek();
-      if (hit?.rev !== rev || hit.cal !== cal || hit.n !== tasks.length) {
-        hit = { rev, cal, n: tasks.length, out: rollup(tasks, cal) };
-      }
-      return hit.out;
-    };
-  }
 
   (internal.paints ??= []).push(createGridPaint(internal, () => view, values));
 
