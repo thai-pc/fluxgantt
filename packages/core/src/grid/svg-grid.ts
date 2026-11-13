@@ -134,7 +134,6 @@ export function createGridPaint(
         if (cut !== full && name) {
           name.replaceChildren(el('title', {}), cut);
           name.firstElementChild!.append(full);
-          name.parentElement?.setAttribute('aria-label', full);
           if (cloneLabel) {
             cloneLabel.replaceChildren(el('title', {}), cut);
             cloneLabel.firstElementChild!.append(full);

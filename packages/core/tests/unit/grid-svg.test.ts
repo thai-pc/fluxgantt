@@ -157,7 +157,8 @@ describe('truncation (ellipsis, full text in the accessible name and <title>)', 
     expect(shown(label).endsWith('…')).toBe(true);
     expect(shown(label).length).toBeLessThan(LONG.length);
     expect(label.querySelector('title')!.textContent).toBe(LONG);
-    expect(label.parentElement!.getAttribute('aria-label')).toBe(LONG);
+    // never on the cell: an aria-label there would replace the bar's description (critical path, selected)
+    expect(label.parentElement!.hasAttribute('aria-label')).toBe(false);
     const clone = column().querySelector('.fg-timeline__row-label')!;
     expect(shown(clone)).toBe(shown(label));
     expect(clone.querySelector('title')!.textContent).toBe(LONG);

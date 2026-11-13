@@ -66,8 +66,10 @@ test('the pinned overlays are aria-hidden and hold no role, tabindex, id or focu
 
 test('a truncated cell keeps its full text in the accessible name', async ({ page }) => {
   await open(page, 'long=1&cols=6');
-  const name = page.locator('#gantt svg.fg-timeline .fg-timeline__row[data-task-id="req"] .fg-timeline__row-cell');
-  await expect(name).toHaveAttribute('aria-label', /^Requirements: an unusually long task name/);
+  // the full name lives in the <title> of the label text; the cell itself carries NO aria-label
+  const cell = page.locator('#gantt svg.fg-timeline .fg-timeline__row[data-task-id="req"] .fg-timeline__row-cell');
+  await expect(cell).not.toHaveAttribute('aria-label', /.*/);
+  await expect(cell.locator('title')).toHaveText(/^Requirements: an unusually long task name/);
   const owner = page.locator('#gantt svg.fg-timeline .fg-timeline__row[data-task-id="req"] [role=gridcell][data-column-id=owner]');
   await expect(owner).toHaveAttribute('aria-label', /a custom value that is far too long to fit$/);
 });
@@ -85,4 +87,24 @@ test('keyboard behaviour is unchanged by the grid: Tab leaves in one stop, arrow
   expect(await page.evaluate(() => document.activeElement?.getAttribute('data-task-id'))).toBe('req');
   await page.keyboard.press('Tab');
   expect(await page.evaluate(() => document.activeElement?.closest('#gantt') === null)).toBe(true);
+});
+
+test('a truncated, critical, selected row is still announced as critical path and selected (CDP accessibility tree)', async ({ page }) => {
+  await open(page, 'long=1');
+  await page.locator('#gantt svg.fg-timeline__sticky-column g[data-task-id="plan"] text').first().click();
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send('DOM.enable');
+  await cdp.send('Accessibility.enable');
+  const { root } = await cdp.send('DOM.getDocument', { depth: 0 });
+  const nameOf = async (selector: string): Promise<string> => {
+    const { nodeId } = await cdp.send('DOM.querySelector', { nodeId: root.nodeId, selector });
+    const { nodes } = await cdp.send('Accessibility.getPartialAXTree', { nodeId, fetchRelatives: false });
+    return String(nodes[0]?.name?.value ?? '');
+  };
+  const rowName = await nameOf('#gantt svg.fg-timeline .fg-timeline__row[data-task-id="plan"]');
+  expect(rowName).toContain('critical path');
+  expect(rowName).toContain('selected');
+  expect(rowName).toContain('Project plan: an unusually long');
+  // the cut text is really cut on this row
+  expect(await page.locator('#gantt svg.fg-timeline .fg-timeline__row[data-task-id="plan"] .fg-timeline__row-label').evaluate((e) => e.lastChild!.textContent)).toContain('…');
 });
