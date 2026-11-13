@@ -121,36 +121,44 @@ export function gridPaint(env: ResizeEnv, e: PaintEvent): void {
 }
 
 /**
+ * Whether the grid claims key `e` with focus on `t` (a header, a gridcell, or a row): the one rule, run eagerly on
+ * the event target (so `preventDefault` is synchronous) and again by the lazy half on the focus at run time.
+ * Alt belongs to the task move/resize in row and cell mode; Ctrl/Meta only to Home/End.
+ */
+export function claims(env: ResizeEnv, e: KeyboardEvent, t: Element): boolean {
+  const k = e.key;
+  const home = k === 'Home' || k === 'End';
+  const lr = k === 'ArrowLeft' || k === 'ArrowRight';
+  if (e.isComposing || ((e.ctrlKey || e.metaKey) && !home)) return false;
+  if (headerOf(t)) {
+    // Header mode: Left/Right/Home/End/Down/Escape, and Alt+Left/Right resizes.
+    return e.altKey ? lr : !e.shiftKey && (lr || home || k === 'ArrowDown' || k === 'Escape');
+  }
+  const row = t.closest?.('[data-row-index]');
+  if (!row || e.altKey || e.shiftKey) return false;
+  // Row or cell mode (the target is a row, or a gridcell inside one).
+  if (k === 'ArrowUp') return row.getAttribute('data-row-index') === '0';
+  return t.getAttribute('role') === 'gridcell' ? lr || home || k === 'Escape' : e.ctrlKey || e.metaKey ? home : lr;
+}
+
+/**
  * The grid's keyboard model on both renderers (row, cell and header mode): the key listener and the focus
  * bookkeeping. Returns the disposer. It runs in the CAPTURE phase on the container, ahead of `keyboard-nav`,
  * and claims (`preventDefault` + `stopPropagation`) only what it acts on; everything else (Up/Down/Page,
  * Space, Delete, Enter, F2, Alt+Arrow task move/resize from a row or a cell, `g`) reaches `keyboard-nav`
- * unchanged. The actions run in the lazy half.
+ * unchanged. The actions run in the lazy half. Tab never lands on a cell or a header: from one, the roving row
+ * takes focus first and the default Tab runs from it, so the chart is one stop in both directions.
  */
 export function attachKeys(env: ResizeEnv): () => void {
   const { container, nav } = env;
   const onKey = (ev: Event): void => {
     const e = ev as KeyboardEvent;
-    const k = e.key;
-    const home = k === 'Home' || k === 'End';
-    const lr = k === 'ArrowLeft' || k === 'ArrowRight';
-    const mod = e.ctrlKey || e.metaKey;
-    if (e.defaultPrevented || e.isComposing || nav.syn || (mod && !home)) return;
     const t = e.target as Element;
-    const row = headerOf(t) ? null : t.closest?.('[data-row-index]');
-    if (!row) {
-      // Header mode: Left/Right/Home/End/Down/Escape, and Alt+Left/Right resizes.
-      if (!headerOf(t) || (e.altKey ? !lr : e.shiftKey || !(lr || home || k === 'ArrowDown' || k === 'Escape'))) return;
-    } else {
-      // Row or cell mode (the target is a row, or a gridcell inside one). Alt belongs to the task move/resize.
-      if (e.altKey || e.shiftKey) return;
-      const cell = t.getAttribute('role') === 'gridcell';
-      const up = k === 'ArrowUp' && row.getAttribute('data-row-index') === '0';
-      if (
-        !(up || (cell ? lr || home || k === 'Escape' : mod ? home : lr && ((k === 'ArrowRight') !== env.mirrored() || row.getAttribute('aria-expanded') === 'true' || Number(row.getAttribute('aria-level')) > 1)))
-      )
-        return;
-    }
+    // An editor (or any host field) inside the chart keeps its keys.
+    if (e.defaultPrevented || nav.syn || t.closest?.('input,textarea,select,[contenteditable]')) return;
+    if (e.key === 'Tab' && (headerOf(t) || t.getAttribute('role') === 'gridcell'))
+      return container.querySelector<HTMLElement>('[role=row][tabindex="0"]')?.focus({ preventScroll: true });
+    if (!claims(env, e, t)) return;
     // Claimed: decided here, synchronously (Alt+Left would fall through to the browser's History Back, and the
     // key must not also reach `keyboard-nav`); acted on in the lazy half, in order.
     e.preventDefault();

@@ -187,7 +187,7 @@ export function withGrid<T extends GanttInstance>(
     };
     const svg = 'paintHooks' in handle;
     const env = envOf(handle);
-    stops.push(attachKeys(env));
+    stops.push(attachKeys(env), () => Object.assign(nav, { col: -1, head: false, back: false, syn: false })); // nav is per mount
     if (svg) {
       svgEnv = env;
       stops.push(() => {

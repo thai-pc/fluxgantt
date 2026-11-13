@@ -39,7 +39,11 @@ const TASKS = [
 ];
 
 beforeAll(() => import('../../src/grid/resize-ui.js'));
-const flush = () => new Promise<void>((r) => setTimeout(r, 0));
+// The queued action follows the lazy module's dynamic import, which a loaded machine (the full suite) can delay by
+// several macrotasks: give it a generous number of turns.
+const flush = async () => {
+  for (let i = 0; i < 12; i++) await new Promise<void>((r) => setTimeout(r, 0));
+};
 
 let container: HTMLElement;
 beforeEach(() => {
@@ -174,16 +178,16 @@ describe.each([
       expect(where()).toBe('row:p');
     });
 
-    it('Left on a top-level leaf or collapsed top-level parent does nothing and is not prevented', async () => {
+    it('Left on a top-level leaf or collapsed top-level parent does nothing, and is claimed like Right (no horizontal scroll)', async () => {
       const g = mk();
       focusRow('c');
       const e = await press(back);
-      expect(e.defaultPrevented).toBe(false);
+      expect(e.defaultPrevented).toBe(true);
       expect(where()).toBe('row:c');
       g.collapseAll();
       focusRow('q');
       const e2 = await press(back);
-      expect(e2.defaultPrevented).toBe(false);
+      expect(e2.defaultPrevented).toBe(true);
       expect(g.isCollapsed(id('q'))).toBe(true);
       expect(where()).toBe('row:q');
     });
@@ -411,21 +415,98 @@ describe.each([
       expect(where()).toBe('cell:c:0');
     });
 
-    it('ignores a key during IME composition, a synthetic re-entry and an earlier handler\'s preventDefault', async () => {
+    it('ignores a key during IME composition and one an earlier handler already prevented', async () => {
       mk();
       focusRow('c');
       const e = await press(fwd, { composing: true });
       expect(e.defaultPrevented).toBe(false);
       expect(where()).toBe('row:c');
       const early = (ev: Event) => ev.preventDefault();
-      container.addEventListener('keydown', early, true);
-      container.removeEventListener('keydown', early, true);
-      // an earlier capture listener (registered BEFORE the grid's would be needed; one on the document runs first)
-      document.addEventListener('keydown', early, true);
+      document.addEventListener('keydown', early, true); // the document's capture phase runs before the container's
       const e2 = await press(fwd);
       document.removeEventListener('keydown', early, true);
       expect(e2.defaultPrevented).toBe(true);
       expect(where()).toBe('row:c'); // we did not act on it
+    });
+
+    it('does not claim a key typed in a field inside a row (an editor)', async () => {
+      mk();
+      const input = document.createElementNS('http://www.w3.org/1999/xhtml', 'input');
+      rowOf('c').append(input);
+      for (const k of ['ArrowRight', 'ArrowLeft']) {
+        const e = await press(k, {}, input);
+        expect(e.defaultPrevented, k).toBe(false);
+      }
+      expect(where()).toBe('other');
+    });
+
+    it('Tab and Shift+Tab from a cell or a header put the roving row in focus and are not prevented (one Tab stop)', async () => {
+      mk();
+      focusRow('c');
+      await press(fwd);
+      await press(fwd);
+      expect(where()).toBe('cell:c:1');
+      for (const shift of [false, true]) {
+        const e = await press('Tab', { shift });
+        expect(e.defaultPrevented).toBe(false);
+        expect(active().getAttribute('role')).toBe('row');
+        expect(active().getAttribute('tabindex')).toBe('0');
+        focusRow('p');
+        await press('ArrowUp');
+        expect(where()).toBe('head:0');
+        const e2 = await press('Tab', { shift });
+        expect(e2.defaultPrevented).toBe(false);
+        expect(active().getAttribute('role')).toBe('row');
+        focusRow('c');
+        await press(fwd);
+      }
+    });
+  });
+
+  describe('queued keys', () => {
+    const fire = (k: string, mods: Mods = {}, target: Element = active()) =>
+      target.dispatchEvent(
+        new KeyboardEvent('keydown', { key: k, altKey: !!mods.alt, shiftKey: !!mods.shift, ctrlKey: !!mods.ctrl, bubbles: true, cancelable: true }),
+      );
+
+    it('a claimed key whose mode changed before it ran is dropped, not run as another mode\'s action', async () => {
+      const g = mk();
+      focusRow('p');
+      await press('ArrowUp');
+      expect(where()).toBe('head:0');
+      fire('ArrowLeft', { alt: true }); // header: resize narrower (claimed on the header)
+      focusRow('p'); // ... but focus moved to an expanded parent row before the action ran
+      await flush();
+      expect(g.isCollapsed(id('p'))).toBe(false);
+      expect(where()).toBe('row:p');
+      // header Home applied to a row would jump to the parent; cell Escape/Home/End on a row likewise
+      focusRow('b');
+      fire('Home');
+      await flush();
+    });
+
+    it('claimed keys sent before the chunk runs apply in order, each after the one before', async () => {
+      mk();
+      focusRow('c');
+      const row = active();
+      fire(fwd, {}, row);
+      fire(fwd, {}, row);
+      fire(fwd, {}, row);
+      fire(back, {}, row);
+      await flush();
+      expect(where()).toBe('cell:c:1');
+    });
+
+    it('destroy with keys queued neither throws nor changes anything', async () => {
+      const g = mk();
+      const err = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+      focusRow('c');
+      fire('ArrowRight');
+      fire('ArrowLeft', { alt: true });
+      g.destroy();
+      await flush();
+      expect(err).not.toHaveBeenCalled();
+      expect(g.getTask?.(id('c'))).toBeUndefined();
     });
   });
 
@@ -500,7 +581,13 @@ describe('the SVG cell ring', () => {
     expect(r.classList.contains('fg-grid__cell')).toBe(true);
     expect(r.style.insetInlineStart).toBe('224px'); // the Start column begins at 220, inset 4
     expect(r.style.width).toBe('112px');
-    expect(r.querySelector('style')!.textContent).toContain('.fg-timeline__focus-row');
+    const css = container.querySelectorAll('.fg-timeline__layer > style.fg-grid__css');
+    expect(css).toHaveLength(1); // created once per layer, not per focus
+    expect(css[0]!.textContent).toContain('.fg-timeline__focus-row');
+    expect(css[0]!.textContent).toContain('forced-colors');
+    // the cell ring sits under the pinned date axis and corner
+    const layerKids = [...r.parentElement!.children];
+    expect(layerKids.indexOf(r)).toBeLessThan(layerKids.indexOf(container.querySelector('.fg-timeline__sticky-header')!));
     expect(r.style.position).toBe('sticky');
     // a header ring is the same element without the row frame and pinned to the top
     await press('ArrowUp'); // c is not row 0: nothing
@@ -508,9 +595,11 @@ describe('the SVG cell ring', () => {
     await press('ArrowUp');
     expect(ringEl()).toHaveLength(1);
     expect(ringEl()[0]!.classList.contains('fg-grid__cell')).toBe(false);
-    expect(ringEl()[0]!.querySelector('style')).toBeNull();
+    const kids = [...ringEl()[0]!.parentElement!.children];
+    expect(kids.indexOf(ringEl()[0]!)).toBeGreaterThan(kids.indexOf(container.querySelector('.fg-timeline__sticky-corner')!));
     (active() as HTMLElement).blur();
     expect(ringEl()).toHaveLength(0);
+    expect(container.querySelectorAll('.fg-timeline__layer > style.fg-grid__css')).toHaveLength(1);
   });
 
   it('is not added on Canvas-less charts that never focus a cell, and no invisible node is added to the pinned svg', async () => {
@@ -628,13 +717,43 @@ describe('the claim is synchronous, the action follows from the lazy chunk', () 
     focusRow('c');
     const seen = vi.fn();
     container.querySelector('svg.fg-timeline')!.addEventListener('keydown', seen);
-    const e = new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true, cancelable: true }); // top-level leaf
+    const e = new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true });
     active().dispatchEvent(e);
     expect(seen).toHaveBeenCalledTimes(1);
   });
 });
 
-describe('property: any key sequence leaves focus on a real row, cell or header and never throws', () => {
+describe('the forwarded Home/End of Ctrl+Home/End', () => {
+  it('never reaches the host\'s document listeners, keeps the column, and is not re-claimed by the grid', async () => {
+    const g = make();
+    const doc = vi.fn();
+    document.addEventListener('keydown', doc);
+    focusRow('c');
+    await press('ArrowRight');
+    await press('ArrowRight');
+    await press('ArrowRight');
+    doc.mockClear();
+    await press('Home', { ctrl: true });
+    expect(where()).toBe('cell:p:2'); // a re-claimed bare Home would have gone to the first CELL (column 0)
+    await press('End', { ctrl: true });
+    expect(where()).toBe('cell:d:2');
+    expect(doc).not.toHaveBeenCalled();
+    document.removeEventListener('keydown', doc);
+    expect(g.getSelection()).toEqual([id('d')]);
+  });
+});
+
+describe('Left to the parent without withInteraction', () => {
+  it('focuses the parent row, not the first row', async () => {
+    const g = make({ interaction: false });
+    focusRow('b');
+    await press('ArrowLeft');
+    expect(where()).toBe('row:p');
+    expect(g.getSelection()).toContain(id('p'));
+  });
+});
+
+describe('property: random key, Space and repaint sequences follow a model of the grid', () => {
   const KEYS = [
     ['ArrowRight', {}],
     ['ArrowLeft', {}],
@@ -647,11 +766,18 @@ describe('property: any key sequence leaves focus on a real row, cell or header 
     ['PageDown', {}],
     ['PageUp', {}],
     ['Escape', {}],
+    [' ', {}],
+    ['repaint', {}],
   ] as const;
-  it('holds over random sequences and trees', async () => {
+  const parse = (w: string) => {
+    const [kind, a, b] = w.split(':');
+    return { kind: kind!, task: kind === 'head' ? undefined : a, col: Number(kind === 'head' ? a : b) };
+  };
+  it('holds over random sequences, trees, directions and collapse states', async () => {
+    let n = 0;
     await fc.assert(
       fc.asyncProperty(
-        fc.array(fc.integer({ min: 0, max: KEYS.length - 1 }), { minLength: 1, maxLength: 14 }),
+        fc.array(fc.integer({ min: 0, max: KEYS.length - 1 }), { minLength: 1, maxLength: 16 }),
         fc.boolean(),
         fc.integer({ min: 0, max: 2 }),
         async (seq, rtl, collapsed) => {
@@ -659,25 +785,51 @@ describe('property: any key sequence leaves focus on a real row, cell or header 
           const g = make({ rtl });
           if (collapsed === 1) g.collapseAll();
           if (collapsed === 2) g.toggleCollapse(id('p'));
-          focusRow('p') ;
+          focusRow('c');
+          const fwdKey = rtl ? 'ArrowLeft' : 'ArrowRight';
           for (const i of seq) {
             const [k, m] = KEYS[i]!;
-            await press(k, m as Mods);
-            const w = where();
-            expect(w).not.toBe('other');
-            const a = active();
-            expect(a.isConnected).toBe(true);
-            if (!w.startsWith('head')) {
-              const task = a.closest('[data-task-id]')!.getAttribute('data-task-id')!;
-              expect(g.getTask(id(task))).toBeDefined();
-              expect(rowOf(task)).not.toBeNull(); // visible: it has a row element
-            }
+            const before = parse(where());
+            const prevRow = before.task ? rowOf(before.task) : undefined;
+            const rowIndex = prevRow?.getAttribute('data-row-index');
+            const open = prevRow?.getAttribute('aria-expanded');
+            if (k === 'repaint') {
+              g.updateTask(id('d'), { name: `n${n++}` });
+              await flush();
+            } else await press(k, m as Mods);
+            const after = parse(where());
+            expect(after.kind).not.toBe('other');
+            expect(active().isConnected).toBe(true);
             expect(tabStops()).toBe(1);
+            if (after.kind !== 'head') {
+              expect(g.getTask(id(after.task!))).toBeDefined();
+              expect(rowOf(after.task!)).not.toBeNull();
+            }
+            const vertical = ['ArrowDown', 'PageDown', 'PageUp'].includes(k) || (k === 'ArrowUp' && rowIndex !== '0') || (!!(m as Mods).ctrl);
+            if (k === 'repaint' || k === ' ') expect(where()).toBe(`${before.kind}${before.kind === 'head' ? ':' + before.col : ':' + before.task + (before.kind === 'cell' ? ':' + before.col : '')}`);
+            else if (before.kind === 'cell' && vertical) {
+              expect(after.kind).toBe('cell'); // column memory
+              expect(after.col).toBe(before.col);
+              expect(g.getSelection()).toContain(id(after.task!)); // selection follows the row
+            } else if (before.kind === 'cell' && k === 'ArrowUp') {
+              expect(where()).toBe(`head:${before.col}`);
+            } else if (before.kind === 'cell' && (k === 'Home' || k === 'End')) {
+              expect(after).toEqual({ kind: 'cell', task: before.task, col: k === 'Home' ? 0 : 4 });
+            } else if (before.kind === 'cell' && (k === 'ArrowRight' || k === 'ArrowLeft')) {
+              const step = (k === fwdKey ? 1 : -1);
+              const j = before.col + step;
+              if (j < 0) expect(where()).toBe(`row:${before.task}`);
+              else expect(after).toEqual({ kind: 'cell', task: before.task, col: Math.min(j, 4) });
+            } else if (before.kind === 'cell' && k === 'Escape') expect(where()).toBe(`row:${before.task}`);
+            else if (before.kind === 'row' && k === fwdKey) {
+              if (open === 'false') expect(where()).toBe(`row:${before.task}`);
+              else expect(where()).toBe(`cell:${before.task}:0`);
+            } else if (before.kind === 'head' && k === 'ArrowDown') expect(after.kind === 'row' || after.kind === 'cell').toBe(true);
           }
           g.destroy();
         },
       ),
       { numRuns: 25 },
     );
-  }, 60_000);
+  }, 120_000);
 });

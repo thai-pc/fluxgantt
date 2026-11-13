@@ -226,6 +226,9 @@ export function enableKeyboardNav(
   // included, which focuses the row natively) and a programmatic `.focus()` both land here. The
   // renderer's own post-repaint focus restore targets `focusedTaskId` itself, so it is a no-op.
   function onFocusIn(event: Event): void {
+    // CONTRACT with `grid/resize-ui.ts` (`toParent`, Left to the parent row): it dispatches a synthetic bubbling
+    // `focusin` on a detached-soon stub `div[data-row-index][data-task-id]` to move the roving row to a row that
+    // may have no element (Canvas windows its rows). Keep accepting such a target here (no `contains()` check).
     // Only a row element is ever focusable (roving tabindex), and it carries `data-task-id`. Not checked
     // with `contains()`: the Canvas renderer rebuilds its a11y layer on this same focusin, detaching the target.
     const t = event.target as Element;

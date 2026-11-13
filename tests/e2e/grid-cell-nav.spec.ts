@@ -140,16 +140,28 @@ for (const canvas of [false, true]) {
         await expect.poll(() => g(page).collapsed('plan')).toBe(true);
       });
 
-      test('the chart is one Tab stop in cell mode: a cell is never a stop, the next Tab leaves the chart', async ({ page }) => {
+      test('the chart is one Tab stop in both directions, from a cell and from a header', async ({ page }) => {
         await open(page, q, canvas);
-        await focusRow(page, 'launch');
-        await page.keyboard.press(fwd);
-        await page.keyboard.press(fwd);
-        expect(await page.locator('#gantt [tabindex="0"]').count()).toBe(1);
-        await page.keyboard.press('Tab'); // the fixture has nothing after the chart: the browser wraps to the one stop or leaves
-        expect(await where(page)).not.toMatch(/^(cell|head):/);
-        await page.keyboard.press('Tab');
-        expect(await where(page)).not.toMatch(/^(cell|head):/);
+        await page.evaluate(() => {
+          const g = document.getElementById('gantt')!;
+          g.insertAdjacentHTML('beforebegin', '<button id="before">before</button>');
+          g.insertAdjacentHTML('afterend', '<button id="after">after</button>');
+        });
+        const activeId = () => page.evaluate(() => document.activeElement?.id ?? '');
+        for (const [key, expected] of [['Tab', 'after'], ['Shift+Tab', 'before']] as const) {
+          await focusRow(page, 'launch');
+          await page.keyboard.press(fwd);
+          await page.keyboard.press(fwd);
+          await expectWhere(page, 'cell:launch:1');
+          expect(await page.locator('#gantt [tabindex="0"]').count()).toBe(1);
+          await page.keyboard.press(key);
+          await expect.poll(activeId).toBe(expected);
+          await focusRow(page, 'plan');
+          await page.keyboard.press('ArrowUp');
+          await expectWhere(page, 'head:0');
+          await page.keyboard.press(key);
+          await expect.poll(activeId).toBe(expected);
+        }
       });
 
       test('a host-driven repaint keeps the focused cell', async ({ page }) => {

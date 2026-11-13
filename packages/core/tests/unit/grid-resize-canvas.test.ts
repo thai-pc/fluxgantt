@@ -419,4 +419,37 @@ describe('keyboard cell navigation on Canvas (G4)', () => {
     await key(document.activeElement!, 'ArrowRight');
     expect(where()).toBe('row:c');
   });
+
+  it('data rows carry aria-rowindex (the header is 1), so a windowed layer reads "row n of N"', async () => {
+    const { layer } = await mountCanvas();
+    expect(rows(layer).map((r) => r.getAttribute('aria-rowindex'))).toEqual(['2', '3', '4', '5']);
+  });
+
+  it('property: cell-mode keys and repaints follow a column model on Canvas', async () => {
+    const fc = await import('fast-check');
+    const KEYS = ['ArrowRight', 'ArrowLeft', 'Home', 'End', 'Escape', 'repaint'] as const;
+    const { handle, layer } = await mountCanvas();
+    await fc.assert(
+      fc.asyncProperty(fc.array(fc.integer({ min: 0, max: KEYS.length - 1 }), { minLength: 1, maxLength: 14 }), async (seq) => {
+        row(layer, 'c').focus();
+        for (const i of seq) {
+          const k = KEYS[i]!;
+          const w = where();
+          const col = w.startsWith('cell:') ? Number(w.split(':')[2]) : -1;
+          if (k === 'repaint') handle.setOptions({});
+          else await key(document.activeElement!, k);
+          const after = where();
+          if (k === 'repaint') expect(after).toBe(w);
+          else if (col < 0) expect(after).toBe(k === 'ArrowRight' ? 'cell:c:0' : w);
+          else if (k === 'Escape') expect(after).toBe('row:c');
+          else if (k === 'Home') expect(after).toBe('cell:c:0');
+          else if (k === 'End') expect(after).toBe('cell:c:4');
+          else if (k === 'ArrowRight') expect(after).toBe(`cell:c:${Math.min(col + 1, 4)}`);
+          else expect(after).toBe(col === 0 ? 'row:c' : `cell:c:${col - 1}`);
+          expect([...layer.querySelectorAll('[tabindex="0"]')].every((e) => e.getAttribute('role') === 'row')).toBe(true);
+        }
+      }),
+      { numRuns: 30 },
+    );
+  }, 60_000);
 });

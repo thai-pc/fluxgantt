@@ -7,7 +7,7 @@
 import { announceGrid } from './announce.js';
 import { HEADER_HEIGHT } from './fit.js';
 import { toTaskId } from '../types.js';
-import { focusCell, focusHeader, headerOf, type ResizeEnv } from './resize.js';
+import { claims, focusCell, focusHeader, headerOf, type ResizeEnv } from './resize.js';
 
 /** Keyboard step in px; Shift makes it fine. */
 const STEP = 16;
@@ -92,11 +92,16 @@ const focusRow = (env: ResizeEnv, first: boolean): void => {
 
 /** Dispatches a key on `t` for `keyboard-nav` (which owns row movement and selection); our own listener skips it. */
 const forward = (env: ResizeEnv, t: Element, key: string): void => {
+  // The fake is `isTrusted: false` and bare: it stops at the container (after `keyboard-nav`'s root, which is
+  // inside it), so a host's document-level hotkeys never see a Home/End the user did not press.
+  const stop = (x: Event): void => x.stopPropagation();
+  env.container.addEventListener('keydown', stop);
   env.nav.syn = true;
   try {
     t.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
   } finally {
     env.nav.syn = false;
+    env.container.removeEventListener('keydown', stop);
   }
 };
 
@@ -113,6 +118,10 @@ const toParent = (env: ResizeEnv, row: Element, parent: string): void => {
   stub.dispatchEvent(new FocusEvent('focusin', { bubbles: true }));
   stub.remove();
   env.gantt.select(toTaskId(parent));
+  // Without `keyboard-nav` (no `withInteraction`) nothing tracks the focused row, so the repaint's restore lands on
+  // the first row: focus the parent's own row.
+  const own = [...env.container.querySelectorAll('[role=row][data-task-id]')].find((r) => r.getAttribute('data-task-id') === parent);
+  if (own && own !== document.activeElement) (own as HTMLElement | SVGElement).focus({ preventScroll: true });
   // SVG: the row is above the viewport or under the pinned header (Canvas reveals its own focused row).
   const a = document.activeElement;
   if (a instanceof SVGElement) {
@@ -129,7 +138,9 @@ const toParent = (env: ResizeEnv, row: Element, parent: string): void => {
 export function onKey(env: ResizeEnv, e: KeyboardEvent): void {
   const { nav } = env;
   const t = document.activeElement;
-  if (!t || !env.container.contains(t)) return; // focus has left the chart
+  // Focus has left the chart, or moved to a mode that would not claim this key (a click, assistive technology):
+  // drop it rather than run it as another mode's action.
+  if (!t || !env.container.contains(t) || !claims(env, e, t)) return;
   const cols = env.view().cols;
   const last = cols.length - 1;
   const i = Number(t.getAttribute('aria-colindex')) - 1;
@@ -183,12 +194,14 @@ export function onKey(env: ResizeEnv, e: KeyboardEvent): void {
   focusHeader(env);
 }
 
-// A focused cell keeps the row's focus frame (the chart's `:focus-visible` rule only knows a focused ROW): while
-// the cell ring exists, the frame rects show. Carried by the ring itself, so it goes when the ring goes. Two rules,
-// as the renderer's own (a UA without `:has` drops only its own rule; forced colors recolour the stroke).
-const ROW_FRAME =
+// One stylesheet per layer, created on the first cell or header focus (not per focus: adding and removing a
+// stylesheet re-matches `:has()` on every row). A focused cell keeps the row's focus frame (the chart's
+// `:focus-visible` rule only knows a focused ROW): while the cell ring exists, the frame rects show. Two rules,
+// as the renderer's own (a UA without `:has` drops only its own rule). Forced colors repaint a border as
+// CanvasText, so the ring and the frame take `Highlight` there.
+const RING_CSS =
   '.fg-timeline__layer:has(.fg-grid__cell) .fg-timeline__focus-row{display:inline;stroke:var(--fg-task-focus,#0369a1);stroke-width:min(var(--fg-task-focus-width,2px),2px)}' +
-  '@media (forced-colors:active){.fg-timeline__layer:has(.fg-grid__cell) .fg-timeline__focus-row{stroke:Highlight}}';
+  '@media (forced-colors:active){.fg-timeline__layer:has(.fg-grid__cell) .fg-timeline__focus-row{stroke:Highlight}.fg-grid__ring{border-color:Highlight!important}}';
 
 /** The SVG focus frame over the focused header or cell (the real ones are invisible live; Canvas paints its own). */
 export function ring(env: ResizeEnv): void {
@@ -201,6 +214,12 @@ export function ring(env: ResizeEnv): void {
   const col = v.cols[i];
   const cell = a?.getAttribute('role') === 'gridcell';
   if (!layer || !col || !a || !container.contains(a) || !(cell || headerOf(a))) return;
+  if (!layer.querySelector(':scope > .fg-grid__css')) {
+    const st = document.createElement('style');
+    st.className = 'fg-grid__css';
+    st.append(RING_CSS);
+    layer.append(st);
+  }
   // A header ring pins to the top; a cell ring sits on its row (the label's y is the row's centre), inset so it
   // reads against the row frame, and scrolls with the row. Sticky on the inline-start axis only: it follows the
   // pinned column.
@@ -213,12 +232,12 @@ export function ring(env: ResizeEnv): void {
     'position:sticky;grid-area:1/1;align-self:start;justify-self:start;box-sizing:border-box;pointer-events:none;border:2px solid var(--fg-task-focus,#0369a1)' +
     (cell ? '' : ';top:0');
   r.style.insetInlineStart = `${v.offs[i]! + inset}px`;
-  if (cell) {
-    r.style.marginTop = `${y - h / 2 + inset}px`;
-    r.append(document.createElement('style'));
-    r.firstElementChild!.append(ROW_FRAME);
-  }
+  if (cell) r.style.marginTop = `${y - h / 2 + inset}px`;
   r.style.width = `${col.width - 2 * inset}px`;
   r.style.height = `${h - 2 * inset}px`;
-  layer.append(r);
+  // A cell ring goes UNDER the pinned date axis and corner (document order is z-order), so a row that is partly
+  // behind them does not draw over them; the header ring is above everything.
+  const band = cell ? layer.querySelector('.fg-timeline__sticky-header') : null;
+  if (band) band.before(r);
+  else layer.append(r);
 }
