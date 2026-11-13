@@ -11,6 +11,7 @@ export type {
   GridCapability,
   GridCellContext,
   GridColumn,
+  GridColumnBase,
   GridColumnInput,
   GridOptions,
 } from './types.js';

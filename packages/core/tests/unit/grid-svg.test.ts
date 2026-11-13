@@ -60,10 +60,10 @@ describe('structure and roles', () => {
   it('sums the column widths into the pinned width and owns it', () => {
     const g = mount();
     const h = handleOf(g);
-    expect(h.getLabelColumnWidth()).toBe(220 + 104 + 104 + 96 + 96);
+    expect(h.getLabelColumnWidth()).toBe(220 + 120 + 120 + 96 + 96);
     expect(h.fixedLabelWidth).toBe(true);
-    expect(column().getAttribute('width')).toBe('620');
-    expect(corner().getAttribute('width')).toBe('620');
+    expect(column().getAttribute('width')).toBe('652');
+    expect(corner().getAttribute('width')).toBe('652');
   });
 
   it('exposes aria-colcount, aria-rowcount (+ header) and shifted aria-rowindex', () => {
@@ -103,7 +103,7 @@ describe('structure and roles', () => {
     const byCol = Object.fromEntries(cells('c').slice(0).map((c) => [c.getAttribute('data-column-id'), c]));
     expect(byCol.start!.getAttribute('text-anchor')).toBeNull();
     expect(byCol.duration!.getAttribute('text-anchor')).toBe('end');
-    expect(byCol.progress!.getAttribute('x')).toBe(String(220 + 104 + 104 + 96 + 96 - 8));
+    expect(byCol.progress!.getAttribute('x')).toBe(String(220 + 120 + 120 + 96 + 96 - 8));
   });
 
   it('the pinned overlays are aria-hidden clones without roles, tabindex, ids or focusable content', () => {
@@ -256,7 +256,7 @@ describe('repaint and the row patch', () => {
     g.unmount();
     expect(container.querySelector('svg')).toBeNull();
     g.mount(container);
-    expect(handleOf(g).getLabelColumnWidth()).toBe(620);
+    expect(handleOf(g).getLabelColumnWidth()).toBe(652);
     expect(svgOf().querySelectorAll('[role=columnheader]')).toHaveLength(5);
   });
 
@@ -290,7 +290,7 @@ describe('pinned width ownership', () => {
     const g = order === 'grid outermost' ? withGrid(withResponsive(base), off) : withResponsive(withGrid(base, off));
     g.mount(container);
     for (const ro of RO.all) ro.cb();
-    expect(handleOf(g).getLabelColumnWidth()).toBe(620);
+    expect(handleOf(g).getLabelColumnWidth()).toBe(652);
     expect(svgOf().getAttribute('aria-colcount')).toBe('5');
   });
 
@@ -368,7 +368,7 @@ describe('collapseBelow', () => {
     const all = stubObserver();
     const g = mount();
     width(0); fire(all);
-    expect(handleOf(g).getLabelColumnWidth()).toBe(620);
+    expect(handleOf(g).getLabelColumnWidth()).toBe(652);
     g.unmount();
     all.length = 0;
     const g2 = withGrid(withRender(createGantt({ tasks: TASKS })), { collapseBelow: 0 });

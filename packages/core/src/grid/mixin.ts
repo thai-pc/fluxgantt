@@ -31,7 +31,12 @@ const viewOf = (cols: readonly Column[]): GridView => {
   return { cols, offs, width };
 };
 
-/** Replaces the pinned label column with configurable columns (SVG renderer). */
+/**
+ * Replaces the pinned label column with configurable columns (SVG renderer). Apply it before the
+ * first `mount()`.
+ *
+ * @beta
+ */
 export function withGrid<T extends GanttInstance>(
   instance: T,
   options: GridOptions = {},

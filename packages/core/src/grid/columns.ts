@@ -11,7 +11,11 @@ import type {
   GridColumnInput,
 } from './types.js';
 
-/** Most columns a grid can hold (the `name` column included). */
+/**
+ * Most columns a grid can hold (the `name` column included).
+ *
+ * @beta
+ */
 export const MAX_COLUMN_COUNT = 24;
 /** Longest header, in characters. */
 export const MAX_HEADER_CHARS = 200;
@@ -29,8 +33,8 @@ const DEFAULT_HEADERS: Record<BuiltInColumnId, string> = {
 };
 const DEFAULT_WIDTHS: Record<BuiltInColumnId, number> = {
   name: 220,
-  start: 104,
-  end: 104,
+  start: 120,
+  end: 120,
   duration: 96,
   progress: 96,
 };
@@ -45,7 +49,11 @@ export interface Column extends GridColumn {
   readonly format?: CustomColumn['format'];
 }
 
-/** Brands `id` as a `ColumnId`; throws a `RangeError` unless it matches `^[A-Za-z0-9_-]{1,64}$`. */
+/**
+ * Brands `id` as a `ColumnId`; throws a `RangeError` unless it matches `^[A-Za-z0-9_-]{1,64}$`.
+ *
+ * @beta
+ */
 export function toColumnId(id: string): ColumnId {
   if (typeof id !== 'string' || !ID_PATTERN.test(id)) {
     throw new RangeError('column id must match ^[A-Za-z0-9_-]{1,64}$');
@@ -53,7 +61,11 @@ export function toColumnId(id: string): ColumnId {
   return id as ColumnId;
 }
 
-/** The default columns: name, start, end, duration, progress. */
+/**
+ * The default columns: name, start, end, duration, progress.
+ *
+ * @beta
+ */
 export const DEFAULT_GRID_COLUMNS: readonly GridColumnInput[] = BUILT_INS.map((id) => ({ id }));
 
 const finite = (v: unknown, what: string): number => {

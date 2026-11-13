@@ -53,7 +53,9 @@ const g = (attrs: Record<string, string | number>, style?: string): SVGElement =
   return e;
 };
 const textEl = (x: number, y: number, anchor: string, content: string, full?: string): SVGElement => {
-  const t = el('text', anchor === 'start' ? { x, y } : { x, y, 'text-anchor': anchor });
+  // `unicode-bidi: plaintext`: the cell's own first strong character sets its direction, so a cut
+  // LTR text keeps its ellipsis at the end under an RTL mirror (as `withRtl` does for row labels).
+  const t = el('text', anchor === 'start' ? { x, y, 'unicode-bidi': 'plaintext' } : { x, y, 'text-anchor': anchor, 'unicode-bidi': 'plaintext' });
   if (full !== undefined) t.append(el('title', {}));
   t.append(content);
   if (full !== undefined) t.firstElementChild!.append(full);

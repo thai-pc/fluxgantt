@@ -996,6 +996,34 @@ Emits: `task-added`, `task-moved`, `task-resized`, `task-progressed`, `task-remo
 `task-context-requested`. `onTaskChange` is a prop (it is a `GanttConfig` field, not a bus event).
 Both wrappers forward events synchronously, so `payload.preventDefault()` works from a handler.
 
+### 7.13 Grid columns (`@fluxgantt/core/grid`, `@beta`)
+
+`withGrid(instance, { columns?, collapseBelow?, durationUnit? })` turns the pinned label column into
+configurable columns (SVG renderer; the Canvas painter is a later PR). Design:
+`.claude/work/spec-grid-columns.md`.
+
+```ts
+import { withGrid } from '@fluxgantt/core/grid';
+
+const gantt = withGrid(withRender(createGantt({ tasks })), {
+  columns: [
+    { id: 'name', width: 240 },
+    { id: 'start' }, { id: 'duration' }, { id: 'progress' },
+    { id: 'owner', header: 'Owner', value: (task) => task.meta?.owner as string },
+  ],
+});
+gantt.getGridColumns();      // resolved columns, display order
+gantt.setGridColumns([...]); // one repaint; RangeError on invalid input changes nothing
+gantt.exportGridCsv();       // one-way, formula-escaped report of what the grid shows
+```
+
+Built-in ids: `name` (the task tree, always first), `start`, `end`, `duration`, `progress`; custom
+ids match `^[A-Za-z0-9_-]{1,64}$`; at most 24 columns. `value()` output is untrusted text (capped at
+1000 characters, exceptions contained, written as text only). Headers go through
+`GanttConfig.messages.gridColumnLabel` for the accessible name. The chart svg is a `grid`/`treegrid`
+with `aria-colcount`, a header row of `columnheader`s and `gridcell`s with `aria-colindex`; the
+pinned layers are `aria-hidden` clones. SVG/PNG exports always include the grid.
+
 ---
 
 ## 8. UI/UX Design System
@@ -1950,7 +1978,7 @@ Reference prices (list, read 2026-11-11/12): DHTMLX PRO from $799 perpetual; Bry
 | Headless engine (Node/Workers) | ✓ | ✓ |
 | React/Vue wrappers | ✓ | ✓ |
 | Svelte/Angular wrappers *(moved from Pro, 2026-11; not yet built)* | ✓ | ✓ |
-| Basic/custom grid columns *(moved from Pro, 2026-11; not yet built)* | ✓ | ✓ |
+| Basic/custom grid columns *(moved from Pro, 2026-11; read-only columns built, `@fluxgantt/core/grid` `@beta`; inline editing and Canvas painting are later PRs)* | ✓ | ✓ |
 | Export PNG/SVG/JSON/CSV | ✓ | ✓ |
 | MCP server + `llms.txt` *(planned, §9.4)* | ✓ | ✓ |
 | Resource view | – | ✓ |

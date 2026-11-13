@@ -199,6 +199,9 @@ export interface DetectConflictsOptions {
 export function differenceInWorkingHours(from: DateInput, to: DateInput, cal: WorkingCalendar): number;
 
 // @beta
+export type EditErrorReason = 'empty' | 'not-a-number' | 'out-of-range' | 'not-a-date' | 'end-before-start' | 'too-long' | 'rejected';
+
+// @beta
 export function effect(fn: () => void): () => void;
 
 // @public
@@ -232,6 +235,26 @@ export type GanttAnnouncement =
     readonly from: string;
     readonly to: string;
     readonly reason?: 'duplicate' | 'cycle' | 'self';
+    readonly locale: string;
+}
+/** After a grid column was resized (`withGrid`; reserved, nothing emits it yet). */
+| {
+    readonly kind: 'column-resized';
+    readonly columnId: string;
+    readonly header: string;
+    readonly width: number;
+    readonly locale: string;
+}
+/** After a grid cell edit committed (`text` is the new display text) or failed (`reason`);
+*  reserved for the grid editing mixin, nothing emits it yet. */
+| {
+    readonly kind: 'cell-edited' | 'cell-edit-failed';
+    readonly id: TaskId;
+    readonly name: string;
+    readonly columnId: string;
+    readonly header: string;
+    readonly text?: string;
+    readonly reason?: EditErrorReason;
     readonly locale: string;
 };
 
@@ -347,6 +370,30 @@ export interface GanttInstance {
 export interface GanttMessages {
     // @beta
     readonly announce?: (announcement: GanttAnnouncement) => string;
+    // @beta
+    readonly gridColumnLabel?: (params: {
+        readonly columnId: string;
+        readonly header: string;
+        readonly index: number;
+        readonly count: number;
+        readonly locale: string;
+    }) => string;
+    // @beta
+    readonly gridEditError?: (params: {
+        readonly reason: EditErrorReason;
+        readonly columnId: string;
+        readonly header: string;
+        readonly locale: string;
+        readonly min?: number;
+        readonly max?: number;
+    }) => string;
+    // @beta
+    readonly gridEditLabel?: (params: {
+        readonly columnId: string;
+        readonly header: string;
+        readonly taskName: string;
+        readonly locale: string;
+    }) => string;
     readonly taskLabel?: (params: TaskLabelParams) => string;
 }
 

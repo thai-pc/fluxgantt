@@ -1,13 +1,25 @@
 // Public types of the grid-columns mixin (spec-grid-columns.md section 2). Type-only: 0 runtime bytes.
 import type { Task, WorkingCalendar } from '../types.js';
 
-/** The ids of the built-in columns. */
+/**
+ * The ids of the built-in columns.
+ *
+ * @beta
+ */
 export type BuiltInColumnId = 'name' | 'start' | 'end' | 'duration' | 'progress';
 
-/** Cell alignment. LOGICAL (inline-start / center / inline-end), never left or right, so it follows RTL. */
+/**
+ * Cell alignment. LOGICAL (inline-start / center / inline-end), never left or right, so it follows RTL.
+ *
+ * @beta
+ */
 export type ColumnAlign = 'start' | 'center' | 'end';
 
-/** A validated column id (`^[A-Za-z0-9_-]{1,64}$`); create one with `toColumnId`. */
+/**
+ * A validated column id (`^[A-Za-z0-9_-]{1,64}$`); create one with `toColumnId`.
+ *
+ * @beta
+ */
 export type ColumnId = string & { readonly __brand: 'ColumnId' };
 
 /**
@@ -24,8 +36,12 @@ export interface GridCellContext {
   readonly isSummary: boolean;
 }
 
-/** Options shared by every column definition. */
-interface ColumnBase {
+/**
+ * Options shared by every column definition.
+ *
+ * @beta
+ */
+export interface GridColumnBase {
   /** Header text, at most 200 characters. Built-ins default to English ("Name", "Start", ...). */
   readonly header?: string;
   /** Initial width in px; clamped to `[minWidth, maxWidth]`. */
@@ -43,7 +59,7 @@ interface ColumnBase {
  *
  * @beta
  */
-export interface BuiltInColumn extends ColumnBase {
+export interface BuiltInColumn extends GridColumnBase {
   readonly id: BuiltInColumnId;
 }
 
@@ -54,7 +70,7 @@ export interface BuiltInColumn extends ColumnBase {
  *
  * @beta
  */
-export interface CustomColumn extends ColumnBase {
+export interface CustomColumn extends GridColumnBase {
   /** `^[A-Za-z0-9_-]{1,64}$`, not a built-in id. */
   readonly id: string;
   readonly header: string;

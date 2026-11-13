@@ -12,6 +12,8 @@
 //   ?theme=dark   also compose `withTheme` and select the dark theme
 //   ?responsive=1 also compose `withResponsive`
 //   ?tz=Zone      calendar time zone (default UTC)
+//   ?wide=1       spread the filler tasks over ~520 days and add 20 holidays (the PR #125 duration trap)
+//   ?grid=0       do not compose withGrid (the baseline for the performance budgets)
 import './temporal.js'; // must stay first: installs globalThis.Temporal where it is not native
 import { createGantt, computeRollup, toTaskId, type TaskInput, type WorkingCalendar } from '@fluxgantt/core';
 import { withRender } from '@fluxgantt/core/render';
@@ -31,10 +33,12 @@ const rows = Number(params.get('rows') ?? '0');
 const collapse = Number(params.get('collapse') ?? '480');
 if (rtl) document.documentElement.dir = 'rtl';
 
+const wide = params.get('wide') === '1';
+const isoDay = (offset: number): string => new Date(Date.UTC(2026, 1, 1) + offset * 86_400_000).toISOString().slice(0, 10);
 const calendar: WorkingCalendar = {
   workingDays: ['mon', 'tue', 'wed', 'thu', 'fri'],
   workingHours: [{ start: '09:00', end: '17:00' }],
-  holidays: ['2026-05-01'],
+  holidays: wide ? Array.from({ length: 20 }, (_, i) => isoDay(10 + i * 25)) : ['2026-05-01'],
   timezone: params.get('tz') ?? 'UTC',
 };
 
@@ -61,8 +65,8 @@ const named: TaskInput[] = [
 const filler: TaskInput[] = Array.from({ length: Math.max(0, rows - named.length) }, (_, i) => ({
   id: toTaskId(`filler-${i}`),
   name: `Filler task ${i}`,
-  start: `2026-${String((i % 8) + 3).padStart(2, '0')}-${String((i % 20) + 1).padStart(2, '0')}`,
-  end: `2026-${String((i % 8) + 3).padStart(2, '0')}-${String((i % 20) + 6).padStart(2, '0')}`,
+  start: wide ? isoDay((i * 7) % 500) : `2026-${String((i % 8) + 3).padStart(2, '0')}-${String((i % 20) + 1).padStart(2, '0')}`,
+  end: wide ? isoDay(((i * 7) % 500) + 3 + (i % 17)) : `2026-${String((i % 8) + 3).padStart(2, '0')}-${String((i % 20) + 6).padStart(2, '0')}`,
   progress: (i % 10) / 10,
   type: 'task' as const,
   meta: { owner: ['Ana', 'Ben', 'Chi', 'Dee'][i % 4], status: i % 3 ? 'open' : 'done' },
@@ -121,11 +125,14 @@ const responsive = params.get('responsive') === '1' ? withResponsive(base) : bas
 const themed = withTheme(responsive);
 if (themeParam === 'dark' || themeParam === 'light') themed.setTheme(themeParam);
 if (themeParam) document.documentElement.dataset['theme'] = themed.getResolvedTheme();
-const gantt = withGrid(withRtl(themeParam ? themed : responsive), {
-  columns,
-  collapseBelow: collapse,
-  durationUnit: params.get('hours') === '1' ? 'hours' : 'days',
-});
+const composed = withRtl(themeParam ? themed : responsive);
+const gantt = params.get('grid') === '0'
+  ? Object.assign(composed, { exportGridCsv: () => '', setGridColumns: (_: GridColumnInput[]) => {} })
+  : withGrid(composed, {
+      columns,
+      collapseBelow: collapse,
+      durationUnit: params.get('hours') === '1' ? 'hours' : 'days',
+    });
 
 const t0 = performance.now();
 gantt.mount(document.getElementById('gantt')!);
