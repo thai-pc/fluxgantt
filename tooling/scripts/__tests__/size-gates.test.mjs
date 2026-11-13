@@ -58,9 +58,14 @@ test('everything.js imports every public mixin subpath (each is also referenced,
   for (const sub of subpaths) {
     assert.ok(code.includes(`from '@fluxgantt/core/${sub.slice(2)}'`), `everything.js does not import ${sub}`);
   }
-  for (const name of ['withIo', 'withRender', 'withInteraction', 'withTheme', 'withViewport', 'withConflicts', 'withEditHooks', 'withRtl', 'withResponsive']) {
-    assert.ok(new RegExp(`${name}\\(`).test(code), `${name} is imported but never called`);
-  }
+  // Names come from the fixture's own import lines, per subpath, so a new mixin cannot be imported
+  // and left uncalled (it would be tree-shaken away and the gate would under-measure).
+  const imported = [...code.matchAll(/import \{([^}]+)\} from '@fluxgantt\/core\/([\w-]+)'/g)].flatMap((m) =>
+    m[1].split(',').map((n) => n.trim()).filter(Boolean),
+  );
+  const mixins = imported.filter((n) => /^with[A-Z]/.test(n));
+  assert.equal(mixins.length, subpaths.length, 'one with* mixin per exported subpath');
+  for (const name of mixins) assert.ok(new RegExp(`\\b${name}\\(`).test(code), `${name} is imported but never called`);
 });
 
 test('every fixture file named in either config exists and has its esbuild config', () => {
