@@ -1,5 +1,15 @@
 # @fluxgantt/vue
 
+## 0.5.1
+
+### Patch Changes
+
+- Updated dependencies [5440bf3]
+- Updated dependencies [88f4e8c]
+- Updated dependencies [8199489]
+- Updated dependencies [2233a76]
+  - @fluxgantt/core@0.9.0
+
 ## 0.5.0
 
 ### Minor Changes

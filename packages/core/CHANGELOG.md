@@ -1,5 +1,53 @@
 # @fluxgantt/core
 
+## 0.9.0
+
+### Minor Changes
+
+- 88f4e8c: Seams for the upcoming grid-columns mixins; no visible change on its own.
+  
+  Beta: `SvgRendererHandle.paintHooks` and `SvgRendererOptions.paintHooks` (a list of `PaintHook` consumers, called with a `PaintEvent`) replace the single `SvgRendererOptions.onPaint` option, which is removed. Pass the array to `createSvgRenderer` and hooks see the first paint. After a full render a hook receives the chart svg and the three pinned layers; after a selection or focus row patch it receives the svg and the rebuilt rows (`PaintEvent.rows`). Hooks run in order over a copy of the list and a throwing hook is reported with `console.error` without stopping the others. `withRtl` registers through it and always runs last, so content other hooks add is mirrored too. If you passed `onPaint` to `createSvgRenderer` yourself, pass a hook in `paintHooks` instead.
+  
+  Beta: `InteractiveRendererHandle.fixedLabelWidth` (when set, `withResponsive` stops writing the label-column width; `getLabelColumnWidth()` then reports the painted width), an optional `columnId` on `hitTestRow` results, and an optional `columnId` (`@beta`) on the `task:activated` / `task:context-requested` payloads.
+  
+  Stable, additive: `'cell'` is a new member of the `@public` union `TaskHitPart`. It appears only in output positions (event payloads), which STABILITY.md allows in a minor; nothing reports it yet. Hosts with an exhaustive `switch` or `Record<TaskHitPart, ...>` need a `default` branch (STABILITY.md now lists `TaskHitPart` among the output unions to handle).
+  
+  Fix: after `unmount()` and `mount()`, `withResponsive`'s `getLabelColumnWidth()` reports the width the new mount painted (it kept the previous mount's value).
+  
+  Bundle cost (gzip): hello world +0 B, `+ withRender + withInteraction` +94 B, kitchen sink +103 B. A fourth hard size gate (everything composed, 35.5 KiB) is added to CI.
+- 8199489: Grid columns: the new `@fluxgantt/core/grid` subpath adds `withGrid(gantt, { columns?, collapseBelow?, durationUnit? })`, which turns the pinned label column of the SVG chart into configurable columns.
+  
+  Beta: `withGrid` and everything exported from `@fluxgantt/core/grid` (`GridOptions`, `GridCapability`, `GridColumn`, `GridColumnInput`, `BuiltInColumn`, `CustomColumn`, `GridCellContext`, `ColumnId`, `toColumnId`, `DEFAULT_GRID_COLUMNS`, `MAX_COLUMN_COUNT`). Built-in columns are `name` (the task tree, always first), `start`, `end`, `duration` and `progress`; custom columns take an `id` (`^[A-Za-z0-9_-]{1,64}$`), a `header` and a `value()` (and optionally `format()`). At most 24 columns; invalid definitions throw a `RangeError` and change nothing. `getGridColumns()` and `setGridColumns()` read and replace the columns (one repaint), and `exportGridCsv()` returns a one-way, formula-escaped CSV report of what the grid shows (it needs no DOM). `collapseBelow` (default 480 px, 0 disables) shows only the `name` column in a narrow container.
+  
+  What it does to the chart: the pinned column's width becomes the sum of the column widths (the viewport, RTL, zoom-anchor and PNG-export code already key on that one number), a header row is added, long text is cut with an ellipsis (the full text stays in the accessible name and a `<title>`), and SVG/PNG exports always include the grid. The chart svg gains `aria-colcount`, a real `columnheader` row and `gridcell`s with `aria-colindex`, and its rows' `aria-rowindex` shifts by one for the header; the pinned layers stay `aria-hidden` clones. Cell text from `value()` and `format()` is untrusted: it is capped at 1000 characters, written as text only, and an exception thrown by either is contained (the cell is blank). The duration column reads one shared working-hours meter per data revision (no per-row calendar walk) and every cell text is memoized per revision. The duration cell shows an AUTHORED `task.duration` (or a summary's rolled-up duration) when there is one, as the critical path reads it, so it can disagree with the bar if a host's `duration` disagrees with its dates; spans far from the bulk of the plan are measured one by one and a bad date blanks only its own cell. Known cost: with `config.rollup` set the provider runs twice per data revision (renderer and grid); the grid does not alter the host's config. With the grid composed, the chart's text is pinned to 12px system-ui so the width estimate holds (a host CSS rule on the row labels can invalidate it and let text spill into the next column). Applying `withGrid` twice to one instance throws. `collapseBelow` hides the other columns for assistive technology too, and repaints on an animation frame. Without `withGrid` nothing changes, and keyboard behaviour is unchanged either way (cell navigation is a later PR).
+  
+  Limits of this release: the grid paints on the SVG renderer only (a chart above 2000 tasks mounts on Canvas and logs a warning instead of painting columns), and a mount paints twice (once at the default label width, then at the grid's). Column resizing and inline cell editing are not included.
+  
+  Additive type: `GanttMessages.gridColumnLabel` (the columnheader's accessible name). Announcement kinds and edit messages for resizing and editing land with the PRs that emit them.
+  
+  Bundle cost (gzip): hello world +0 B, `+ withRender + withInteraction` +0 B, kitchen sink +2 B; the new soft fixture `+ withRender + withGrid` is 20555 B (over its 20 KiB reference; soft, warning only). The fourth hard gate (everything composed, now including the grid) is re-based from 35.5 to 40.25 KiB under the build-out window recorded in CLAUDE.md.
+- 2233a76: Grid columns on the Canvas renderer: `withGrid()` now paints in Canvas mode (a project above 2000 tasks) instead of logging a warning and showing no grid.
+  
+  Beta: `@fluxgantt/core/grid` (`@beta`) now paints on Canvas. On a Canvas mount the grid is painted on the pinned label canvas (the header band in its corner, the sub-column cells and the column dividers), cut with the same ellipsis estimate as the SVG grid, so a cell reads the same in both renderers and in every export. The painter is a separate lazy chunk (`grid/canvas-grid`, about 1.4 KiB gzip) fetched on the first Canvas mount; until it arrives the chart shows the plain label column. `collapseBelow`, `durationUnit`, `setGridColumns()` and RTL (the grid at the right edge, the column order and each cell's logical alignment mirrored) behave as on SVG. The "paints on the SVG renderer only" warning is removed.
+  
+  Accessibility (Canvas): the hidden a11y layer now carries the treegrid structure of the SVG chart: `aria-colcount`, a `columnheader` row at `aria-rowindex` 1, real `gridcell`s with `aria-colindex` and `data-column-id`, and data rows at `aria-rowindex` = row + 2 (`aria-rowcount` includes the header). The name cell keeps no `aria-label`, so the bar's own accessible name (dates, progress, "critical path", "selected") is never replaced, even when the painted name is cut; the layer always holds the full text. Without `withGrid` the layer is unchanged.
+  
+  Hit testing: the Canvas `hitTestRow` result reports `columnId` for a pointer in the pinned zone (the `name` column included), and never reports a toggle hit past the name column. A click on a cell selects the row exactly like a click on its label.
+  
+  Exports: Canvas `exportPng()` paints the header, the cells and the dividers; Canvas `exportSvg()` (a throwaway SVG renderer) and `exportGridCsv()` include the grid, with no DOM requirement for the CSV.
+  
+  Internal and unexported: `CanvasGridPainter` (the renderer's grid option) gains `colCount`, `nameText`, `appendHeader` and a `height` argument on `paintHeader`; `paintRows` and `paintRowLabels` take an optional painter. No package entry exports them.
+  
+  Bundle cost (gzip): hello world +0 B, `+ withRender + withInteraction` +0 B, kitchen sink +0 B; `+ withRender + withGrid` +84 B (20639, a soft warning against its 20 KiB reference) and the everything gate +123 B (37397; its limit stays 40.25 KiB under the same formula). The Canvas renderer chunk grows by about 211 B gzip and a Canvas chart with the grid downloads about 1.5 KiB gzip more than one without.
+
+### Patch Changes
+
+- 5440bf3: Keyboard focus is now visible when the focused task's bar is off screen or under the pinned label column (WCAG 2.4.7, 2.4.11). The focused row gets a 2 px frame across the chart and the pinned label column, in both the SVG and Canvas renderers; exported SVG and PNG are unchanged. The SVG frame also follows DOM focus that moves without a render (a screen-reader cursor, a host `.focus()` call).
+  
+  Visible colour change, an accessibility fix approved by the project lead (spec section 8.2 updated): the default `--fg-task-focus` is darker (`#0369a1`, was `#0ea5e9`, 2.8:1 on white) and the dark theme sets its own (`#38bdf8`) so the focus indicator reaches 3:1 on both grounds. A host stylesheet override of `--fg-task-focus` still wins in the light theme. Under `withTheme` dark or auto the theme writes `--fg-task-focus` inline on the container, as it does for the other dark tokens, so a host override is replaced while dark is active (inline values on the container are restored when light is applied again).
+  
+  Notes: the frame needs CSS `:has()` (Chrome 105, Safari 15.4, Firefox 121); older browsers keep the bar ring only. In SVG the frame's stroke is capped at 2 px (a larger `--fg-task-focus-width` still widens the bar ring; the frame stays inside its row). In SVG under forced colors the ring and the frame use the system `Highlight` colour and the pinned column takes the forced `Canvas` ground. Canvas mode under forced colors keeps its token colors (the bitmap is not recoloured by the browser): a documented limitation.
+
 ## 0.8.0
 
 ### Minor Changes
