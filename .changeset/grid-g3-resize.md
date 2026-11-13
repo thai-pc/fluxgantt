@@ -12,4 +12,4 @@ Keyboard (WCAG 2.5.7, a single-pointer path without dragging): the column header
 
 Canvas renderer (lazy chunk): a focused column header now survives the hidden accessibility layer's rebuild instead of handing focus to the row, and `CanvasGridPainter.paintHeader` (internal) draws its frame.
 
-Bundle cost (gzip): hello world +0 B, `+ withRender + withInteraction` +0 B, kitchen sink +0 B; `+ withRender + withGrid` +1948 B (soft) and the everything gate +1789 B, re-based from 40.25 to 42.25 KiB under the build-out window recorded in CLAUDE.md.
+Bundle cost (gzip): hello world +0 B, `+ withRender + withInteraction` +0 B, kitchen sink +0 B; `+ withRender + withGrid` +1950 B (soft) and the everything gate +1792 B, re-based from 40.25 to 42.25 KiB under the build-out window recorded in CLAUDE.md.
