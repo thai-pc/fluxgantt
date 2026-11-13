@@ -187,18 +187,27 @@ export interface CanvasRendererInput {
 }
 
 /**
- * Painter a grid mixin hands the Canvas renderer to draw its pinned columns. Not consumed yet.
- *
- * @beta
+ * Painter `withGrid()` hands the Canvas renderer (through `CanvasRendererOptions.grid`) to draw the
+ * pinned grid columns on the label canvas. It lives in its own lazy chunk (`grid/canvas-grid.ts`); this
+ * renderer only calls it. Every x is in LAYOUT space (distance from the inline-start edge), so the
+ * label canvas's RTL mirror applies to it unchanged. Internal: not exported from a package entry.
  */
 export interface CanvasGridPainter {
-  /** Width (px) of the name column; the default label+toggle is clipped to it. */
+  /** Width (px) of the name column: the toggle hit zone and the label clip end there. */
   readonly nameWidth: number;
-  paintHeader(ctx: CanvasRenderingContext2D, tokens: DesignTokens): void;
+  /** How many columns are painted now (`aria-colcount`). */
+  readonly colCount: number;
+  /** The name cell's text for `row`, already cut with an ellipsis to the name column. */
+  nameText(row: RowLayout): string;
+  /** The header band, the column headers and the full-height column dividers; `height` is the canvas's. */
+  paintHeader(ctx: CanvasRenderingContext2D, height: number, tokens: DesignTokens): void;
+  /** The sub-column cells (every column but `name`) of the row whose top is at `y`. */
   paintRow(ctx: CanvasRenderingContext2D, row: RowLayout, y: number, rowHeight: number, tokens: DesignTokens): void;
-  /** Appends the row's cells to its element in the hidden a11y layer. */
-  appendCells(rowEl: Element, row: RowLayout): void;
-  /** The column id under a label-column x, or undefined. */
+  /** Prepends the `columnheader` row to the hidden a11y layer. */
+  appendHeader(layer: HTMLElement): void;
+  /** Gives the row's name cell `aria-colindex=1` and appends one `gridcell` per other column. */
+  appendCells(rowEl: HTMLElement, row: RowLayout): void;
+  /** The column id under a label-column x, or undefined past the last column. */
   columnAt(x: number): string | undefined;
 }
 
@@ -238,8 +247,7 @@ export interface CanvasRendererOptions {
   /** Paint mirrored: earliest date at the right, label column at the right, upright glyphs. Set
    *  only by `withRtl`; also read by `export-canvas-png.ts` through `getRenderState()`. */
   readonly rtl?: boolean;
-  /** Grid-column painter (reserved for the upcoming grid-columns mixin; accepted and ignored until
-   *  then). Lives in this lazy chunk only. */
+  /** Grid-column painter, set by `withGrid()`; absent = the plain label column. */
   readonly grid?: CanvasGridPainter;
   // NOTE: no `showLinkHandles` — Canvas never paints connector handles on the main bitmap. When a
   // drag is attached they are drawn on the interaction overlay only (hovered / selected bars).
@@ -310,7 +318,7 @@ export interface CanvasRendererHandle extends InteractiveRendererHandle {
   hitTestRow(
     clientX: number,
     clientY: number,
-  ): { taskId: TaskId; rowIndex: number; hitToggle: boolean; onBar: boolean; onLabel: boolean } | undefined;
+  ): { taskId: TaskId; rowIndex: number; hitToggle: boolean; onBar: boolean; onLabel: boolean; columnId?: string } | undefined;
   /** Always present on a Canvas handle (the pointer-drag coordinator's Canvas discriminator), but
    *  returns `undefined` until `attachDrag()` has run and after its disposer. */
   hitTestBar(clientX: number, clientY: number, pointerType?: string): BarHit | undefined;
@@ -1149,7 +1157,7 @@ export function createCanvasRenderer(
   function hitTestRow(
     clientX: number,
     clientY: number,
-  ): { taskId: TaskId; rowIndex: number; hitToggle: boolean; onBar: boolean; onLabel: boolean } | undefined {
+  ): { taskId: TaskId; rowIndex: number; hitToggle: boolean; onBar: boolean; onLabel: boolean; columnId?: string } | undefined {
     const rect = canvas.getBoundingClientRect();
     const rtl = state.options.rtl === true;
     // Inside the pinned column the pointer resolves in LABEL space (never a bar hidden underneath).
@@ -1176,9 +1184,20 @@ export function createCanvasRenderer(
     // glyph at. Only a `hasChildren` row can register a toggle hit.
     const toggleStart = LABEL_PADDING_PX + row.depth * LABEL_INDENT_PX;
     const toggleEnd = toggleStart + TOGGLE_GLYPH_GUTTER_PX;
-    const hitToggle = row.hasChildren && x >= toggleStart && x < toggleEnd;
+    // With a grid the toggle only exists inside the name column (a deep row in a narrow one is clipped).
+    const grid = state.options.grid;
+    const hitToggle = row.hasChildren && x >= toggleStart && x < toggleEnd && (!grid || x < grid.nameWidth);
+    // The column under a pointer in the pinned zone, `name` included (edit hooks map it to the label).
+    const columnId = pin !== undefined ? grid?.columnAt(pin) : undefined;
 
-    return { taskId: row.task.id, rowIndex: row.rowIndex, hitToggle, onBar: pin === undefined && insideBar(g, x, y), onLabel: x < currentLabelColumnWidth };
+    return {
+      taskId: row.task.id,
+      rowIndex: row.rowIndex,
+      hitToggle,
+      onBar: pin === undefined && insideBar(g, x, y),
+      onLabel: x < currentLabelColumnWidth,
+      ...(columnId !== undefined ? { columnId } : {}),
+    };
   }
 
   /**
@@ -1470,7 +1489,13 @@ export function createCanvasRenderer(
     // `grid` and `treegrid` as the user scrolls a container row band in and out of view.
     const isTree = isTreeLayout(rows);
     a11yLayer.setAttribute('role', isTree ? 'treegrid' : 'grid');
-    a11yLayer.setAttribute('aria-rowcount', String(rows.length));
+    // With a grid the header is `aria-rowindex` 1, so the data rows start at 2 (as in the SVG treegrid).
+    const grid = state.options.grid;
+    const first = grid ? 2 : 1;
+    a11yLayer.setAttribute('aria-rowcount', String(rows.length + first - 1));
+    if (grid) a11yLayer.setAttribute('aria-colcount', String(grid.colCount));
+    else a11yLayer.removeAttribute('aria-colcount');
+    grid?.appendHeader(a11yLayer);
     a11yLayer.setAttribute('aria-multiselectable', 'true');
     a11yLayer.setAttribute('aria-label', ariaLabel);
 
@@ -1506,7 +1531,7 @@ export function createCanvasRenderer(
       rowEl.setAttribute('role', 'row');
       rowEl.setAttribute('data-row-index', String(row.rowIndex));
       rowEl.setAttribute('data-task-id', row.task.id);
-      rowEl.setAttribute('aria-rowindex', String(row.rowIndex + 1));
+      rowEl.setAttribute('aria-rowindex', String(row.rowIndex + first));
       rowEl.setAttribute('aria-selected', isSelected ? 'true' : 'false');
       rowEl.setAttribute('tabindex', row.task.id === focusedTaskId ? '0' : '-1');
       // (spec-collapse-expand.md §6.3) — mirrors svg-renderer.ts's rule exactly: omit entirely
@@ -1561,6 +1586,7 @@ export function createCanvasRenderer(
       cellEl.appendChild(labelEl);
       cellEl.appendChild(taskEl);
       rowEl.appendChild(cellEl);
+      grid?.appendCells(rowEl, row);
       a11yLayer.appendChild(rowEl);
     }
 
@@ -1641,12 +1667,24 @@ export function createCanvasRenderer(
         labelCtx.rect(0, HEADER_HEIGHT, offsetX, resolvedViewportHeightPx - HEADER_HEIGHT);
         labelCtx.clip();
         labelCtx.translate(0, HEADER_HEIGHT - scrollTop);
-        paintRowLabels(labelCtx, windowedRows, rowHeight, 0, tokens);
+        if (grid) {
+          // The name and its toggle stay inside the name column; the cells follow it.
+          labelCtx.save();
+          labelCtx.beginPath();
+          labelCtx.rect(0, scrollTop, grid.nameWidth, resolvedViewportHeightPx);
+          labelCtx.clip();
+          paintRowLabels(labelCtx, windowedRows, rowHeight, 0, tokens, grid);
+          labelCtx.restore();
+          for (const row of windowedRows) grid.paintRow(labelCtx, row, row.y, rowHeight, tokens);
+        } else {
+          paintRowLabels(labelCtx, windowedRows, rowHeight, 0, tokens);
+        }
         // Before the divider, which stays last; the closing edge falls outside the bitmap (open at the divider side).
         paintFocusRow(labelCtx, focusRowY, 0, offsetX + tokens.taskFocusWidth, rowHeight, tokens);
       } finally {
         labelCtx.restore();
       }
+      grid?.paintHeader(labelCtx, resolvedViewportHeightPx, tokens);
       // Pixel-snapped inside the box so the stroke is not half-clipped at the canvas edge.
       paintLabelDivider(labelCtx, offsetX - 0.5, resolvedViewportHeightPx, tokens);
     }
@@ -1795,6 +1833,7 @@ export function paintRows(
   rollup: ReadonlyMap<TaskId, RolledUpRow> | undefined,
   // `false` paints bars only: the live Canvas paints labels on the pinned label canvas instead.
   labels = true,
+  grid?: CanvasGridPainter,
 ): void {
   for (const row of rows) {
     const bar = barByTaskId.get(row.task.id);
@@ -1804,7 +1843,10 @@ export function paintRows(
     // `cell.appendChild(label)` then `cell.appendChild(renderTaskBar(...))`, though the
     // regions don't spatially overlap so paint order has no visible effect; kept identical
     // purely for call-log/parity consistency with the SVG file's structure).
-    if (labels) paintRowLabel(ctx, row, rowHeight, offsetY, tokens);
+    if (labels) {
+      paintRowLabel(ctx, row, rowHeight, offsetY, tokens, grid);
+      grid?.paintRow(ctx, row, offsetY + row.y, rowHeight, tokens);
+    }
 
     const isCritical = criticalIds.has(row.task.id);
     const isSelected = selectedIds.has(row.task.id);
@@ -1830,8 +1872,9 @@ export function paintRowLabels(
   rowHeight: number,
   offsetY: number,
   tokens: DesignTokens,
+  grid?: CanvasGridPainter,
 ): void {
-  for (const row of rows) paintRowLabel(ctx, row, rowHeight, offsetY, tokens);
+  for (const row of rows) paintRowLabel(ctx, row, rowHeight, offsetY, tokens, grid);
 }
 
 function paintRowLabel(
@@ -1840,6 +1883,7 @@ function paintRowLabel(
   rowHeight: number,
   offsetY: number,
   tokens: DesignTokens,
+  grid?: CanvasGridPainter,
 ): void {
   ctx.save();
   try {
@@ -1855,7 +1899,7 @@ function paintRowLabel(
     // stays column-aligned across sibling leaf/summary rows at the same depth.
     fillTextAt(
       ctx,
-      row.task.name,
+      grid ? grid.nameText(row) : row.task.name,
       LABEL_PADDING_PX + row.depth * LABEL_INDENT_PX + TOGGLE_GLYPH_GUTTER_PX,
       offsetY + row.y + rowHeight / 2,
     );

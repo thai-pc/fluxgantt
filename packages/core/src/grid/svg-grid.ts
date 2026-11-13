@@ -9,42 +9,26 @@
 // SECURITY (security.md): every string that reaches the DOM is a Text node (`append(string)`) or a
 // `setAttribute` value. Cell text comes from `values.ts` (already capped and stripped); column ids are
 // validated; nothing is concatenated into markup, a selector or a `cssText`.
-import { HEADER_FONT_PX, estimateTextWidth } from '../render/renderer-base.js';
+import { HEADER_FONT_PX } from '../render/renderer-base.js';
 import type { PaintEvent, PaintHook } from '../render/svg-renderer.js';
 import type { GanttInternal } from '../gantt-internal.js';
 import { toTaskId, type Task } from '../types.js';
-import { UNSAFE_TEXT, type Column } from './columns.js';
+import type { Column } from './columns.js';
+import { HEADER_HEIGHT, PAD, makeCut, makeHeaderName, place, type GridView } from './fit.js';
 import type { GridValues } from './values.js';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
-// Keep in sync with `HEADER_HEIGHT` in `render/svg-renderer.ts` (not exported from there).
-const HEADER_HEIGHT = 32;
-const PAD = 8;
 /** Grid text is pinned to the header font (size and family): the width estimate is calibrated for it. */
 const FONT = `${HEADER_FONT_PX}px system-ui,sans-serif`;
 const CELL_STYLE = 'dominant-baseline:middle;fill:var(--fg-fg,#18181b)';
 const HEAD_STYLE = `font:${FONT};dominant-baseline:middle;fill:var(--fg-fg-muted,#6b6b73)`;
 const LINE_STYLE = 'stroke:var(--fg-border,#e5e7eb)';
-const ANCHOR = { start: 'start', center: 'middle', end: 'end' } as const;
 
 // Hand-minified (every character of a CSS literal ships; rationale lives here). The real cells and
 // headers are hidden LIVE because the pinned layers paint them; `exportSvg()` strips every `<style>`,
 // so an export shows them. Scoped to the chart svg so the pinned clones are not hidden.
 const STYLE =
   '.fg-timeline__layer>.fg-timeline .fg-grid__cells,.fg-timeline__layer>.fg-timeline .fg-grid__head-text{opacity:0}';
-
-/** What the painter needs to know about the active columns. */
-export interface GridView {
-  /** Every configured column; the values are read (and memoized) for all of them, so collapsing to
-   *  the name column and the CSV report share one memo. `cols` is always a prefix of it. */
-  readonly all: readonly Column[];
-  /** The columns painted now: `all`, or just `name` while collapsed. */
-  readonly cols: readonly Column[];
-  /** Inline-start offset of each column; `offs[i] + cols[i].width` is the next one. */
-  readonly offs: readonly number[];
-  /** Sum of the widths: the pinned column's width. */
-  readonly width: number;
-}
 
 const el = (tag: string, attrs: Record<string, string | number>): SVGElement => {
   const e = document.createElementNS(SVG_NS, tag) as SVGElement;
@@ -66,66 +50,15 @@ const textEl = (x: number, y: number, anchor: string, content: string, full?: st
   return t;
 };
 
-let segmenter: Intl.Segmenter | undefined;
-
-/** The narrowest an estimated character can be (0.35 em at the grid font), in px. */
-const MIN_CHAR_PX = 0.35 * HEADER_FONT_PX;
-
-/** `text` cut with an ellipsis to fit `max` px (6 % margin, on a grapheme boundary), or `text` itself. */
-export function fit(text: string, max: number): string {
-  const budget = max * 0.94;
-  if (text.length * MIN_CHAR_PX <= budget && estimateTextWidth(text) <= budget) return text;
-  // Only this many code units can ever fit, so a long text is cut BEFORE the (slow) segmentation.
-  const head = text.slice(0, Math.ceil(budget / MIN_CHAR_PX) + 2);
-  segmenter ??= typeof Intl.Segmenter === 'function' ? new Intl.Segmenter() : undefined;
-  const parts = segmenter ? Array.from(segmenter.segment(head), (s) => s.segment) : Array.from(head);
-  let lo = 0;
-  let hi = parts.length;
-  while (lo < hi) {
-    const mid = (lo + hi + 1) >> 1;
-    if (estimateTextWidth(parts.slice(0, mid).join('') + '…') <= budget) lo = mid;
-    else hi = mid - 1;
-  }
-  return lo || estimateTextWidth('…') <= budget ? parts.slice(0, lo).join('') + '…' : '';
-}
-
-/** Where a cell's text sits inside its column. */
-const place = (col: Column, off: number): [number, string] => [
-  col.align === 'end' ? off + col.width - PAD : col.align === 'center' ? off + col.width / 2 : off + PAD,
-  ANCHOR[col.align],
-];
-
 /** Adds the grid to a freshly painted chart (full render) or to the rows a patch rebuilt. */
 export function createGridPaint(
   internal: GanttInternal,
   view: () => GridView,
   values: GridValues,
 ): PaintHook {
-  const locale = internal.config.locale ?? 'en';
-  const label = internal.config.messages?.gridColumnLabel;
-  // The cut is a pure function of (text, width): remembered across repaints (zoom, collapse, patches),
-  // bounded so a data set of long unique texts cannot grow it without limit.
-  const cuts = new Map<string, string>();
-  const cut = (text: string, max: number): string => {
-    const key = `${max}|${text}`;
-    let out = cuts.get(key);
-    if (out === undefined) {
-      if (cuts.size >= 4096) cuts.clear();
-      cuts.set(key, (out = fit(text, max)));
-    }
-    return out;
-  };
+  const cut = makeCut();
 
-  const headerName = (c: Column, i: number, n: number): string => {
-    let name = c.header; // the column position comes from aria-colindex / aria-colcount
-    try {
-      const custom = label?.({ columnId: c.id, header: c.header, index: i + 1, count: n, locale });
-      if (typeof custom === 'string') name = custom;
-    } catch {
-      // a throwing host function falls back to the English name
-    }
-    return name.slice(0, 400).replace(UNSAFE_TEXT, ' ');
-  };
+  const headerName = makeHeaderName(internal);
 
   /** Decorates one row of the chart svg; returns the clone row for the pinned column. */
   const decorate = (

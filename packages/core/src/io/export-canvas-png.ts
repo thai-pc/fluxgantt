@@ -170,6 +170,8 @@ export async function exportCanvasPng(
       timeScale.totalWidth,
       tokens,
     );
+    // The grid's header band and column dividers (the cells follow with their rows below).
+    o.grid?.paintHeader(ctx, cssH, tokens);
     paintLabelDivider(ctx, offsetX, cssH, tokens);
     const todayX = todayLineX(timeScale, now);
     if (todayX !== null) paintTodayLine(ctx, todayX, offsetX, cssH, tokens);
@@ -179,7 +181,7 @@ export async function exportCanvasPng(
     ctx.save();
     ctx.translate(0, HEADER_HEIGHT);
     paintDependencies(ctx, input.dependencies, bars, rowHeight, offsetX, 0, tokens);
-    paintRows(ctx, rows, bars, critical, EMPTY_IDS, rowHeight, offsetX, 0, tokens, input.rollup);
+    paintRows(ctx, rows, bars, critical, EMPTY_IDS, rowHeight, offsetX, 0, tokens, input.rollup, true, o.grid);
     ctx.restore();
 
     return await new Promise<Blob>((resolve, reject) => {

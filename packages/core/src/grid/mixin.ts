@@ -1,4 +1,5 @@
-// Opt-in grid columns (spec-grid-columns.md; PR G1: the columns, the SVG painter and the CSV report).
+// Opt-in grid columns (spec-grid-columns.md; G1: the columns, the SVG painter and the CSV report; G2: the
+// Canvas painter, loaded lazily from `canvas-grid.ts`).
 //
 //   const gantt = withGrid(withRender(createGantt({ tasks })), { columns: [...] });
 //
@@ -11,11 +12,15 @@
 //
 // The width is applied after the first paint (the renderer reads its options at construction and the
 // facade passes none for the width), so a mount paints twice; the first paint is skipped by the hook.
+// On a Canvas mount (2000+ tasks) the painter chunk is fetched first, so the first Canvas paint may show
+// the plain label column for the moment the chunk takes to arrive.
 import type { GanttInstance } from '../gantt.js';
+import type { CanvasGridPainter } from '../render/canvas-renderer.js';
 import { getInternal } from '../gantt-internal.js';
 import { resolveColumns, publicColumn, type Column } from './columns.js';
 import { gridCsv } from './csv.js';
-import { createGridPaint, type GridView } from './svg-grid.js';
+import type { GridView } from './fit.js';
+import { createGridPaint } from './svg-grid.js';
 import type { GridCapability, GridColumnInput, GridOptions } from './types.js';
 import { createGridValues } from './values.js';
 
@@ -61,20 +66,32 @@ export function withGrid<T extends GanttInstance>(
   const below = Number.isFinite(options.collapseBelow) ? Math.max(0, options.collapseBelow!) : 480;
   let all = resolveColumns(options.columns); // throws at composition time on a bad definition
   let collapsed = false;
-  let warnedCanvas = false;
+  let painter: CanvasGridPainter | undefined; // the Canvas painter, once its chunk has loaded
+  let loading: Promise<void> | undefined;
   let view = viewOf(all, all);
   const values = createGridValues(internal, () => unit);
 
   (internal.paints ??= []).push(createGridPaint(internal, () => view, values));
 
-  /** Pushes the pinned width to the live SVG renderer; that is also the repaint. */
+  /** Pushes the pinned width (and, on Canvas, the painter) to the live renderer; that is also the repaint. */
   const apply = (): void => {
     const handle = internal.mountOf()?.handle;
-    if (handle && 'paintHooks' in handle) {
-      handle.fixedLabelWidth = true;
-      handle.setOptions({ labelColumnWidth: view.width });
-    }
+    if (!handle) return;
+    handle.fixedLabelWidth = true;
+    if ('paintHooks' in handle) handle.setOptions({ labelColumnWidth: view.width });
+    else if (painter) handle.setOptions({ grid: painter, labelColumnWidth: view.width });
   };
+  /** Fetches the Canvas painter once (a failure is reported once and retried on the next mount). */
+  const loadPainter = (): Promise<void> =>
+    (loading ??= import('./canvas-grid.js').then(
+      (m) => {
+        painter = m.createCanvasGrid(internal, () => view, values);
+      },
+      (e: unknown) => {
+        loading = undefined;
+        console.warn('@fluxgantt/core: withGrid could not load its Canvas painter; this chart shows no grid.', e);
+      },
+    ));
   const rebuild = (): void => {
     view = viewOf(all, collapsed ? all.slice(0, 1) : all);
   };
@@ -82,18 +99,14 @@ export function withGrid<T extends GanttInstance>(
   instance.on('renderer:selected', () => {
     const handle = internal.mountOf()?.handle; // a listener before this one may have unmounted
     if (!handle) return;
-    if (!('paintHooks' in handle)) {
-      if (!warnedCanvas) console.warn('@fluxgantt/core: withGrid paints on the SVG renderer only; this chart shows no grid.');
-      warnedCanvas = true; // once per instance, not once per mount
-      return;
-    }
     // Decide from the container's width right away (0 = not laid out yet: keep all columns), so a
     // narrow container paints the name column once instead of all columns and then the name column.
     const watch = below > 0 && typeof ResizeObserver === 'function';
     const w0 = handle.container.clientWidth;
     collapsed = watch && w0 > 0 && w0 < below;
     rebuild();
-    apply();
+    if ('paintHooks' in handle) apply();
+    else void loadPainter().then(() => internal.mountOf()?.handle === handle && apply());
     if (watch) {
       // The repaint is deferred to the next frame: it can change the container's own size (a
       // shrink-to-fit host), and doing that inside the callback raises "ResizeObserver loop completed
