@@ -13,7 +13,6 @@ import { HEADER_FONT_PX } from '../render/renderer-base.js';
 import type { PaintEvent, PaintHook } from '../render/svg-renderer.js';
 import type { GanttInternal } from '../gantt-internal.js';
 import { toTaskId, type Task } from '../types.js';
-import type { Column } from './columns.js';
 import { HEADER_HEIGHT, PAD, makeCut, makeHeaderName, place, type GridView } from './fit.js';
 import type { GridValues } from './values.js';
 

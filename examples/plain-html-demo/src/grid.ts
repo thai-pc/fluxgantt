@@ -15,6 +15,8 @@
 //   ?wide=1       spread the filler tasks over ~520 days and add 20 holidays (the PR #125 duration trap)
 //   ?longcols=1   name + five custom columns whose values are ~1000 characters (the fit() cost budget)
 //   ?grid=0       do not compose withGrid (the baseline for the performance budgets)
+//   ?deps=1       keep the four dependencies even when ?rows pads the plan (a critical path on the Canvas renderer)
+//   Canvas:       ?rows=2100 (anything above 2000 tasks) mounts the Canvas renderer through the real mount()
 import './temporal.js'; // must stay first: installs globalThis.Temporal where it is not native
 import { createGantt, computeRollup, toTaskId, type TaskInput, type WorkingCalendar } from '@fluxgantt/core';
 import { withRender } from '@fluxgantt/core/render';
@@ -112,7 +114,7 @@ const base = withIo(
         createGantt({
           tasks: [...named, ...filler],
           dependencies:
-            rows > 0
+            rows > 0 && params.get('deps') !== '1'
               ? []
               : [
                   { from: toTaskId('req'), to: toTaskId('design'), type: 'FS' },
@@ -151,5 +153,5 @@ const mountMs = performance.now() - t0;
 if (import.meta.env.DEV) {
   const w = window as unknown as Record<string, unknown>;
   w['__gantt'] = gantt;
-  w['__fx'] = { mountMs, pxPerDay: 24 };
+  w['__fx'] = { mountMs, t0, pxPerDay: 24 };
 }

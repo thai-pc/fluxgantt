@@ -414,20 +414,6 @@ describe('exports include the grid', () => {
   });
 });
 
-describe('Canvas', () => {
-  it('warns once and paints nothing when the chart mounted on the Canvas renderer', () => {
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    const g = withGrid(withRender(createGantt({ tasks: TASKS })));
-    const internal = getInternal(g);
-    internal.setMount({ renderer: 'canvas', handle: { canvas: {} } as never, fx: () => {}, ui: () => {}, focusedId: () => undefined, anchored: () => {}, refresh: () => {} });
-    internal.emit('renderer:selected', { renderer: 'canvas', taskCount: 0 });
-    expect(warn).toHaveBeenCalledTimes(1);
-    expect(String(warn.mock.calls[0]![0])).toContain('SVG renderer only');
-    internal.emit('renderer:selected', { renderer: 'canvas', taskCount: 0 }); // a remount
-    expect(warn).toHaveBeenCalledTimes(1); // once per instance
-  });
-});
-
 describe('without withGrid nothing changes (regression)', () => {
   it('the chart keeps its single label column, row indices and responsive width', () => {
     const g = withInteraction(withRender(createGantt({ tasks: TASKS })));
