@@ -30,6 +30,7 @@ describe('Canvas painter chunk failure', () => {
     expect(String(warn.mock.calls[0]![0])).toContain('withGrid could not load its Canvas painter');
     expect(handle.getRenderState().options.grid).toBeUndefined();
     expect(handle.getLabelColumnWidth()).toBe(160); // the plain label column
+    expect(handle.fixedLabelWidth).toBeUndefined(); // the width is not ours without a painter
     expect(handle.interactionRoot.hasAttribute('aria-colcount')).toBe(false);
     internal.emit('renderer:selected', { renderer: 'canvas', taskCount: 0 }); // a remount retries
     await vi.waitFor(() => expect(warn).toHaveBeenCalledTimes(2));

@@ -145,7 +145,7 @@ describe('the label canvas paints the grid', () => {
     const { handle, label, repaint } = await mountCanvas();
     const r = repaint();
     const all = texts(r);
-    expect(all.slice(-HEAD.length)).toEqual(HEAD); // the header goes last (over the clipped rows)
+    expect(all.slice(0, HEAD.length)).toEqual(HEAD); // the header and dividers go first, under the row focus frame
     expect(all).toContain('Jan 5, 2026');
     expect(all).toContain('Jan 14, 2026');
     expect(all).toContain('4d');
@@ -155,8 +155,12 @@ describe('the label canvas paints the grid', () => {
     expect(label.width).toBe(W);
     // the header band: a fillRect of the pinned width x the header height in --fg-bg-subtle
     expect(r.calls.some((c) => c.name === 'fillRect' && c.args[2] === W && c.args[3] === 32)).toBe(true);
-    // four inner dividers plus the closing label divider are stroked
-    expect(count(r, 'stroke')).toBeGreaterThanOrEqual(3);
+    // the four inner column dividers are pixel-snapped lines running the whole canvas height
+    const dividers = r.calls.filter((c) => c.name === 'moveTo' && c.args[1] === 0).map((c) => c.args[0]);
+    expect(dividers).toEqual(expect.arrayContaining([219.5, 339.5, 459.5, 555.5]));
+    // and they are painted before the first row's focus frame / cells (the frame has no gaps)
+    const firstText = r.calls.findIndex((c) => c.name === 'fillText' && c.args[0] === 'Jan 5, 2026');
+    expect(r.calls.findIndex((c) => c.name === 'moveTo' && c.args[0] === 555.5)).toBeLessThan(firstText);
     // the chart canvas never receives cell text
     const main = texts(recOf(handle.canvas));
     for (const h of ['Start', 'Duration', 'Progress', 'Jan 5, 2026', '25%']) expect(main).not.toContain(h);
@@ -201,6 +205,43 @@ describe('the label canvas paints the grid', () => {
 
   it('the grid owns the width: withResponsive-style writers are told to stand down', async () => {
     const { handle } = await mountCanvas();
+    expect(handle.fixedLabelWidth).toBe(true);
+  });
+});
+
+describe('the name column clip', () => {
+  const DEEP = [
+    t('a', { type: 'summary' }),
+    t('b', { type: 'summary', parent: id('a') }),
+    t('c', { type: 'summary', parent: id('b') }),
+    t('d', { type: 'summary', parent: id('c') }),
+  ];
+  const narrow: GridColumnInput[] = [{ id: 'name', width: 60 }, { id: 'start' }];
+
+  it('clips each row label and toggle to the name column in the PNG export', async () => {
+    const { handle } = await mountCanvas({ tasks: DEEP, columns: narrow });
+    await exportCanvasPng(handle, { scale: 1 });
+    const rec = png!;
+    const clips = rec.calls.map((c, i) => [c, i] as const).filter(([c]) => c.name === 'rect').map(([c]) => c.args);
+    // one 60 px wide clip per row (4), applied before the toggle triangle is filled
+    expect(clips.filter((a) => a[2] === 60)).toHaveLength(4);
+    const firstClip = rec.calls.findIndex((c) => c.name === 'clip');
+    const firstFill = rec.calls.findIndex((c) => c.name === 'fill');
+    expect(firstClip).toBeGreaterThan(-1);
+    expect(firstClip).toBeLessThan(firstFill);
+  });
+});
+
+describe('fixedLabelWidth is only claimed with a painter', () => {
+  it('is not set before the painter is loaded, and is set after', async () => {
+    const base = withIo(withRender(createGantt({ tasks: TASKS })));
+    const g = withGrid(base);
+    const internal = getInternal(g);
+    const handle = createCanvasRenderer(container, { tasks: internal.tasks.all(), dependencies: [] }, { viewportHeight: 600 });
+    internal.setMount({ renderer: 'canvas', handle, fx: () => {}, ui: () => {}, focusedId: () => undefined, anchored: () => {}, refresh: () => {} } as never);
+    internal.emit('renderer:selected', { renderer: 'canvas', taskCount: 0 });
+    expect(handle.fixedLabelWidth).toBeUndefined();
+    await vi.waitFor(() => expect(handle.getRenderState().options.grid).toBeDefined());
     expect(handle.fixedLabelWidth).toBe(true);
   });
 });
@@ -403,7 +444,7 @@ describe('collapseBelow and durationUnit behave as in SVG', () => {
     const { handle, layer, repaint } = await mountCanvas({ grid: { collapseBelow: 480 } });
     expect(handle.getLabelColumnWidth()).toBe(220);
     expect(layer.getAttribute('aria-colcount')).toBe('1');
-    expect(texts(repaint()).slice(-1)).toEqual(['Name']);
+    expect(texts(repaint())[0]).toBe('Name');
     expect(layer.querySelector('[data-column-id="start"]')).toBeNull();
   });
 
@@ -502,8 +543,8 @@ describe('parity with the SVG renderer', () => {
     // Canvas
     const cv = await mountCanvas({ tasks, columns });
     const all = texts(cv.repaint());
-    const heads = all.slice(-columns.length);
-    const body = all.slice(0, -columns.length);
+    const heads = all.slice(0, columns.length);
+    const body = all.slice(columns.length);
     const nameCount = tasks.length;
     const canvasNames = body.slice(0, nameCount);
     const canvasCells = tasks.map((_, i) => body.slice(nameCount + i * (columns.length - 1), nameCount + (i + 1) * (columns.length - 1)));

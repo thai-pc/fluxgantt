@@ -14,4 +14,4 @@ Exports: Canvas `exportPng()` paints the header, the cells and the dividers; Can
 
 Internal and unexported: `CanvasGridPainter` (the renderer's grid option) gains `colCount`, `nameText`, `appendHeader` and a `height` argument on `paintHeader`; `paintRows` and `paintRowLabels` take an optional painter. No package entry exports them.
 
-Bundle cost (gzip): hello world +0 B, `+ withRender + withInteraction` +0 B, kitchen sink +0 B; `+ withRender + withGrid` +48 B (20603, a soft warning against its 20 KiB reference) and the everything gate +81 B (37355; its limit stays 40.25 KiB under the same formula). The Canvas renderer chunk grows by about 211 B gzip and a Canvas chart with the grid downloads about 1.5 KiB gzip more than one without.
+Bundle cost (gzip): hello world +0 B, `+ withRender + withInteraction` +0 B, kitchen sink +0 B; `+ withRender + withGrid` +84 B (20639, a soft warning against its 20 KiB reference) and the everything gate +123 B (37397; its limit stays 40.25 KiB under the same formula). The Canvas renderer chunk grows by about 211 B gzip and a Canvas chart with the grid downloads about 1.5 KiB gzip more than one without.

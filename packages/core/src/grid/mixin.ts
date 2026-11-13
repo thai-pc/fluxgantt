@@ -50,7 +50,7 @@ const viewOf = (all: readonly Column[], cols: readonly Column[]): GridView => {
  *   a11y layer carries the real `columnheader` row and `gridcell`s with `aria-colindex`, `aria-colcount`
  *   and `aria-rowcount` (header included). The painter is a separate lazy chunk fetched on the first
  *   Canvas mount, so the first Canvas paint may show the plain label column for the moment it takes to
- *   arrive. `exportPng()`, `exportSvg()` and `exportGridCsv()` include the grid in both modes, and
+ *   arrive, and a Canvas `exportSvg()` made before then has no grid. `exportPng()`, `exportSvg()` and `exportGridCsv()` include the grid in both modes, and
  *   `hitTestRow` reports the `columnId` under a pointer in the pinned zone.
  * - The duration column shows an AUTHORED `task.duration` (or a summary's rolled-up duration) when there
  *   is one, exactly as the critical path reads it, and otherwise the working hours between start and end.
@@ -84,9 +84,24 @@ export function withGrid<T extends GanttInstance>(
   const apply = (): void => {
     const handle = internal.mountOf()?.handle;
     if (!handle) return;
-    handle.fixedLabelWidth = true;
-    if ('paintHooks' in handle) handle.setOptions({ labelColumnWidth: view.width });
-    else if (painter) handle.setOptions({ grid: painter, labelColumnWidth: view.width });
+    if ('paintHooks' in handle) {
+      handle.fixedLabelWidth = true;
+      handle.setOptions({ labelColumnWidth: view.width });
+    } else if (painter) {
+      // Only with a painter: without one (chunk pending or failed) the chart has no grid, so the width is not ours.
+      handle.fixedLabelWidth = true;
+      handle.setOptions({ grid: painter, labelColumnWidth: view.width });
+    }
+  };
+  let warnedApply = false;
+  /** `apply()` for the async Canvas path: an error there must not become an unhandled rejection. */
+  const applyLater = (handle: object): void => {
+    try {
+      if (internal.mountOf()?.handle === handle) apply();
+    } catch (e) {
+      if (!warnedApply) console.warn('@fluxgantt/core: withGrid could not paint its Canvas grid.', e);
+      warnedApply = true;
+    }
   };
   /** Fetches the Canvas painter once (a failure is reported once and retried on the next mount). */
   const loadPainter = (): Promise<void> =>
@@ -113,7 +128,7 @@ export function withGrid<T extends GanttInstance>(
     collapsed = watch && w0 > 0 && w0 < below;
     rebuild();
     if ('paintHooks' in handle) apply();
-    else void loadPainter().then(() => internal.mountOf()?.handle === handle && apply());
+    else void loadPainter().then(() => applyLater(handle));
     if (watch) {
       // The repaint is deferred to the next frame: it can change the container's own size (a
       // shrink-to-fit host), and doing that inside the callback raises "ResizeObserver loop completed

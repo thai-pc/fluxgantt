@@ -1661,6 +1661,8 @@ export function createCanvasRenderer(
     if (offsetX > 0) {
       labelCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
       if (state.options.rtl) applyMirror(labelCtx, offsetX);
+      // The grid's header band and column dividers go first, so the row focus frame below has no gaps.
+      grid?.paintHeader(labelCtx, resolvedViewportHeightPx, tokens);
       labelCtx.save();
       try {
         labelCtx.beginPath();
@@ -1668,13 +1670,8 @@ export function createCanvasRenderer(
         labelCtx.clip();
         labelCtx.translate(0, HEADER_HEIGHT - scrollTop);
         if (grid) {
-          // The name and its toggle stay inside the name column; the cells follow it.
-          labelCtx.save();
-          labelCtx.beginPath();
-          labelCtx.rect(0, scrollTop, grid.nameWidth, resolvedViewportHeightPx);
-          labelCtx.clip();
+          // The name and its toggle are clipped to the name column inside `paintRowLabel`; the cells follow.
           paintRowLabels(labelCtx, windowedRows, rowHeight, 0, tokens, grid);
-          labelCtx.restore();
           for (const row of windowedRows) grid.paintRow(labelCtx, row, row.y, rowHeight, tokens);
         } else {
           paintRowLabels(labelCtx, windowedRows, rowHeight, 0, tokens);
@@ -1684,7 +1681,6 @@ export function createCanvasRenderer(
       } finally {
         labelCtx.restore();
       }
-      grid?.paintHeader(labelCtx, resolvedViewportHeightPx, tokens);
       // Pixel-snapped inside the box so the stroke is not half-clipped at the canvas edge.
       paintLabelDivider(labelCtx, offsetX - 0.5, resolvedViewportHeightPx, tokens);
     }
@@ -1885,6 +1881,13 @@ function paintRowLabel(
   tokens: DesignTokens,
   grid?: CanvasGridPainter,
 ): void {
+  // With a grid the name and its toggle stay inside the name column (a deep toggle must not reach the next one).
+  if (grid) {
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(0, offsetY + row.y, grid.nameWidth, rowHeight);
+    ctx.clip();
+  }
   ctx.save();
   try {
     ctx.fillStyle = tokens.fg;
@@ -1910,6 +1913,7 @@ function paintRowLabel(
   if (row.hasChildren) {
     paintRowToggle(ctx, row, offsetY, rowHeight, tokens);
   }
+  if (grid) ctx.restore();
 }
 
 /** Pixel-space collapse/expand toggle glyph (spec-collapse-expand.md §6.1/§6.3) — a small
