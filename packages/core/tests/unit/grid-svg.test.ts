@@ -364,6 +364,15 @@ describe('collapseBelow', () => {
     expect(svgOf().getAttribute('aria-colcount')).toBe('5');
   });
 
+  it('a container that is already narrow at mount paints the name column straight away', () => {
+    stubObserver();
+    width(300);
+    const g = mount();
+    expect(handleOf(g).getLabelColumnWidth()).toBe(220);
+    expect(svgOf().getAttribute('aria-colcount')).toBe('1');
+    expect(g.getGridColumns()).toHaveLength(5);
+  });
+
   it('a hidden (0 px) container changes nothing; collapseBelow:0 observes nothing', () => {
     const all = stubObserver();
     const g = mount();
@@ -459,5 +468,22 @@ describe('without withGrid nothing changes (regression)', () => {
       return out;
     };
     expect(run(true)).toEqual(run(false));
+  });
+});
+
+describe('application order', () => {
+  it.each(['grid first', 'grid last', 'grid between'] as const)('paints the same grid when composed %s', (order) => {
+    const cfg = { tasks: TASKS, rtl: true };
+    const g =
+      order === 'grid first'
+        ? withRtl(withInteraction(withRender(withGrid(createGantt(cfg)))))
+        : order === 'grid last'
+          ? withGrid(withRtl(withInteraction(withRender(createGantt(cfg)))))
+          : withRtl(withGrid(withInteraction(withRender(createGantt(cfg)))));
+    g.mount(container);
+    expect(handleOf(g).getLabelColumnWidth()).toBe(652);
+    expect(svgOf().querySelectorAll('[role=columnheader]')).toHaveLength(5);
+    // the mirror ran after the grid in every order: the header clones are flipped too
+    for (const text of corner().querySelectorAll('text')) expect(text.getAttribute('transform')).toMatch(/^matrix\(-1 0 0 1 /);
   });
 });

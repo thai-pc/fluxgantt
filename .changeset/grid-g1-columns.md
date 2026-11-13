@@ -12,4 +12,4 @@ Limits of this release: the grid paints on the SVG renderer only (a chart above 
 
 Additive types: `GanttMessages` gains the optional `gridColumnLabel` (the columnheader's accessible name; used now), `gridEditLabel` and `gridEditError` (reserved for cell editing), and `GanttAnnouncement` gains the kinds `column-resized`, `cell-edited` and `cell-edit-failed` (nothing emits them yet; a host `switch` should already keep a `default`). New exported type `EditErrorReason`.
 
-Bundle cost (gzip): hello world +0 B, `+ withRender + withInteraction` +0 B, kitchen sink +2 B; the new soft fixture `+ withRender + withGrid` is 20137 B (20 KiB reference). The fourth hard gate (everything composed, now including the grid) is re-based from 35.5 to 39.75 KiB under the build-out window recorded in CLAUDE.md.
+Bundle cost (gzip): hello world +0 B, `+ withRender + withInteraction` +0 B, kitchen sink +2 B; the new soft fixture `+ withRender + withGrid` is 20154 B (20 KiB reference). The fourth hard gate (everything composed, now including the grid) is re-based from 35.5 to 39.75 KiB under the build-out window recorded in CLAUDE.md.

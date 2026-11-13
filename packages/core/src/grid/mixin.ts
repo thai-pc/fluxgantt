@@ -70,11 +70,14 @@ export function withGrid<T extends GanttInstance>(
       console.warn('@fluxgantt/core: withGrid paints on the SVG renderer only; this chart shows no grid.');
       return;
     }
-    // Back to all columns on every mount; the observer below decides again from the real width.
-    collapsed = false;
+    // Decide from the container's width right away (0 = not laid out yet: keep all columns), so a
+    // narrow container paints the name column once instead of all columns and then the name column.
+    const watch = below > 0 && typeof ResizeObserver === 'function';
+    const w0 = handle.container.clientWidth;
+    collapsed = watch && w0 > 0 && w0 < below;
     rebuild();
     apply();
-    if (below > 0 && typeof ResizeObserver === 'function') {
+    if (watch) {
       const ro = new ResizeObserver(() => {
         const w = handle.container.clientWidth;
         if (w === 0) return; // hidden: nothing to measure
