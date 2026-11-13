@@ -71,3 +71,12 @@ test('canvas: a column header focused with the keyboard shows its frame', async 
   await frames(page);
   await expect(page.locator('#gantt')).toHaveScreenshot('grid-canvas-header-focus.png');
 });
+
+test('canvas: a cell focused with the keyboard shows its ring', async ({ page }) => {
+  await open(page);
+  await page.locator('#gantt [role=row][data-task-id=design]').focus();
+  await page.keyboard.press('ArrowRight');
+  await page.keyboard.press('ArrowRight');
+  await frames(page);
+  await expect(page.locator('#gantt')).toHaveScreenshot('grid-canvas-cell-focus.png');
+});

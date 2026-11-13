@@ -153,12 +153,12 @@ for (const canvas of [false, true]) {
       await expect(head).toBeFocused();
     });
 
-    test('resizable:false: no handles, headers are not focusable and the keys do nothing', async ({ page }) => {
+    test('resizable:false: no handles, the headers stay keyboard-reachable and Alt+Arrow does nothing', async ({ page }) => {
       await open(page, 'resizable=0', canvas);
       await expect(page.locator('.fg-grid__sizer')).toHaveCount(0);
       const head = page.locator('#gantt [role=columnheader][data-column-id=start]');
-      expect(await head.getAttribute('tabindex')).toBeNull();
-      await head.focus().catch(() => undefined);
+      expect(await head.getAttribute('tabindex')).toBe('-1'); // header MODE is navigation (G4), not resizing
+      await head.focus();
       await page.keyboard.press('Alt+ArrowRight');
       expect((await widths(page))['start']).toBe(120);
     });

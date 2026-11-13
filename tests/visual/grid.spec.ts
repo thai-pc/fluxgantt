@@ -81,3 +81,23 @@ test('RTL: the focused header frame', async ({ page }) => {
   await expect(page.locator('.fg-grid__ring')).toHaveCount(1);
   await expect(page.locator('#gantt')).toHaveScreenshot('grid-header-focus-rtl.png');
 });
+
+// G4: the focused cell's ring (darwin baselines here; the linux half comes from CI, never hand-edited).
+test('a cell focused with the keyboard shows its ring', async ({ page }) => {
+  await open(page);
+  await page.locator('#gantt [role=row][data-task-id=design]').focus();
+  await page.keyboard.press('ArrowRight');
+  await page.keyboard.press('ArrowRight');
+  await expect(page.locator('.fg-grid__ring')).toHaveCount(1); // drawn by the lazy half
+  await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => r(undefined)))));
+  await expect(page.locator('#gantt')).toHaveScreenshot('grid-cell-focus.png');
+});
+
+test('RTL: the focused cell ring', async ({ page }) => {
+  await open(page, 'rtl=1');
+  await page.locator('#gantt [role=row][data-task-id=design]').focus();
+  await page.keyboard.press('ArrowLeft');
+  await page.keyboard.press('ArrowLeft');
+  await expect(page.locator('.fg-grid__ring')).toHaveCount(1);
+  await expect(page.locator('#gantt')).toHaveScreenshot('grid-cell-focus-rtl.png');
+});
