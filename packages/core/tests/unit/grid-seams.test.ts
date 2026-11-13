@@ -318,14 +318,15 @@ describe('internal.announce', () => {
     expect(container.querySelectorAll('[aria-live]')).toHaveLength(1);
   });
 
-  it('caps the length and is cleared when the mount is torn down', () => {
+  it('caps the length and survives the mount being torn down', () => {
     const g = mount();
     getInternal(g).announce!('x'.repeat(1000));
     expect(live().textContent!.length).toBeLessThanOrEqual(401);
+    const first = getInternal(g).announce;
     g.unmount();
-    expect(getInternal(g).announce).toBeUndefined();
+    expect(() => first!('late')).not.toThrow(); // stale writer: detached region, harmless
     g.mount(container);
-    expect(getInternal(g).announce).toBeTypeOf('function');
+    expect(getInternal(g).announce).not.toBe(first);
   });
 
   it('the built-in keyboard announcements land in the same region the writer feeds', () => {
@@ -347,6 +348,5 @@ describe('internal.announce survives an unmount during the gesture (review H1)',
     expect(() =>
       row.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', altKey: true, bubbles: true })),
     ).not.toThrow();
-    expect(getInternal(g).announce).toBeUndefined();
   });
 });

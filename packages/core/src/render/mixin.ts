@@ -517,8 +517,7 @@ function rendererOptions(internal: GanttInternal): SvgRendererOptions & CanvasRe
     // affordance whose recognizer is NOT wired when readOnly, so rendering them would be a
     // misleading dead control. (SVG renders them on the chart; Canvas draws them on its interaction overlay and ignores this flag.)
     showLinkHandles: !config.readOnly && config.enableDependencyDrag !== false,
-    ...(internal.paints ? { paintHooks: internal.paints } : {}),
-    ...(internal.mirror ? { paintLast: internal.mirror } : {}),
+    paintHooks: internal.paints,
   };
   return internal.tasks.size === 0
     ? { ...opts, timeRange: emptyStateTimeRange(internal) }

@@ -144,18 +144,20 @@ export interface GanttInternal {
   /** True once the host called `setDensity()`; `withResponsive` then stops pushing density. */
   densityPinned?: boolean;
 
-  /** Polite live-region writer, assigned by `withInteraction` per mount and cleared when that mount
-   *  is disposed (so other mixins announce through the one region). Takes final text; the caller
-   *  resolves `messages.announce` itself. Undefined without `withInteraction`. The only valid call form is
-   *  `internal.announce?.(text)`: a mount can be disposed while a caller is mid-gesture. */
+  /** Polite live-region writer, assigned by `withInteraction` on every mount (so other mixins announce
+   *  through the one region). It is NOT cleared on unmount: a stale writer only touches a detached
+   *  element, and the next mount replaces it. Undefined without `withInteraction`, so the only valid
+   *  call form is `internal.announce?.(text)`.
+   *  Takes FINAL text (owner decision, review of the G0 PR): grid mixins build it through one shared
+   *  helper that applies `messages.announce`, its English fallback and the length cap, instead of
+   *  each repeating that logic. */
   announce?: (text: string) => void;
 
-  /** SVG paint consumers registered by mixins AT COMPOSITION TIME (`(internal.paints ??= []).push(h)`),
-   *  so every mount's first paint sees them and no mixin repaints on its own. Registration order is
-   *  call order. Passed to the SVG renderer by `render/mixin.ts`; Canvas ignores it. */
+  /** SVG paint consumers registered by mixins AT COMPOSITION TIME (`(internal.paints ??= []).push(h)`;
+   *  `push` is the only supported registration), so every mount's first paint sees them and no mixin
+   *  repaints on its own. Hooks run in registration order, except that `withRtl`'s mirror is always
+   *  kept last. Passed to the SVG renderer by `render/mixin.ts`; Canvas ignores it. */
   paints?: PaintHook[];
-  /** The one hook that always runs after `paints` (`withRtl`'s mirror), whatever the composition order. */
-  mirror?: PaintHook;
 
   // --- Mount slot (writer: render/mixin.ts) ---
   mountOf(): MountState | undefined;

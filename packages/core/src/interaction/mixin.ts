@@ -86,14 +86,12 @@ function wireInto(
   handle.container.append(live);
   // `say(kind, task)` announces a move / resize; `say(kind, from, to, reason?)` a link result.
   let flip = false;
-  const w = (s: string): void => {
+  const w = (internal.announce = (s: string): void => {
     // The trailing no-break space alternates so two identical announcements in a row still differ as
     // strings: browsers and screen readers (VoiceOver, NVDA) skip a live-region update whose text is unchanged, and it is
     // silent (whitespace). Clearing first would need a timer, which NVDA can coalesce away.
-    flip = !flip;
-    live.textContent = s.slice(0, 400) + (flip ? '\u00A0' : '');
-  };
-  internal.announce = w;
+    live.textContent = s.slice(0, 400) + ((flip = !flip) ? '\u00A0' : '');
+  });
   const say = (kind: GanttAnnouncement['kind'], a: Task, b?: Task, reason?: string) => {
     const locale = config.locale ?? 'en';
     const n = (t: Task) => t.name.slice(0, MAX_ARIA_TASK_NAME_LENGTH);
@@ -266,7 +264,6 @@ function wireInto(
     // AFTER it (see `gantt.ts`'s `unmount`).
     dispose: () => {
       live.remove();
-      if (internal.announce === w) delete internal.announce; // a newer mount's writer stays
       disposers.forEach((d) => d());
     },
   };

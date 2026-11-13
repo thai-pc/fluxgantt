@@ -122,10 +122,7 @@ export interface SvgRendererOptions {
   /** Paint consumers, called in array order. Pass the array at construction so hooks see the FIRST
    *  paint; it is kept by reference and read live (`SvgRendererHandle.paintHooks` is this array, or a
    *  fresh one when omitted). See `PaintHook` for the contract. Set by the facade from the mixins. */
-  readonly paintHooks?: PaintHook[];
-  /** One hook that always runs after every `paintHooks` entry (the RTL mirror, which must flip what
-   *  the others added). Same contract as `PaintHook`. */
-  readonly paintLast?: PaintHook;
+  readonly paintHooks?: PaintHook[] | undefined;
 }
 
 /**
@@ -457,9 +454,9 @@ let patch: ((ids: readonly TaskId[], focus: TaskId | undefined) => void) | undef
   };
 
   function paint(e: PaintEvent): void {
-    for (const h of [...paintHooks, currentOptions.paintLast]) {
+    for (const h of [...paintHooks]) {
       try {
-        h?.(e);
+        h(e);
       } catch (x) {
         console.error(x);
       }
@@ -974,9 +971,8 @@ let patch: ((ids: readonly TaskId[], focus: TaskId | undefined) => void) | undef
           `${old.getAttribute('aria-selected')}${old.tabIndex}` !==
           `${selectedIds.has(id)}${id === focusedTaskId ? 0 : -1}`
         ) {
-          const fresh = makeRow(row);
-          rebuilt.push(fresh);
-          old.replaceWith(fresh);
+          old.replaceWith(makeRow(row));
+          rebuilt.push(rowsGroup.children[i] as SVGElement);
         }
       });
       place!();
