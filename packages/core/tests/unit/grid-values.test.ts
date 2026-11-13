@@ -95,6 +95,50 @@ describe('built-in columns', () => {
   });
 });
 
+describe('outliers and bad dates do not poison the duration column', () => {
+  const durations = (tasks: TaskInput[], unit: 'hours' | 'days' = 'hours') =>
+    withGrid(createGantt({ tasks }), { columns: [{ id: 'duration' }], durationUnit: unit })
+      .exportGridCsv()
+      .split('\r\n')
+      .slice(1)
+      .map((line) => line.split(',').pop()!); // the last field: the duration (name is column 1)
+
+  it('1950, 2060 and 2026 spans each keep their own duration (the far ones are measured one by one)', () => {
+    const out = durations([
+      t('a', { start: '1950-01-02', end: '1950-01-06' }),
+      t('b', { start: '2060-01-05', end: '2060-01-09' }),
+      t('c', { start: '2026-01-05', end: '2026-01-09' }),
+    ]);
+    const expected = ['1950-01-02/1950-01-06', '2060-01-05/2060-01-09', '2026-01-05/2026-01-09'].map((p) => {
+      const [s, e] = p.split('/') as [string, string];
+      return String(differenceInWorkingHours(s, e, CAL('UTC')));
+    });
+    expect(out).toEqual(expected);
+    expect(out.every((x) => x !== '')).toBe(true);
+  });
+
+  it('one far-future placeholder next to a normal plan leaves every other duration intact', () => {
+    const out = durations([t('a'), t('b'), t('someday', { start: '2099-01-05', end: '2099-02-05' }), t('c')]);
+    expect(out.every((x) => x !== '')).toBe(true);
+    expect(out[0]).toBe('32');
+    expect(out[3]).toBe('32');
+  });
+
+  it('a task whose own span is absurd is blank, the rest are not', () => {
+    expect(durations([t('a', { start: '1900-01-01', end: '2100-01-01' }), t('b')])).toEqual(['', '32']);
+  });
+
+  it('one bad date blanks only its own cell', () => {
+    const { internal, values, cols } = setup([t('a'), t('b'), t('c')], {}, [{ id: 'name' }, { id: 'duration' }], 'hours');
+    const good = internal.tasks.get(toTaskId('a'))!;
+    const bad = { ...internal.tasks.get(toTaskId('b'))!, start: 'not-a-date' as never };
+    internal.tasks.add({ ...bad, id: toTaskId('bad') } as never);
+    expect(values.raw(bad, cols)[1]).toBe('');
+    expect(values.raw(good, cols)[1]).toBe('32');
+    expect(durations([t('x'), { ...t('bad'), start: 'not-a-date' } as TaskInput, t('y')])).toEqual(['32', '', '32']);
+  });
+});
+
 describe('duration equals the calendar walk (3 zones, DST)', () => {
   const zones = ['UTC', 'America/New_York', 'Asia/Ho_Chi_Minh'];
   const day = fc.integer({ min: 0, max: 120 });

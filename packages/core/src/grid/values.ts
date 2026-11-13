@@ -10,14 +10,14 @@
 // exceptions are contained, only strings and finite numbers are accepted, text is capped at
 // `MAX_CELL_CHARS` and stripped of controls and bidi overrides. Nothing here builds markup.
 import type { GanttInternal } from '../gantt-internal.js';
-import { normalizeDate, workingHoursMeter } from '../compute/working-calendar.js';
+import { differenceInWorkingHours, normalizeDate, workingHoursMeter } from '../compute/working-calendar.js';
 import type { RolledUpRow, Task, TaskId, WorkingCalendar } from '../types.js';
 import { MAX_CELL_CHARS, UNSAFE_TEXT, type Column } from './columns.js';
 
 type ZDT = ReturnType<typeof normalizeDate>;
 type Unit = 'hours' | 'days';
 
-/** Longest span (days) a duration meter is built over; beyond it durations render blank. */
+/** Longest span (days) of one tabulated or measured duration; a task whose own span is longer renders blank. */
 const MAX_METER_DAYS = 36_500;
 const NS_PER_DAY = 86_400_000_000_000n;
 /** Calendar days between two instants (either order). */
@@ -38,7 +38,8 @@ interface Memo {
   unit: Unit;
   locale: string;
   rollup: ReadonlyMap<TaskId, RolledUpRow> | undefined;
-  meter: ((from: ZDT, to: ZDT) => number) | null | undefined;
+  /** True once `coverSpans` ran for this revision. */
+  covered: boolean;
   byId: Map<TaskId, readonly string[]>;
   date: Intl.DateTimeFormat;
   num: Intl.NumberFormat;
@@ -115,48 +116,79 @@ export function createGridValues(internal: GanttInternal, unit: () => Unit): Gri
       unit: u,
       locale: loc,
       rollup,
-      meter: undefined,
+      covered: false,
       byId: new Map(),
       ...fmts,
     };
   };
 
-  /** One meter over the span of every task whose duration is not authored, built on first use. */
-  const meterOf = (m: Memo): ((from: ZDT, to: ZDT) => number) | null => {
-    if (m.meter !== undefined) return m.meter;
-    m.meter = null;
-    try {
-      let lo: ZDT | undefined;
-      let hi: ZDT | undefined;
-      for (const t of internal.tasks.all()) {
-        const r = t.type === 'milestone' ? undefined : m.rollup?.get(t.id);
-        if (t.duration !== undefined && !r) continue;
+  // The working-hours table depends only on (calendar, lo, hi), never on the tasks, and a calendar is
+  // immutable for an instance's life: it is kept ACROSS data revisions and only rebuilt (over the union)
+  // when a task falls outside its range. A table over a long span is expensive (~3.7 s for 100 years).
+  let table: { lo: ZDT; hi: ZDT; read: (from: ZDT, to: ZDT) => number } | undefined;
+
+  /** Makes `table` cover every task whose duration is not authored, in the main cluster of dates. */
+  const coverSpans = (m: Memo): void => {
+    if (m.covered) return;
+    m.covered = true;
+    const spans: [ZDT, ZDT][] = [];
+    for (const t of internal.tasks.all()) {
+      const r = t.type === 'milestone' ? undefined : m.rollup?.get(t.id);
+      if (t.duration !== undefined && !r) continue;
+      try {
         const a = normalizeDate(r?.start ?? t.start, cal.timezone);
         const b = normalizeDate(r?.end ?? t.end, cal.timezone);
-        if (span(a, b) > MAX_METER_DAYS) continue; // renders blank, and must not poison the other rows
-        for (const z of [a, b]) {
-          if (!lo || z.epochNanoseconds < lo.epochNanoseconds) lo = z;
-          if (!hi || z.epochNanoseconds > hi.epochNanoseconds) hi = z;
-        }
+        if (span(a, b) <= MAX_METER_DAYS) spans.push([a, b]); // a bad date skips only its own task
+      } catch {
+        // renders blank
       }
-      if (lo && hi && span(lo, hi) <= MAX_METER_DAYS) {
-        m.meter = workingHoursMeter(cal, lo, hi);
-      }
-    } catch {
-      // a malformed date or an over-long span: durations of such tasks render blank
     }
-    return m.meter;
+    if (!spans.length) return;
+    // Tasks far from the bulk (a "someday" placeholder in 2099) must not stretch the table: only spans
+    // within half the cap either side of the median start are tabulated; the rest are measured one by one.
+    const starts = spans.map(([a]) => a.epochNanoseconds).sort((x, y) => (x < y ? -1 : x > y ? 1 : 0));
+    const anchor = starts[starts.length >> 1]!;
+    const half = BigInt(MAX_METER_DAYS / 2) * NS_PER_DAY;
+    let lo: ZDT | undefined;
+    let hi: ZDT | undefined;
+    for (const [a, b] of spans) {
+      if (a.epochNanoseconds < anchor - half || b.epochNanoseconds > anchor + half) continue;
+      if (!lo || a.epochNanoseconds < lo.epochNanoseconds) lo = a;
+      if (!hi || b.epochNanoseconds > hi.epochNanoseconds) hi = b;
+    }
+    if (!lo || !hi || (table && table.lo.epochNanoseconds <= lo.epochNanoseconds && table.hi.epochNanoseconds >= hi.epochNanoseconds)) return;
+    if (table) {
+      const ulo = table.lo.epochNanoseconds < lo.epochNanoseconds ? table.lo : lo;
+      const uhi = table.hi.epochNanoseconds > hi.epochNanoseconds ? table.hi : hi;
+      if (span(ulo, uhi) <= MAX_METER_DAYS) {
+        lo = ulo;
+        hi = uhi;
+      }
+    }
+    try {
+      table = { lo, hi, read: workingHoursMeter(cal, lo, hi) };
+    } catch {
+      // measured one by one below
+    }
   };
 
-  /** Working hours of the task's drawn span, or `undefined` when it cannot be measured. */
+  /**
+   * Working hours of the task: an AUTHORED `duration` (or the rollup's `durationHours` for a summary)
+   * wins over the start/end span, exactly as the critical path reads it, so the cell can disagree with
+   * the bar when the host's duration disagrees with its dates. Otherwise the shared table, or one
+   * `differenceInWorkingHours` for a span outside it. `undefined` when it cannot be measured.
+   */
   const hoursOf = (m: Memo, t: Task, r: RolledUpRow | undefined): number | undefined => {
     if (t.type === 'milestone') return 0;
     const own = r ? (r as { durationHours?: unknown }).durationHours : t.duration;
     if (typeof own === 'number' && Number.isFinite(own) && own >= 0) return own;
-    const meter = meterOf(m);
-    if (!meter) return undefined;
     try {
-      return Math.max(0, meter(normalizeDate(r?.start ?? t.start, cal.timezone), normalizeDate(r?.end ?? t.end, cal.timezone)));
+      const a = normalizeDate(r?.start ?? t.start, cal.timezone);
+      const b = normalizeDate(r?.end ?? t.end, cal.timezone);
+      if (span(a, b) > MAX_METER_DAYS) return undefined;
+      coverSpans(m);
+      const inside = table && table.lo.epochNanoseconds <= a.epochNanoseconds && table.hi.epochNanoseconds >= b.epochNanoseconds;
+      return Math.max(0, inside ? table!.read(a, b) : differenceInWorkingHours(a, b, cal));
     } catch {
       return undefined;
     }

@@ -36,13 +36,30 @@ describe('duration column cost', () => {
     expect(wc.differenceInWorkingHours).not.toHaveBeenCalled();
   });
 
-  it('builds a new meter only after a data revision, not on a repeated read', () => {
+  it('builds the meter once for repeated reads', () => {
     vi.mocked(wc.workingHoursMeter).mockClear();
     const gantt = withGrid(createGantt({ tasks: tasks(50) }));
     gantt.exportGridCsv();
     gantt.exportGridCsv();
     expect(wc.workingHoursMeter).toHaveBeenCalledTimes(1);
-    gantt.updateTask(toTaskId('t0'), { name: 'x' });
+  });
+
+  it('keeps the table across edits while the dates fit, and rebuilds only when the range grows', () => {
+    vi.mocked(wc.workingHoursMeter).mockClear();
+    const gantt = withGrid(createGantt({ tasks: tasks(50) }));
+    gantt.exportGridCsv();
+    expect(wc.workingHoursMeter).toHaveBeenCalledTimes(1);
+    for (let i = 0; i < 5; i++) {
+      gantt.updateTask(toTaskId('t1'), { name: `n${i}` }); // a revision, same dates
+      gantt.exportGridCsv();
+    }
+    gantt.updateTask(toTaskId('t2'), { start: '2026-01-20', end: '2026-01-22' }); // inside the range
+    gantt.exportGridCsv();
+    expect(wc.workingHoursMeter).toHaveBeenCalledTimes(1);
+    gantt.updateTask(toTaskId('t3'), { start: '2027-03-01', end: '2027-03-05' }); // grows the range
+    gantt.exportGridCsv();
+    expect(wc.workingHoursMeter).toHaveBeenCalledTimes(2);
+    gantt.updateTask(toTaskId('t3'), { start: '2026-01-06', end: '2026-01-08' }); // shrinks back: no rebuild
     gantt.exportGridCsv();
     expect(wc.workingHoursMeter).toHaveBeenCalledTimes(2);
   });
