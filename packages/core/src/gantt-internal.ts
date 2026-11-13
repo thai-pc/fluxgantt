@@ -146,7 +146,8 @@ export interface GanttInternal {
 
   /** Polite live-region writer, assigned by `withInteraction` per mount and cleared when that mount
    *  is disposed (so other mixins announce through the one region). Takes final text; the caller
-   *  resolves `messages.announce` itself. Undefined without `withInteraction`. */
+   *  resolves `messages.announce` itself. Undefined without `withInteraction`. The only valid call form is
+   *  `internal.announce?.(text)`: a mount can be disposed while a caller is mid-gesture. */
   announce?: (text: string) => void;
 
   // --- Mount slot (writer: render/mixin.ts) ---

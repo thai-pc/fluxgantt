@@ -235,15 +235,25 @@ describe('internal.announce', () => {
     expect(getInternal(g).announce).toBeTypeOf('function');
   });
 
-  it('the built-in keyboard announcements go through the same writer', () => {
+  it('the built-in keyboard announcements land in the same region the writer feeds', () => {
     const g = mount();
-    const inner = getInternal(g);
-    const spy = vi.fn(inner.announce!);
-    inner.announce = spy;
     g.select(toTaskId('a'));
     const row = container.querySelector<SVGElement>('[data-task-id="a"][role=row]')!;
     row.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', altKey: true, bubbles: true }));
-    expect(spy).toHaveBeenCalledTimes(1);
-    expect(spy.mock.calls[0]![0]).toContain('a');
+    expect(live().textContent).toContain('a');
+    expect(live().textContent).toContain('moved');
+  });
+});
+
+describe('internal.announce survives an unmount during the gesture (review H1)', () => {
+  it('unmounting from a task:moved listener does not make Alt+Arrow throw', () => {
+    const g = mount();
+    g.on('task:moved', () => g.unmount());
+    g.select(toTaskId('a'));
+    const row = container.querySelector<SVGElement>('[data-task-id="a"][role=row]')!;
+    expect(() =>
+      row.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', altKey: true, bubbles: true })),
+    ).not.toThrow();
+    expect(getInternal(g).announce).toBeUndefined();
   });
 });
