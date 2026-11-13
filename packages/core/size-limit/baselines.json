@@ -3,7 +3,7 @@
     "Hello world (createGantt only, tree-shaken, gzip)": 7526,
     "Base + withRender + withInteraction (editable chart, gzip)": 19616,
     "Kitchen sink (every capability composed, gzip)": 24421,
-    "Everything composed (all mixins incl. grid + grid editing, gzip)": 32783
+    "Everything composed (all mixins incl. grid + grid editing, gzip)": 32877
   },
   "soft": {
     "Base + withIo (import/export, no rendering, gzip)": 12678,

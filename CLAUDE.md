@@ -32,19 +32,19 @@ The API report is the lock and the TSDoc tag decides the tier (stable, `@beta`, 
    | Fixture | Tier | Measured (B / KiB) | Limit |
    |---|---|---|---|
    | `createGantt()` only (hello world) | **hard** | 8380 / 8.18 | 8.25 KiB |
-   | `+ withRender + withInteraction` | **hard** | 21735 / 21.23 | 21.25 KiB |
-   | kitchen sink (io + render + interaction) | **hard** | 26514 / 25.89 | 26.25 KiB |
-   | everything composed (every mixin, `size-limit/everything.js`) | **hard (4th)** | 32783 / 32.01 | 35.25 KiB |
+   | `+ withRender + withInteraction` | **hard** | 21749 / 21.24 | 21.25 KiB |
+   | kitchen sink (io + render + interaction) | **hard** | 26535 / 25.91 | 26.25 KiB |
+   | everything composed (every mixin, `size-limit/everything.js`) | **hard (4th)** | 32877 / 32.11 | 35.5 KiB |
    | `+ withIo` | soft | 13528 / 13.21 | 14 KiB |
-   | `+ withRender` | soft | 16026 / 15.65 | 15 KiB |
-   | `+ withRender + withTheme` | soft | 16719 / 16.33 | 16 KiB |
-   | `+ withRender + withInteraction + withResponsive` | soft | 23225 / 22.68 | 21 KiB |
-   | `+ withRender + withViewport` | soft | 16929 / 16.53 | 16 KiB |
+   | `+ withRender` | soft | 16048 / 15.67 | 15 KiB |
+   | `+ withRender + withTheme` | soft | 16742 / 16.35 | 16 KiB |
+   | `+ withRender + withInteraction + withResponsive` | soft | 23255 / 22.71 | 21 KiB |
+   | `+ withRender + withViewport` | soft | 16967 / 16.57 | 16 KiB |
    | `+ withConflicts` (headless) | soft | 10322 / 10.08 | 10 KiB |
-   | `+ withRender + withEditHooks` | soft | 17375 / 16.97 | 16 KiB |
-   | `+ withRender + withRtl` | soft | 16495 / 16.11 | 15.5 KiB |
+   | `+ withRender + withEditHooks` | soft | 17397 / 16.99 | 16 KiB |
+   | `+ withRender + withRtl` | soft | 16542 / 16.15 | 15.5 KiB |
 
-   Table re-measured 2026-11-13 after the grid-columns seam PR (G0: multi-consumer `handle.paintHooks`, `fixedLabelWidth`, `internal.announce`, the inert Canvas `grid` option and the `part: 'cell'` types). Against master 5440bf3 (gzip bytes): hello world +0 (8380, 68 B left), `+ withRender + withInteraction` 21655 -> 21735 (+80, 25 B left), kitchen sink 26432 -> 26514 (+82, 366 B left); soft fixtures +0 (`+ withIo`, `+ withConflicts`) .. +89 (`+ withResponsive`). A feature seam, inside the spec's +90 B per hard fixture, NOT an exemption claim. The new fourth gate is measured, not compared.
+   Table re-measured 2026-11-13 after the grid-columns seam PR (G0: multi-consumer `handle.paintHooks`, `fixedLabelWidth`, `internal.announce`, the inert Canvas `grid` option and the `part: 'cell'` types). Against master 5440bf3 (gzip bytes): hello world +0 (8380, 68 B left), `+ withRender + withInteraction` 21655 -> 21749 (+94, 11 B left), kitchen sink 26432 -> 26535 (+103, 345 B left); soft fixtures +0 (`+ withIo`, `+ withConflicts`) .. +128 (`+ withRtl`). A feature seam, NOT an exemption claim; it is over the spec's +90 B per hard fixture by 4 / 13 B because the review asked for composition-time registration (hooks see the mount paint, `withRtl` always last, isolated dispatch, a writer that survives unmount), which cost about +14 / +21 B on top of the first cut. The new fourth gate is measured, not compared.
 
    Measured after the DependencyStore index PR (`perf/dependency-indexes`) on top of the TaskStore index PR (`perf/store-indexes`) on top of the keyboard move/resize/link PR. Together the two store PRs cost +429 / +444 / +416 B on the three hard fixtures (+189..+439 B on the soft ones), spent under the exemption rule: hello world 7830 -> 8259, `+ withInteraction` 20840 -> 21284, kitchen sink 25629 -> 26045. Soft fixtures over their reference limit (warnings only, as measured 2026-11-12 on the focus-frame branch): `+ withRender` (15957 vs 15360 B), `+ withTheme` (16656 vs 16384 B), `+ withResponsive` (23123 vs 21504 B), `+ withViewport` (16867 vs 16384 B), `+ withConflicts` (10322 vs 10240 B), `+ withEditHooks` (17306 vs 16384 B) and `+ withRtl` (16402 vs 15872 B); mostly master drift, the frame adds +248..+272 to the render ones.
 
@@ -52,7 +52,7 @@ The API report is the lock and the TSDoc tag decides the tier (stable, `@beta`, 
 
    **Exemption rule.** A correctness, security, accessibility or performance fix MAY consume hard-gate headroom; state the byte cost in the PR. New features must still find their own bytes: "change the shape, not the budget" stays the default for features (see `.claude/rules/size-history.md` for which levers win under gzip). **Raising a hard limit again requires an explicit owner decision recorded here**, with the date and reason. Do not raise a limit to fit a feature.
 
-   Decision log: 2026-11-13 fourth hard gate (owner decision): added "Everything composed (all mixins incl. grid + grid editing)" (`size-limit/everything.js`), which composes every opt-in mixin that exists (io, render, interaction, theme, viewport, conflicts, edit-hooks, rtl, responsive; `withGrid` and `withGridEditing` join in their own PRs). The kitchen sink is unchanged and stays WITHOUT the opt-in mixins. Limit = measured x 1.10 rounded up to the next 0.25 KiB (256 B): at G0, 32783 B x 1.10 = 36061 B -> 35.25 KiB (36096 B, +10.1%). The gate is created before any grid code merges so the grid never lands unguarded. Build-out window: each grid PR that adds code to the fixture (G1 columns, G3 resize, G4 keyboard, G6 editing) re-bases the limit and the `size-limit/baselines.json` value with the same formula against its own measurement, arithmetic in the PR body, capped at 44 KiB; the limit is frozen once G6 merges, after which raising it needs an explicit owner decision recorded here. The grid soft fixtures are report-only.
+   Decision log: 2026-11-13 fourth hard gate (owner decision): added "Everything composed (all mixins incl. grid + grid editing)" (`size-limit/everything.js`), which composes every opt-in mixin that exists (io, render, interaction, theme, viewport, conflicts, edit-hooks, rtl, responsive; `withGrid` and `withGridEditing` join in their own PRs). The kitchen sink is unchanged and stays WITHOUT the opt-in mixins. Limit = measured x 1.10 rounded up to the next 0.25 KiB (256 B): at G0, 32877 B x 1.10 = 36165 B -> 35.5 KiB (36352 B, +10.6%). The gate is created before any grid code merges so the grid never lands unguarded. Build-out window: each grid PR that adds code to the fixture (G1 columns, G3 resize, G4 keyboard, G6 editing) re-bases the limit and the `size-limit/baselines.json` value with the same formula against its own measurement, arithmetic in the PR body, capped at 44 KiB; the limit is frozen once G6 merges, after which raising it needs an explicit owner decision recorded here. The grid soft fixtures are report-only.
 
    Decision log: 2026-11 re-base: 9 / 19.5 / 24 KiB -> 8.25 / 21.25 / 26.25 KiB (hello world was tightened, the other two loosened). Arithmetic: 7526 B x 1.10 = 8279 B -> 8.25 KiB (8448 B, +12.2%); 19616 B x 1.10 = 21578 B -> 21.25 KiB (21760 B, +10.9%); 24421 B x 1.10 = 26863 B -> 26.25 KiB (26880 B, +10.1%).
 

@@ -151,8 +151,10 @@ export interface PaintEvent {
  * composed in. Register at COMPOSITION time (push onto `GanttInternal.paints` from the mixin factory,
  * not from `renderer:selected`) and the hook sees the mount paint, with no repaint of its own. The
  * array is copied before each dispatch, so a hook may add or remove hooks without disturbing the pass.
- * A hook that throws is reported with `console.error` and the remaining hooks still run, but it
- * should catch host callbacks itself. Synchronous, idempotent and cheap: it runs on every paint.
+ * A hook that throws is reported with `console.error` and the remaining hooks (including the RTL
+ * mirror) and the patch path still run (about +6 B gzip on the hard fixtures); hooks that run host
+ * callbacks (grid `value`/`format`) should still catch them and degrade per cell. Synchronous,
+ * idempotent and cheap: it runs on every paint.
  *
  * @beta
  */
