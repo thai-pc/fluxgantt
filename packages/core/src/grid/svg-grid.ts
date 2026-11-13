@@ -75,7 +75,7 @@ export function fit(text: string, max: number): string {
     if (estimateTextWidth(parts.slice(0, mid).join('') + '…') <= budget) lo = mid;
     else hi = mid - 1;
   }
-  return lo ? parts.slice(0, lo).join('') + '…' : '';
+  return lo || estimateTextWidth('…') <= budget ? parts.slice(0, lo).join('') + '…' : '';
 }
 
 /** Where a cell's text sits inside its column. */

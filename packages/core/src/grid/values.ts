@@ -20,6 +20,9 @@ type Unit = 'hours' | 'days';
 /** Longest span (days) a duration meter is built over; beyond it durations render blank. */
 const MAX_METER_DAYS = 36_500;
 const NS_PER_DAY = 86_400_000_000_000n;
+/** Calendar days between two instants (either order). */
+const span = (a: ZDT, b: ZDT): number =>
+  Number((a.epochNanoseconds > b.epochNanoseconds ? a.epochNanoseconds - b.epochNanoseconds : b.epochNanoseconds - a.epochNanoseconds) / NS_PER_DAY);
 
 /** Reads cell text. */
 export interface GridValues {
@@ -128,13 +131,15 @@ export function createGridValues(internal: GanttInternal, unit: () => Unit): Gri
       for (const t of internal.tasks.all()) {
         const r = t.type === 'milestone' ? undefined : m.rollup?.get(t.id);
         if (t.duration !== undefined && !r) continue;
-        for (const input of [r?.start ?? t.start, r?.end ?? t.end]) {
-          const z = normalizeDate(input, cal.timezone);
+        const a = normalizeDate(r?.start ?? t.start, cal.timezone);
+        const b = normalizeDate(r?.end ?? t.end, cal.timezone);
+        if (span(a, b) > MAX_METER_DAYS) continue; // renders blank, and must not poison the other rows
+        for (const z of [a, b]) {
           if (!lo || z.epochNanoseconds < lo.epochNanoseconds) lo = z;
           if (!hi || z.epochNanoseconds > hi.epochNanoseconds) hi = z;
         }
       }
-      if (lo && hi && (hi.epochNanoseconds - lo.epochNanoseconds) / NS_PER_DAY <= BigInt(MAX_METER_DAYS)) {
+      if (lo && hi && span(lo, hi) <= MAX_METER_DAYS) {
         m.meter = workingHoursMeter(cal, lo, hi);
       }
     } catch {
