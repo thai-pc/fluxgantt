@@ -12,6 +12,8 @@
 //
 // Resize (G3, `resize.ts`): `resizeGridColumn` is the one write path; a pointer drag on a sizer (SVG) or the
 // header band (Canvas), and Alt+Arrow on a focused column header, all end in it.
+// Keyboard (G4, `resize.ts` + the lazy `resize-ui.ts`): the APG treegrid model in a capture listener on the
+// container, so `keyboard-nav` is not edited and without `withGrid` every key behaves as before.
 //
 // The width is applied after the first paint (the renderer reads its options at construction and the
 // facade passes none for the width), so a mount paints twice; the first paint is skipped by the hook.
@@ -23,7 +25,7 @@ import { getInternal } from '../gantt-internal.js';
 import { resolveColumns, publicColumn, type Column } from './columns.js';
 import { gridCsv } from './csv.js';
 import type { GridView } from './fit.js';
-import { attachHeaderKeys, sizerPaint, type ResizeEnv } from './resize.js';
+import { attachKeys, gridPaint, type ResizeEnv } from './resize.js';
 import type * as ResizeUi from './resize-ui.js';
 import { createGridPaint } from './svg-grid.js';
 import type { GridCapability, GridColumnInput, GridOptions } from './types.js';
@@ -62,6 +64,16 @@ const viewOf = (all: readonly Column[], cols: readonly Column[]): GridView => {
  *   It can therefore disagree with the bar when a host's `duration` disagrees with its dates.
  * - `collapseBelow` hides every column but `name` in a narrow container, for assistive technology too;
  *   a container that shrinks to fit its content may not re-expand.
+ * - Keyboard (after the APG treegrid pattern; the chart stays ONE Tab stop, the active row). In ROW mode, Right
+ *   on a collapsed parent expands it, on an expanded parent or a leaf it enters the first cell; Left on an
+ *   expanded parent collapses it, otherwise it moves to (and selects) the parent row; Ctrl/Cmd+Home/End go to the
+ *   first/last row. In CELL mode (a `gridcell` has focus), Left/Right/Home/End move between cells, Up/Down/Page
+ *   keep the column, Escape or Left from the first cell returns to the row. Up on the first row (or from one of
+ *   its cells) enters HEADER mode: Left/Right/Home/End between headers, Alt+Left/Right resizes, Down/Escape
+ *   return. Left and Right swap under RTL. Without `withGrid`, Left/Right and Ctrl+Home/End do nothing. Alt+Arrow
+ *   and Alt+Enter (task move, resize, link), Space, Delete, `g`, Shift+Arrow, Enter and F2 are not claimed: they
+ *   behave as from a row, also from a focused cell. The first key may act a moment late (the key handlers are
+ *   a lazy chunk), but whether it is claimed is decided at once.
  * - Known cost: with `config.rollup` set, the provider runs twice per data revision (once for the
  *   renderer, once for the grid's summary rows). The grid never alters the host's config.
  *
@@ -85,7 +97,7 @@ export function withGrid<T extends GanttInstance>(
   const values = createGridValues(internal, () => unit);
   const resizable = options.resizable !== false;
   // Header focus bookkeeping shared with the resize code (`ResizeEnv.nav`).
-  const nav: ResizeEnv['nav'] = { tab: 0 };
+  const nav: ResizeEnv['nav'] = { tab: 0, col: -1 };
   // The lazy half of the resize code (`resize-ui.ts`), fetched once; a failure is warned once and retried.
   let ui: Promise<typeof ResizeUi | undefined> | undefined;
   const loadUi = (): Promise<typeof ResizeUi | undefined> =>
@@ -103,6 +115,8 @@ export function withGrid<T extends GanttInstance>(
     view: () => view,
     resize: (id, width) => capability.resizeGridColumn(id, width),
     internal,
+    gantt: instance,
+    can: resizable,
     nav,
     ui: loadUi,
   });
@@ -112,11 +126,9 @@ export function withGrid<T extends GanttInstance>(
 
   const paints = (internal.paints ??= []);
   paints.push(createGridPaint(internal, () => view, values));
-  if (resizable) {
-    paints.push((e) => {
-      if (svgEnv) sizerPaint(svgEnv, e);
-    });
-  }
+  paints.push((e) => {
+    if (svgEnv) gridPaint(svgEnv, e);
+  });
 
   /** Pushes the pinned width (and, on Canvas, the painter) to the live renderer; that is also the repaint. */
   const apply = (): void => {
@@ -146,7 +158,7 @@ export function withGrid<T extends GanttInstance>(
     (loading ??= import('./canvas-grid.js').then(
       (m) => {
         canvasResize = m.attachCanvasResize;
-        painter = m.createCanvasGrid(internal, () => view, values, resizable);
+        painter = m.createCanvasGrid(internal, () => view, values);
       },
       (e: unknown) => {
         loading = undefined;
@@ -175,14 +187,12 @@ export function withGrid<T extends GanttInstance>(
     };
     const svg = 'paintHooks' in handle;
     const env = envOf(handle);
-    if (resizable) {
-      stops.push(attachHeaderKeys(env));
-      if (svg) {
-        svgEnv = env;
-        stops.push(() => {
-          if (svgEnv === env) svgEnv = undefined;
-        });
-      }
+    stops.push(attachKeys(env));
+    if (svg) {
+      svgEnv = env;
+      stops.push(() => {
+        if (svgEnv === env) svgEnv = undefined;
+      });
     }
     if (svg) apply();
     else

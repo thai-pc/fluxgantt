@@ -118,9 +118,9 @@ export interface GridOptions {
   readonly collapseBelow?: number;
   /** Unit of the built-in `duration` column. Default `'days'`. */
   readonly durationUnit?: 'hours' | 'days';
-  /** Default true. `false` freezes the widths: no drag handles, no header keyboard mode (ArrowUp on the
-   *  first row stays inert), and `resizeGridColumn` returns false. A column whose `minWidth` equals its
-   *  `maxWidth` has no handle either. */
+  /** Default true. `false` freezes the widths: no drag handles, Alt+Left/Right on a column header does
+   *  nothing, and `resizeGridColumn` returns false. Keyboard navigation of the headers and cells is not
+   *  affected. A column whose `minWidth` equals its `maxWidth` has no handle either. */
   readonly resizable?: boolean;
 }
 

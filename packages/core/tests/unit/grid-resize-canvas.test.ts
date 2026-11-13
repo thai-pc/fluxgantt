@@ -323,3 +323,100 @@ describe('hover cursor and fixed columns', () => {
     expect(widthOf(g, 'start')).toBe(160);
   });
 });
+
+// --- G4: the keyboard model on the Canvas a11y layer (real cells, rebuilt on every focus change) ---------------
+describe('keyboard cell navigation on Canvas (G4)', () => {
+  const rows = (layer: Element) => [...layer.querySelectorAll<HTMLElement>('[role=row][data-task-id]')];
+  const row = (layer: Element, task: string) => rows(layer).find((r) => r.getAttribute('data-task-id') === task)!;
+  const cellIn = (layer: Element, task: string, col: number) =>
+    row(layer, task).querySelector<HTMLElement>(`[role=gridcell][aria-colindex="${col + 1}"]`)!;
+  const where = (): string => {
+    const a = document.activeElement as HTMLElement;
+    const task = a.closest('[data-task-id]')?.getAttribute('data-task-id');
+    return a.getAttribute('role') === 'gridcell' ? `cell:${task}:${Number(a.getAttribute('aria-colindex')) - 1}` : `${a.getAttribute('role')}:${task}`;
+  };
+  const rings = (label: HTMLCanvasElement) =>
+    recOf(label).calls.filter((c) => c.name === 'strokeRect' && (c.args[3] as number) > 20 && (c.args[3] as number) < 40 && (c.args[1] as number) > 32);
+
+  it('Right enters the name cell, Right/Left/Home/End move, Left from the first cell and Escape return to the row', async () => {
+    const { layer } = await mountCanvas();
+    row(layer, 'c').focus();
+    const e = await key(document.activeElement!, 'ArrowRight');
+    expect(e.defaultPrevented).toBe(true);
+    expect(where()).toBe('cell:c:0');
+    await key(document.activeElement!, 'ArrowRight');
+    await key(document.activeElement!, 'ArrowRight');
+    expect(where()).toBe('cell:c:2');
+    await key(document.activeElement!, 'End');
+    expect(where()).toBe('cell:c:4');
+    await key(document.activeElement!, 'Home');
+    expect(where()).toBe('cell:c:0');
+    await key(document.activeElement!, 'ArrowLeft');
+    expect(where()).toBe('row:c');
+    await key(document.activeElement!, 'ArrowRight');
+    await key(document.activeElement!, 'ArrowRight');
+    await key(document.activeElement!, 'Escape');
+    expect(where()).toBe('row:c');
+  });
+
+  it('a focused cell survives the a11y rebuild; a new focused row keeps the column; the roving row stays the only Tab stop', async () => {
+    const { handle, layer, internal } = await mountCanvas();
+    row(layer, 'c').focus();
+    await key(document.activeElement!, 'ArrowRight');
+    await key(document.activeElement!, 'ArrowRight');
+    await key(document.activeElement!, 'ArrowRight');
+    expect(where()).toBe('cell:c:2');
+    handle.setOptions({}); // a plain repaint
+    expect(where()).toBe('cell:c:2');
+    handle.update({ tasks: internal.tasks.all(), dependencies: [], focusedTaskId: id('b') }); // what keyboard-nav's Down does
+    expect(where()).toBe('cell:b:2');
+    expect([...layer.querySelectorAll('[tabindex="0"]')].every((e) => e.getAttribute('role') === 'row')).toBe(true);
+    expect(cellIn(layer, 'b', 2).getAttribute('tabindex')).toBe('-1');
+  });
+
+  it('Left on a child selects the parent and the renderer follows the stub focusin onto the parent row', async () => {
+    const { g, layer } = await mountCanvas();
+    row(layer, 'a').focus();
+    await key(document.activeElement!, 'ArrowLeft'); // a is a child of p
+    // (no interaction mixin here, so no keyboard-nav: the renderer's own focus handling does the move)
+    expect(g.getSelection()).toContain(id('p'));
+  });
+
+  it('paints a ring on the focused cell and none once focus returns to the row; the bar ring is not painted in cell mode', async () => {
+    const { handle, layer, label } = await mountCanvas();
+    row(layer, 'c').focus();
+    await key(document.activeElement!, 'ArrowRight');
+    recOf(label).calls.length = 0;
+    await key(document.activeElement!, 'ArrowRight'); // name -> start (x 220..340)
+    handle.setOptions({});
+    expect(rings(label).some((c) => (c.args[0] as number) > 220 && (c.args[0] as number) < 260)).toBe(true);
+    recOf(label).calls.length = 0;
+    await key(document.activeElement!, 'Escape');
+    handle.setOptions({});
+    expect(rings(label).some((c) => (c.args[0] as number) > 220 && (c.args[0] as number) < 260)).toBe(false);
+  });
+
+  it('Up on a cell of row 0 goes to that header and Down returns to the cell', async () => {
+    const { layer } = await mountCanvas();
+    row(layer, 'p').focus();
+    await key(document.activeElement!, 'ArrowRight');
+    await key(document.activeElement!, 'ArrowRight');
+    await key(document.activeElement!, 'ArrowRight');
+    await key(document.activeElement!, 'ArrowUp');
+    expect(document.activeElement!.getAttribute('data-column-id')).toBe('end');
+    await key(document.activeElement!, 'ArrowDown');
+    expect(where()).toBe('cell:p:2');
+  });
+
+  it('under RTL the physical keys swap', async () => {
+    const { layer } = await mountCanvas({ rtl: true });
+    row(layer, 'c').focus();
+    await key(document.activeElement!, 'ArrowLeft'); // logical Right
+    expect(where()).toBe('cell:c:0');
+    await key(document.activeElement!, 'ArrowLeft');
+    expect(where()).toBe('cell:c:1');
+    await key(document.activeElement!, 'ArrowRight');
+    await key(document.activeElement!, 'ArrowRight');
+    expect(where()).toBe('row:c');
+  });
+});

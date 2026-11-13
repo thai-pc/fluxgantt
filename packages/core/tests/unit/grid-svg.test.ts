@@ -457,7 +457,7 @@ describe('without withGrid nothing changes (regression)', () => {
     expect(svgOf().querySelector('title')).toBeNull();
   });
 
-  it('keys behave identically with and without the grid (cell navigation is a later PR)', () => {
+  it('the keys the grid does not own behave identically with and without it (the owned ones: grid-cell-nav.test.ts)', () => {
     const run = (withG: boolean) => {
       const c = document.createElement('div');
       document.body.appendChild(c);
@@ -468,8 +468,7 @@ describe('without withGrid nothing changes (regression)', () => {
       first.focus();
       const out: string[] = [];
       for (const [key, init] of [
-        ['ArrowRight', {}], ['ArrowLeft', {}], ['ArrowRight', { shiftKey: true }], ['Home', { ctrlKey: true }],
-        ['End', { ctrlKey: true }], ['F2', {}], ['Enter', {}], ['ArrowDown', {}], ['ArrowUp', {}], ['PageDown', {}],
+        ['ArrowRight', { shiftKey: true }], ['ArrowLeft', { shiftKey: true }], ['F2', {}], ['Enter', {}], ['ArrowDown', {}], ['ArrowUp', {}], ['PageDown', {}],
         ['Home', {}], ['End', {}], [' ', {}], ['g', {}], ['G', {}],
         ['ArrowRight', { altKey: true }], ['ArrowLeft', { altKey: true }], ['ArrowRight', { altKey: true, shiftKey: true }],
         ['Enter', { altKey: true }], ['Delete', {}],
