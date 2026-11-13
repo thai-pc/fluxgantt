@@ -145,7 +145,7 @@ for (const canvas of [false, true]) {
     });
 
     test('a host-driven repaint keeps focus on the focused header', async ({ page }) => {
-      await open(page, q, canvas);
+      await open(page, '', canvas);
       const head = page.locator('#gantt [role=columnheader][data-column-id=end]');
       await head.focus();
       await page.evaluate(() => (window as unknown as { __gantt: { zoomTo(m: string): void } }).__gantt.zoomTo('month'));
