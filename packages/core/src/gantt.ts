@@ -290,7 +290,8 @@ export interface TaskActivatedPayload {
   readonly taskId: TaskId;
   readonly part: TaskHitPart;
   readonly source: 'pointer' | 'keyboard';
-  /** Set with `part: 'cell'` only (reserved for the upcoming grid-columns mixin; never set yet). */
+  /** Set with `part: 'cell'` only (reserved for the upcoming grid-columns mixin; never set yet).
+   *  @beta */
   readonly columnId?: string;
   /** Viewport coordinates, finite. Keyboard: centre of the focused row (Canvas: the painted row's label column). */
   readonly clientX: number;
@@ -302,7 +303,8 @@ export interface TaskContextRequestedPayload {
   readonly taskId: TaskId;
   readonly part: TaskHitPart;
   readonly source: 'pointer' | 'keyboard' | 'long-press';
-  /** Set with `part: 'cell'` only (reserved for the upcoming grid-columns mixin; never set yet). */
+  /** Set with `part: 'cell'` only (reserved for the upcoming grid-columns mixin; never set yet).
+   *  @beta */
   readonly columnId?: string;
   readonly clientX: number;
   readonly clientY: number;

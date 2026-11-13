@@ -59,7 +59,7 @@ Every breaking change is marked `BREAKING:` as the first line of its changeset, 
 note, and is listed under its own heading in `CHANGELOG.md`.
 
 **Hosts must** keep a `default` branch in exhaustive switches over output-position unions
-(`ConflictKind`, announcement kinds, event names). Adding a member there is not a breaking change.
+(`ConflictKind`, `TaskHitPart`, announcement kinds, event names). Adding a member there is not a breaking change.
 For the same reason, a host that keeps an exhaustive `Record<GanttEventName, ...>` can break when a
 minor adds an event.
 
