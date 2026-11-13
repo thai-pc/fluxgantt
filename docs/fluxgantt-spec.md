@@ -1978,7 +1978,7 @@ Reference prices (list, read 2026-11-11/12): DHTMLX PRO from $799 perpetual; Bry
 | Headless engine (Node/Workers) | ✓ | ✓ |
 | React/Vue wrappers | ✓ | ✓ |
 | Svelte/Angular wrappers *(moved from Pro, 2026-11; not yet built)* | ✓ | ✓ |
-| Basic/custom grid columns *(moved from Pro, 2026-11; read-only columns built, `@fluxgantt/core/grid` `@beta`; inline editing and Canvas painting are later PRs)* | ✓ | ✓ |
+| Basic/custom grid columns *(moved from Pro, 2026-11; read-only columns built on SVG and Canvas, `@fluxgantt/core/grid` `@beta`; resizing, cell navigation and inline editing are later PRs)* | ✓ | ✓ |
 | Export PNG/SVG/JSON/CSV | ✓ | ✓ |
 | MCP server + `llms.txt` *(planned, §9.4)* | ✓ | ✓ |
 | Resource view | – | ✓ |

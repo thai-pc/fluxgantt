@@ -39,12 +39,19 @@ const viewOf = (all: readonly Column[], cols: readonly Column[]): GridView => {
 };
 
 /**
- * Replaces the pinned label column with configurable columns (SVG renderer). Apply it ONCE, before the
- * first `mount()` (a second application throws).
+ * Replaces the pinned label column with configurable columns, on the SVG renderer and on the Canvas
+ * renderer (2000+ tasks). Apply it ONCE, before the first `mount()` (a second application throws).
  *
  * - The chart's text is pinned to 12px system-ui (the width estimate that decides where text is cut is
  *   calibrated for it); a host CSS rule on the row labels can invalidate that and text may then spill
- *   into the next column.
+ *   into the next column. The estimate, not `measureText`, cuts the text in both renderers and in every
+ *   export, so a cell reads the same everywhere.
+ * - On Canvas the grid is painted on the pinned label canvas (header band, cells, dividers) and the hidden
+ *   a11y layer carries the real `columnheader` row and `gridcell`s with `aria-colindex`, `aria-colcount`
+ *   and `aria-rowcount` (header included). The painter is a separate lazy chunk fetched on the first
+ *   Canvas mount, so the first Canvas paint may show the plain label column for the moment it takes to
+ *   arrive. `exportPng()`, `exportSvg()` and `exportGridCsv()` include the grid in both modes, and
+ *   `hitTestRow` reports the `columnId` under a pointer in the pinned zone.
  * - The duration column shows an AUTHORED `task.duration` (or a summary's rolled-up duration) when there
  *   is one, exactly as the critical path reads it, and otherwise the working hours between start and end.
  *   It can therefore disagree with the bar when a host's `duration` disagrees with its dates.
