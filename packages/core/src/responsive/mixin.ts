@@ -453,6 +453,7 @@ export function withResponsive<T extends GanttInstance>(
     if (disposed) return;
     // The previous mount's nodes are gone; forget them before re-installing on the new ones.
     teardownCoarse();
+    labelColumnWidth = DEFAULT_LABEL_COLUMN_WIDTH; // a new handle paints the default
     applyCoarse();
     observeContainer();
   });
@@ -462,7 +463,9 @@ export function withResponsive<T extends GanttInstance>(
       return isCoarse();
     },
     getLabelColumnWidth(): number {
-      return labelColumnWidth;
+      // A mixin that owns the width (the grid) wins: report what is actually painted.
+      const h = internal.mountOf()?.handle;
+      return h?.fixedLabelWidth ? h.getLabelColumnWidth() : labelColumnWidth;
     },
   };
 
