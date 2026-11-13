@@ -159,11 +159,11 @@ describe('hostile values and definitions', () => {
       messages: { gridColumnLabel: () => { throw new Error('x'); } },
     })));
     g.mount(container);
-    expect(container.querySelector('[role=columnheader]')!.getAttribute('aria-label')).toBe('Name, column 1 of 5');
+    expect(container.querySelector('[role=columnheader]')!.getAttribute('aria-label')).toBe('Name');
   });
 
   it('a gridColumnLabel that returns a non-string or a huge string is replaced / capped', () => {
-    for (const [ret, check] of [[{ a: 1 }, (s: string) => s === 'Name, column 1 of 5'], ['x'.repeat(5000), (s: string) => s.length === 400]] as const) {
+    for (const [ret, check] of [[{ a: 1 }, (s: string) => s === 'Name'], ['x'.repeat(5000), (s: string) => s.length === 400]] as const) {
       container.replaceChildren();
       const g = withGrid(withRender(createGantt({ tasks: [], messages: { gridColumnLabel: () => ret as never } })));
       g.mount(container);

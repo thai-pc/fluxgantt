@@ -35,6 +35,10 @@ const STYLE =
 
 /** What the painter needs to know about the active columns. */
 export interface GridView {
+  /** Every configured column; the values are read (and memoized) for all of them, so collapsing to
+   *  the name column and the CSV report share one memo. `cols` is always a prefix of it. */
+  readonly all: readonly Column[];
+  /** The columns painted now: `all`, or just `name` while collapsed. */
   readonly cols: readonly Column[];
   /** Inline-start offset of each column; `offs[i] + cols[i].width` is the next one. */
   readonly offs: readonly number[];
@@ -113,7 +117,7 @@ export function createGridPaint(
   };
 
   const headerName = (c: Column, i: number, n: number): string => {
-    let name = `${c.header}, column ${i + 1} of ${n}`;
+    let name = c.header; // the column position comes from aria-colindex / aria-colcount
     try {
       const custom = label?.({ columnId: c.id, header: c.header, index: i + 1, count: n, locale });
       if (typeof custom === 'string') name = custom;
@@ -133,7 +137,7 @@ export function createGridPaint(
     clone: boolean,
   ): SVGElement | undefined => {
     row.setAttribute('aria-rowindex', String(index + 2)); // the header row is aria-rowindex 1
-    const texts = values.text(task, v.cols);
+    const texts = values.text(task, v.all);
     const name = row.querySelector('.fg-timeline__row-label');
     const y = Number(name?.getAttribute('y'));
     const out = clone

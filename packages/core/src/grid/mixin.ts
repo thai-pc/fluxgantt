@@ -12,6 +12,7 @@
 // The width is applied after the first paint (the renderer reads its options at construction and the
 // facade passes none for the width), so a mount paints twice; the first paint is skipped by the hook.
 import type { GanttInstance } from '../gantt.js';
+import type { RollupProvider } from '../types.js';
 import { getInternal } from '../gantt-internal.js';
 import { resolveColumns, publicColumn, type Column } from './columns.js';
 import { gridCsv } from './csv.js';
@@ -20,20 +21,32 @@ import type { GridCapability, GridColumnInput, GridOptions } from './types.js';
 import { createGridValues } from './values.js';
 
 const HYSTERESIS_PX = 16;
+/** Instances `withGrid` has been applied to (a second application would paint a second grid). */
+const composed = new WeakSet<object>();
 
-const viewOf = (cols: readonly Column[]): GridView => {
+const viewOf = (all: readonly Column[], cols: readonly Column[]): GridView => {
   let width = 0;
   const offs = cols.map((c) => {
     const off = width;
     width += c.width;
     return off;
   });
-  return { cols, offs, width };
+  return { all, cols, offs, width };
 };
 
 /**
- * Replaces the pinned label column with configurable columns (SVG renderer). Apply it before the
- * first `mount()`.
+ * Replaces the pinned label column with configurable columns (SVG renderer). Apply it ONCE, before the
+ * first `mount()` (a second application throws).
+ *
+ * - The chart's text is pinned to 12px system-ui (the width estimate that decides where text is cut is
+ *   calibrated for it); a host CSS rule on the row labels can invalidate that and text may then spill
+ *   into the next column.
+ * - The duration column shows an AUTHORED `task.duration` (or a summary's rolled-up duration) when there
+ *   is one, exactly as the critical path reads it, and otherwise the working hours between start and end.
+ *   It can therefore disagree with the bar when a host's `duration` disagrees with its dates.
+ * - `collapseBelow` hides every column but `name` in a narrow container, for assistive technology too;
+ *   a container that shrinks to fit its content may not re-expand.
+ * - `config.rollup` is called once per data revision for the renderer and the grid together.
  *
  * @beta
  */
@@ -42,12 +55,30 @@ export function withGrid<T extends GanttInstance>(
   options: GridOptions = {},
 ): T & GridCapability {
   const internal = getInternal(instance);
+  if (composed.has(internal)) throw new Error('@fluxgantt/core: withGrid is already applied to this instance.');
+  composed.add(internal);
   const unit = options.durationUnit === 'hours' ? 'hours' : 'days';
   const below = Number.isFinite(options.collapseBelow) ? Math.max(0, options.collapseBelow!) : 480;
   let all = resolveColumns(options.columns); // throws at composition time on a bad definition
   let collapsed = false;
-  let view = viewOf(all);
+  let warnedCanvas = false;
+  let view = viewOf(all, all);
   const values = createGridValues(internal, () => unit);
+
+  // `config.rollup` is pure by contract, and the renderer and the grid both need it for the same data
+  // revision: share one call per (revision, calendar) instead of two. (Replaces the property on the
+  // config object the instance already holds; skipped for a frozen config, which then pays twice.)
+  const rollup = internal.config.rollup;
+  if (rollup && !Object.isFrozen(internal.config)) {
+    let hit: { rev: number; cal: object; n: number; out: ReturnType<RollupProvider> } | undefined;
+    (internal.config as { rollup?: RollupProvider }).rollup = (tasks, cal) => {
+      const rev = internal.tasks.revision.peek();
+      if (hit?.rev !== rev || hit.cal !== cal || hit.n !== tasks.length) {
+        hit = { rev, cal, n: tasks.length, out: rollup(tasks, cal) };
+      }
+      return hit.out;
+    };
+  }
 
   (internal.paints ??= []).push(createGridPaint(internal, () => view, values));
 
@@ -60,14 +91,15 @@ export function withGrid<T extends GanttInstance>(
     }
   };
   const rebuild = (): void => {
-    view = viewOf(collapsed ? all.slice(0, 1) : all);
+    view = viewOf(all, collapsed ? all.slice(0, 1) : all);
   };
 
   instance.on('renderer:selected', () => {
     const handle = internal.mountOf()?.handle; // a listener before this one may have unmounted
     if (!handle) return;
     if (!('paintHooks' in handle)) {
-      console.warn('@fluxgantt/core: withGrid paints on the SVG renderer only; this chart shows no grid.');
+      if (!warnedCanvas) console.warn('@fluxgantt/core: withGrid paints on the SVG renderer only; this chart shows no grid.');
+      warnedCanvas = true; // once per instance, not once per mount
       return;
     }
     // Decide from the container's width right away (0 = not laid out yet: keep all columns), so a
@@ -78,20 +110,29 @@ export function withGrid<T extends GanttInstance>(
     rebuild();
     apply();
     if (watch) {
+      // The repaint is deferred to the next frame: it can change the container's own size (a
+      // shrink-to-fit host), and doing that inside the callback raises "ResizeObserver loop completed
+      // with undelivered notifications".
+      let frame = 0;
       const ro = new ResizeObserver(() => {
-        const w = handle.container.clientWidth;
-        if (w === 0) return; // hidden: nothing to measure
-        const next = collapsed ? w < below + HYSTERESIS_PX : w < below;
-        if (next !== collapsed) {
-          collapsed = next;
-          rebuild();
-          apply();
-        }
+        if (frame) return;
+        frame = requestAnimationFrame(() => {
+          frame = 0;
+          const w = handle.container.clientWidth;
+          if (w === 0) return; // hidden: nothing to measure
+          const next = collapsed ? w < below + HYSTERESIS_PX : w < below;
+          if (next !== collapsed) {
+            collapsed = next;
+            rebuild();
+            apply();
+          }
+        });
       });
       ro.observe(handle.container);
       const inner = handle.destroy;
       handle.destroy = (): void => {
         ro.disconnect();
+        cancelAnimationFrame(frame);
         inner.call(handle);
       };
     }

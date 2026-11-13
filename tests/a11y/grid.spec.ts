@@ -46,7 +46,7 @@ test('the chart exposes a treegrid with a column count, a header row and indexed
   await expect(svg).toHaveAttribute('aria-rowcount', '8'); // 7 tasks + the header row
   const headers = svg.locator('[role=row][aria-rowindex="1"] [role=columnheader]');
   await expect(headers).toHaveCount(5);
-  await expect(headers.nth(2)).toHaveAttribute('aria-label', 'End, column 3 of 5');
+  await expect(headers.nth(2)).toHaveAttribute('aria-label', 'End');
   const row = svg.locator('.fg-timeline__row[data-task-id="design"]');
   await expect(row).toHaveAttribute('aria-rowindex', '4');
   await expect(row.locator('[role=gridcell]')).toHaveCount(5);
@@ -77,7 +77,7 @@ test('a truncated cell keeps its full text in the accessible name', async ({ pag
 test('real cells remain exposed to the accessibility tree although they are invisible', async ({ page }) => {
   await open(page);
   const snapshot = await page.locator('#gantt svg.fg-timeline').ariaSnapshot();
-  for (const s of ['columnheader "Start, column 2 of 5"', 'gridcell "Mar 16, 2026"', 'gridcell "70%"']) expect(snapshot).toContain(s);
+  for (const s of ['columnheader "Start"', 'gridcell "Mar 16, 2026"', 'gridcell "70%"']) expect(snapshot).toContain(s);
 });
 
 test('keyboard behaviour is unchanged by the grid: Tab leaves in one stop, arrows move rows', async ({ page }) => {

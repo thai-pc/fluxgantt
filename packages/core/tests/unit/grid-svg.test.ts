@@ -81,7 +81,7 @@ describe('structure and roles', () => {
     const hs = [...head.querySelectorAll('[role=columnheader]')];
     expect(hs.map((h) => h.getAttribute('aria-colindex'))).toEqual(['1', '2', '3', '4', '5']);
     expect(hs.map((h) => h.getAttribute('data-column-id'))).toEqual(['name', 'start', 'end', 'duration', 'progress']);
-    expect(hs[1]!.getAttribute('aria-label')).toBe('Start, column 2 of 5');
+    expect(hs[1]!.getAttribute('aria-label')).toBe('Start');
     expect(hs.map((h) => h.textContent)).toEqual(['Name', 'Start', 'End', 'Duration', 'Progress']);
     // the header row comes BEFORE the data rows in document order, outside the rows group
     expect(head.parentElement).toBe(svgOf());
@@ -345,6 +345,8 @@ describe('collapseBelow', () => {
       disconnect(): void { this.rec.disconnected = true; }
     }
     vi.stubGlobal('ResizeObserver', RO);
+    vi.stubGlobal('requestAnimationFrame', (f: (t: number) => void) => (f(0), 0)); // runs the deferred repaint at once (id 0 = nothing pending)
+    vi.stubGlobal('cancelAnimationFrame', () => {});
     return all;
   }
   const width = (w: number) => Object.defineProperty(container, 'clientWidth', { value: w, configurable: true });
@@ -421,6 +423,8 @@ describe('Canvas', () => {
     internal.emit('renderer:selected', { renderer: 'canvas', taskCount: 0 });
     expect(warn).toHaveBeenCalledTimes(1);
     expect(String(warn.mock.calls[0]![0])).toContain('SVG renderer only');
+    internal.emit('renderer:selected', { renderer: 'canvas', taskCount: 0 }); // a remount
+    expect(warn).toHaveBeenCalledTimes(1); // once per instance
   });
 });
 
@@ -437,7 +441,27 @@ describe('without withGrid nothing changes (regression)', () => {
     expect(handleOf(g).fixedLabelWidth).toBeUndefined();
     expect(corner().childElementCount).toBe(0);
     expect(svg.querySelector('.fg-timeline__row-cell')!.hasAttribute('aria-colindex')).toBe(false);
-    expect(svg.style.font).toBe('');
+    expect((svg.querySelector('.fg-timeline__rows') as SVGElement).style.font).toBe('');
+    expect(column().style.font).toBe('');
+  });
+
+  it('the whole layer is byte-identical whether or not the grid module was imported (not composed)', async () => {
+    const build = async (importGrid: boolean): Promise<string> => {
+      vi.resetModules();
+      const { createGantt: cg } = await import('../../src/gantt.js');
+      const { withRender: wr } = await import('../../src/render/mixin.js');
+      const { withInteraction: wi } = await import('../../src/interaction/mixin.js');
+      if (importGrid) await import('../../src/grid/mixin.js');
+      const c = document.createElement('div');
+      document.body.appendChild(c);
+      wi(wr(cg({ tasks: TASKS, dependencies: [] }))).mount(c);
+      const html = c.querySelector('.fg-timeline__layer')!.outerHTML;
+      c.remove();
+      return html;
+    };
+    const without = await build(false);
+    expect(await build(true)).toBe(without);
+    expect(without).not.toContain('fg-grid__');
   });
 
   it('long names are not truncated and no <title> is added', () => {
@@ -460,10 +484,13 @@ describe('without withGrid nothing changes (regression)', () => {
       for (const [key, init] of [
         ['ArrowRight', {}], ['ArrowLeft', {}], ['ArrowRight', { shiftKey: true }], ['Home', { ctrlKey: true }],
         ['End', { ctrlKey: true }], ['F2', {}], ['Enter', {}], ['ArrowDown', {}], ['ArrowUp', {}], ['PageDown', {}],
+        ['Home', {}], ['End', {}], [' ', {}], ['g', {}], ['G', {}],
+        ['ArrowRight', { altKey: true }], ['ArrowLeft', { altKey: true }], ['ArrowRight', { altKey: true, shiftKey: true }],
+        ['Enter', { altKey: true }], ['Delete', {}],
       ] as const) {
         const ev = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true, ...init });
         (c.querySelector('[role=row][tabindex="0"]') ?? first).dispatchEvent(ev);
-        out.push(`${key}${JSON.stringify(init)}:${ev.defaultPrevented}:${c.querySelector('[role=row][tabindex="0"]')?.getAttribute('data-task-id')}:${g.getSelection?.().join(',') ?? ''}`);
+        out.push(`${key}${JSON.stringify(init)}:${ev.defaultPrevented}:${c.querySelector('[role=row][tabindex="0"]')?.getAttribute('data-task-id')}:${g.getSelection?.().join(',') ?? ''}:${JSON.stringify(g.getTasks().map((t) => [t.id, String(t.start), String(t.end)]))}`);
       }
       c.remove();
       return out;
@@ -486,5 +513,36 @@ describe('application order', () => {
     expect(svgOf().querySelectorAll('[role=columnheader]')).toHaveLength(5);
     // the mirror ran after the grid in every order: the header clones are flipped too
     for (const text of corner().querySelectorAll('text')) expect(text.getAttribute('transform')).toMatch(/^matrix\(-1 0 0 1 /);
+  });
+});
+
+describe('composition', () => {
+  it('applying withGrid twice to one instance throws instead of painting two grids', () => {
+    const g = withGrid(withRender(createGantt({ tasks: TASKS })));
+    expect(() => withGrid(g)).toThrow(/already applied/);
+    g.mount(container);
+    expect(svgOf().querySelectorAll('[role=columnheader]')).toHaveLength(5);
+  });
+
+  it('config.rollup runs once per data revision for the renderer and the grid together', async () => {
+    const { computeRollup } = await import('../../src/compute/rollup.js');
+    const rollup = vi.fn(computeRollup);
+    const g = withGrid(withRender(createGantt({ tasks: TASKS, rollup })));
+    g.mount(container);
+    const afterMount = rollup.mock.calls.length;
+    expect(afterMount).toBe(1);
+    g.updateTask(id('c'), { name: 'again' });
+    expect(rollup.mock.calls.length).toBe(afterMount + 1);
+    g.select(id('b')); // no data revision
+    g.zoomTo('month');
+    expect(rollup.mock.calls.length).toBe(afterMount + 1);
+    expect(svgOf().querySelector('[data-column-id=end]')!.textContent).not.toBe('');
+  });
+
+  it('a frozen config still works (it just pays for the rollup twice)', async () => {
+    const { computeRollup } = await import('../../src/compute/rollup.js');
+    const cfg = Object.freeze({ tasks: TASKS, rollup: computeRollup });
+    const g = withGrid(withRender(createGantt(cfg)));
+    expect(() => g.mount(container)).not.toThrow();
   });
 });
