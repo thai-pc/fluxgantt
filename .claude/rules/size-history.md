@@ -333,3 +333,15 @@ resolution (`colAt`, `hitTestRow`, the double-tap pair) lives in the lazy half a
 column's `editor` validation is a few lines in `grid/columns.ts` (+108 B on `+ withGrid`). The cap arithmetic and the decision
 not to raise the limit are in CLAUDE.md's decision log. Measured and kept lazy on purpose: touching `values.ts` for the editors
 (it exports `hoursPerDay` and a shared reader instead), so the editors never build a second working-hours table.
+
+The 2026-11 atomic-write pass (`updateTask` and its siblings plan before they write: the patch's dates are parsed and the
+cascade is computed against the task as it will be, then the writes run; `duplicateTask` builds every copy's input first;
+exemption rule, correctness) cost, against master 3d5c152 (gzip bytes): hello world +6 (8386), `+ withRender +
+withInteraction` +10 (21759, 1 B left), kitchen sink +11 (26548), everything +2 (40080); soft +7..+15. The first cut
+(date check, progress/duration check, `effectiveDuration` precomputed so `task:resized` cannot throw after the write, a
+`#planCascade` method, `#applyPatch` validating) was +120 / +127 / +125 / +116. Levers measured one at a time (kitchen
+sink / interaction / hello world, cumulative): dropping the progress/duration validation -56 B, dropping the `effectiveDuration`
+precompute -19, `#applyPatch` no longer validating (its two callers already did) -22, inlining `#planCascade` -10,
+`#applyCascadeShift` taking the shift object -7. The rewritten `duplicateTask` (inputs mapped first, one `#run`) is -14 B
+against the old loop. Not kept: numeric validation in `updateTask` (+33 B, would put the interaction gate 33 B over).
+Lesson: validate in the ONE caller that writes, not in the shared writer; a validating `#applyPatch` ran the same parse twice.
