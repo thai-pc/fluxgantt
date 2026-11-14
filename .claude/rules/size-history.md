@@ -333,3 +333,21 @@ resolution (`colAt`, `hitTestRow`, the double-tap pair) lives in the lazy half a
 column's `editor` validation is a few lines in `grid/columns.ts` (+108 B on `+ withGrid`). The cap arithmetic and the decision
 not to raise the limit are in CLAUDE.md's decision log. Measured and kept lazy on purpose: touching `values.ts` for the editors
 (it exports `hoursPerDay` and a shared reader instead), so the editors never build a second working-hours table.
+
+The 2026-11 atomic-write pass (`updateTask` and its siblings plan before they write: the stored and draft dates are parsed and
+the cascade is computed against the draft task, then the writes run; `duplicateTask` builds every copy's input first;
+exemption rule, correctness) ended NET NEGATIVE against master 3d5c152 (gzip bytes): hello world -24 (8356, 92 B left),
+`+ withRender + withInteraction` -18 (21731, 29 B left), kitchen sink -22 (26515), everything -32 (40046); soft -18..-32.
+The first cut was +6 / +10 / +11 / +2 (1 B left on the interaction gate); review levers took about -40 B on each hard
+fixture, all behaviour-neutral: `duplicateTask(taskId)` lets the map's `#requireTask` throw instead of calling it twice
+(-5 hello / -7 interaction), `#spanNs` / `#sameInstant` read the calendar zone themselves instead of taking a `tz`
+parameter (-13 / -10), inlining the one-line `#collectWithDescendants` wrapper (-6 / -8), dropping the same-instant guard
+in `#applyCascadeShift` (a cascade shift is always strictly later, `cascade.ts`; -4 / -7), and
+`const { id: _id, ...rest } = source` in `duplicateTask` (`TaskStore.add` re-stamps the timestamps and the literal
+overwrites start/end/progress; -14 / -12). The M1 fix (parse `prev`'s dates in the plan step, and in `setProgress`) cost
+about +11 B. Earlier cut levers: validating in the one writer rather than in the shared `#applyPatch` (-22 B), inlining
+`#planCascade` (-10), `#applyCascadeShift` taking the shift object (-7), the `duplicateTask` rewrite (-14 vs the old loop).
+Not kept: numeric validation in `updateTask` (+33 B), and a tolerant `#diffAndEmit` that would let a repair patch fix a
+stored bad date (far above the 15 B budget).
+Lesson: validate in the ONE caller that writes, not in the shared writer; a one-line wrapper or a parameter that every
+call site passes the same value to is dead weight under gzip.
