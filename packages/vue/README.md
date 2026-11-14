@@ -69,6 +69,39 @@ binds to the `ariaLabel` prop and names the chart's `<svg>` instead.
 Full prop and emit tables, plus the composable:
 [the Vue docs page](https://fluxgantt.thai-pc.com/docs/frameworks/vue).
 
+## Grid columns (beta)
+
+`@fluxgantt/vue/grid` exports `FluxGanttGrid`: `<FluxGantt>` with the pinned grid columns of
+`@fluxgantt/core/grid`. `@fluxgantt/vue/grid-editing` exports `FluxGanttGridEditing`, which adds inline
+cell editing. A chart that imports neither ships no grid code.
+
+```vue
+<script setup lang="ts">
+import { FluxGanttGridEditing } from '@fluxgantt/vue/grid-editing';
+
+// Define column functions once, outside the template expression: a new function identity on every
+// change re-applies the columns and logs a dev warning.
+const columns = [
+  { id: 'name' },
+  { id: 'start' },
+  { id: 'owner', header: 'Owner', value: (t) => String(t.meta?.owner ?? '') },
+];
+</script>
+
+<template>
+  <FluxGanttGridEditing
+    :tasks="tasks"
+    :grid-columns="columns"
+    @column-resized="({ widths }) => save(widths)"
+    @cell-edit-requested="(e) => e.preventDefault()"
+  />
+</template>
+```
+
+`gridColumns` changes are applied with `setGridColumns` (no remount). The exposed instance also carries
+`getGridColumns`, `setGridColumns`, `resizeGridColumn`, `exportGridCsv` and, with editing, `startCellEdit`,
+`cancelCellEdit`, `isEditingCell`. The core grid is `@beta`, so these entries are too.
+
 ## License
 
 MIT

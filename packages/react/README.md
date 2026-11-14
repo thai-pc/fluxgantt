@@ -63,6 +63,35 @@ on every render.
 Full prop table, the `useFluxGantt` hook, and the uncontrolled-data rationale:
 [the React docs page](https://fluxgantt.thai-pc.com/docs/frameworks/react).
 
+## Grid columns (beta)
+
+`@fluxgantt/react/grid` exports `FluxGanttGrid`: `<FluxGantt>` with the pinned grid columns of
+`@fluxgantt/core/grid`. `@fluxgantt/react/grid-editing` exports `FluxGanttGridEditing`, which adds inline
+cell editing. A chart that imports neither ships no grid code.
+
+```tsx
+import { FluxGanttGridEditing } from '@fluxgantt/react/grid-editing';
+
+// Define column functions outside the component (or `useCallback` them): a new function
+// identity on every render re-applies the columns and logs a dev warning.
+const columns = [
+  { id: 'name' },
+  { id: 'start' },
+  { id: 'owner', header: 'Owner', value: (t) => String(t.meta?.owner ?? '') },
+];
+
+<FluxGanttGridEditing
+  tasks={tasks}
+  gridColumns={columns}
+  onColumnResized={({ widths }) => localStorage.setItem('widths', JSON.stringify(widths))}
+  onCellEditRequested={(e) => { /* e.preventDefault() opens your own editor instead */ }}
+/>;
+```
+
+`gridColumns` changes are applied with `setGridColumns` (no remount). The ref also carries `getGridColumns`,
+`setGridColumns`, `resizeGridColumn`, `exportGridCsv` and, with editing, `startCellEdit`, `cancelCellEdit`,
+`isEditingCell`. The core grid is `@beta`, so these entries are too.
+
 ## License
 
 MIT
