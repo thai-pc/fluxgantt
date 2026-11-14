@@ -11,7 +11,7 @@
 // `destroy()`, and React has no reliable signal to distinguish StrictMode's throwaway unmount
 // from a real final one. `destroy()` remains available on the returned `instance` for a
 // consumer who wants to explicitly hard-close it.
-import { useEffect, useLayoutEffect, useRef } from 'react';
+import { useEffect, useLayoutEffect, useRef, type RefObject } from 'react';
 import { createGantt } from '@fluxgantt/core';
 import { withRender, type RenderCapability } from '@fluxgantt/core/render';
 import { withInteraction } from '@fluxgantt/core/interaction';
@@ -19,7 +19,7 @@ import { withEditHooks } from '@fluxgantt/core/edit-hooks';
 import { withViewport, type ViewportCapability } from '@fluxgantt/core/viewport';
 import { withTheme, type ThemeCapability } from '@fluxgantt/core/theme';
 import { withRtl } from '@fluxgantt/core/rtl';
-import type { GanttInstance } from '@fluxgantt/core';
+import type { GanttInstance, UnsubscribeFn } from '@fluxgantt/core';
 import { pickConstructionConfig, syncTheme } from './gantt-config.js';
 import type { UseFluxGanttConfig, UseFluxGanttResult } from './types.js';
 
@@ -33,10 +33,33 @@ declare const process: { readonly env?: { readonly NODE_ENV?: string } } | undef
 
 // `useLayoutEffect` warns when rendered on the server (React 18); effects never run there
 // anyway, so fall back to `useEffect` where there is no `window`.
-const useIsomorphicLayoutEffect = typeof window !== 'undefined' ? useLayoutEffect : useEffect;
+export const useIsomorphicLayoutEffect =
+  typeof window !== 'undefined' ? useLayoutEffect : useEffect;
+
+/** The instance every wrapper composes (see `useGantt`). */
+export type BaseInstance = GanttInstance & RenderCapability & ViewportCapability & ThemeCapability;
+
+/**
+ * Internal seam for the opt-in grid entries (`@fluxgantt/react/grid`, `/grid-editing`); NOT exported
+ * from any package entry. `compose` adds mixins to the instance before `withRtl` is applied on top
+ * (so `withRtl` stays last), `bridge` subscribes extra events BEFORE `mount()` and returns the
+ * unsubscribers. The default `useFluxGantt` passes neither, so a non-grid consumer never imports grid code.
+ */
+export interface GanttPlugin<C extends UseFluxGanttConfig, I extends BaseInstance> {
+  readonly compose: (instance: BaseInstance, latest: { readonly current: C }) => I;
+  readonly bridge: (instance: I, latest: { readonly current: C }) => UnsubscribeFn[];
+}
 
 /** Creates and owns a Gantt instance for the lifetime of the component. */
 export function useFluxGantt(config: UseFluxGanttConfig): UseFluxGanttResult {
+  return useGantt(config);
+}
+
+/** Shared body of `useFluxGantt` and the grid hooks (see `GanttPlugin`). */
+export function useGantt<C extends UseFluxGanttConfig, I extends BaseInstance = BaseInstance>(
+  config: C,
+  plugin?: GanttPlugin<C, I>,
+): { readonly ref: RefObject<HTMLDivElement | null>; readonly instance: I } {
   const containerRef = useRef<HTMLDivElement | null>(null);
 
   // Always-latest callbacks, read only from inside event listeners/effects — never during
@@ -50,9 +73,7 @@ export function useFluxGantt(config: UseFluxGanttConfig): UseFluxGanttResult {
   // stateful object exactly once). Survives StrictMode's dev-only double *render* because the
   // ref persists across both synchronous render calls of the same commit; the `=== null` guard
   // makes the second call a no-op.
-  const instanceRef = useRef<
-    (GanttInstance & RenderCapability & ViewportCapability & ThemeCapability) | null
-  >(null);
+  const instanceRef = useRef<I | null>(null);
   if (instanceRef.current === null) {
     // Reads `config` HERE ONLY — this block runs exactly once, so every field except
     // `onTaskChange` and `theme` is frozen at whatever the FIRST render passed (resolution #1).
@@ -67,29 +88,30 @@ export function useFluxGantt(config: UseFluxGanttConfig): UseFluxGanttResult {
       // wants them) and `/theme` (setTheme/getTheme/getResolvedTheme; the `theme` prop needs it). IO (`/io`) is deliberately NOT composed: the wrapper exposes no
       // import/export surface, so a consumer who never calls it never downloads it. `/rtl` (the `rtl`
       // prop) is composed unconditionally too: `withRtl` returns at once unless `rtl === true`.
-      instanceRef.current = withRtl(
-        withTheme(
-          withViewport(
-            withEditHooks(
-              withInteraction(
-                withRender(
-                  createGantt({
-                    ...pickConstructionConfig(config),
-                    // Always constructed light: `withTheme` arms an OS `matchMedia` listener for
-                    // 'auto', and the instance is created during RENDER, where StrictMode / an
-                    // abandoned concurrent render can discard it with no cleanup. The real theme
-                    // is applied in the layout effect below (and disarmed on teardown). Unset
-                    // means 'light' here, not core's 'auto', because wrapper charts have always
-                    // been light; hosts opt into OS-following with `theme="auto"`.
-                    theme: 'light',
-                    onTaskChange: (task, prev) => configRef.current.onTaskChange?.(task, prev),
-                  }),
-                ),
+      const composed = withTheme(
+        withViewport(
+          withEditHooks(
+            withInteraction(
+              withRender(
+                createGantt({
+                  ...pickConstructionConfig(config),
+                  // Always constructed light: `withTheme` arms an OS `matchMedia` listener for
+                  // 'auto', and the instance is created during RENDER, where StrictMode / an
+                  // abandoned concurrent render can discard it with no cleanup. The real theme
+                  // is applied in the layout effect below (and disarmed on teardown). Unset
+                  // means 'light' here, not core's 'auto', because wrapper charts have always
+                  // been light; hosts opt into OS-following with `theme="auto"`.
+                  theme: 'light',
+                  onTaskChange: (task, prev) => configRef.current.onTaskChange?.(task, prev),
+                }),
               ),
             ),
           ),
         ),
       );
+      // `I` is `BaseInstance` exactly when there is no plugin (the default parameter), so the cast
+      // only restates that. `withRtl` goes on last, over whatever the plugin composed.
+      instanceRef.current = withRtl(plugin?.compose(composed, configRef) ?? (composed as I));
     } catch (err) {
       // `createGantt` constructs the stores synchronously and throws on invalid INITIAL data
       // (a duplicate task id, or a self/duplicate/cyclic initial dependency). Because this
@@ -174,6 +196,7 @@ export function useFluxGantt(config: UseFluxGanttConfig): UseFluxGanttResult {
       instance.on('task:context-requested', (payload) =>
         configRef.current.onTaskContextRequested?.(payload),
       ),
+      ...(plugin?.bridge(instance, configRef) ?? []),
     ];
 
     instance.mount(node);
