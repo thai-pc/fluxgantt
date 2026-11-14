@@ -1,0 +1,392 @@
+// The grid cell editors, the LAZY half (see `mixin.ts`): the `cell:edit-requested` event, the editor's DOM, its state
+// machine (open, valid or invalid, committing, closed), the calendar-aware write (`commit.ts`) and the announcements.
+// Fetched by `mixin.ts` on the first cell focus or edit, so a read-only grid never downloads it; kept out of every
+// size fixture like `grid/resize-ui.ts`. DOM-specific.
+//
+// LAYOUT. The editor is an `<input>` inside `div.fg-grid__editor-host`, which is never a child of a row (the grid's key
+// listener and `keyboard-nav` read the keys of any descendant of a row). SVG: the host is a zero-size box in the chart
+// layer, sticky on the inline-start axis only, so it pins with the grid column and scrolls with the rows; the input sits
+// at the cell's coordinates inside it (logical insets, so RTL needs no mirroring). Canvas: the host is a sibling of the
+// canvases, pulled up like the pinned label canvas and sticky on both axes; the input is placed from the row index and
+// `scrollTop` on every scroll and every repaint. The host swallows pointer, click, double-click and context-menu events
+// so the chart's selection, pan, drag and edit hooks never see them; wheel is not swallowed (the chart still scrolls).
+//
+// SECURITY (security.md): the input's text is untrusted. It is read as a string, length-checked, parsed (`parse.ts`)
+// and never inserted as markup; the error element and the announcements receive text nodes and attribute values only.
+// Host messages (`beforeCommit`, a custom editor's `{ error }`) are capped and shown as text.
+import { ROW_HEIGHT } from '../render/renderer-base.js';
+import { toTaskId } from '../types.js';
+import type { EditErrorReason, Task } from '../types.js';
+import { announceGrid } from '../grid/announce.js';
+import { UNSAFE_TEXT, type Column } from '../grid/columns.js';
+import { HEADER_HEIGHT } from '../grid/fit.js';
+import { focusCell } from '../grid/resize.js';
+import { MAX_MESSAGE_CHARS, planEdit, type Plan } from './commit.js';
+import type { EditEnv } from './mixin.js';
+
+const HOST_CSS = 'position:sticky;inset-inline-start:0;grid-area:1/1;align-self:start;justify-self:start;width:0;height:0;overflow:visible';
+const CANVAS_HOST_CSS = 'position:sticky;top:0;inset-inline-start:0;width:0;height:0;overflow:visible';
+const INPUT_CSS =
+  'position:absolute;box-sizing:border-box;margin:0;padding:0 8px;font:12px system-ui,sans-serif;color:var(--fg-fg,#18181b);background:var(--fg-bg,#fff);border:2px solid var(--fg-task-focus,#0369a1);border-radius:0;text-overflow:clip';
+const ERROR_CSS =
+  'position:absolute;z-index:1;box-sizing:border-box;width:max-content;padding:2px 6px;font:12px system-ui,sans-serif;color:var(--fg-fg,#18181b);background:var(--fg-bg,#fff);border:2px dashed #dc2626;pointer-events:none;white-space:normal';
+/** Events the host keeps from the chart's listeners. Not `wheel`: wheel over the editor still scrolls and zooms the chart. */
+const SWALLOW = ['pointerdown', 'pointermove', 'pointerup', 'pointercancel', 'click', 'dblclick', 'contextmenu'] as const;
+const ALIGN = { start: 'start', center: 'center', end: 'end' } as const;
+/** Two touches this close in time (ms) and space (px) are a double-tap. */
+const TAP_MS = 300;
+const TAP_PX = 24;
+
+const ENGLISH: Record<EditErrorReason, string> = {
+  empty: 'Enter a value.',
+  'not-a-number': 'Enter a number.',
+  'out-of-range': 'The value is out of range.',
+  'not-a-date': 'Enter a valid date.',
+  'end-before-start': 'The end must be after the start.',
+  'too-long': 'The value is too long.',
+  rejected: 'This value could not be saved.',
+};
+
+let counter = 0;
+const clean = (s: string): string => s.replace(UNSAFE_TEXT, ' ').slice(0, MAX_MESSAGE_CHARS);
+
+/** The real row element of task `id` (the one with `role=row`, not a pinned clone). */
+function findRow(container: HTMLElement, id: string): Element | undefined {
+  for (const r of container.querySelectorAll('[role=row][data-task-id]')) if (r.getAttribute('data-task-id') === id) return r;
+  return undefined;
+}
+
+/** `[top, height]` of a row in the editor host's own coordinates (the layer for SVG, the pinned corner for Canvas). */
+function boxOf(env: EditEnv, row: Element): readonly [number, number] | undefined {
+  const idx = Number(row.getAttribute('data-row-index'));
+  if (!('paintHooks' in env.handle)) {
+    const h = ROW_HEIGHT[env.handle.getRenderState().options.density ?? 'default'];
+    return [HEADER_HEIGHT + idx * h - env.container.scrollTop, h];
+  }
+  // SVG: the label's y is the row's centre, so the row height follows from it at any density.
+  const y = Number(row.querySelector('.fg-timeline__row-label')?.getAttribute('y'));
+  const h = (y - HEADER_HEIGHT) / (idx + 0.5);
+  return Number.isFinite(h) && h > 0 ? [y - h / 2, h] : undefined;
+}
+
+/** The cell's centre in viewport coordinates (the pinned column's box is the origin of the cell offsets). */
+function centreOf(env: EditEnv, ci: number, [top, h]: readonly [number, number]): readonly [number, number] {
+  const { view } = env.internal.gv!();
+  const pin = env.container.querySelector('.fg-timeline__sticky-column, canvas.fg-timeline-canvas-labels')?.getBoundingClientRect();
+  if (!pin) return [0, 0];
+  const mid = view.offs[ci]! + view.cols[ci]!.width / 2;
+  const x = env.handle.mirrorX !== undefined ? pin.right - mid : pin.left + mid;
+  const y = pin.top + top + h / 2;
+  return [Number.isFinite(x) ? x : 0, Number.isFinite(y) ? y : 0];
+}
+
+/**
+ * Asks the host (`cell:edit-requested`), then opens the editor on cell `ci` of task `id`. Returns false when the cell
+ * cannot be edited, has no row on screen, the host took over, or an editor already open holds an invalid value.
+ */
+export function begin(env: EditEnv, id: string, ci: number, source: 'keyboard' | 'pointer'): boolean {
+  const { internal, st } = env;
+  if (!env.canEdit(id, ci)) return false;
+  const row = findRow(env.container, id);
+  const box = row && boxOf(env, row);
+  if (!row || !box) return false;
+  if (st.o?.id === id && st.o.ci === ci) return true; // already editing this cell
+  if (st.o && !st.o.end(true, false)) return false; // a second edit first commits the open one
+  const [x, y] = centreOf(env, ci, box);
+  let prevented = false;
+  internal.emit('cell:edit-requested', {
+    taskId: toTaskId(id),
+    columnId: internal.gv!().view.all[ci]!.id,
+    source,
+    clientX: x,
+    clientY: y,
+    preventDefault(): void {
+      prevented = true;
+    },
+  });
+  if (prevented || !internal.tasks.has(toTaskId(id))) return false; // vetoed, or the listener removed the task
+  open(env, id, ci);
+  return true;
+}
+
+function open(env: EditEnv, id: string, ci: number): void {
+  const { internal, st, container, handle, opts } = env;
+  const g = internal.gv!();
+  const { view } = g;
+  const col: Column = view.all[ci]!;
+  const task0 = internal.tasks.get(toTaskId(id))!;
+  const locale = internal.config.locale ?? 'en';
+  const canvas = !('paintHooks' in handle);
+  const kind = col.builtIn ? col.id : col.editor ? col.editor.type : 'text';
+  const ed = col.editor || undefined;
+
+  // The text the editor starts with (the FULL value: the cell may show a cut one).
+  let initial = g.values.raw(task0, view.all)[ci] ?? '';
+  if (ed?.initial) {
+    try {
+      const v = ed.initial(task0, { locale, calendar: internal.calendar, isSummary: internal.tasks.children(task0.id).length > 0 });
+      if (typeof v === 'string') initial = v.slice(0, 1000);
+    } catch {
+      // the cell's own raw value stands
+    }
+  }
+
+  const host = document.createElement('div');
+  host.className = 'fg-grid__editor-host';
+  host.style.cssText = canvas ? CANVAS_HOST_CSS : HOST_CSS;
+  const input = document.createElement('input');
+  const err = document.createElement('div');
+  err.className = 'fg-grid__edit-error';
+  err.setAttribute('role', 'alert');
+  err.style.cssText = `${ERROR_CSS};display:none`;
+  host.append(input, err);
+  input.className = 'fg-grid__editor';
+  input.style.cssText = INPUT_CSS;
+  input.type = kind === 'date' || kind === 'start' || kind === 'end' ? 'date' : 'text';
+  if (input.type === 'text') {
+    input.maxLength = kind === 'name' || kind === 'text' ? Math.min(ed?.maxLength ?? 1000, 1000) : 32;
+    if (kind === 'duration' || kind === 'number') input.inputMode = 'decimal';
+    if (kind === 'progress') input.inputMode = 'numeric';
+  }
+  input.value = initial;
+  input.autocomplete = 'off';
+  input.spellcheck = false;
+  input.setAttribute('autocapitalize', kind === 'name' || kind === 'text' ? 'sentences' : 'off');
+  input.enterKeyHint = 'done';
+  input.style.textAlign = ALIGN[col.align];
+  let label = `${col.header}, ${task0.name}`;
+  try {
+    const custom = internal.config.messages?.gridEditLabel?.({ columnId: col.id, header: col.header, taskName: task0.name, locale });
+    if (typeof custom === 'string') label = custom;
+  } catch {
+    // a throwing host function falls back to the English name
+  }
+  input.setAttribute('aria-label', label.replace(UNSAFE_TEXT, ' ').slice(0, 400));
+  for (const t of SWALLOW) host.addEventListener(t, (e) => e.stopPropagation());
+
+  const text = (reason: EditErrorReason, min?: number, max?: number): string => {
+    try {
+      const custom = internal.config.messages?.gridEditError?.({ reason, columnId: col.id, header: col.header, locale, ...(min === undefined ? {} : { min }), ...(max === undefined ? {} : { max }) });
+      if (typeof custom === 'string') return clean(custom);
+    } catch {
+      // English
+    }
+    if (reason === 'out-of-range' && min !== undefined && max !== undefined) return `Enter a value from ${min} to ${max}.`;
+    return ENGLISH[reason];
+  };
+
+  // --- placement -------------------------------------------------------------------------------------------
+  const place = (): boolean => {
+    const row = findRow(container, id);
+    const box = row && boxOf(env, row);
+    if (!box) return false;
+    const [top, h] = box;
+    if (canvas) host.style.marginTop = container.querySelector<HTMLElement>('canvas.fg-timeline-canvas-labels')?.style.marginTop ?? '0';
+    for (const [el, t, w] of [[input, top, 0], [err, top + h, 1]] as const) {
+      el.style.top = `${t}px`;
+      el.style.insetInlineStart = `${view.offs[ci]}px`;
+      el.style[w ? 'maxWidth' : 'width'] = `${col.width}px`;
+    }
+    input.style.height = `${h}px`;
+    return true;
+  };
+
+  // --- closing ---------------------------------------------------------------------------------------------
+  let closed = false;
+  const stops: (() => void)[] = [];
+  const finish = (back: boolean): void => {
+    if (closed) return;
+    closed = true;
+    if (st.o === me) st.o = undefined;
+    for (const s of stops) s();
+    host.remove();
+    if (!back) return;
+    // Focus returns to the real cell (a repaint rebuilt it; on Canvas the a11y layer is rebuilt too).
+    const row = findRow(container, id);
+    if (row && !focusCell(row, ci)) (row as HTMLElement | SVGElement).focus({ preventScroll: true });
+  };
+  const showError = (message: string): void => {
+    err.textContent = message;
+    err.id = `fg-grid-err-${++counter}`;
+    err.style.display = 'block';
+    input.setAttribute('aria-invalid', 'true');
+    input.setAttribute('aria-describedby', err.id);
+    input.style.outline = '2px dashed #dc2626';
+    input.style.outlineOffset = '-2px';
+  };
+  const clearError = (): void => {
+    if (err.style.display === 'none') return;
+    err.style.display = 'none';
+    err.textContent = '';
+    err.removeAttribute('id');
+    input.removeAttribute('aria-invalid');
+    input.removeAttribute('aria-describedby');
+    input.style.outline = '';
+  };
+  const english = (reason: EditErrorReason): string => text(reason);
+
+  /** Writes the value. 'ok' (written, or nothing to write) closes the editor; 'invalid' shows the error. */
+  const commit = (): { ok: true; wrote?: Plan & { kind: 'write' } } | { ok: false; reason: EditErrorReason } => {
+    const task = internal.tasks.get(toTaskId(id));
+    if (!task) return { ok: true };
+    let plan: Plan;
+    try {
+      plan = planEdit({ gantt: env.gantt, internal, unit: g.unit }, task, col, input.value, initial);
+    } catch (e) {
+      console.warn('@fluxgantt/core: withGridEditing could not plan an edit.', e);
+      plan = { kind: 'error', reason: 'rejected' };
+    }
+    if (plan.kind === 'noop') return { ok: true };
+    if (plan.kind === 'error') {
+      showError(plan.message === undefined ? text(plan.reason, plan.min, plan.max) : clean(plan.message));
+      return { ok: false, reason: plan.reason };
+    }
+    try {
+      const veto = opts.beforeCommit?.({ taskId: task.id, columnId: col.id, input: plan.input, patch: plan.patch });
+      if (typeof veto === 'string' && veto) {
+        showError(clean(veto));
+        return { ok: false, reason: 'rejected' };
+      }
+      plan.run();
+    } catch (e) {
+      // The store rejects a bad write by throwing, before any change: nothing was written.
+      showError(`${english('rejected')} ${clean(e instanceof Error ? e.message : '')}`.trim());
+      return { ok: false, reason: 'rejected' };
+    }
+    return { ok: true, wrote: plan };
+  };
+  const announced = (r: ReturnType<typeof commit>): void => {
+    const task = internal.tasks.get(toTaskId(id));
+    const name = task?.name ?? '';
+    if (r.ok) {
+      if (!r.wrote || !task) return;
+      const shown = clean(g.values.text(task, view.all)[ci] ?? '');
+      const snapped = r.wrote.snapped;
+      announceGrid(
+        internal,
+        { kind: 'cell-edited', id: task.id, name, columnId: col.id, header: col.header, text: shown, ...(snapped ? { snapped } : {}), locale },
+        `${col.header}: ${shown}${snapped ? `, ${snapped === 'next' ? 'next' : 'previous'} working day` : ''}`,
+      );
+    } else {
+      announceGrid(
+        internal,
+        { kind: 'cell-edit-failed', id: toTaskId(id), name, columnId: col.id, header: col.header, reason: r.reason, locale },
+        `${col.header} not changed: ${text(r.reason)}`,
+      );
+    }
+  };
+
+  const me: import('./mixin.js').OpenEdit = {
+    id,
+    ci,
+    end(write, back = true): boolean {
+      if (closed) return true;
+      if (write) {
+        const r = commit();
+        if (!r.ok) return false;
+        announced(r);
+      }
+      finish(back);
+      return true;
+    },
+  };
+
+  // --- keys and focus --------------------------------------------------------------------------------------
+  input.addEventListener('input', clearError);
+  input.addEventListener('keydown', (e) => {
+    if (e.isComposing || e.keyCode === 229) return; // an IME's Enter chooses a candidate
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      e.stopPropagation();
+      me.end(true);
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      e.stopPropagation();
+      me.end(false);
+    } else if (e.key === 'Tab') {
+      // Not prevented: commit (or discard an invalid value), focus the cell, and the browser's Tab moves on from it.
+      const r = commit();
+      announced(r);
+      finish(true);
+    }
+  });
+  input.addEventListener('focusout', () => {
+    if (closed) return;
+    if (opts.commitOnBlur === false) return void finish(false);
+    const r = commit();
+    announced(r); // a failure is announced as `cell-edit-failed`, then discarded
+    finish(false);
+  });
+
+  // --- keeping the editor on its cell ------------------------------------------------------------------------
+  const sync = (): void => {
+    if (closed) return;
+    // A column resized, collapsed or replaced moved the cell: the edit is cancelled, not committed.
+    if (internal.gv!().view !== view || !internal.tasks.has(toTaskId(id))) return void finish(true);
+    if (!place() && !canvas) finish(false); // an SVG row that is gone (collapsed away)
+  };
+  const mo = new MutationObserver(sync);
+  mo.observe(handle.interactionRoot, { childList: true, subtree: true });
+  stops.push(() => mo.disconnect());
+  if (canvas) {
+    let frame = 0;
+    const onScroll = (): void => {
+      if (!frame) frame = requestAnimationFrame(() => ((frame = 0), closed || place()));
+    };
+    container.addEventListener('scroll', onScroll, { passive: true });
+    stops.push(() => {
+      container.removeEventListener('scroll', onScroll);
+      cancelAnimationFrame(frame);
+    });
+  }
+  for (const ev of ['task:removed', 'data:imported'] as const) {
+    stops.push(env.gantt.on(ev, (...a: unknown[]) => (ev === 'data:imported' || a[0] === id) && finish(true)));
+  }
+
+  // --- mount -----------------------------------------------------------------------------------------------
+  const layer = container.querySelector('.fg-timeline__layer');
+  if (canvas) container.querySelector('canvas.fg-timeline-canvas-labels')?.after(host);
+  else if (layer) layer.querySelector(':scope > .fg-timeline__sticky-header')?.before(host) ?? layer.append(host);
+  if (!host.isConnected) return; // nowhere to put it
+  st.o = me;
+  place();
+  input.focus({ preventScroll: true });
+  if (input.type === 'text') input.select();
+  if (window.matchMedia?.('(pointer:coarse)').matches) input.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
+}
+
+/** Enter or F2 was claimed: act on the cell that has focus now (the key may have waited for this chunk to load). */
+export function key(env: EditEnv, f2: boolean): void {
+  const at = env.cellOf(document.activeElement, f2);
+  if (at) begin(env, at[0], at[1], 'keyboard');
+}
+
+let lastTap: { t: number; x: number; y: number } | undefined;
+let lastDbl = -Infinity;
+
+/** A `dblclick`, or a touch `pointerup` that may be the second tap of a double-tap, on the chart. */
+export function dbl(env: EditEnv, e: Event): void {
+  const m = e as MouseEvent;
+  const target = e.target as Element;
+  if (target.closest?.('.fg-grid__editor-host')) return;
+  if (e.type === 'pointerup') {
+    const prev = lastTap;
+    lastTap = { t: e.timeStamp, x: m.clientX, y: m.clientY };
+    if (!prev || e.timeStamp - prev.t > TAP_MS || Math.hypot(m.clientX - prev.x, m.clientY - prev.y) > TAP_PX) return;
+    lastTap = undefined;
+  } else if (e.timeStamp - lastDbl < 800) return; // the browser's own dblclick after a double-tap we already handled
+  const { view } = env.internal.gv!();
+  let id: string | null | undefined;
+  let col: string | undefined;
+  if (!('paintHooks' in env.handle)) {
+    const hit = env.handle.hitTestRow(m.clientX, m.clientY);
+    if (!hit || hit.hitToggle) return;
+    [id, col] = [hit.taskId, hit.columnId];
+  } else {
+    const at = env.internal.colAt?.(target, m.clientX, m.clientY);
+    id = (target.closest('[data-row-index]') ?? at?.[1])?.getAttribute('data-task-id');
+    col = at?.[0];
+  }
+  const ci = view.all.findIndex((c) => c.id === col);
+  if (id && ci >= 0 && begin(env, id, ci, 'pointer')) lastDbl = e.timeStamp;
+}

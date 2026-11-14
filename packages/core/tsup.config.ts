@@ -23,6 +23,7 @@ export default defineConfig({
     'edit-hooks/index': 'src/edit-hooks/index.ts',
     'rtl/index': 'src/rtl/index.ts',
     'grid/index': 'src/grid/index.ts',
+    'grid-editing/index': 'src/grid-editing/index.ts',
     'render/canvas-renderer': 'src/render/canvas-renderer.ts',
     // Same reason as `render/canvas-renderer`: a deterministic chunk for `io/mixin.ts`'s dynamic
     // `import('./export-canvas-png.js')`. Not in package.json `exports` (internal).
@@ -33,6 +34,9 @@ export default defineConfig({
     // The lazy interactive half of the grid: column resize (drag, header keys, focus ring) and the keyboard model's
     // actions (`grid/mixin.ts` / `grid/resize.ts` `import('./resize-ui.js')`).
     'grid/resize-ui': 'src/grid/resize-ui.ts',
+    // The lazy half of the grid cell editors (`grid-editing/mixin.ts`'s dynamic `import('./editing-ui.js')`): the editor
+    // DOM, parsing, the calendar-aware commit and the announcements, fetched on the first cell focus or edit.
+    'grid-editing/editing-ui': 'src/grid-editing/editing-ui.ts',
   },
   format: ['esm', 'cjs'],
   // Required for esbuild to point the ESM output's dynamic import at this same compiled

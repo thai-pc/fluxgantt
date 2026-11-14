@@ -1,5 +1,6 @@
 // Public types of the grid-columns mixin (spec-grid-columns.md section 2). Type-only: 0 runtime bytes.
 import type { Task, WorkingCalendar } from '../types.js';
+import type { TaskPatch } from '../store/index.js';
 
 /**
  * The ids of the built-in columns.
@@ -61,6 +62,34 @@ export interface GridColumnBase {
  */
 export interface BuiltInColumn extends GridColumnBase {
   readonly id: BuiltInColumnId;
+  /** `false` makes this built-in column read-only even when `withGridEditing` is composed. */
+  readonly editor?: false;
+}
+
+/**
+ * The inline editor of a custom column (honoured only when `withGridEditing` is composed).
+ *
+ * @beta
+ */
+export interface CellEditor {
+  /** `text`, `number` (a text field with a numeric keyboard; the value arrives as a number) or `date` (a native
+   *  date field; the value arrives as `YYYY-MM-DD`). */
+  readonly type: 'text' | 'number' | 'date';
+  /** `text` only; at most 1000. */
+  readonly maxLength?: number;
+  /** `number` only: bounds checked before `commit`. Finite, `min <= max`. */
+  readonly min?: number;
+  readonly max?: number;
+  /** The text the editor starts with. Default: the cell's unformatted `value()`. */
+  readonly initial?: (task: Readonly<Task>, ctx: GridCellContext) => string;
+  /** Maps the validated input to a patch, or reports an error shown inline (capped at 200 characters, shown as
+   *  text). Pure; a throw becomes a generic error. The patch is applied with ONE `updateTask` (one undo entry,
+   *  one `task:updated`); `id`, `createdAt` and `updatedAt` are stripped from it. */
+  readonly commit: (
+    input: string | number,
+    task: Readonly<Task>,
+    ctx: GridCellContext,
+  ) => TaskPatch | { readonly error: string };
 }
 
 /**
@@ -78,6 +107,8 @@ export interface CustomColumn extends GridColumnBase {
   readonly value: (task: Readonly<Task>, ctx: GridCellContext) => string | number | null | undefined;
   /** Turns the value into display text. Default `String(value)`. */
   readonly format?: (value: string | number, task: Readonly<Task>, ctx: GridCellContext) => string;
+  /** Opt in to inline editing (needs `withGridEditing`). Absent or `false`: read-only. */
+  readonly editor?: CellEditor | false;
 }
 
 /**

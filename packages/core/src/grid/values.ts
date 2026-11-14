@@ -48,7 +48,7 @@ interface Memo {
 }
 
 /** Working hours in one calendar day (sum of the windows), or 0 when none parse. */
-const hoursPerDay = (cal: WorkingCalendar): number => {
+export const hoursPerDay = (cal: WorkingCalendar): number => {
   let h = 0;
   for (const w of cal.workingHours) {
     const m = /^(\d{2}):(\d{2})$/.exec(w.start);

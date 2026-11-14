@@ -434,6 +434,30 @@ export interface GanttEventMap {
    *  configured column id to its width in px. The library never persists widths: save them here and
    *  pass them back as `width` in `columns`. @beta */
   'column:resized': [payload: ColumnResizedPayload];
+  /** Fires from the opt-in `withGridEditing()` mixin (`@fluxgantt/core/grid-editing`) when the user asks to
+   *  edit a grid cell (Enter or F2 on an editable cell, F2 on a row, double-click or double-tap), BEFORE the
+   *  built-in editor opens. Call `payload.preventDefault()` synchronously to open your own editor instead
+   *  (the built-in one stays closed and the key does not reach `task:activated`). Never fires in a
+   *  `readOnly` chart or for a cell that is not editable. The result of an edit is the ordinary
+   *  `task:updated`; there is no "edit ended" event. @beta */
+  'cell:edit-requested': [payload: CellEditRequestedPayload];
+}
+
+/** Payload of `cell:edit-requested`.
+ *
+ * @beta
+ */
+export interface CellEditRequestedPayload {
+  readonly taskId: TaskId;
+  /** The grid column id (`name` included). */
+  readonly columnId: string;
+  readonly source: 'keyboard' | 'pointer';
+  /** The centre of the cell in viewport coordinates, finite. */
+  readonly clientX: number;
+  readonly clientY: number;
+  /** Call synchronously from the listener to replace the built-in editor with your own. Idempotent; ignored
+   *  once the event has returned. */
+  preventDefault(): void;
 }
 
 /** Payload of `column:resized`.

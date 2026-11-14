@@ -29,6 +29,8 @@ import type {
 } from './store/index.js';
 import type { CanvasRendererHandle } from './render/canvas-renderer.js';
 import type { PaintHook, SvgRendererHandle } from './render/svg-renderer.js';
+import type { GridView } from './grid/fit.js';
+import type { GridValues } from './grid/values.js';
 import type {
   Dependency,
   Density,
@@ -167,6 +169,11 @@ export interface GanttInternal {
    *  spanning `clientY` (the whole band, not just its text), when there is one. Read by `withEditHooks`
    *  (`part: 'cell'`; `name` gives `'label'`). Canvas pointers answer through `hitTestRow().columnId`. */
   colAt?: (target: Element, clientX?: number, clientY?: number) => readonly [string, Element | undefined] | undefined;
+
+  /** Set by `withGrid`: the live grid for `withGridEditing` (and nothing else). `view` is replaced, not mutated, by
+   *  every width, column or collapse change, so its identity says whether the geometry moved; `values` reads the
+   *  raw cell text the editors start from; `unit` is the `durationUnit`. */
+  gv?: () => { view: GridView; values: GridValues; unit: 'hours' | 'days' };
 
   // --- Mount slot (writer: render/mixin.ts) ---
   mountOf(): MountState | undefined;

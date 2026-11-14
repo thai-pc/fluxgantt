@@ -97,6 +97,7 @@ export function withGrid<T extends GanttInstance>(
   let loading: Promise<void> | undefined;
   let view = viewOf(all, all);
   const values = createGridValues(internal, () => unit);
+  internal.gv = () => ({ view, values, unit }); // for withGridEditing
   const resizable = options.resizable !== false;
   // Header focus bookkeeping shared with the resize code (`ResizeEnv.nav`).
   const nav: ResizeEnv['nav'] = { tab: 0, col: -1 };

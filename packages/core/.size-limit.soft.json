@@ -61,5 +61,12 @@
     "config": "size-limit/with-grid.esbuild-config.mjs",
     "limit": "20 KiB",
     "gzip": true
+  },
+  {
+    "name": "Base + withRender + withInteraction + withGrid + withGridEditing (editable grid, eager shell, gzip)",
+    "path": "size-limit/with-grid-editing.js",
+    "config": "size-limit/with-grid-editing.esbuild-config.mjs",
+    "limit": "28 KiB",
+    "gzip": true
   }
 ]
