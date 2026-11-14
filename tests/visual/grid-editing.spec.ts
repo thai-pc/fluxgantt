@@ -24,6 +24,7 @@ const frames = (page: Page) => page.evaluate(() => new Promise((r) => requestAni
 async function edit(page: Page, task: string, steps: number, rtl: boolean, text?: string): Promise<void> {
   await page.locator(`#gantt [role=row][data-task-id=${task}]`).focus();
   for (let i = 0; i < steps; i++) await page.keyboard.press(rtl ? 'ArrowLeft' : 'ArrowRight');
+  await expect(page.locator('#gantt [role=gridcell]:focus')).toHaveAttribute('aria-colindex', String(steps)); // the cell moves are lazy
   await page.keyboard.press('Enter');
   await expect(page.locator('#gantt .fg-grid__editor')).toBeFocused();
   if (text !== undefined) await page.locator('#gantt .fg-grid__editor').fill(text);
