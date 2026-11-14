@@ -38,7 +38,12 @@ interface Hit {
   readonly part: TaskHitPart;
   /** Canvas: the point is on the bar, where a drag (4 px) can start. */
   readonly onBar?: boolean;
+  /** `part: 'cell'` only: the grid column (never `name`, which stays `label` / `row`). */
+  readonly columnId?: string | undefined;
 }
+
+// Spread into a payload so the key is absent (not `undefined`) without a grid.
+const cellOf = (h: Hit): { columnId?: string } => (h.columnId ? { columnId: h.columnId } : {});
 
 /** Adds host edit hooks (double-click, context menu, keyboard) to a mounted chart. */
 export function withEditHooks<T extends GanttInstance>(
@@ -75,19 +80,23 @@ export function withEditHooks<T extends GanttInstance>(
       let id: string | null;
       let part: TaskHitPart = 'row';
       let onBar = false;
+      let col: string | undefined;
       if (handle.hitTestRow) {
         const hit = handle.hitTestRow(x, y);
         if (!hit || hit.hitToggle) return undefined;
         id = hit.taskId;
         onBar = hit.onBar === true;
         if (hit.onLabel) part = 'label';
+        col = hit.columnId;
       } else {
         if (!(target instanceof Element) || target.closest('.fg-timeline__row-toggle'))
           return undefined;
+        // With a grid: the column under the pointer (`name` too; the blank part of a pinned cell is not a row).
+        col = internal.colAt?.(target, x);
         // The painted grid sits outside the row groups: fall back to the row spanning y.
         const row =
           target.closest('[data-row-index]') ??
-          (target.closest('.fg-timeline__grid') &&
+          ((target.closest('.fg-timeline__grid') || col) &&
             Array.from(root.querySelectorAll('[data-row-index]')).find((r) => {
               const b = r.getBoundingClientRect();
               return y >= b.top && y < b.bottom;
@@ -95,11 +104,12 @@ export function withEditHooks<T extends GanttInstance>(
         if (!row) return undefined;
         id = row.getAttribute('data-task-id');
         if (target.closest('.fg-task')) part = 'bar';
-        else if (target.closest('.fg-timeline__row-label')) part = 'label';
+        else if (col || target.closest('.fg-timeline__row-label')) part = 'label';
       }
+      if (col && col !== 'name') part = 'cell'; // `name` keeps `label` / `row`
       // A forged or stale id never leaves the library.
       return id !== null && internal.tasks.has(toTaskId(id))
-        ? { id: toTaskId(id), part, onBar }
+        ? { id: toTaskId(id), part, onBar, columnId: part === 'cell' ? col : undefined }
         : undefined;
     };
 
@@ -115,6 +125,7 @@ export function withEditHooks<T extends GanttInstance>(
       internal.emit('task:context-requested', {
         taskId: hit.id,
         part: hit.part,
+        ...cellOf(hit),
         source,
         clientX: x,
         clientY: y,
@@ -190,6 +201,7 @@ export function withEditHooks<T extends GanttInstance>(
       internal.emit('task:activated', {
         taskId: hit.id,
         part: hit.part,
+        ...cellOf(hit),
         source: 'pointer',
         clientX: e.clientX,
         clientY: e.clientY,
@@ -248,11 +260,15 @@ export function withEditHooks<T extends GanttInstance>(
         x = (Number.isFinite(rect.left) ? rect.left : 0) + handle.getLabelColumnWidth();
         y = Number.isFinite(rect.top) ? rect.top : 0;
       }
+      // A focused grid cell (not `name`, which has no `data-column-id`) is reported as the cell.
+      const cellId = internal.colAt?.(target as Element);
+      const hit: Hit = cellId ? { id, part: 'cell', columnId: cellId } : { id, part: 'row' };
       if (activate) {
         e.preventDefault();
         internal.emit('task:activated', {
           taskId: id,
-          part: 'row',
+          part: hit.part,
+          ...cellOf(hit),
           source: 'keyboard',
           clientX: x,
           clientY: y,
@@ -260,7 +276,7 @@ export function withEditHooks<T extends GanttInstance>(
         return;
       }
       origin = 'keyboard';
-      originPrevented = emitContext({ id, part: 'row' }, 'keyboard', x, y);
+      originPrevented = emitContext(hit, 'keyboard', x, y);
       if (originPrevented) e.preventDefault();
     };
 

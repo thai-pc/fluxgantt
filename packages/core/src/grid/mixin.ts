@@ -64,6 +64,8 @@ const viewOf = (all: readonly Column[], cols: readonly Column[]): GridView => {
  *   It can therefore disagree with the bar when a host's `duration` disagrees with its dates.
  * - `collapseBelow` hides every column but `name` in a narrow container, for assistive technology too;
  *   a container that shrinks to fit its content may not re-expand.
+ * - With `withEditHooks` composed, `task:activated` / `task:context-requested` from a cell report `part: 'cell'` and its
+ *   `columnId` (every column but `name`, which keeps `'label'` for the pointer and `'row'` for the keyboard).
  * - Keyboard (after the APG treegrid pattern; the chart stays ONE Tab stop, the active row). In ROW mode, Right
  *   on a collapsed parent expands it, on an expanded parent or a leaf it enters the first cell; Left on an
  *   expanded parent collapses it, otherwise it moves to (and selects) the parent row; Ctrl/Cmd+Home/End go to the
@@ -125,6 +127,14 @@ export function withGrid<T extends GanttInstance>(
   let svgEnv: ResizeEnv | undefined;
 
   const paints = (internal.paints ??= []);
+  internal.colAt = (t, x = NaN) => {
+    const r = t.closest('.fg-timeline__sticky-column')?.getBoundingClientRect();
+    const d = r ? (internal.mountOf()?.handle.mirrorX ? r.right - x : x - r.left) : NaN;
+    return (
+      t.closest('[data-column-id]')?.getAttribute('data-column-id') ??
+      view.cols.find((c, i) => d >= view.offs[i]! && d < view.offs[i]! + c.width)?.id
+    );
+  };
   paints.push(createGridPaint(internal, () => view, values));
   paints.push((e) => {
     if (svgEnv) gridPaint(svgEnv, e);

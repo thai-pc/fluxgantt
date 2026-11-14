@@ -279,9 +279,10 @@ export interface ViewportChangedPayload {
 }
 
 /** What a pointer/keyboard gesture hit (`task:activated` / `task:context-requested`). Keyboard
- *  gestures always report `'row'`; the Canvas renderer never reports `'bar'` (its hit-test is
- *  row-wide). `'cell'` (a grid cell, with `columnId`) is reserved for the upcoming grid-columns
- *  mixin and is never reported yet. */
+ *  gestures report `'row'`, or `'cell'` from a focused grid cell; the Canvas renderer never reports
+ *  `'bar'` (its hit-test is row-wide). `'cell'` (with `columnId`) is reported only when `withGrid`
+ *  is composed, for every column but `name`: a pointer gesture on the `name` column keeps `'label'`
+ *  (and a keyboard gesture from the `name` cell keeps `'row'`). */
 export type TaskHitPart = 'bar' | 'label' | 'row' | 'cell';
 
 /** Payload of `task:activated` (opt-in `withEditHooks()`, `@fluxgantt/core/edit-hooks`). Fires in a
@@ -290,7 +291,7 @@ export interface TaskActivatedPayload {
   readonly taskId: TaskId;
   readonly part: TaskHitPart;
   readonly source: 'pointer' | 'keyboard';
-  /** Set with `part: 'cell'` only (reserved for the upcoming grid-columns mixin; never set yet).
+  /** Set with `part: 'cell'` only: the id of the grid column (`withGrid`), never `name`.
    *  @beta */
   readonly columnId?: string;
   /** Viewport coordinates, finite. Keyboard: centre of the focused row (Canvas: the painted row's label column). */
@@ -303,7 +304,7 @@ export interface TaskContextRequestedPayload {
   readonly taskId: TaskId;
   readonly part: TaskHitPart;
   readonly source: 'pointer' | 'keyboard' | 'long-press';
-  /** Set with `part: 'cell'` only (reserved for the upcoming grid-columns mixin; never set yet).
+  /** Set with `part: 'cell'` only: the id of the grid column (`withGrid`), never `name`.
    *  @beta */
   readonly columnId?: string;
   readonly clientX: number;

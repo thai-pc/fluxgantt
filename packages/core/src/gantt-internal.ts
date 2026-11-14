@@ -159,6 +159,12 @@ export interface GanttInternal {
    *  kept last. Passed to the SVG renderer by `render/mixin.ts`; Canvas ignores it. */
   paints?: PaintHook[];
 
+  /** Set by `withGrid` (SVG): the grid column a pointer or keyboard target belongs to. A target inside a
+   *  `[data-column-id]` element reports that id; a target inside the pinned column's own box (the blank part
+   *  of a cell) is resolved by `clientX` against the column offsets, `name` included. Anything else is
+   *  `undefined`. Read by `withEditHooks` (`part: 'cell'`). Canvas answers through `hitTestRow().columnId`. */
+  colAt?: (target: Element, clientX?: number) => string | undefined;
+
   // --- Mount slot (writer: render/mixin.ts) ---
   mountOf(): MountState | undefined;
   setMount(state: MountState | undefined): void;
