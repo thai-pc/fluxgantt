@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <!-- `user-scalable=no` deliberately: this fixture is driven by the `mobile` Playwright
+         project, whose specs dispatch synthetic touch gestures at exact CSS pixel coordinates.
+         Leaving the visual viewport pinch-zoomable would let a stray multi-touch scale the page
+         and desynchronise every `boundingBox()` assertion from the coordinates the spec sends.
+         Real host apps should NOT copy this — `withResponsive()` already suppresses pinch while
+         the finger is on the chart, and blocking it page-wide is a WCAG 1.4.4 problem. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+    <title>FluxGantt · responsive/touch demo</title>
+    <link rel="stylesheet" href="/src/style.css" />
+    <link rel="stylesheet" href="/src/responsive.css" />
+  </head>
+  <body>
+    <main>
+      <h1>FluxGantt — responsive/touch fixture</h1>
+      <p>
+        A chart composing <code>withResponsive()</code>: under a coarse pointer it switches to
+        <code>'touch'</code> density, narrows the label column to fit the viewport, and takes over
+        panning so a finger on a bar drags it instead of scrolling the page. Drives
+        <code>tests/mobile/*.spec.ts</code>.
+      </p>
+      <div id="gantt"></div>
+    </main>
+    <script type="module" src="/src/responsive.ts"></script>
+  </body>
+</html>
