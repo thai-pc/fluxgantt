@@ -39,6 +39,26 @@
         "types": "./dist/index.d.cts",
         "default": "./dist/index.cjs"
       }
+    },
+    "./grid": {
+      "import": {
+        "types": "./dist/grid.d.ts",
+        "default": "./dist/grid.js"
+      },
+      "require": {
+        "types": "./dist/grid.d.cts",
+        "default": "./dist/grid.cjs"
+      }
+    },
+    "./grid-editing": {
+      "import": {
+        "types": "./dist/grid-editing.d.ts",
+        "default": "./dist/grid-editing.js"
+      },
+      "require": {
+        "types": "./dist/grid-editing.d.cts",
+        "default": "./dist/grid-editing.cjs"
+      }
     }
   },
   "files": [

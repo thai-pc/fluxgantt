@@ -26,7 +26,7 @@
 // SEPARATE `onMounted`/`onBeforeUnmount` pair for the 8 event→emit bridges, because `emit` only
 // exists inside a component's `setup()` context — a freestanding composable has no `emit` to
 // call. See `FluxGantt.ts` and §6 for how the two hook pairs interleave safely.
-import { onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { onBeforeUnmount, onMounted, ref, watch, type Ref } from 'vue';
 import { createGantt } from '@fluxgantt/core';
 import { withRender, type RenderCapability } from '@fluxgantt/core/render';
 import { withInteraction } from '@fluxgantt/core/interaction';
@@ -43,11 +43,31 @@ import type { UseFluxGanttConfig, UseFluxGanttResult } from './types.js';
 // packages/react for the identical pattern/rationale.
 declare const process: { readonly env?: { readonly NODE_ENV?: string } } | undefined;
 
+/** The instance every wrapper composes (see `useGantt`). */
+export type BaseInstance = GanttInstance & RenderCapability & ViewportCapability & ThemeCapability;
+
+/**
+ * Internal seam for the opt-in grid entries (`@fluxgantt/vue/grid`, `/grid-editing`); NOT exported from
+ * any package entry. `compose` adds mixins to the instance before `withRtl` is applied on top (so `withRtl`
+ * stays last). The default `useFluxGantt` passes none, so a non-grid consumer never imports grid code.
+ */
+export interface GanttPlugin<C extends UseFluxGanttConfig, I extends BaseInstance> {
+  readonly compose: (instance: BaseInstance, config: C) => I;
+}
+
 /** Creates and owns a Gantt instance for the lifetime of the component. */
 export function useFluxGantt(config: UseFluxGanttConfig): UseFluxGanttResult {
+  return useGantt(config);
+}
+
+/** Shared body of `useFluxGantt` and the grid composables (see `GanttPlugin`). */
+export function useGantt<C extends UseFluxGanttConfig, I extends BaseInstance = BaseInstance>(
+  config: C,
+  plugin?: GanttPlugin<C, I>,
+): { readonly containerRef: Ref<HTMLDivElement | null>; readonly instance: I } {
   const containerRef = ref<HTMLDivElement | null>(null);
 
-  let instance: GanttInstance & RenderCapability & ViewportCapability & ThemeCapability;
+  let instance: I;
   try {
     // `pickConstructionConfig` copies only fields that are actually set (`exactOptionalPropertyTypes`,
     // and so core defaults apply to the rest) — see `gantt-config.ts`.
@@ -58,27 +78,28 @@ export function useFluxGantt(config: UseFluxGanttConfig): UseFluxGanttResult {
     // IO (`/io`) is deliberately NOT composed: the wrapper exposes no import/export surface, so
     // a consumer who never calls it never downloads it.
     // `/rtl` (the `rtl` prop) is composed unconditionally: `withRtl` returns at once unless `rtl === true`.
-    instance = withRtl(
-      withTheme(
-        withViewport(
-          withEditHooks(
-            withInteraction(
-              withRender(
-                createGantt({
-                  ...pickConstructionConfig(config),
-                  // Always constructed light so no OS `matchMedia` listener is armed before
-                  // mount; the real theme is applied in `onMounted` and disarmed in
-                  // `onBeforeUnmount`. Unset means 'light' here, not core's 'auto', because
-                  // wrapper charts have always been light; hosts opt in with `theme="auto"`.
-                  theme: 'light',
-                  onTaskChange: (task, prev) => config.onTaskChange?.(task, prev),
-                }),
-              ),
+    const composed = withTheme(
+      withViewport(
+        withEditHooks(
+          withInteraction(
+            withRender(
+              createGantt({
+                ...pickConstructionConfig(config),
+                // Always constructed light so no OS `matchMedia` listener is armed before
+                // mount; the real theme is applied in `onMounted` and disarmed in
+                // `onBeforeUnmount`. Unset means 'light' here, not core's 'auto', because
+                // wrapper charts have always been light; hosts opt in with `theme="auto"`.
+                theme: 'light',
+                onTaskChange: (task, prev) => config.onTaskChange?.(task, prev),
+              }),
             ),
           ),
         ),
       ),
     );
+    // `I` is `BaseInstance` exactly when there is no plugin (the default parameter), so the cast only
+    // restates that. `withRtl` goes on last, over whatever the plugin composed.
+    instance = withRtl(plugin?.compose(composed, config) ?? (composed as I));
   } catch (err) {
     // Same re-throw-with-context contract as react (invalid INITIAL tasks/dependencies —
     // duplicate id, self/duplicate/cyclic link — throws synchronously from `createGantt`).
