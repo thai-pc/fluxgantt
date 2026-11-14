@@ -1,5 +1,5 @@
 ---
-'@fluxgantt/core': patch
+'@fluxgantt/core': minor
 ---
 
 `withEditHooks` reports grid cells when `withGrid` is composed. Without the grid nothing changes: the payloads, the part names and the bundle of every non-grid composition are as before.
