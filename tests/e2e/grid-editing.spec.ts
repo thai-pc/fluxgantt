@@ -119,6 +119,19 @@ for (const canvas of [false, true]) {
         expect(Math.abs(b.x - left)).toBeLessThanOrEqual(1);
       });
 
+      test('cell:edit-requested is anchored on the cell, not the row', async ({ page }) => {
+        await open(page, q, canvas, 772);
+        await focusCell(page, 'design', 'duration', rtl);
+        await page.keyboard.press('Enter');
+        const b = (await editor(page).boundingBox())!;
+        const p = await page.evaluate(
+          () => (window as unknown as { __events: { name: string; payload: { clientX: number; clientY: number; columnId: string; source: string } }[] }).__events.filter((e) => e.name === 'cell:edit-requested').at(-1)!.payload,
+        );
+        expect(p).toMatchObject({ columnId: 'duration', source: 'keyboard' });
+        expect(Math.abs(p.clientX - (b.x + b.width / 2))).toBeLessThanOrEqual(2);
+        expect(Math.abs(p.clientY - (b.y + b.height / 2))).toBeLessThanOrEqual(2);
+      });
+
       test('start: the bar moves, keeps its working duration, one Ctrl+Z restores, task:updated fires once', async ({ page }) => {
         await open(page, q, canvas, 772);
         const before = await task(page, 'design');

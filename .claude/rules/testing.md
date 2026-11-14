@@ -28,7 +28,7 @@
 ## Conventions
 - Tests must run **headless** (core needs no DOM). No dependency on real network/clock — fake timers, inject the calendar.
 - Dates: test multiple timezones (e.g. `America/New_York`, `Asia/Ho_Chi_Minh`, `UTC`) and across DST boundaries.
-- Performance budget is tested: bundle size (thirteen gzip fixtures in `packages/core/size-limit/`: four HARD gates that fail CI — hello world, `+ withRender + withInteraction`, kitchen sink, everything composed — and nine report-only soft fixtures that warn; sizes exclude the Temporal polyfill; see CLAUDE.md golden rule 5 for the policy and table), rendering 1000+ tasks, Canvas switch ≥2000.
+- Performance budget is tested: bundle size (fourteen gzip fixtures in `packages/core/size-limit/`: four HARD gates that fail CI — hello world, `+ withRender + withInteraction`, kitchen sink, everything composed — and ten report-only soft fixtures that warn; sizes exclude the Temporal polyfill; see CLAUDE.md golden rule 5 for the policy and table), rendering 1000+ tasks, Canvas switch ≥2000.
 - A11y: WCAG 2.1 AA — keyboard reachable, ARIA labels, focus indicator, `prefers-reduced-motion`, critical path distinguishable without color.
 - CI must be green before merge: `lint` + `typecheck` + `test` + `test:e2e` + size-limit.
 

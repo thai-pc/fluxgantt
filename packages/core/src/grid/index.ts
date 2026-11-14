@@ -5,6 +5,7 @@ export { toColumnId, DEFAULT_GRID_COLUMNS, MAX_COLUMN_COUNT } from './columns.js
 export type {
   BuiltInColumn,
   BuiltInColumnId,
+  CellEditor,
   ColumnAlign,
   ColumnId,
   CustomColumn,

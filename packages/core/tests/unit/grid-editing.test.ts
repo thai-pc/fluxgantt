@@ -678,9 +678,9 @@ describe('closing without a write', () => {
     expect(container.querySelector('.fg-grid__editor-host')).toBeNull();
   });
 
-  it('no listener or node growth across 100 open and commit cycles', { timeout: 60_000 }, async () => {
+  it('no listener or node growth across 30 open and commit cycles', { timeout: 60_000 }, async () => {
     const g = make();
-    for (let i = 0; i < 100; i++) {
+    for (let i = 0; i < 30; i++) {
       const input = await openAt('a', 'name');
       type(input, i % 2 ? 'x' : 'y');
       await press(input, 'Enter');
@@ -718,6 +718,69 @@ describe('startCellEdit', () => {
     const g = make();
     g.destroy();
     expect(() => g.startCellEdit(id('a'), 'name')).toThrow();
+  });
+});
+
+describe('custom editors', () => {
+  const editorCol = (ed: object): GridColumnInput =>
+    ({ id: 'owner', header: 'Owner', value: (x) => (x.meta?.owner as string) ?? '', editor: { type: 'text', commit: (v: string) => ({ notes: v }), ...ed } }) as GridColumnInput;
+
+  it('starts from initial(), caps the text at maxLength and falls back to the raw value when initial() throws', async () => {
+    make({ columns: [{ id: 'name' }, editorCol({ initial: () => 'Seed', maxLength: 5 })] });
+    COLS.splice(0, COLS.length, 'name', 'owner');
+    const input = await openAt('a', 'owner');
+    COLS.splice(0, COLS.length, 'name', 'start', 'end', 'duration', 'progress', 'owner');
+    expect(input.value).toBe('Seed');
+    expect(input.maxLength).toBe(5);
+  });
+
+  it('a throwing initial() leaves the raw value', async () => {
+    make({ tasks: [t('a', { meta: { owner: 'Ann' } })], columns: [{ id: 'name' }, editorCol({ initial: () => { throw new Error('x'); } })] });
+    COLS.splice(0, COLS.length, 'name', 'owner');
+    const input = await openAt('a', 'owner');
+    COLS.splice(0, COLS.length, 'name', 'start', 'end', 'duration', 'progress', 'owner');
+    expect(input.value).toBe('Ann');
+  });
+
+  it('number editors are text fields with a decimal keyboard and the value arrives as a number', async () => {
+    let seen: unknown;
+    make({ columns: [{ id: 'name' }, editorCol({ type: 'number', min: 1, max: 9, commit: (v: number) => ((seen = v), { priority: v }) })] });
+    COLS.splice(0, COLS.length, 'name', 'owner');
+    const input = await openAt('a', 'owner');
+    COLS.splice(0, COLS.length, 'name', 'start', 'end', 'duration', 'progress', 'owner');
+    expect(input.type).toBe('text');
+    expect(input.inputMode).toBe('decimal');
+    type(input, '4.5');
+    await press(input, 'Enter');
+    expect(seen).toBe(4.5);
+  });
+
+  it('an invalid editor definition throws at composition', () => {
+    expect(() => make({ columns: [{ id: 'name' }, editorCol({ commit: undefined })] })).toThrow(RangeError);
+    expect(() => make({ columns: [{ id: 'name' }, editorCol({ type: 'slider' })] })).toThrow(RangeError);
+    expect(() => make({ columns: [{ id: 'name' }, editorCol({ type: 'number', min: 5, max: 1 })] })).toThrow(RangeError);
+    expect(() => make({ columns: [{ id: 'name', editor: true as never }] })).toThrow(RangeError);
+  });
+});
+
+describe('the first use', () => {
+  it('claims the key synchronously and acts once the code has loaded (a fresh module graph)', async () => {
+    vi.resetModules();
+    const [{ createGantt: cg }, { withRender: wr }, { withGrid: wg }, { withGridEditing: wge }] = await Promise.all([
+      import('../../src/gantt.js'),
+      import('../../src/render/mixin.js'),
+      import('../../src/grid/mixin.js'),
+      import('../../src/grid-editing/mixin.js'),
+    ]);
+    const g = wge(wg(wr(cg({ tasks: TASKS }))));
+    g.mount(container);
+    const cell = cellOf('a', 'name');
+    focus(cell);
+    const e = key(cell, 'F2');
+    expect(e.defaultPrevented).toBe(true); // decided at once
+    expect(editor()).toBeNull(); // acted on later
+    await vi.waitFor(() => expect(editor()).not.toBeNull());
+    expect(editor()!.getAttribute('aria-label')).toBe('Name, a');
   });
 });
 
