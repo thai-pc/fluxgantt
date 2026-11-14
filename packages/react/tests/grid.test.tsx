@@ -325,3 +325,109 @@ describe('diffColumns', () => {
     expect(diffColumns([c({ editor: false })], [c({ editor: false })])).toBe('same');
   });
 });
+
+describe('re-applying gridColumns never loses user state (M1)', () => {
+  const cols = (): GridColumnInput[] => [
+    { id: 'name' },
+    { id: 'start' },
+    { id: 'owner', header: 'Owner', value: (t) => owner(t as never) },
+  ];
+  const widthOf = (ref: { current: FluxGanttGridRef | null }, id: string): number =>
+    ref.current!.getGridColumns().find((c) => c.id === id)!.width;
+
+  it('resize, then an unrelated re-render with a new inline value identity: the width is kept', () => {
+    const ref = createRef<FluxGanttGridRef>();
+    const { rerender } = render(<FluxGanttGrid ref={ref} tasks={TASKS} gridColumns={cols()} />);
+    act(() => {
+      ref.current!.resizeGridColumn('start', 180);
+    });
+    const set = vi.spyOn(ref.current!, 'setGridColumns');
+    rerender(<FluxGanttGrid ref={ref} tasks={TASKS} gridColumns={cols()} />);
+    expect(set).toHaveBeenCalledTimes(1);
+    expect(widthOf(ref, 'start')).toBe(180);
+  });
+
+  it('resize, then a header change: the resized width is kept, a changed prop width wins', () => {
+    const ref = createRef<FluxGanttGridRef>();
+    const base = (header: string, w?: number): GridColumnInput[] => [
+      { id: 'name' },
+      { id: 'start', header },
+      { id: 'end', ...(w ? { width: w } : {}) },
+    ];
+    const { container, rerender } = render(
+      <FluxGanttGrid ref={ref} tasks={TASKS} gridColumns={base('Begin')} />,
+    );
+    act(() => {
+      ref.current!.resizeGridColumn('start', 170);
+      ref.current!.resizeGridColumn('end', 150);
+    });
+    rerender(<FluxGanttGrid ref={ref} tasks={TASKS} gridColumns={base('From')} />);
+    expect(headers(container)).toContain('From');
+    expect(widthOf(ref, 'start')).toBe(170);
+    expect(widthOf(ref, 'end')).toBe(150);
+    // the host now declares a width for `end`: that column takes it, `start` keeps the live width
+    rerender(<FluxGanttGrid ref={ref} tasks={TASKS} gridColumns={base('From', 99)} />);
+    expect(widthOf(ref, 'end')).toBe(99);
+    expect(widthOf(ref, 'start')).toBe(170);
+  });
+
+  it('re-passing the original columns does not reset a user resize (documented)', () => {
+    const ref = createRef<FluxGanttGridRef>();
+    const make = (): GridColumnInput[] => [{ id: 'name' }, { id: 'start', width: 100 }];
+    const { rerender } = render(<FluxGanttGrid ref={ref} tasks={TASKS} gridColumns={make()} />);
+    act(() => {
+      ref.current!.resizeGridColumn('start', 180);
+    });
+    rerender(<FluxGanttGrid ref={ref} tasks={TASKS} gridColumns={make()} />);
+    expect(widthOf(ref, 'start')).toBe(180);
+    // the way to reset: the ref, or a different declared width
+    act(() => ref.current!.setGridColumns(make()));
+    expect(widthOf(ref, 'start')).toBe(100);
+  });
+
+  it('the dev warning states the consequence', () => {
+    const ref = createRef<FluxGanttGridRef>();
+    const { rerender } = render(<FluxGanttGrid ref={ref} tasks={TASKS} gridColumns={cols()} />);
+    rerender(<FluxGanttGrid ref={ref} tasks={TASKS} gridColumns={cols()} />);
+    const msg = String(warn.mock.calls.find((c) => String(c[0]).includes('changed identity'))?.[0]);
+    expect(msg).toContain('repaints the grid each time');
+    expect(msg).toContain('editor is held back');
+  });
+
+  it('rethrows an error that is not a destroyed instance (a throwing value() is not swallowed)', () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const ref = createRef<FluxGanttGridRef>();
+    const { rerender } = render(<FluxGanttGrid ref={ref} tasks={TASKS} gridColumns={cols()} />);
+    const instance = ref.current!;
+    vi.spyOn(instance, 'setGridColumns').mockImplementation(() => {
+      throw new TypeError('boom');
+    });
+    expect(() => rerender(<FluxGanttGrid ref={ref} tasks={TASKS} gridColumns={cols()} />)).toThrow(
+      'boom',
+    );
+  });
+
+  it('names the right component in the invalid-initial-config error', () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    expect(() =>
+      render(
+        <FluxGanttGrid
+          tasks={TASKS}
+          gridColumns={[{ id: 'bad id!', header: 'x', value: () => 1 }]}
+        />,
+      ),
+    ).toThrow(/useFluxGanttGrid\/<FluxGanttGrid>/);
+  });
+});
+
+describe('RTL', () => {
+  it('mirrors the grid (composition order: the grid is composed inside withRtl)', () => {
+    const { container } = render(<FluxGanttGrid tasks={TASKS} rtl />);
+    expect(container.querySelector('.fg-rtl')).not.toBeNull();
+    const texts = Array.from(container.querySelectorAll('.fg-grid__cells text'));
+    expect(texts.length).toBeGreaterThan(0);
+    for (const t of texts) expect(t.getAttribute('transform') ?? '').toMatch(/^matrix\(-1 0 0 1 /);
+    const { container: ltr } = render(<FluxGanttGrid tasks={TASKS} />);
+    expect(ltr.querySelector('.fg-rtl')).toBeNull();
+  });
+});

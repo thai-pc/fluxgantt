@@ -2,10 +2,12 @@
 // bridge with veto, the editing ref methods, `gridEditing` option forwarding, cleanup.
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
 import { StrictMode, createRef } from 'react';
+import { useState } from 'react';
 import { render, act, waitFor } from '@testing-library/react';
 import { toTaskId } from '@fluxgantt/core';
 import type { TaskInput } from '@fluxgantt/core';
 import { FluxGanttGridEditing, useFluxGanttGridEditing } from '../src/grid-editing.js';
+import type { GridColumnInput } from '../src/grid-editing.js';
 import type { FluxGanttGridEditingRef, CellEditRequestedPayload } from '../src/grid-editing.js';
 
 const a = toTaskId('a');
@@ -199,5 +201,104 @@ describe('<FluxGanttGridEditing>', () => {
 
   it('exports the hook', () => {
     expect(typeof useFluxGanttGridEditing).toBe('function');
+  });
+});
+
+describe('an open editor survives re-applies of gridColumns (M1)', () => {
+  const inline = (): GridColumnInput[] => [
+    { id: 'name' },
+    { id: 'owner', header: 'Owner', value: () => 'x' },
+  ];
+
+  it('holds a parent re-render back while typing, then applies once when the edit ends', async () => {
+    const ref = createRef<FluxGanttGridEditingRef>();
+    const { container, rerender } = render(
+      <FluxGanttGridEditing ref={ref} tasks={TASKS} gridColumns={inline()} />,
+    );
+    const set = vi.spyOn(ref.current!, 'setGridColumns');
+    ref.current!.startCellEdit(a, 'name');
+    await waitFor(() => expect(ref.current!.isEditingCell()).toBe(true));
+    const input = container.querySelector('input')!;
+    act(() => {
+      input.value = 'half typed';
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    rerender(<FluxGanttGridEditing ref={ref} tasks={TASKS} gridColumns={inline()} />);
+    rerender(<FluxGanttGridEditing ref={ref} tasks={TASKS} gridColumns={inline()} />);
+    expect(ref.current!.isEditingCell()).toBe(true);
+    expect(container.querySelector('input')).toBe(input);
+    expect(input.value).toBe('half typed');
+    expect(set).not.toHaveBeenCalled();
+    act(() => ref.current!.cancelCellEdit());
+    await waitFor(() => expect(set).toHaveBeenCalledTimes(1));
+    await new Promise((r) => setTimeout(r, 120));
+    expect(set).toHaveBeenCalledTimes(1);
+  });
+
+  it('a setState in onCellEditRequested (no preventDefault) does not close the editor it just opened', async () => {
+    const ref = createRef<FluxGanttGridEditingRef>();
+    function Host() {
+      const [n, setN] = useState(0);
+      return (
+        <FluxGanttGridEditing
+          ref={ref}
+          tasks={TASKS}
+          gridColumns={inline()}
+          onCellEditRequested={() => setN(n + 1)}
+        />
+      );
+    }
+    const { container } = render(<Host />);
+    await act(async () => {
+      ref.current!.startCellEdit(a, 'name');
+      await new Promise((r) => setTimeout(r, 60));
+    });
+    expect(ref.current!.isEditingCell()).toBe(true);
+    expect(editorOpen(container)).toBe(true);
+  });
+
+  it('warns once when activate or commitOnBlur change after mount, or a callback is added late', () => {
+    const ref = createRef<FluxGanttGridEditingRef>();
+    const { rerender } = render(
+      <FluxGanttGridEditing ref={ref} tasks={TASKS} gridEditing={{ activate: ['enter'] }} />,
+    );
+    rerender(
+      <FluxGanttGridEditing ref={ref} tasks={TASKS} gridEditing={{ activate: ['enter'] }} />,
+    );
+    expect(console.warn).not.toHaveBeenCalled();
+    rerender(<FluxGanttGridEditing ref={ref} tasks={TASKS} gridEditing={{ activate: ['f2'] }} />);
+    rerender(
+      <FluxGanttGridEditing ref={ref} tasks={TASKS} gridEditing={{ commitOnBlur: false }} />,
+    );
+    const calls = vi
+      .mocked(console.warn)
+      .mock.calls.filter((c) => String(c[0]).includes('gridEditing'));
+    expect(calls).toHaveLength(1);
+
+    const late = createRef<FluxGanttGridEditingRef>();
+    vi.mocked(console.warn).mockClear();
+    const r2 = render(<FluxGanttGridEditing ref={late} tasks={TASKS} />);
+    r2.rerender(
+      <FluxGanttGridEditing
+        ref={late}
+        tasks={TASKS}
+        gridEditing={{ beforeCommit: () => undefined }}
+      />,
+    );
+    expect(
+      vi.mocked(console.warn).mock.calls.filter((c) => String(c[0]).includes('gridEditing')),
+    ).toHaveLength(1);
+  });
+
+  it('names the editing component in the invalid-initial-config error', () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    expect(() =>
+      render(
+        <FluxGanttGridEditing
+          tasks={TASKS}
+          gridColumns={[{ id: 'bad id!', header: 'x', value: () => 1 }]}
+        />,
+      ),
+    ).toThrow(/useFluxGanttGridEditing\/<FluxGanttGridEditing>/);
   });
 });

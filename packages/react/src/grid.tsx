@@ -34,6 +34,7 @@ export interface UseFluxGanttGridResult {
 const plugin: GanttPlugin<UseFluxGanttGridConfig, BaseInstance & GridCapability> = {
   compose: composeGrid,
   bridge: bridgeGrid,
+  label: 'useFluxGanttGrid/<FluxGanttGrid>',
 };
 
 /** `useFluxGantt` with the grid composed. @beta */

@@ -1,11 +1,17 @@
 // `@fluxgantt/vue/grid-editing` — `<FluxGanttGridEditing>` (PR G7): composition order, the `cell-edit-requested`
 // emit with veto, the exposed editing methods, `gridEditing` option forwarding, cleanup.
-import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
+import { describe, it, expect, expectTypeOf, vi, afterEach, beforeEach } from 'vitest';
+import { defineComponent, h, nextTick, ref } from 'vue';
 import { mount } from '@vue/test-utils';
 import { toTaskId } from '@fluxgantt/core';
 import type { TaskInput } from '@fluxgantt/core';
 import { FluxGanttGridEditing } from '../src/grid-editing.js';
-import type { FluxGanttGridEditingRef, CellEditRequestedPayload } from '../src/grid-editing.js';
+import type {
+  FluxGanttGridEditingRef,
+  FluxGanttGridEditingEmits,
+  CellEditRequestedPayload,
+} from '../src/grid-editing.js';
+import type { FluxGanttGridEmits, GridColumnInput } from '../src/grid.js';
 import { FluxGanttGrid } from '../src/grid.js';
 
 const a = toTaskId('a');
@@ -178,5 +184,88 @@ describe('<FluxGanttGridEditing>', () => {
     instance.startCellEdit(a, 'name');
     await new Promise((r) => setTimeout(r, 20));
     expect(handler).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('an open editor survives re-applies of gridColumns (M1)', () => {
+  const inline = (): GridColumnInput[] => [
+    { id: 'name' },
+    { id: 'owner', header: 'Owner', value: () => 'x' },
+  ];
+
+  it('holds a parent update back while typing, then applies once when the edit ends', async () => {
+    const w = mountEditing({ gridColumns: inline() });
+    vm(w).startCellEdit(a, 'name');
+    await until(() => vm(w).isEditingCell());
+    const input = w.element.querySelector('input')!;
+    input.value = 'half typed';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    await w.setProps({ gridColumns: inline() });
+    await w.setProps({ gridColumns: inline() });
+    expect(vm(w).isEditingCell()).toBe(true);
+    expect(w.element.querySelector('input')).toBe(input);
+    expect(input.value).toBe('half typed');
+    vm(w).cancelCellEdit();
+    await until(() => !!w.element.querySelector('[role="columnheader"]'));
+    w.unmount();
+  });
+
+  it('a state change in @cell-edit-requested (no preventDefault) does not close the editor it just opened', async () => {
+    const n = ref(0);
+    const exposed = ref<FluxGanttGridEditingRef | null>(null);
+    const Host = defineComponent({
+      setup: () => () =>
+        h(FluxGanttGridEditing, {
+          ref: (r: unknown) => (exposed.value = r as FluxGanttGridEditingRef),
+          tasks: TASKS,
+          gridColumns: inline(),
+          'onCell-edit-requested': () => {
+            n.value++;
+          },
+        }),
+    });
+    const w = mount(Host, { attachTo: document.body });
+    exposed.value!.startCellEdit(a, 'name');
+    await until(() => n.value === 1);
+    await nextTick();
+    await new Promise((r) => setTimeout(r, 80));
+    expect(exposed.value!.isEditingCell()).toBe(true);
+    expect(editorOpen(w.element)).toBe(true);
+    w.unmount();
+  });
+
+  it('warns once when activate or commitOnBlur change after mount, or a callback is added late', async () => {
+    const warn = vi.mocked(console.warn);
+    const w = mountEditing({ gridEditing: { activate: ['enter'] } });
+    await w.setProps({ gridEditing: { activate: ['enter'] } });
+    expect(warn).not.toHaveBeenCalled();
+    await w.setProps({ gridEditing: { activate: ['f2'] } });
+    await w.setProps({ gridEditing: { commitOnBlur: false } });
+    expect(warn.mock.calls.filter((c) => String(c[0]).includes('gridEditing'))).toHaveLength(1);
+    w.unmount();
+
+    warn.mockClear();
+    const late = mountEditing();
+    await late.setProps({ gridEditing: { beforeCommit: () => undefined } });
+    expect(warn.mock.calls.filter((c) => String(c[0]).includes('gridEditing'))).toHaveLength(1);
+    late.unmount();
+  });
+
+  it('names the editing component in the invalid-initial-config error', () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    expect(() =>
+      mountEditing({ gridColumns: [{ id: 'bad id!', header: 'x', value: () => 1 }] }),
+    ).toThrow(/useFluxGanttGridEditing\/<FluxGanttGridEditing>/);
+  });
+});
+
+describe('emits types (type-level)', () => {
+  it('FluxGanttGridEditingEmits extends FluxGanttGridEmits and matches the component', () => {
+    const emit = (() => {}) as unknown as InstanceType<typeof FluxGanttGridEditing>['$emit'];
+    const typed: FluxGanttGridEditingEmits = emit;
+    expectTypeOf<FluxGanttGridEditingEmits>().toExtend<FluxGanttGridEmits>();
+    // @ts-expect-error a wrong payload for cell-edit-requested is a compile error
+    const bad = () => typed('cell-edit-requested', 'nope');
+    expect(bad).toBeTypeOf('function');
   });
 });

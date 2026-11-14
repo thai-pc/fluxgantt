@@ -1,14 +1,15 @@
 // `@fluxgantt/vue/grid` — `<FluxGanttGrid>` (spec-grid-columns.md section 15, PR G7): prop binding, structural
 // column diffing (`setGridColumns`, never a remount), the dev warnings, the `column-resized` emit, the exposed
 // methods and the lifecycle.
-import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
+import { describe, it, expect, expectTypeOf, vi, afterEach, beforeEach } from 'vitest';
 import { nextTick, reactive, ref, h, defineComponent } from 'vue';
 import { mount } from '@vue/test-utils';
 import { toTaskId } from '@fluxgantt/core';
 import type { TaskInput } from '@fluxgantt/core';
 import type * as GridModule from '@fluxgantt/core/grid';
 import { FluxGanttGrid } from '../src/grid.js';
-import type { FluxGanttGridRef, GridColumnInput } from '../src/grid.js';
+import type { FluxGanttGridRef, FluxGanttGridEmits, GridColumnInput } from '../src/grid.js';
+import type { FluxGanttEmits } from '../src/types.js';
 import { diffColumns } from '../src/grid-shared.js';
 import { FluxGantt } from '../src/FluxGantt.js';
 
@@ -352,5 +353,112 @@ describe('diffColumns', () => {
     expect(diffColumns([e()], [e({ commit: () => ({ name: 'y' }) })])).toBe('functions');
     expect(diffColumns([c()], [e()])).toBe('changed');
     expect(diffColumns([c({ editor: false })], [c({ editor: false })])).toBe('same');
+  });
+});
+
+describe('re-applying gridColumns never loses user state (M1)', () => {
+  const cols = (): GridColumnInput[] => [
+    { id: 'name' },
+    { id: 'start' },
+    { id: 'owner', header: 'Owner', value: (t) => ownerOf(t as never) },
+  ];
+  const widthOf = (w: { vm: unknown }, id: string): number =>
+    vm(w)
+      .getGridColumns()
+      .find((c) => c.id === id)!.width;
+
+  it('resize, then an unrelated update with a new inline value identity: the width is kept', async () => {
+    const w = mountGrid({ gridColumns: cols() });
+    vm(w).resizeGridColumn('start', 180);
+    const set = vi.spyOn(composed.last!, 'setGridColumns');
+    await w.setProps({ gridColumns: cols() });
+    expect(set).toHaveBeenCalledTimes(1);
+    expect(widthOf(w, 'start')).toBe(180);
+    w.unmount();
+  });
+
+  it('resize, then a header change: the resized width is kept, a changed prop width wins', async () => {
+    const base = (header: string, width?: number): GridColumnInput[] => [
+      { id: 'name' },
+      { id: 'start', header },
+      { id: 'end', ...(width ? { width } : {}) },
+    ];
+    const w = mountGrid({ gridColumns: base('Begin') });
+    vm(w).resizeGridColumn('start', 170);
+    vm(w).resizeGridColumn('end', 150);
+    await w.setProps({ gridColumns: base('From') });
+    expect(headers(w.element)).toContain('From');
+    expect(widthOf(w, 'start')).toBe(170);
+    expect(widthOf(w, 'end')).toBe(150);
+    await w.setProps({ gridColumns: base('From', 99) });
+    expect(widthOf(w, 'end')).toBe(99);
+    expect(widthOf(w, 'start')).toBe(170);
+    w.unmount();
+  });
+
+  it('re-passing the original columns does not reset a user resize (documented); setGridColumns does', async () => {
+    const make = (): GridColumnInput[] => [{ id: 'name' }, { id: 'start', width: 100 }];
+    const w = mountGrid({ gridColumns: make() });
+    vm(w).resizeGridColumn('start', 180);
+    await w.setProps({ gridColumns: make() });
+    expect(widthOf(w, 'start')).toBe(180);
+    vm(w).setGridColumns(make());
+    expect(widthOf(w, 'start')).toBe(100);
+    w.unmount();
+  });
+
+  it('the dev warning states the consequence', async () => {
+    const w = mountGrid({ gridColumns: cols() });
+    await w.setProps({ gridColumns: cols() });
+    const msg = String(warn.mock.calls.find((c) => String(c[0]).includes('changed identity'))?.[0]);
+    expect(msg).toContain('repaints the grid each time');
+    expect(msg).toContain('editor is held back');
+    w.unmount();
+  });
+
+  it('rethrows an error that is not a destroyed instance', async () => {
+    const w = mountGrid({ gridColumns: cols() });
+    vi.spyOn(composed.last!, 'setGridColumns').mockImplementation(() => {
+      throw new TypeError('boom');
+    });
+    const errors: unknown[] = [];
+    w.vm.$.appContext.config.errorHandler = (e) => errors.push(e);
+    await w.setProps({ gridColumns: cols() });
+    expect(errors[0]).toBeInstanceOf(TypeError);
+    w.unmount();
+  });
+
+  it('names the right component in the invalid-initial-config error', () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    expect(() =>
+      mountGrid({ gridColumns: [{ id: 'bad id!', header: 'x', value: () => 1 }] }),
+    ).toThrow(/useFluxGanttGrid\/<FluxGanttGrid>/);
+  });
+});
+
+describe('RTL', () => {
+  it('mirrors the grid (composition order: the grid is composed inside withRtl)', () => {
+    const w = mountGrid({ rtl: true });
+    expect(w.element.querySelector('.fg-rtl')).not.toBeNull();
+    const texts = Array.from((w.element as Element).querySelectorAll('.fg-grid__cells text'));
+    expect(texts.length).toBeGreaterThan(0);
+    for (const t of texts) expect(t.getAttribute('transform') ?? '').toMatch(/^matrix\(-1 0 0 1 /);
+    w.unmount();
+    const ltr = mountGrid();
+    expect(ltr.element.querySelector('.fg-rtl')).toBeNull();
+    ltr.unmount();
+  });
+});
+
+describe('emits types (type-level)', () => {
+  it('FluxGanttGridEmits extends FluxGanttEmits and matches the component', () => {
+    const emit = (() => {}) as unknown as InstanceType<typeof FluxGanttGrid>['$emit'];
+    const typed: FluxGanttGridEmits = emit;
+    expectTypeOf<FluxGanttGridEmits>().toExtend<FluxGanttEmits>();
+    // @ts-expect-error a wrong payload for column-resized is a compile error
+    const bad = () => typed('column-resized', 42);
+    // @ts-expect-error an unknown event is a compile error
+    const unknown = () => typed('column-resizedd', {});
+    expect([bad, unknown]).toHaveLength(2);
   });
 });

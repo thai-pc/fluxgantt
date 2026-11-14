@@ -3,6 +3,8 @@
 // the grid entry carries the editing code. `@beta`, like the core grid.
 import {
   forwardRef,
+  useEffect,
+  useRef,
   useImperativeHandle,
   type ReactElement,
   type CSSProperties,
@@ -16,6 +18,9 @@ import type {
 } from '@fluxgantt/core/grid-editing';
 import type { GridCapability } from '@fluxgantt/core/grid';
 import type { UnsubscribeFn } from '@fluxgantt/core';
+
+// See `use-flux-gantt.ts`: no `@types/node` dependency; bundlers replace the expression statically.
+declare const process: { readonly env: { readonly NODE_ENV?: string } };
 import { useGantt, type BaseInstance, type GanttPlugin } from './use-flux-gantt.js';
 import { bridgeGrid, composeGrid, useGridProps } from './grid-shared.js';
 import type { UseFluxGanttGridConfig } from './grid.js';
@@ -72,6 +77,7 @@ function editingOptions(latest: { readonly current: Config }): GridEditingOption
 }
 
 const plugin: GanttPlugin<Config, Instance> = {
+  label: 'useFluxGanttGridEditing/<FluxGanttGridEditing>',
   // `withGridEditing` throws when `withGrid` is not applied first.
   compose: (base, latest) => withGridEditing(composeGrid(base, latest), editingOptions(latest)),
   bridge: (instance, latest): UnsubscribeFn[] => [
@@ -80,12 +86,43 @@ const plugin: GanttPlugin<Config, Instance> = {
   ],
 };
 
+/** One dev warning when an option that is read once changes, or a latest-following callback appears late. */
+function useEditingOptionsWarning(options: GridEditingOptions | undefined): void {
+  const first = useRef(options);
+  const warned = useRef(false);
+  const activate = options?.activate?.join();
+  useEffect(() => {
+    const o = first.current;
+    if (warned.current) return;
+    if (
+      activate !== o?.activate?.join() ||
+      options?.commitOnBlur !== o?.commitOnBlur ||
+      (!o?.isEditable && options?.isEditable) ||
+      (!o?.beforeCommit && options?.beforeCommit)
+    ) {
+      warned.current = true;
+      try {
+        if (process.env.NODE_ENV !== 'production') {
+          console.warn(
+            '[@fluxgantt/react] gridEditing: `activate` and `commitOnBlur` are construction-time only, and ' +
+              '`isEditable` / `beforeCommit` are only honoured when they were set on the first render ' +
+              '(after that they follow the latest render). The change is ignored; change `key` to remount.',
+          );
+        }
+      } catch (e) {
+        if (!(e instanceof ReferenceError)) throw e;
+      }
+    }
+  }, [activate, options?.commitOnBlur, options?.isEditable, options?.beforeCommit]);
+}
+
 /** `useFluxGantt` with the grid and the cell editors composed. @beta */
 export function useFluxGanttGridEditing(
   config: UseFluxGanttGridEditingConfig,
 ): UseFluxGanttGridEditingResult {
   const result = useGantt(config, plugin);
   useGridProps(result.instance, config);
+  useEditingOptionsWarning(config.gridEditing);
   return result;
 }
 

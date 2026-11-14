@@ -11,6 +11,9 @@ import { ColumnAlign } from '@fluxgantt/core/grid';
 import { ColumnId } from '@fluxgantt/core/grid';
 import { ColumnResizedPayload } from '@fluxgantt/core';
 import { CustomColumn } from '@fluxgantt/core/grid';
+import { DateInput } from '@fluxgantt/core';
+import { Dependency } from '@fluxgantt/core';
+import { DependencyId } from '@fluxgantt/core';
 import * as _fluxgantt_core from '@fluxgantt/core';
 import * as _fluxgantt_core_grid from '@fluxgantt/core/grid';
 import { GanttConfig } from '@fluxgantt/core';
@@ -22,6 +25,11 @@ import { GridColumnInput } from '@fluxgantt/core/grid';
 import { GridOptions } from '@fluxgantt/core/grid';
 import { Ref } from 'vue';
 import { RenderCapability } from '@fluxgantt/core/render';
+import { Task } from '@fluxgantt/core';
+import { TaskActivatedPayload } from '@fluxgantt/core';
+import { TaskContextRequestedPayload } from '@fluxgantt/core';
+import { TaskId } from '@fluxgantt/core';
+import { TaskUpdatedPayload } from '@fluxgantt/core';
 import { ThemeCapability } from '@fluxgantt/core/theme';
 import { ViewportCapability } from '@fluxgantt/core/viewport';
 import * as vue from 'vue';
@@ -245,8 +253,10 @@ export const FluxGanttGrid: vue.DefineComponent<vue.ExtractPropTypes<{
     enableDependencyDrag: boolean;
 }, {}, {}, {}, string, vue.ComponentProvideOptions, true, {}, any>;
 
+// Warning: (ae-forgotten-export) The symbol "FluxGanttEmits" needs to be exported by the entry point grid.d.ts
+//
 // @beta
-export interface FluxGanttGridEmits {
+export interface FluxGanttGridEmits extends FluxGanttEmits {
     (event: 'column-resized', payload: ColumnResizedPayload): void;
 }
 

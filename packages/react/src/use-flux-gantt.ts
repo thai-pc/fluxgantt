@@ -29,7 +29,7 @@ import type { UseFluxGanttConfig, UseFluxGanttResult } from './types.js';
 // expression at build time regardless of these types; the `typeof process !== 'undefined'`
 // guard below covers runtimes where the global is genuinely absent (e.g. an unbundled
 // `<script type="module">` load).
-declare const process: { readonly env?: { readonly NODE_ENV?: string } } | undefined;
+declare const process: { readonly env: { readonly NODE_ENV?: string } };
 
 // `useLayoutEffect` warns when rendered on the server (React 18); effects never run there
 // anyway, so fall back to `useEffect` where there is no `window`.
@@ -48,6 +48,8 @@ export type BaseInstance = GanttInstance & RenderCapability & ViewportCapability
 export interface GanttPlugin<C extends UseFluxGanttConfig, I extends BaseInstance> {
   readonly compose: (instance: BaseInstance, latest: { readonly current: C }) => I;
   readonly bridge: (instance: I, latest: { readonly current: C }) => UnsubscribeFn[];
+  /** Names the component in the "invalid initial config" error. */
+  readonly label?: string;
 }
 
 /** Creates and owns a Gantt instance for the lifetime of the component. */
@@ -122,7 +124,7 @@ export function useGantt<C extends UseFluxGanttConfig, I extends BaseInstance = 
       // do not swallow or defer. Fix bad initial config, or pre-validate before rendering.
       const message = err instanceof Error ? err.message : String(err);
       throw new Error(
-        `[@fluxgantt/react] invalid initial config passed to useFluxGantt/<FluxGantt>: ${message}`,
+        `[@fluxgantt/react] invalid initial config passed to ${plugin?.label ?? 'useFluxGantt/<FluxGantt>'}: ${message}`,
         err instanceof Error ? { cause: err } : undefined,
       );
     }
@@ -136,20 +138,30 @@ export function useGantt<C extends UseFluxGanttConfig, I extends BaseInstance = 
   const initialTasksRef = useRef(config.tasks);
   const initialDependenciesRef = useRef(config.dependencies);
   useEffect(() => {
-    if (typeof process !== 'undefined' && process.env?.NODE_ENV === 'production') return;
-    if (config.tasks !== initialTasksRef.current) {
-      console.warn(
-        '[@fluxgantt/react] useFluxGantt: `tasks` changed identity after the instance was ' +
-          'created. `tasks` is only used as the initial value (uncontrolled) — further changes ' +
-          'are ignored. Mutate via the returned `instance` (`addTask`/`updateTask`/`removeTask`) ' +
-          'instead.',
-      );
-    }
-    if (config.dependencies !== initialDependenciesRef.current) {
-      console.warn(
-        '[@fluxgantt/react] useFluxGantt: `dependencies` changed identity after the instance ' +
-          'was created. Same uncontrolled contract as `tasks` — use `linkTasks`/`unlinkTasks`.',
-      );
+    // Dev-only. The bare `process.env.NODE_ENV !== 'production'` member expression is what bundlers
+    // replace (esbuild/Vite `define`, webpack `DefinePlugin`), so a production build drops the
+    // warnings AND their text. The `try` covers an unbundled load with no `process` global (dev
+    // behaviour there: no warnings); a `typeof process` guard would keep the warnings in production
+    // browser bundles, where `process` is undefined at runtime.
+    try {
+      if (process.env.NODE_ENV !== 'production') {
+        if (config.tasks !== initialTasksRef.current) {
+          console.warn(
+            '[@fluxgantt/react] useFluxGantt: `tasks` changed identity after the instance was ' +
+              'created. `tasks` is only used as the initial value (uncontrolled) — further changes ' +
+              'are ignored. Mutate via the returned `instance` (`addTask`/`updateTask`/`removeTask`) ' +
+              'instead.',
+          );
+        }
+        if (config.dependencies !== initialDependenciesRef.current) {
+          console.warn(
+            '[@fluxgantt/react] useFluxGantt: `dependencies` changed identity after the instance ' +
+              'was created. Same uncontrolled contract as `tasks` — use `linkTasks`/`unlinkTasks`.',
+          );
+        }
+      }
+    } catch (e) {
+      if (!(e instanceof ReferenceError)) throw e;
     }
   }, [config.tasks, config.dependencies]);
 

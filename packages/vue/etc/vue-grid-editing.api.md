@@ -8,6 +8,9 @@ import { CellEditCommit } from '@fluxgantt/core/grid-editing';
 import { CellEditor } from '@fluxgantt/core/grid-editing';
 import { CellEditRequestedPayload } from '@fluxgantt/core/grid-editing';
 import { ColumnResizedPayload } from '@fluxgantt/core';
+import { DateInput } from '@fluxgantt/core';
+import { Dependency } from '@fluxgantt/core';
+import { DependencyId } from '@fluxgantt/core';
 import * as _fluxgantt_core from '@fluxgantt/core';
 import * as _fluxgantt_core_grid from '@fluxgantt/core/grid';
 import { GanttConfig } from '@fluxgantt/core';
@@ -21,6 +24,11 @@ import { GridOptions } from '@fluxgantt/core/grid';
 import { PropType } from 'vue';
 import { Ref } from 'vue';
 import { RenderCapability } from '@fluxgantt/core/render';
+import { Task } from '@fluxgantt/core';
+import { TaskActivatedPayload } from '@fluxgantt/core';
+import { TaskContextRequestedPayload } from '@fluxgantt/core';
+import { TaskId } from '@fluxgantt/core';
+import { TaskUpdatedPayload } from '@fluxgantt/core';
 import { ThemeCapability } from '@fluxgantt/core/theme';
 import { ViewportCapability } from '@fluxgantt/core/viewport';
 import * as vue from 'vue';
@@ -248,9 +256,10 @@ export const FluxGanttGridEditing: vue.DefineComponent<vue.ExtractPropTypes<{
     enableDependencyDrag: boolean;
 }, {}, {}, {}, string, vue.ComponentProvideOptions, true, {}, any>;
 
+// Warning: (ae-forgotten-export) The symbol "FluxGanttGridEmits" needs to be exported by the entry point grid-editing.d.ts
+//
 // @beta
-export interface FluxGanttGridEditingEmits {
-    (event: 'column-resized', payload: ColumnResizedPayload): void;
+export interface FluxGanttGridEditingEmits extends FluxGanttGridEmits {
     (event: 'cell-edit-requested', payload: CellEditRequestedPayload): void;
 }
 

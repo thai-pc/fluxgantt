@@ -41,7 +41,7 @@ import type { UseFluxGanttConfig, UseFluxGanttResult } from './types.js';
 // Minimal ambient declaration for `process.env.NODE_ENV`, mirroring react's own — this
 // package intentionally has no `@types/node` dependency. See use-flux-gantt.ts in
 // packages/react for the identical pattern/rationale.
-declare const process: { readonly env?: { readonly NODE_ENV?: string } } | undefined;
+declare const process: { readonly env: { readonly NODE_ENV?: string } };
 
 /** The instance every wrapper composes (see `useGantt`). */
 export type BaseInstance = GanttInstance & RenderCapability & ViewportCapability & ThemeCapability;
@@ -53,6 +53,8 @@ export type BaseInstance = GanttInstance & RenderCapability & ViewportCapability
  */
 export interface GanttPlugin<C extends UseFluxGanttConfig, I extends BaseInstance> {
   readonly compose: (instance: BaseInstance, config: C) => I;
+  /** Names the component in the "invalid initial config" error. */
+  readonly label?: string;
 }
 
 /** Creates and owns a Gantt instance for the lifetime of the component. */
@@ -107,7 +109,7 @@ export function useGantt<C extends UseFluxGanttConfig, I extends BaseInstance = 
     // came from `<FluxGantt>`'s initial props.
     const message = err instanceof Error ? err.message : String(err);
     throw new Error(
-      `[@fluxgantt/vue] invalid initial config passed to useFluxGantt/<FluxGantt>: ${message}`,
+      `[@fluxgantt/vue] invalid initial config passed to ${plugin?.label ?? 'useFluxGantt/<FluxGantt>'}: ${message}`,
       err instanceof Error ? { cause: err } : undefined,
     );
   }
@@ -127,27 +129,36 @@ export function useGantt<C extends UseFluxGanttConfig, I extends BaseInstance = 
   // needed the way react's `initialTasksRef` comparison needs one. A plain, non-reactive
   // `config` object simply never triggers this watcher — consistent with "nothing to warn
   // about," since Vue has no way to observe a mutation on a non-reactive object regardless.
-  if (!(typeof process !== 'undefined' && process.env?.NODE_ENV === 'production')) {
-    watch(
-      () => config.tasks,
-      () => {
-        console.warn(
-          '[@fluxgantt/vue] useFluxGantt: `tasks` changed identity after the instance was ' +
-            'created. `tasks` is only used as the initial value (uncontrolled) — further ' +
-            'changes are ignored. Mutate via the returned `instance` (`addTask`/`updateTask`/' +
-            '`removeTask`) instead.',
-        );
-      },
-    );
-    watch(
-      () => config.dependencies,
-      () => {
-        console.warn(
-          '[@fluxgantt/vue] useFluxGantt: `dependencies` changed identity after the instance ' +
-            'was created. Same uncontrolled contract as `tasks` — use `linkTasks`/`unlinkTasks`.',
-        );
-      },
-    );
+  // Dev-only. The bare `process.env.NODE_ENV !== 'production'` member expression is what bundlers
+  // replace (esbuild/Vite `define`, webpack `DefinePlugin`), so a production build drops the watchers
+  // AND the warning text. The `try` covers an unbundled load with no `process` global (dev behaviour
+  // there: no warnings); a `typeof process` guard would keep the warnings in production browser
+  // bundles, where `process` is undefined at runtime.
+  try {
+    if (process.env.NODE_ENV !== 'production') {
+      watch(
+        () => config.tasks,
+        () => {
+          console.warn(
+            '[@fluxgantt/vue] useFluxGantt: `tasks` changed identity after the instance was ' +
+              'created. `tasks` is only used as the initial value (uncontrolled) — further ' +
+              'changes are ignored. Mutate via the returned `instance` (`addTask`/`updateTask`/' +
+              '`removeTask`) instead.',
+          );
+        },
+      );
+      watch(
+        () => config.dependencies,
+        () => {
+          console.warn(
+            '[@fluxgantt/vue] useFluxGantt: `dependencies` changed identity after the instance ' +
+              'was created. Same uncontrolled contract as `tasks` — use `linkTasks`/`unlinkTasks`.',
+          );
+        },
+      );
+    }
+  } catch (e) {
+    if (!(e instanceof ReferenceError)) throw e;
   }
 
   // Mount/unmount lifecycle only — NOT the 8 event bridges (those live in `<FluxGantt>`
