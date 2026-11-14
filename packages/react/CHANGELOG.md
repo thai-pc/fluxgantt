@@ -1,5 +1,24 @@
 # @fluxgantt/react
 
+## 0.6.0
+
+### Minor Changes
+
+- 3d5c152: Two new opt-in entries that bring the core grid to React: `@fluxgantt/react/grid` exports `<FluxGanttGrid>` (and `useFluxGanttGrid`), and `@fluxgantt/react/grid-editing` exports `<FluxGanttGridEditing>` (and `useFluxGanttGridEditing`). They are `<FluxGantt>` composing `withGrid` (and, for the second, `withGridEditing` after it; `withRtl` stays last). A chart that does not import them ships no grid code: the default `@fluxgantt/react` entry, its props and its API report are unchanged.
+  
+  Beta (the core grid is `@beta`, so these entries are too): `<FluxGanttGrid>` adds `gridColumns`, `gridOptions` (`collapseBelow`, `durationUnit`, `resizable`) and `onColumnResized` to `<FluxGantt>`'s props; `<FluxGanttGridEditing>` adds `gridEditing` (`isEditable`, `beforeCommit`, `activate`, `commitOnBlur`) and `onCellEditRequested` (call `payload.preventDefault()` synchronously to replace the built-in editor). The ref is the full instance, so it also carries `getGridColumns`, `setGridColumns`, `resizeGridColumn` and `exportGridCsv`, and for the editing entry `startCellEdit`, `cancelCellEdit` and `isEditingCell`.
+  
+  `gridColumns` is read when the chart is created; a later change is applied with `setGridColumns` (one repaint, never a remount) when the columns differ structurally: ids, widths, headers, bounds, alignment and the identity of the `value`, `format` and `editor` functions. A re-apply keeps the live width of every column whose declared `width` did not change (a changed declared width wins), so re-passing the same columns never resets a user resize (to reset: change the widths, call `setGridColumns` on the ref, or change the key). While a cell is being edited the re-apply waits and happens once when the edit ends, so an open editor and its text are never lost. Persist `payload.widths` from `onColumnResized` and pass them back as `width`. A new function identity on every render (an inline `value` arrow) repaints the grid on every render (and holds back an open editor) and logs ONE dev warning per component: define the functions outside the component or wrap them in `useCallback`. Invalid columns throw a `RangeError` (at construction, wrapped with the usual "invalid initial config" context). `gridOptions`, `activate` and `commitOnBlur` are construction-time only (changing them, or adding `isEditable` / `beforeCommit` after the first render, logs one dev warning; change `key` to remount); `onColumnResized`, `onCellEditRequested`, `isEditable` and `beforeCommit` always follow the latest render.
+  
+  Bundle cost (gzip, minified, excluding react and core): the default entry grows by about 48 B for the internal seam that the two new entries share (`useFluxGantt` now delegates to a shared hook); the grid entries are measured in the PR.
+
+### Patch Changes
+
+- 3d5c152: The dev-only warnings (`tasks` / `dependencies` changed identity after construction) are now removed by a production build. They were guarded by `typeof process !== 'undefined' && process.env?.NODE_ENV === 'production'`, which in a browser bundle (where `process` is undefined at runtime) evaluated to "development", so the warnings fired and their text shipped in production. They now use the bare `process.env.NODE_ENV !== 'production'` expression that bundlers replace (esbuild and Vite `define`, webpack `DefinePlugin`), inside a `try` for an unbundled load without a `process` global (no warnings there).
+- Updated dependencies [5f31ed6]
+- Updated dependencies [2ce7541]
+  - @fluxgantt/core@0.11.0
+
 ## 0.5.2
 
 ### Patch Changes
