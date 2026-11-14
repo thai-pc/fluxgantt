@@ -8,4 +8,8 @@ Before, `updateTask(id, { start: 'not-a-date' })` wrote the bad value and record
 
 A throwing `onTaskChange` hook is unchanged: it runs after the write is announced, so its error is rethrown with the write and its events already committed (a hook is a notification, not a veto; validate before writing, or undo from your own code).
 
-Behaviour changes: a failed command no longer leaves a partial result (it used to leave the direct write of a cascading move); the `task:moved` / history order of a successful command is identical.
+A task whose STORED `start` / `end` does not parse (`addTask` and the `createGantt` config validate nothing, only the importers do) is also covered: `updateTask`, `moveTask`, `resizeTask` and `setProgress` on it throw before any write, even when the patch would repair the bad field. Repair such a task with `removeTask` + `addTask`, or fix the data at the source. Validating dates at `addTask` / `createGantt` is a separate follow-up.
+
+`updateTask` still does not validate numbers: `progress` / `duration` of `NaN` or `Infinity` are the caller's responsibility (`setProgress` and `resizeTask` range-check theirs). This is now stated in its TSDoc.
+
+Behaviour changes: `duplicateTask` throws (`task "x" not found`) for a selected id that no longer resolves, before adding any copy; it used to skip it silently (a stale selection is only reachable by mutating the store through internals); a failed command no longer leaves a partial result (it used to leave the direct write of a cascading move); the `task:moved` / history order of a successful command is identical.

@@ -334,14 +334,20 @@ column's `editor` validation is a few lines in `grid/columns.ts` (+108 B on `+ w
 not to raise the limit are in CLAUDE.md's decision log. Measured and kept lazy on purpose: touching `values.ts` for the editors
 (it exports `hoursPerDay` and a shared reader instead), so the editors never build a second working-hours table.
 
-The 2026-11 atomic-write pass (`updateTask` and its siblings plan before they write: the patch's dates are parsed and the
-cascade is computed against the task as it will be, then the writes run; `duplicateTask` builds every copy's input first;
-exemption rule, correctness) cost, against master 3d5c152 (gzip bytes): hello world +6 (8386), `+ withRender +
-withInteraction` +10 (21759, 1 B left), kitchen sink +11 (26548), everything +2 (40080); soft +7..+15. The first cut
-(date check, progress/duration check, `effectiveDuration` precomputed so `task:resized` cannot throw after the write, a
-`#planCascade` method, `#applyPatch` validating) was +120 / +127 / +125 / +116. Levers measured one at a time (kitchen
-sink / interaction / hello world, cumulative): dropping the progress/duration validation -56 B, dropping the `effectiveDuration`
-precompute -19, `#applyPatch` no longer validating (its two callers already did) -22, inlining `#planCascade` -10,
-`#applyCascadeShift` taking the shift object -7. The rewritten `duplicateTask` (inputs mapped first, one `#run`) is -14 B
-against the old loop. Not kept: numeric validation in `updateTask` (+33 B, would put the interaction gate 33 B over).
-Lesson: validate in the ONE caller that writes, not in the shared writer; a validating `#applyPatch` ran the same parse twice.
+The 2026-11 atomic-write pass (`updateTask` and its siblings plan before they write: the stored and draft dates are parsed and
+the cascade is computed against the draft task, then the writes run; `duplicateTask` builds every copy's input first;
+exemption rule, correctness) ended NET NEGATIVE against master 3d5c152 (gzip bytes): hello world -24 (8356, 92 B left),
+`+ withRender + withInteraction` -18 (21731, 29 B left), kitchen sink -22 (26515), everything -32 (40046); soft -18..-32.
+The first cut was +6 / +10 / +11 / +2 (1 B left on the interaction gate); review levers took about -40 B on each hard
+fixture, all behaviour-neutral: `duplicateTask(taskId)` lets the map's `#requireTask` throw instead of calling it twice
+(-5 hello / -7 interaction), `#spanNs` / `#sameInstant` read the calendar zone themselves instead of taking a `tz`
+parameter (-13 / -10), inlining the one-line `#collectWithDescendants` wrapper (-6 / -8), dropping the same-instant guard
+in `#applyCascadeShift` (a cascade shift is always strictly later, `cascade.ts`; -4 / -7), and
+`const { id: _id, ...rest } = source` in `duplicateTask` (`TaskStore.add` re-stamps the timestamps and the literal
+overwrites start/end/progress; -14 / -12). The M1 fix (parse `prev`'s dates in the plan step, and in `setProgress`) cost
+about +11 B. Earlier cut levers: validating in the one writer rather than in the shared `#applyPatch` (-22 B), inlining
+`#planCascade` (-10), `#applyCascadeShift` taking the shift object (-7), the `duplicateTask` rewrite (-14 vs the old loop).
+Not kept: numeric validation in `updateTask` (+33 B), and a tolerant `#diffAndEmit` that would let a repair patch fix a
+stored bad date (far above the 15 B budget).
+Lesson: validate in the ONE caller that writes, not in the shared writer; a one-line wrapper or a parameter that every
+call site passes the same value to is dead weight under gzip.

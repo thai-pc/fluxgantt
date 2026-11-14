@@ -484,6 +484,16 @@ export type UnsubscribeFn = () => void;
 export interface GanttInstance {
   // --- Task operations (no cascade, see the module doc-comment above) ------------------
   addTask(input: TaskInput): Task;
+  /**
+   * Applies `patch`. Atomic: if it throws before the write (a `start`/`end` that does not parse,
+   * a cascade error in `schedulingMode: 'auto'`, or a STORED `start`/`end` of this task that does
+   * not parse) nothing changes: no store write, history entry, revision bump or event. A task
+   * stored with an unparseable date therefore cannot be repaired here; `removeTask` and
+   * `addTask` it, or fix the data at the source. Numbers (`progress`, `duration`) are not
+   * validated: `NaN` / `Infinity` are the caller's responsibility (`setProgress` and
+   * `resizeTask` do range-check theirs). A throwing `onTaskChange` hook runs after the write is
+   * announced and is not rolled back.
+   */
   updateTask(id: TaskId, patch: TaskPatch): Task;
   removeTask(id: TaskId): void;
   moveTask(id: TaskId, newStart: DateInput): Task;
@@ -994,7 +1004,7 @@ class Gantt implements GanttInstance {
 
   setProgress(id: TaskId, progress: number): Task {
     this.#assertAlive('setProgress');
-    this.#requireTask(id, 'setProgress');
+    this.#spanNs(this.#requireTask(id, 'setProgress'));
     if (!Number.isFinite(progress) || progress < 0 || progress > 1) {
       throw new Error(`gantt.setProgress: invalid progress (${progress}) — must be in [0, 1]`);
     }
@@ -1006,7 +1016,7 @@ class Gantt implements GanttInstance {
 
     const sourceIds =
       taskId !== undefined
-        ? [this.#requireTask(taskId, 'duplicateTask').id] // throws if not found
+        ? [taskId] // the map below throws if not found
         : this.#selectionStore.all(); // current selection, insertion order
     if (sourceIds.length === 0) return [];
 
@@ -1019,14 +1029,7 @@ class Gantt implements GanttInstance {
       // Omit id/createdAt/updatedAt/start/end from the spread — id/timestamps are
       // store-owned (addTask mints/stamps them), start/end are explicitly recomputed below.
       const source = this.#requireTask(id, 'duplicateTask');
-      const {
-        id: _id,
-        createdAt: _createdAt,
-        updatedAt: _updatedAt,
-        start: _start,
-        end: _end,
-        ...rest
-      } = source;
+      const { id: _id, ...rest } = source;
       const sourceEnd = normalizeDate(source.end, tz);
       const durationHours =
         source.duration ?? differenceInWorkingHours(source.start, source.end, this.#calendar);
@@ -1051,7 +1054,7 @@ class Gantt implements GanttInstance {
       // 1. Compute the FULL set of tasks about to disappear (target + all hierarchy
       //    descendants) BEFORE mutating — TaskStore.remove() cascades internally, but
       //    doesn't report what it removed.
-      const removedIds = this.#collectWithDescendants(id);
+      const removedIds = this.#taskStore.subtree(id);
 
       // 1b. Snapshot the actual Task objects BEFORE mutating — needed for history (§4.1).
       const removedTasks = removedIds.map((tid) => this.#taskStore.get(tid)!);
@@ -1367,8 +1370,10 @@ class Gantt implements GanttInstance {
     // is announced): an unparseable date, or a cascade that throws (cycle, calendar guard), aborts
     // here with no store write, no history entry, no revision bump and no event. The shifts are
     // computed against the task as it WILL be after the patch.
-    const draft = { ...this.#taskStore.get(id)!, ...patch };
-    this.#spanNs(draft, this.#calendar.timezone); // throws on an unparseable date
+    const prev = this.#taskStore.get(id)!;
+    const draft = { ...prev, ...patch, id };
+    this.#spanNs(prev); // a stored task whose date does not parse cannot be written: it would throw after the write
+    this.#spanNs(draft); // throws on an unparseable date
     const shifts =
       cascade && this.#config.schedulingMode === 'auto'
         ? computeCascade(
@@ -1399,16 +1404,13 @@ class Gantt implements GanttInstance {
     const prev = this.#taskStore.get(id)!; // cascade only names tasks that exist
     const next = this.#taskStore.update(id, { start, end });
     this.#recordOp({ kind: 'task-update', id, prev, next });
-    if (!this.#sameInstant(prev.start, next.start, this.#calendar.timezone)) {
-      this.#emit('task:moved', next, prev.start);
-    }
+    this.#emit('task:moved', next, prev.start); // a shift is always strictly later (cascade.ts), so no same-instant guard
     this.#changed(next, prev);
   }
 
   #diffAndEmit(prev: Task, next: Task, source?: 'undo' | 'redo'): void {
-    const tz = this.#calendar.timezone;
     const meta = source ? ([{ source }] as const) : ([] as const);
-    if (!this.#sameInstant(prev.start, next.start, tz)) {
+    if (!this.#sameInstant(prev.start, next.start)) {
       this.#emit('task:moved', next, prev.start, ...meta);
     }
     // Detect a resize by the INSTANT span (end − start) changing — translation-invariant,
@@ -1417,7 +1419,7 @@ class Gantt implements GanttInstance {
     // working-hours effectiveDuration here would fire a spurious task:resized on a move that
     // shifts the span across weekends/holidays.) The payload still reports working-hours
     // duration via `effectiveDuration`.
-    if (this.#spanNs(prev, tz) !== this.#spanNs(next, tz)) {
+    if (this.#spanNs(prev) !== this.#spanNs(next)) {
       this.#emit('task:resized', next, this.#effectiveDuration(prev), ...meta);
     }
     if (prev.progress !== next.progress) {
@@ -1434,14 +1436,16 @@ class Gantt implements GanttInstance {
 
   /** Instant span (end − start) in nanoseconds — translation-invariant, so a move (both
    *  ends shifted by the same delta) preserves it. */
-  #spanNs(task: Task, timezone: string): bigint {
+  #spanNs(task: Task): bigint {
+    const timezone = this.#calendar.timezone;
     return (
       normalizeDate(task.end, timezone).epochNanoseconds -
       normalizeDate(task.start, timezone).epochNanoseconds
     );
   }
 
-  #sameInstant(a: DateInput, b: DateInput, timezone: string): boolean {
+  #sameInstant(a: DateInput, b: DateInput): boolean {
+    const timezone = this.#calendar.timezone;
     return (
       normalizeDate(a, timezone).epochNanoseconds === normalizeDate(b, timezone).epochNanoseconds
     );
@@ -1571,9 +1575,6 @@ class Gantt implements GanttInstance {
     if (changed) this.#emit('collapse:changed', this.#collapseStore.all());
   }
 
-  #collectWithDescendants(id: TaskId): TaskId[] {
-    return this.#taskStore.subtree(id);
-  }
 
   /**
    * Expands explicitly-named ids to include every descendant (recursive, all levels) of any
@@ -1586,7 +1587,7 @@ class Gantt implements GanttInstance {
     const out = new Set<TaskId>();
     for (const id of ids) {
       if (!this.#taskStore.has(id)) continue;
-      for (const t of this.#collectWithDescendants(id)) out.add(t);
+      for (const t of this.#taskStore.subtree(id)) out.add(t);
     }
     return [...out];
   }
@@ -1654,7 +1655,7 @@ class Gantt implements GanttInstance {
         (k) =>
           k !== 'updatedAt' &&
           (k === 'start' || k === 'end'
-            ? !this.#sameInstant(prev[k], next[k], this.#calendar.timezone)
+            ? !this.#sameInstant(prev[k], next[k])
             : !Object.is(prev[k], next[k])),
       ) as TaskField[];
       if (changed.length) {

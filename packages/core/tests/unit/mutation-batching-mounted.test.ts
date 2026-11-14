@@ -9,7 +9,6 @@ import { createGantt } from '../helpers/create-gantt.js';
 import type { GanttConfig } from '../../src/gantt.js';
 import { getInternal } from '../../src/gantt-internal.js';
 import { effect } from '../../src/signals.js';
-import { CyclicDependencyError } from '../../src/compute/dependency-math.js';
 import { toTaskId } from '../../src/types.js';
 import type { TaskInput } from '../../src/store/index.js';
 import { createRecorder } from '../helpers/event-log.js';
@@ -109,7 +108,6 @@ describe('error precedence', () => {
     const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
     const gantt = createGantt({
       ...world(),
-      schedulingMode: 'auto',
       onTaskChange: () => {
         throw new Error('hook');
       },
@@ -117,9 +115,9 @@ describe('error precedence', () => {
     expect(() =>
       getInternal(gantt).run(() => {
         gantt.setProgress(id('b'), 0.5); // a committed write, so the hook fires
-        throw new CyclicDependencyError([id('b')]);
+        throw new Error('fn');
       }, true),
-    ).toThrow(CyclicDependencyError);
+    ).toThrow('fn');
     expect(logged.mock.calls.some((c) => String(c[0]).includes('onTaskChange threw'))).toBe(true);
   });
 
