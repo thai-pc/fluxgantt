@@ -402,7 +402,6 @@ export interface GanttInstance {
     undo(): boolean;
     // (undocumented)
     unlinkTasks(from: TaskId, to: TaskId): void;
-    // (undocumented)
     updateTask(id: TaskId, patch: TaskPatch): Task;
     zoomIn(): void;
     zoomOut(): void;
