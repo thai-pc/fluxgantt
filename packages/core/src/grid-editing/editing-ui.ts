@@ -313,7 +313,7 @@ function open(env: EditEnv, id: string, ci: number, startIdx: number): void {
     try {
       plan.run();
     } catch (e) {
-      // A throw before the store changed wrote nothing. A throw after it (a cascade, a listener) leaves the write and its
+      // A throw before the store changed wrote nothing (a bad date, a cascade error: `updateTask` and friends plan first). A throw after it (an `onTaskChange` hook, which runs once the write is announced) leaves the write and its
       // history entry in place: undo exactly that entry; if the task is not back, say so rather than "not saved".
       const msg = clean(e instanceof Error ? e.message : '');
       if (internal.tasks.revision.peek() === rev0 || rollBack(task)) {
