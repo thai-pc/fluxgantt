@@ -130,21 +130,25 @@ describe('resizeGridColumn', () => {
     expect(handleOf(g).getLabelColumnWidth()).toBe(W + 80); // the width survives the mount
   });
 
-  it('resizable:false freezes the widths: false, no event, no sizers, no header mode, headers take no focus', async () => {
+  it('resizable:false freezes the widths: false, no event, no sizers, Alt+Arrow on a header does nothing', async () => {
     const g = make({ grid: { resizable: false } });
     const seen: unknown[] = [];
     g.on('column:resized', (p) => seen.push(p));
     expect(g.resizeGridColumn('start', 200)).toBe(false);
     expect(seen).toHaveLength(0);
     expect(sizers()).toHaveLength(0);
-    expect(heads().some((h) => h.hasAttribute('tabindex'))).toBe(false);
+    // Header MODE is keyboard navigation (G4), not resizing: the headers stay script-focusable.
+    expect(heads().every((h) => h.getAttribute('tabindex') === '-1')).toBe(true);
     const row0 = container.querySelector<SVGElement>('.fg-timeline__row[data-row-index="0"]')!;
     row0.focus();
-    const up = await key(row0, 'ArrowUp'); // header mode does not exist
-    expect(up.defaultPrevented).toBe(false);
-    const e = await key(head('start'), 'ArrowRight', { alt: true });
-    expect(e.defaultPrevented).toBe(false);
+    const up = await key(row0, 'ArrowUp');
+    expect(up.defaultPrevented).toBe(true);
+    expect(document.activeElement).toBe(head('name'));
+    const e = await key(head('start'), 'ArrowRight', { alt: true }); // claimed (no History Back) but inert
+    expect(e.defaultPrevented).toBe(true);
     expect(widthOf(g, 'start')).toBe(120);
+    expect(seen).toHaveLength(0);
+    expect(live()).toBe('');
   });
 
   it('throws after destroy like the other capabilities', () => {
@@ -469,10 +473,10 @@ describe('announcements', () => {
   });
 
   it('English fallback for a throwing or non-string host function', async () => {
-    container.replaceChildren();
-    make({ config: { messages: { announce: () => { throw new Error('x'); } } } });
+    const first = make({ config: { messages: { announce: () => { throw new Error('x'); } } } });
     await key(focusHead('end'), 'ArrowLeft', { alt: true });
     expect(live()).toBe('End: 104 pixels wide');
+    first.destroy();
     container.replaceChildren();
     make({ config: { messages: { announce: () => 42 as never } } });
     await key(focusHead('end'), 'ArrowLeft', { alt: true });

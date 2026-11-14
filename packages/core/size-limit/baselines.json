@@ -14,6 +14,6 @@
     "Base + withConflicts (headless conflict detector + watcher, gzip)": 9423,
     "Base + withRender + withEditHooks (dblclick/contextmenu/keyboard host hooks, gzip)": 16194,
     "Base + withRender + withRtl (mirrored right-to-left chart, gzip)": 15284,
-    "Base + withRender + withGrid (pinned columns grid + CSV report, gzip)": 22011
+    "Base + withRender + withGrid (pinned columns grid + CSV report, gzip)": 22203
   }
 }

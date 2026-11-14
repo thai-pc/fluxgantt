@@ -30,7 +30,8 @@ export default defineConfig({
     // The Canvas grid painter: `grid/mixin.ts`'s dynamic `import('./canvas-grid.js')`, fetched only for a
     // Canvas mount. Internal, not in `exports`.
     'grid/canvas-grid': 'src/grid/canvas-grid.ts',
-    // The lazy interactive half of grid column resize: `grid/mixin.ts` / `grid/resize.ts` `import('./resize-ui.js')`.
+    // The lazy interactive half of the grid: column resize (drag, header keys, focus ring) and the keyboard model's
+    // actions (`grid/mixin.ts` / `grid/resize.ts` `import('./resize-ui.js')`).
     'grid/resize-ui': 'src/grid/resize-ui.ts',
   },
   format: ['esm', 'cjs'],

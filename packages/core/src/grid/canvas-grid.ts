@@ -41,8 +41,6 @@ export function createCanvasGrid(
   internal: GanttInternal,
   view: () => GridView,
   values: GridValues,
-  /** Set when the headers are keyboard-resizable: they become script-focusable (`tabindex=-1`). */
-  focusable?: boolean,
 ): CanvasGridPainter {
   const cut = makeCut();
   const headerName = makeHeaderName(internal);
@@ -97,6 +95,22 @@ export function createCanvasGrid(
         ctx.restore();
       }
     },
+    paintCell(ctx, y, rowHeight, col, tokens) {
+      const c = view().cols[col];
+      if (!c) return;
+      // Inset past the row frame, so it reads against it (no colour-only cue): the stroke's outer edge sits two
+      // frame widths in.
+      const w = tokens.taskFocusWidth;
+      const o = 2.5 * w;
+      ctx.save();
+      try {
+        ctx.strokeStyle = tokens.taskFocus;
+        ctx.lineWidth = w;
+        ctx.strokeRect(view().offs[col]! + o, y + o, c.width - 2 * o, rowHeight - 2 * o);
+      } finally {
+        ctx.restore();
+      }
+    },
     paintRow(ctx, row, y, rowHeight, tokens) {
       const v = view();
       if (v.cols.length < 2) return;
@@ -128,7 +142,7 @@ export function createCanvasGrid(
           },
           col.header,
         );
-        if (focusable) h.setAttribute('tabindex', '-1');
+        h.setAttribute('tabindex', '-1'); // script-focusable (header mode); the chart stays one Tab stop
         head.append(h);
       });
       layer.prepend(head);

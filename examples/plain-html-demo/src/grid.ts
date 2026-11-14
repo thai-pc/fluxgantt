@@ -5,6 +5,7 @@
 //   ?rtl=1        mirror the chart (`withRtl`); the page is flipped to `dir=rtl` too
 //   ?cols=N       how many columns: 1 (name only), 3, 5 (default), 6 (adds owner) or 10 (adds more custom ones)
 //   ?rows=N       task count (default 7 named tasks; N > 7 pads with flat filler tasks, for the perf budgets)
+//   ?kids=N       N extra children of the "plan" summary (a parent far above its last child)
 //   ?long=1       long names and a long custom value (truncation)
 //   ?collapse=N   `collapseBelow` (default 480; 0 disables)
 //   ?locale=xx    `GanttConfig.locale`
@@ -14,7 +15,7 @@
 //   ?tz=Zone      calendar time zone (default UTC)
 //   ?wide=1       spread the filler tasks over ~520 days and add 20 holidays (the PR #125 duration trap)
 //   ?longcols=1   name + five custom columns whose values are ~1000 characters (the fit() cost budget)
-//   ?resizable=0  `resizable: false` (no drag handles, no header keys)
+//   ?resizable=0  `resizable: false` (no drag handles; Alt+Arrow on a header does nothing)
 //   ?grid=0       do not compose withGrid (the baseline for the performance budgets)
 //   ?deps=1       keep the four dependencies even when ?rows pads the plan, and keep the filler tasks inside Mar-May so
 //                 the plan's chain stays the critical path (a truncated critical row on the Canvas renderer)
@@ -67,6 +68,9 @@ const named: TaskInput[] = [
   task('test', 'Testing', '2026-05-18', '2026-06-05', { parent: toTaskId('plan'), progress: 0 }),
   task('launch', 'Launch', '2026-06-08', '2026-06-08', { type: 'milestone', progress: 0 }),
 ];
+const kids: TaskInput[] = Array.from({ length: Number(params.get('kids') ?? '0') }, (_, i) =>
+  task(`kid-${i}`, `Kid ${i}`, '2026-03-02', '2026-03-06', { parent: toTaskId('plan') }),
+);
 const fillerMonths = params.get('deps') === '1' ? 3 : 8;
 const filler: TaskInput[] = Array.from({ length: Math.max(0, rows - named.length) }, (_, i) => ({
   id: toTaskId(`filler-${i}`),
@@ -115,7 +119,7 @@ const base = withIo(
     withInteraction(
       withRender(
         createGantt({
-          tasks: [...named, ...filler],
+          tasks: [...named, ...kids, ...filler],
           dependencies:
             rows > 0 && params.get('deps') !== '1'
               ? []

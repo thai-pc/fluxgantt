@@ -202,6 +202,8 @@ export interface CanvasGridPainter {
   /** The header band, the column headers and the full-height column dividers; `height` is the canvas's.
    *  `focusColumn` is the id of the keyboard-focused column header, which gets a focus ring. */
   paintHeader(ctx: CanvasRenderingContext2D, height: number, tokens: DesignTokens, focusColumn?: string): void;
+  /** The focus ring of the keyboard-focused cell: column `col` (0-based) of the row whose top is at `y`. */
+  paintCell(ctx: CanvasRenderingContext2D, y: number, rowHeight: number, col: number, tokens: DesignTokens): void;
   /** The sub-column cells (every column but `name`) of the row whose top is at `y`. */
   paintRow(ctx: CanvasRenderingContext2D, row: RowLayout, y: number, rowHeight: number, tokens: DesignTokens): void;
   /** Prepends the `columnheader` row to the hidden a11y layer. */
@@ -1477,6 +1479,10 @@ export function createCanvasRenderer(
     const active = document.activeElement;
     const headFocus = a11yLayer.contains(active) && active?.getAttribute('role') === 'columnheader' ? active.getAttribute('data-column-id') : null;
     const hadFocusInside = a11yLayer.contains(active) && headFocus === null;
+    // A focused grid cell (its aria-colindex, 0 = none) is re-focused below on the FOCUSED row, so Up/Down keep
+    // the column and a repaint never drops cell mode. The column that really got focus again gets the ring.
+    const cellFocus = hadFocusInside && active?.getAttribute('role') === 'gridcell' ? Number(active.getAttribute('aria-colindex')) : 0;
+    let cellFocusCol = 0;
 
     // Reuses the EXACT SAME `windowRange`/`windowedRows` the paint pass above just computed —
     // ONE shared window per render, not two independently-computed ones (spec §5.1). Only
@@ -1615,7 +1621,10 @@ export function createCanvasRenderer(
       );
       // Fires focusin/focusout synchronously — SAFE, `isRendering` is still true here (set by
       // the outer render() wrapper), so handleFocusChange() no-ops instead of recursing.
-      rowEl?.focus({ preventScroll: true });
+      const cell = cellFocus ? rowEl?.querySelector<HTMLElement>(`[role=gridcell][aria-colindex="${cellFocus}"]`) : null;
+      cell?.setAttribute('tabindex', '-1');
+      (cell ?? rowEl)?.focus({ preventScroll: true });
+      cellFocusCol = cell ? cellFocus : 0;
     }
 
     // --- Windowed paints (spec §4.3) — dependencies/rows/focus-ring are painted inside ONE
@@ -1656,7 +1665,7 @@ export function createCanvasRenderer(
       // Always the LAST paint step (spec §8.2) — drawn on top of everything else, so the ring
       // is never obscured by a bar, dependency arrow, or critical-path dash.
       const focusBar = focusedTaskId !== undefined ? barByTaskId.get(focusedTaskId) : undefined;
-      paintFocusRing(ctx, focusBar, hadFocusInside, offsetX, 0, tokens);
+      paintFocusRing(ctx, focusBar, hadFocusInside && !cellFocusCol, offsetX, 0, tokens);
       // Row focus frame (spec-focus-visible-offscreen.md): the whole row band, so focus stays visible
       // when the bar is scrolled away. The label-canvas copy below covers the pinned column.
       paintFocusRow(ctx, focusRowY, 0, totalWidth, rowHeight, tokens);
@@ -1688,6 +1697,7 @@ export function createCanvasRenderer(
         }
         // Before the divider, which stays last; the closing edge falls outside the bitmap (open at the divider side).
         paintFocusRow(labelCtx, focusRowY, 0, offsetX + tokens.taskFocusWidth, rowHeight, tokens);
+        if (cellFocusCol && focusRowY !== undefined) grid?.paintCell(labelCtx, focusRowY, rowHeight, cellFocusCol - 1, tokens);
       } finally {
         labelCtx.restore();
       }

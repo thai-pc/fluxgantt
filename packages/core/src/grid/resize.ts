@@ -4,18 +4,26 @@
 // focus ring) are in `resize-ui.ts`, a lazy chunk fetched on the first pointer-over a handle, the first header
 // focus or the first drag/key, so a chart nobody resizes never downloads them.
 //
-//  - pointer, SVG: a `div.fg-grid__sizer` per column divider over the pinned corner (`sizerPaint`);
+//  - pointer, SVG: a `div.fg-grid__sizer` per column divider over the pinned corner (`gridPaint`);
 //  - pointer, Canvas: `attachCanvasResize` in `canvas-grid.ts` (lazy) calls the same `beginDrag`;
-//  - keyboard: the chart stays ONE Tab stop (the active row). ArrowUp from the first row moves to the column
-//    headers (header mode, the seed of G4's), Left/Right/Home/End move between them, Alt+Left/Right resizes,
-//    ArrowDown / Escape return to a row (`attachHeaderKeys`). WCAG 2.1.1 (keyboard); the single-pointer
-//    alternative to dragging that SC 2.5.7 asks for is the host's own control calling `resizeGridColumn()`.
+//  - keyboard (G3 + G4, `attachKeys`): the chart stays ONE Tab stop (the active row) and has three modes,
+//    after the APG treegrid pattern. ROW mode (a row has focus): Right expands a collapsed parent or enters
+//    the first cell, Left collapses an expanded parent or moves to the parent row, Ctrl+Home/End the first/last
+//    row. CELL mode (a gridcell has focus, `tabindex=-1`): Left/Right/Home/End between cells, Up/Down/Page keep
+//    their column (the renderer's post-paint focus restore lands on the row and `onFocus` puts the focus back
+//    on the cell), Escape or Left from the first cell returns to the row. HEADER mode: ArrowUp from row 0,
+//    Left/Right/Home/End between headers, Alt+Left/Right resizes, ArrowDown / Escape return. WCAG 2.1.1
+//    (keyboard); the single-pointer alternative to dragging that SC 2.5.7 asks for is the host's own control
+//    calling `resizeGridColumn()`. Which keys are CLAIMED is decided here, synchronously (a deferred
+//    `preventDefault` would let Alt+Left through as the browser's History Back); the actions that need the
+//    columns or the store run in `resize-ui.ts`.
 //
 // SECURITY (security.md): only numbers and constant strings reach the DOM here; column ids come from
 // validated definitions and are never interpolated into a selector.
 import type { PaintEvent } from '../render/svg-renderer.js';
 import type * as Ui from './resize-ui.js';
 import type { GanttInternal } from '../gantt-internal.js';
+import type { GanttInstance } from '../gantt.js';
 import { HEADER_HEIGHT, type GridView } from './fit.js';
 
 /** What the resize code needs from `withGrid`. */
@@ -29,9 +37,15 @@ export interface ResizeEnv {
   resize(id: string, width: number): boolean;
   /** For the lazy half's keyboard announcement (a no-op without `withInteraction`). */
   readonly internal: GanttInternal;
-  /** `tab`: the header last focused (where ArrowUp from the first row lands). `stop`: cancels a drag in
-   *  progress (chart teardown). `head`: a header holds focus. `paint`: a render is running (see `onFocus`). */
-  readonly nav: { tab: number; stop?: (() => void) | undefined; head?: boolean; paint?: boolean };
+  /** For the lazy half's row actions (expand/collapse, select the parent). */
+  readonly gantt: GanttInstance;
+  /** `resizable` was not turned off. */
+  readonly can: boolean;
+  /** `tab`: the header last focused (where ArrowUp from the first row lands). `col`: the column of the focused
+   *  cell, -1 outside cell mode. `back`: header mode was entered from a cell (ArrowDown returns to the cell).
+   *  `syn`: our own synthetic key is being dispatched. `stop`: cancels a drag in progress (chart teardown).
+   *  `head`: a header holds focus. `paint`: a render is running (see `onFocus`). */
+  readonly nav: { tab: number; col: number; back?: boolean; syn?: boolean; stop?: (() => void) | undefined; head?: boolean; paint?: boolean };
   /** The lazy interactive half; resolves undefined if the chunk cannot be fetched (warned once). */
   ui(): Promise<typeof Ui | undefined>;
 }
@@ -49,7 +63,7 @@ const STYLE =
 /** Events a sizer keeps from the chart layer's listeners (selection, drag, edit hooks, pan). */
 const SWALLOW = ['pointerdown', 'pointermove', 'pointerup', 'click', 'dblclick', 'contextmenu'] as const;
 
-const headerOf = (t: EventTarget | null): HTMLElement | null =>
+export const headerOf = (t: EventTarget | null): HTMLElement | null =>
   t instanceof Element ? t.closest<HTMLElement>('[role=columnheader]') : null;
 
 /** Focuses the header last focused (clamped: the grid may have collapsed to fewer columns). */
@@ -58,15 +72,18 @@ export const focusHeader = (env: ResizeEnv): void => {
   (hs[env.nav.tab] ?? hs[0])?.focus({ preventScroll: true });
 };
 
-/** Focuses a row (`[role=row]` of the real grid, not a pinned clone): the first, or the roving one. */
-const focusRow = (env: ResizeEnv, first: boolean): void => {
-  env.nav.head = false; // leaving on purpose: the focus the row's own repaint may restore is not ours to undo
-  const q = (s: string) => env.container.querySelector<HTMLElement>(`[role=row]${s}`);
-  (first ? q('[data-row-index="0"]') ?? q('[tabindex="0"]') : q('[tabindex="0"]'))?.focus();
+/** Focuses the cell of `row` in column `col` (0-based); false when the row has none (a narrower grid). The cell
+ *  is script-focusable only (`tabindex=-1`): the chart stays one Tab stop. */
+export const focusCell = (row: Element, col: number): boolean => {
+  const c = row.querySelector<HTMLElement | SVGElement>(`[role=gridcell][aria-colindex="${col + 1}"]`);
+  c?.setAttribute('tabindex', '-1');
+  c?.focus({ preventScroll: true });
+  return !!c;
 };
 
-/** SVG chart: the drag handles over the corner's column dividers, rebuilt on every full render. */
-export function sizerPaint(env: ResizeEnv, e: PaintEvent): void {
+/** SVG chart, every render: the focus bookkeeping, then (resizable) the drag handles over the corner's column
+ *  dividers, rebuilt on every full render. */
+export function gridPaint(env: ResizeEnv, e: PaintEvent): void {
   // A render restores focus to the focused ROW right after its paint hooks (a header is inside the svg, so
   // it counts as "focus inside"); `onFocus` uses this flag to put the focus back on the header.
   const n = env.nav;
@@ -77,6 +94,7 @@ export function sizerPaint(env: ResizeEnv, e: PaintEvent): void {
   if (!e.column || !e.corner || Number(e.column.getAttribute('width')) !== v.width) return;
   // Script-focusable only: the chart stays one Tab stop (the active row).
   e.svg.querySelectorAll('[role=columnheader]').forEach((h) => h.setAttribute('tabindex', '-1'));
+  if (!env.can) return;
   const layer = e.corner.parentElement!;
   layer.querySelector(':scope > .fg-grid__ov')?.remove();
   const ov = document.createElement('div');
@@ -103,44 +121,64 @@ export function sizerPaint(env: ResizeEnv, e: PaintEvent): void {
 }
 
 /**
- * Header mode on both renderers: the key listener and the focus bookkeeping. Returns the disposer.
- * The keys it consumes are decided here, synchronously (a deferred `preventDefault` would let Alt+Left
- * through as the browser's History Back); the resize and the header-to-header moves run in the lazy half.
+ * Whether the grid claims key `e` with focus on `t` (a header, a gridcell, or a row): the one rule, run eagerly on
+ * the event target (so `preventDefault` is synchronous) and again by the lazy half on the focus at run time.
+ * Alt belongs to the task move/resize in row and cell mode; Ctrl/Meta only to Home/End.
  */
-export function attachHeaderKeys(env: ResizeEnv): () => void {
+export function claims(env: ResizeEnv, e: KeyboardEvent, t: Element): boolean {
+  const k = e.key;
+  const home = k === 'Home' || k === 'End';
+  const lr = k === 'ArrowLeft' || k === 'ArrowRight';
+  if (e.isComposing || ((e.ctrlKey || e.metaKey) && !home)) return false;
+  if (headerOf(t)) {
+    // Header mode: Left/Right/Home/End/Down/Escape, and Alt+Left/Right resizes.
+    return e.altKey ? lr : !e.shiftKey && (lr || home || k === 'ArrowDown' || k === 'Escape');
+  }
+  const row = t.closest?.('[data-row-index]');
+  if (!row || e.altKey || e.shiftKey) return false;
+  // Row or cell mode (the target is a row, or a gridcell inside one).
+  if (k === 'ArrowUp') return row.getAttribute('data-row-index') === '0';
+  return t.getAttribute('role') === 'gridcell' ? lr || home || k === 'Escape' : e.ctrlKey || e.metaKey ? home : lr;
+}
+
+/**
+ * The grid's keyboard model on both renderers (row, cell and header mode): the key listener and the focus
+ * bookkeeping. Returns the disposer. It runs in the CAPTURE phase on the container, ahead of `keyboard-nav`,
+ * and claims (`preventDefault` + `stopPropagation`) only what it acts on; everything else (Up/Down/Page,
+ * Space, Delete, Enter, F2, Alt+Arrow task move/resize from a row or a cell, `g`) reaches `keyboard-nav`
+ * unchanged. The actions run in the lazy half. Tab never lands on a cell or a header: from one, the roving row
+ * takes focus first and the default Tab runs from it, so the chart is one stop in both directions.
+ */
+export function attachKeys(env: ResizeEnv): () => void {
   const { container, nav } = env;
   const onKey = (ev: Event): void => {
     const e = ev as KeyboardEvent;
-    if (e.ctrlKey || e.metaKey || e.isComposing) return;
-    const k = e.key;
-    const head = headerOf(e.target);
-    if (!head) {
-      // Row mode: ArrowUp on the first row enters header mode. Captured before keyboard-nav sees it.
-      const row = (e.target as Element).closest?.('[role=row]');
-      if (k === 'ArrowUp' && !e.altKey && !e.shiftKey && row?.getAttribute('data-row-index') === '0') {
-        e.preventDefault();
-        e.stopPropagation();
-        focusHeader(env);
-      }
-      return;
-    }
-    const lr = k === 'ArrowLeft' || k === 'ArrowRight';
-    if (e.altKey ? !lr : e.shiftKey || !(lr || k === 'Home' || k === 'End' || k === 'ArrowDown' || k === 'Escape')) return;
-    e.preventDefault(); // even at a limit: Alt+Left would fall through to the browser's History Back
+    const t = e.target as Element;
+    // An editor (or any host field) inside the chart keeps its keys.
+    if (e.defaultPrevented || nav.syn || t.closest?.('input,textarea,select,[contenteditable]')) return;
+    if (e.key === 'Tab' && (headerOf(t) || t.getAttribute('role') === 'gridcell'))
+      return container.querySelector<HTMLElement>('[role=row][tabindex="0"]')?.focus({ preventScroll: true });
+    if (!claims(env, e, t)) return;
+    // Claimed: decided here, synchronously (Alt+Left would fall through to the browser's History Back, and the
+    // key must not also reach `keyboard-nav`); acted on in the lazy half, in order.
+    e.preventDefault();
     e.stopPropagation();
-    if (k === 'ArrowDown' || k === 'Escape') focusRow(env, k === 'ArrowDown');
-    else void env.ui().then((u) => u?.onKey(env, e, head));
+    void env.ui().then((u) => u?.onKey(env, e));
   };
   const onFocus = (e: Event): void => {
     container.querySelector('.fg-grid__ring')?.remove();
     if (e.type !== 'focusin') return;
-    const head = headerOf(e.target);
-    if (head) {
-      nav.head = true;
-      nav.tab = Number(head.getAttribute('aria-colindex')) - 1;
+    void env.ui(); // preload: the first key after a focus should not wait for the chunk
+    const t = e.target as Element;
+    const head = headerOf(t);
+    if (head || t.getAttribute('role') === 'gridcell') {
+      const col = Number(t.getAttribute('aria-colindex')) - 1;
+      nav.head = !!head;
+      if (head) [nav.tab, nav.col] = [col, -1];
+      else nav.col = col;
       void env.ui().then((u) => u?.ring(env));
     } else if (nav.paint && nav.head) focusHeader(env); // the renderer's post-paint restore: keep the header
-    else nav.head = false;
+    else if (!(nav.paint && nav.col >= 0 && focusCell(t, nav.col))) [nav.head, nav.col] = [false, -1]; // ... or the cell
   };
   container.addEventListener('keydown', onKey, true);
   container.addEventListener('focusin', onFocus);
