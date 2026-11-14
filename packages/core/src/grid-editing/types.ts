@@ -1,5 +1,4 @@
 // Public types of the grid cell editors (spec-grid-columns.md section 2.2). Type-only: 0 runtime bytes.
-import type { GanttInstance } from '../gantt.js';
 import type { TaskPatch } from '../store/index.js';
 import type { Task, TaskId } from '../types.js';
 
@@ -57,6 +56,3 @@ export interface GridEditingCapability {
   /** True while an editor is open. */
   isEditingCell(): boolean;
 }
-
-/** The instance type `withGridEditing` accepts: one `withGrid` has been applied to. */
-export type GridEditingBase = GanttInstance & { getGridColumns(): readonly unknown[] };
