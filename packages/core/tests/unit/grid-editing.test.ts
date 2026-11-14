@@ -90,7 +90,7 @@ const focus = (el: Element) => {
 };
 const editor = () => container.querySelector<HTMLInputElement>('.fg-grid__editor');
 const errorEl = () => container.querySelector<HTMLElement>('.fg-grid__edit-error')!;
-const live = () => container.querySelector('[aria-live]')!.textContent!.replace(/ /g, ' ').trim();
+const live = () => container.querySelector('[aria-live]')!.textContent!.replace(/\u00A0/g, ' ').trim();
 const active = () => document.activeElement as Element;
 
 function key(target: Element, k: string, init: KeyboardEventInit = {}): KeyboardEvent {
@@ -475,7 +475,7 @@ describe('commit and cancel', () => {
     make();
     const outside = document.createElement('button');
     document.body.append(outside);
-    const input = await openAt('a', 'name');
+    await openAt('a', 'name');
     outside.focus();
     await flush();
     expect(active()).toBe(outside);
@@ -652,7 +652,6 @@ describe('closing without a write', () => {
   it('an import cancels', async () => {
     const g = make();
     await openAt('a', 'name');
-    (g as unknown as { importJson?: unknown }).importJson;
     getInternal(g).emit('data:imported', { format: 'json', taskCount: 0, dependencyCount: 0 });
     await flush();
     expect(editor()).toBeNull();

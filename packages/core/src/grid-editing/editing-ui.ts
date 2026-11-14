@@ -16,13 +16,13 @@
 // Host messages (`beforeCommit`, a custom editor's `{ error }`) are capped and shown as text.
 import { ROW_HEIGHT } from '../render/renderer-base.js';
 import { toTaskId } from '../types.js';
-import type { EditErrorReason, Task } from '../types.js';
+import type { EditErrorReason } from '../types.js';
 import { announceGrid } from '../grid/announce.js';
 import { UNSAFE_TEXT, type Column } from '../grid/columns.js';
 import { HEADER_HEIGHT } from '../grid/fit.js';
 import { focusCell } from '../grid/resize.js';
 import { MAX_MESSAGE_CHARS, planEdit, type Plan } from './commit.js';
-import type { EditEnv } from './mixin.js';
+import type { EditEnv, OpenEdit } from './mixin.js';
 
 const HOST_CSS = 'position:sticky;inset-inline-start:0;grid-area:1/1;align-self:start;justify-self:start;width:0;height:0;overflow:visible';
 const CANVAS_HOST_CSS = 'position:sticky;top:0;inset-inline-start:0;width:0;height:0;overflow:visible';
@@ -276,7 +276,7 @@ function open(env: EditEnv, id: string, ci: number): void {
     }
   };
 
-  const me: import('./mixin.js').OpenEdit = {
+  const me: OpenEdit = {
     id,
     ci,
     end(write, back = true): boolean {
@@ -346,7 +346,12 @@ function open(env: EditEnv, id: string, ci: number): void {
   // --- mount -----------------------------------------------------------------------------------------------
   const layer = container.querySelector('.fg-timeline__layer');
   if (canvas) container.querySelector('canvas.fg-timeline-canvas-labels')?.after(host);
-  else if (layer) layer.querySelector(':scope > .fg-timeline__sticky-header')?.before(host) ?? layer.append(host);
+  else if (layer) {
+    // Above the rows, under the pinned date axis (document order is z-order), like the cell focus ring.
+    const band = layer.querySelector(':scope > .fg-timeline__sticky-header');
+    if (band) band.before(host);
+    else layer.append(host);
+  }
   if (!host.isConnected) return; // nowhere to put it
   st.o = me;
   place();

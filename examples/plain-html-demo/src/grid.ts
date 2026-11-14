@@ -17,6 +17,11 @@
 //   ?longcols=1   name + five custom columns whose values are ~1000 characters (the fit() cost budget)
 //   ?resizable=0  `resizable: false` (no drag handles; Alt+Arrow on a header does nothing)
 //   ?hooks=1      also compose `withEditHooks`; `task:activated` / `task:context-requested` land on `window.__events`
+//   ?edit=1       also compose `withGridEditing` (an `owner` editor when ?cols=6 or more); `task:updated` and
+//                 `cell:edit-requested` land on `window.__events` (the live region is the page's `[aria-live]`)
+//   ?veto=1       with ?edit=1: a `cell:edit-requested` listener calls `preventDefault()` (the host opens its own editor)
+//   ?readonly=1   `readOnly: true`
+//   ?messages=1   `gridEditError` / `gridEditLabel` host overrides (a recognisable prefix)
 //   ?grid=0       do not compose withGrid (the baseline for the performance budgets)
 //   ?deps=1       keep the four dependencies even when ?rows pads the plan, and keep the filler tasks inside Mar-May so
 //                 the plan's chain stays the critical path (a truncated critical row on the Canvas renderer)
@@ -32,6 +37,7 @@ import { withTheme } from '@fluxgantt/core/theme';
 import { withRtl } from '@fluxgantt/core/rtl';
 import { withGrid, type GridColumnInput } from '@fluxgantt/core/grid';
 import { withEditHooks } from '@fluxgantt/core/edit-hooks';
+import { withGridEditing } from '@fluxgantt/core/grid-editing';
 
 const params = new URLSearchParams(window.location.search);
 const rtl = params.get('rtl') === '1';
@@ -88,6 +94,11 @@ const owner: GridColumnInput = {
   id: 'owner',
   header: long ? 'Owner of the work package' : 'Owner',
   width: 120,
+  editor: {
+    type: 'text',
+    maxLength: 40,
+    commit: (v, t) => ({ meta: { ...t.meta, owner: String(v) } }),
+  },
   value: (t) => (long ? `${String(t.meta?.['owner'])} - a custom value that is far too long to fit` : String(t.meta?.['owner'])),
 };
 const extras: GridColumnInput[] = [
@@ -134,6 +145,15 @@ const base = withIo(
           calendar,
           rollup: computeRollup,
           rtl,
+          ...(params.get('readonly') === '1' ? { readOnly: true } : {}),
+          ...(params.get('messages') === '1'
+            ? {
+                messages: {
+                  gridEditLabel: (p: { header: string; taskName: string }) => `Edit ${p.header} of ${p.taskName}`,
+                  gridEditError: (p: { reason: string }) => `Problem: ${p.reason}`,
+                },
+              }
+            : {}),
           ...(params.get('locale') ? { locale: params.get('locale')! } : {}),
         }),
       ),
@@ -155,11 +175,20 @@ const plain = params.get('grid') === '0'
       durationUnit: params.get('hours') === '1' ? 'hours' : 'days',
       resizable: params.get('resizable') !== '0',
     });
-const gantt = params.get('hooks') === '1' ? withEditHooks(plain) : plain;
-if (params.get('hooks') === '1') {
+const edited = (params.get('edit') === '1' ? withGridEditing(plain as unknown as Parameters<typeof withGridEditing>[0]) : plain) as typeof plain;
+const gantt = params.get('hooks') === '1' ? withEditHooks(edited) : edited;
+if (params.get('hooks') === '1' || params.get('edit') === '1') {
   const events: { name: string; payload: unknown }[] = [];
   (window as unknown as Record<string, unknown>)['__events'] = events;
-  for (const name of ['task:activated', 'task:context-requested'] as const) {
+  if (params.get('edit') === '1') {
+    for (const name of ['task:updated', 'cell:edit-requested'] as const) {
+      gantt.on(name, (p) => {
+        events.push({ name, payload: { ...(p as object) } });
+        if (name === 'cell:edit-requested' && params.get('veto') === '1') (p as { preventDefault(): void }).preventDefault();
+      });
+    }
+  }
+  for (const name of params.get('hooks') === '1' ? (['task:activated', 'task:context-requested'] as const) : []) {
     gantt.on(name, (p) => {
       events.push({ name, payload: { ...p } });
       if (name === 'task:context-requested') (p as { preventDefault(): void }).preventDefault();

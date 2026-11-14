@@ -1024,6 +1024,33 @@ ids match `^[A-Za-z0-9_-]{1,64}$`; at most 24 columns. `value()` output is untru
 with `aria-colcount`, a header row of `columnheader`s and `gridcell`s with `aria-colindex`; the
 pinned layers are `aria-hidden` clones. SVG/PNG exports always include the grid.
 
+### 7.14 Grid cell editors (`@fluxgantt/core/grid-editing`, `@beta`)
+
+`withGridEditing(instance, { isEditable?, beforeCommit?, activate?, commitOnBlur? })` makes the grid's cells editable
+(apply it after `withGrid`; it throws otherwise). The editor code is a lazy chunk fetched when a cell first takes
+focus or is first edited, so read-only grids do not pay for it. Design: `.claude/work/spec-grid-columns.md` section 10.
+
+```ts
+import { withGridEditing } from '@fluxgantt/core/grid-editing';
+
+const gantt = withGridEditing(withGrid(withInteraction(withRender(createGantt({ tasks })))), {
+  beforeCommit: ({ columnId, input }) => (columnId === 'name' && input === 'TBD' ? 'Pick a real name.' : undefined),
+});
+gantt.on('cell:edit-requested', (p) => { /* p.preventDefault() opens your own editor instead */ });
+gantt.startCellEdit(taskId, 'start'); gantt.cancelCellEdit(); gantt.isEditingCell();
+```
+
+Enter or F2 on an editable cell, F2 on a row (its name cell), and a double-click or double-tap on a pinned cell open the
+editor; Enter or Tab commits, Escape cancels, blur commits a valid value. Editors: `name` text; `start` / `end` native
+date fields; `duration` a decimal in the column's unit (not `type=number`); `progress` a percent; a custom column opts in
+with `editor: { type: 'text' | 'number' | 'date', commit(input, task, ctx) }`. A summary's rolled-up cells, a milestone's
+end and duration and everything in a `readOnly` chart are not editable. Each edit is ONE store write (`updateTask`,
+`resizeTask` or `setProgress`): one undo entry, one `task:updated`. A start date keeps the bar's working duration and
+snaps forward to a working day; an end date snaps back to one and must stay after the start. Validation is inline
+(`role="alert"`, `aria-invalid`, `messages.gridEditError`); the input is named by `messages.gridEditLabel`; results are
+announced through `withInteraction`'s live region (`cell-edited`, `cell-edit-failed`). User text only ever reaches the
+DOM as text and is length-checked, stripped of control and bidi characters, and parsed before it is written.
+
 ---
 
 ## 8. UI/UX Design System
