@@ -4,6 +4,7 @@
 // before anything changes.
 import type {
   BuiltInColumnId,
+  CellEditor,
   ColumnAlign,
   ColumnId,
   CustomColumn,
@@ -49,6 +50,8 @@ export const UNSAFE_TEXT = /[\u0000-\u0008\u000a-\u001f\u007f-\u009f\u2028\u2029
 export interface Column extends GridColumn {
   readonly value?: CustomColumn['value'];
   readonly format?: CustomColumn['format'];
+  /** `false` (or absent on a custom column): not editable. Validated here, used by `withGridEditing`. */
+  readonly editor?: CellEditor | false;
 }
 
 /**
@@ -104,6 +107,20 @@ export function resolveColumns(input: readonly GridColumnInput[] | undefined): r
     if (custom.format !== undefined && typeof custom.format !== 'function') {
       throw new RangeError(`format of "${id}" must be a function`);
     }
+    const ed = def.editor;
+    if (
+      ed !== undefined &&
+      ed !== false &&
+      (builtIn ||
+        typeof ed?.commit !== 'function' ||
+        !['text', 'number', 'date'].includes(ed.type) ||
+        ed.min! > ed.max! ||
+        (ed.maxLength !== undefined && !(ed.maxLength >= 1)) ||
+        (ed.initial !== undefined && typeof ed.initial !== 'function') ||
+        [ed.min, ed.max].some((v) => v !== undefined && !Number.isFinite(v)))
+    ) {
+      throw new RangeError(`editor of "${id}" is invalid`);
+    }
     if (!builtIn && typeof custom.header !== 'string') throw new RangeError(`column "${id}" needs a header`);
     const header = def.header ?? DEFAULT_HEADERS[id as BuiltInColumnId];
     if (typeof header !== 'string' || header.length > MAX_HEADER_CHARS) {
@@ -128,6 +145,7 @@ export function resolveColumns(input: readonly GridColumnInput[] | undefined): r
       align: align as ColumnAlign,
       builtIn,
       ...(builtIn ? {} : { value: custom.value, ...(custom.format ? { format: custom.format } : {}) }),
+      ...(ed === undefined ? {} : { editor: ed }),
     };
   });
 }

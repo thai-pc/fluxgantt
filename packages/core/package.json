@@ -132,6 +132,16 @@
         "default": "./dist/grid/index.cjs"
       }
     },
+    "./grid-editing": {
+      "import": {
+        "types": "./dist/grid-editing/index.d.ts",
+        "default": "./dist/grid-editing/index.js"
+      },
+      "require": {
+        "types": "./dist/grid-editing/index.d.cts",
+        "default": "./dist/grid-editing/index.cjs"
+      }
+    },
     "./conflicts": {
       "import": {
         "types": "./dist/conflicts/index.d.ts",

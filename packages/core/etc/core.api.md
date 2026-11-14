@@ -37,6 +37,19 @@ export interface CascadeShift {
     readonly taskId: TaskId;
 }
 
+// @beta
+export interface CellEditRequestedPayload {
+    readonly clientX: number;
+    // (undocumented)
+    readonly clientY: number;
+    readonly columnId: string;
+    preventDefault(): void;
+    // (undocumented)
+    readonly source: 'keyboard' | 'pointer';
+    // (undocumented)
+    readonly taskId: TaskId;
+}
+
 // @beta @deprecated
 export class CollapseStore {
     // (undocumented)
@@ -207,6 +220,9 @@ export interface DetectConflictsOptions {
 export function differenceInWorkingHours(from: DateInput, to: DateInput, cal: WorkingCalendar): number;
 
 // @beta
+export type EditErrorReason = 'empty' | 'not-a-number' | 'out-of-range' | 'not-a-date' | 'end-before-start' | 'too-long' | 'rejected';
+
+// @beta
 export function effect(fn: () => void): () => void;
 
 // @public
@@ -252,6 +268,33 @@ export type GanttAnnouncement =
     readonly header: string;
     readonly width: number;
     readonly locale: string;
+}
+/** After a grid cell edit was written (`withGridEditing`). `text` is the cell's new display text;
+*  `snapped` is set when a start or end date fell on a non-working day and moved to the next or previous
+*  working day.
+*
+*  @beta */
+| {
+    readonly kind: 'cell-edited';
+    readonly id: TaskId;
+    readonly name: string;
+    readonly columnId: string;
+    readonly header: string;
+    readonly text: string;
+    readonly snapped?: 'next' | 'previous';
+    readonly locale: string;
+}
+/** After an edit was discarded because its value was invalid when the editor lost focus (`withGridEditing`).
+*
+*  @beta */
+| {
+    readonly kind: 'cell-edit-failed';
+    readonly id: TaskId;
+    readonly name: string;
+    readonly columnId: string;
+    readonly header: string;
+    readonly reason: EditErrorReason;
+    readonly locale: string;
 };
 
 // @public
@@ -278,6 +321,8 @@ export interface GanttConfig {
 
 // @public
 export interface GanttEventMap {
+    // @beta
+    'cell:edit-requested': [payload: CellEditRequestedPayload];
     'collapse:changed': [collapsedTaskIds: readonly TaskId[]];
     // @beta
     'column:resized': [payload: ColumnResizedPayload];
@@ -374,6 +419,22 @@ export interface GanttMessages {
         readonly header: string;
         readonly index: number;
         readonly count: number;
+        readonly locale: string;
+    }) => string;
+    // @beta
+    readonly gridEditError?: (params: {
+        readonly reason: EditErrorReason;
+        readonly columnId: string;
+        readonly header: string;
+        readonly locale: string;
+        readonly min?: number;
+        readonly max?: number;
+    }) => string;
+    // @beta
+    readonly gridEditLabel?: (params: {
+        readonly columnId: string;
+        readonly header: string;
+        readonly taskName: string;
         readonly locale: string;
     }) => string;
     readonly taskLabel?: (params: TaskLabelParams) => string;

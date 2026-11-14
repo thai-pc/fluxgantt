@@ -320,3 +320,16 @@ while the new dark token, the `:has`/forced-colors rules and the column overflow
 nodes out of the paint tree when they are invisible. The `:has()` rule, and every `@media` rule using it, must stay a separate rule (a UA
 without `:has` drops the whole rule it appears in). The `focusin` listener sits on the HTML layer, not the `<svg>`: Chromium makes an SVG element with focus listeners a Tab stop (the a11y keyboard-nav specs caught it). The injected `<style>` test cap went 1000 -> 1400. Playwright resolves
 `@fluxgantt/core` from `dist`, so rebuild the package before an e2e mutation check.
+
+The 2026-11 grid editing pass (`withGridEditing`, PR G6, the last PR of the 4th gate's build-out window) is the model for
+a feature that has to be small AND large: the mixin is an eager SHELL (`grid-editing/mixin.ts`) that only decides, synchronously,
+whether a key or a gesture belongs to an editable cell (so `preventDefault` can stay synchronous) and keeps the open-editor
+slot, while everything else (the `cell:edit-requested` event, the editor DOM and state machine, the parsers, the
+calendar-aware commit, the announcements) is one lazy chunk (`grid-editing/editing-ui`, 5764 B minified gzip) fetched on
+the first focus of an editable cell or the first edit. The shell added 814 B to the everything gate (39051 -> 39865) against
+a 1909 B allowance, the hard fixtures 0 B. Levers that held: `aria-readonly` is set when a cell takes focus (from the same
+`canEdit` the key claim uses) instead of by a pass over every cell (a per-paint cost at 2000 rows x 6 columns), the pointer
+resolution (`colAt`, `hitTestRow`, the double-tap pair) lives in the lazy half and only the capture listener is eager, and the
+column's `editor` validation is a few lines in `grid/columns.ts` (+108 B on `+ withGrid`). The cap arithmetic and the decision
+not to raise the limit are in CLAUDE.md's decision log. Measured and kept lazy on purpose: touching `values.ts` for the editors
+(it exports `hoursPerDay` and a shared reader instead), so the editors never build a second working-hours table.

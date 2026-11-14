@@ -8,12 +8,28 @@ import { Temporal } from '@js-temporal/polyfill';
 
 // @beta
 export interface BuiltInColumn extends GridColumnBase {
+    readonly editor?: false;
     // (undocumented)
     readonly id: BuiltInColumnId;
 }
 
 // @beta
 export type BuiltInColumnId = 'name' | 'start' | 'end' | 'duration' | 'progress';
+
+// @beta
+export interface CellEditor {
+    // Warning: (ae-forgotten-export) The symbol "TaskPatch" needs to be exported by the entry point index.d.ts
+    readonly commit: (input: string | number, task: Readonly<Task>, ctx: GridCellContext) => TaskPatch | {
+        readonly error: string;
+    };
+    // Warning: (ae-forgotten-export) The symbol "Task" needs to be exported by the entry point index.d.ts
+    readonly initial?: (task: Readonly<Task>, ctx: GridCellContext) => string;
+    // (undocumented)
+    readonly max?: number;
+    readonly maxLength?: number;
+    readonly min?: number;
+    readonly type: 'text' | 'number' | 'date';
+}
 
 // @beta
 export type ColumnAlign = 'start' | 'center' | 'end';
@@ -25,11 +41,11 @@ export type ColumnId = string & {
 
 // @beta
 export interface CustomColumn extends GridColumnBase {
+    readonly editor?: CellEditor | false;
     readonly format?: (value: string | number, task: Readonly<Task>, ctx: GridCellContext) => string;
     // (undocumented)
     readonly header: string;
     readonly id: string;
-    // Warning: (ae-forgotten-export) The symbol "Task" needs to be exported by the entry point index.d.ts
     readonly value: (task: Readonly<Task>, ctx: GridCellContext) => string | number | null | undefined;
 }
 

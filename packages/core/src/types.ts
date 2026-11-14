@@ -304,7 +304,48 @@ export type GanttAnnouncement =
       readonly header: string;
       readonly width: number;
       readonly locale: string;
+    }
+  /** After a grid cell edit was written (`withGridEditing`). `text` is the cell's new display text;
+   *  `snapped` is set when a start or end date fell on a non-working day and moved to the next or previous
+   *  working day.
+   *
+   *  @beta */
+  | {
+      readonly kind: 'cell-edited';
+      readonly id: TaskId;
+      readonly name: string;
+      readonly columnId: string;
+      readonly header: string;
+      readonly text: string;
+      readonly snapped?: 'next' | 'previous';
+      readonly locale: string;
+    }
+  /** After an edit was discarded because its value was invalid when the editor lost focus (`withGridEditing`).
+   *
+   *  @beta */
+  | {
+      readonly kind: 'cell-edit-failed';
+      readonly id: TaskId;
+      readonly name: string;
+      readonly columnId: string;
+      readonly header: string;
+      readonly reason: EditErrorReason;
+      readonly locale: string;
     };
+
+/**
+ * Why a cell edit was rejected (`GanttMessages.gridEditError`).
+ *
+ * @beta
+ */
+export type EditErrorReason =
+  | 'empty'
+  | 'not-a-number'
+  | 'out-of-range'
+  | 'not-a-date'
+  | 'end-before-start'
+  | 'too-long'
+  | 'rejected';
 
 /**
  * Host-supplied accessible-name builders (`GanttConfig.messages`).
@@ -343,6 +384,30 @@ export interface GanttMessages {
     readonly index: number;
     readonly count: number;
     readonly locale: string;
+  }) => string;
+  /** Accessible name of the cell editor's input (`withGridEditing`). Default `"<header>, <task name>"`. Throwing or
+   *  returning a non-string falls back to it.
+   *
+   * @beta */
+  readonly gridEditLabel?: (params: {
+    readonly columnId: string;
+    readonly header: string;
+    readonly taskName: string;
+    readonly locale: string;
+  }) => string;
+  /** The inline validation message of the cell editor (`withGridEditing`). Replaces the English text for
+   *  `reason`; `min` / `max` are set for `out-of-range` on a column that has bounds. A message from the host's
+   *  `beforeCommit` or a custom editor's `commit` is shown as given, not through this. Throwing or returning a
+   *  non-string falls back to the English default.
+   *
+   * @beta */
+  readonly gridEditError?: (params: {
+    readonly reason: EditErrorReason;
+    readonly columnId: string;
+    readonly header: string;
+    readonly locale: string;
+    readonly min?: number;
+    readonly max?: number;
   }) => string;
 }
 

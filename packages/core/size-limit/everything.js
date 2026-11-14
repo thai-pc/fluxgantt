@@ -3,8 +3,8 @@
 // `kitchen-sink.js` is unchanged and stays the pre-facade-split base surface (io + render +
 // interaction) WITHOUT the opt-in mixins.
 //
-// ADD EVERY NEW PUBLIC MIXIN HERE when it ships (`withGrid` and `withGridEditing` join in their own
-// PRs, at the marked spots). Each capability must stay REFERENCED below or the bundler shakes it away
+// ADD EVERY NEW PUBLIC MIXIN HERE when it ships (`withGrid` and `withGridEditing` joined in their own
+// PRs). Each capability must stay REFERENCED below or the bundler shakes it away
 // and the gate under-measures (`tooling/scripts/__tests__/size-gates.test.mjs` asserts that every
 // mixin subpath is imported here).
 // Dynamic `import()` chunks (Canvas) stay `external` and unmeasured, as in every fixture.
@@ -19,10 +19,10 @@ import { withEditHooks } from '@fluxgantt/core/edit-hooks';
 import { withRtl } from '@fluxgantt/core/rtl';
 import { withResponsive } from '@fluxgantt/core/responsive';
 import { withGrid } from '@fluxgantt/core/grid';
-// import { withGridEditing } from '@fluxgantt/core/grid-editing';   // joins in the grid-editing PR
+import { withGridEditing } from '@fluxgantt/core/grid-editing';
 
-const gantt = withGrid(withRtl(withResponsive(withEditHooks(withConflicts(withViewport(withTheme(
-  withInteraction(withIo(withRender(createGantt({ tasks: [], dependencies: [], rtl: true })))))))))));
+const gantt = withGridEditing(withGrid(withRtl(withResponsive(withEditHooks(withConflicts(withViewport(withTheme(
+  withInteraction(withIo(withRender(createGantt({ tasks: [], dependencies: [], rtl: true }))))))))))));
 gantt.mount(document.body);
 gantt.on('conflict:detected', () => {});
 gantt.on('task:activated', (p) => p.taskId);
@@ -30,4 +30,4 @@ gantt.setTheme('dark');
 gantt.setDensity('compact');
 gantt.scrollToTask('a');
 gantt.detectConflicts();
-globalThis.out = [gantt.exportJson(), gantt.isCoarsePointer(), gantt.exportGridCsv(), gantt.getGridColumns, gantt.setGridColumns];
+globalThis.out = [gantt.exportJson(), gantt.isCoarsePointer(), gantt.exportGridCsv(), gantt.getGridColumns, gantt.setGridColumns, gantt.startCellEdit, gantt.cancelCellEdit, gantt.isEditingCell];

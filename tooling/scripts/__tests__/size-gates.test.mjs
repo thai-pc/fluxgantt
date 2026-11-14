@@ -22,7 +22,7 @@ const EVERYTHING = 'Everything composed (all mixins incl. grid + grid editing, g
 
 test('the default config holds four hard gates, the soft config the rest, and names never collide', () => {
   assert.equal(hard.length, 4);
-  assert.equal(soft.length, 9);
+  assert.equal(soft.length, 10);
   const names = [...hard, ...soft].map((r) => r.name);
   assert.equal(new Set(names).size, names.length);
   assert.ok(hard.some((r) => r.name === EVERYTHING));
