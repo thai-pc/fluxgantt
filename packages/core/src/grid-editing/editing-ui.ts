@@ -138,7 +138,7 @@ function open(env: EditEnv, id: string, ci: number): void {
   const err = document.createElement('div');
   err.className = 'fg-grid__edit-error';
   err.setAttribute('role', 'alert');
-  err.style.cssText = `${ERROR_CSS};display:none`;
+  err.style.cssText = ERROR_CSS + ';display:none';
   host.append(input, err);
   input.className = 'fg-grid__editor';
   input.style.cssText = INPUT_CSS;
@@ -393,5 +393,10 @@ export function dbl(env: EditEnv, e: Event): void {
     col = at?.[0];
   }
   const ci = view.all.findIndex((c) => c.id === col);
-  if (id && ci >= 0 && begin(env, id, ci, 'pointer')) lastDbl = e.timeStamp;
+  if (!id || ci < 0) return;
+  const run = (): void => void (begin(env, id!, ci, 'pointer') && (lastDbl = e.timeStamp));
+  // A double-tap is seen at its second `pointerup`, ahead of `selection`'s own window listener, which hands focus to the
+  // tapped row: open one task later, or that would take the focus straight back from the editor.
+  if (e.type === 'pointerup') setTimeout(run);
+  else run();
 }

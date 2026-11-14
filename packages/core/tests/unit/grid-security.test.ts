@@ -203,8 +203,8 @@ describe('an export always parses as XML (characters XML 1.0 forbids never reach
   });
 });
 
-describe('static source scan: no markup sinks in the grid sources', () => {
-  const dir = resolve(import.meta.dirname, '../../src/grid') + '/';
+describe.each(['grid', 'grid-editing'])('static source scan: no markup sinks in the %s sources', (folder) => {
+  const dir = resolve(import.meta.dirname, '../../src', folder) + '/';
   const strip = (s: string) => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '').replace(/([^:])\/\/.*$/gm, '$1');
   it.each(readdirSync(dir).filter((f) => f.endsWith('.ts')))('%s', (file) => {
     const code = strip(readFileSync(dir + file, 'utf8'));
