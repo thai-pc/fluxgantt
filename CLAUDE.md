@@ -34,18 +34,20 @@ The API report is the lock and the TSDoc tag decides the tier (stable, `@beta`, 
    | `createGantt()` only (hello world) | **hard** | 8380 / 8.18 | 8.25 KiB |
    | `+ withRender + withInteraction` | **hard** | 21749 / 21.24 | 21.25 KiB |
    | kitchen sink (io + render + interaction) | **hard** | 26537 / 25.92 | 26.25 KiB |
-   | everything composed (every mixin, `size-limit/everything.js`) | **hard (4th)** | 38795 / 37.89 | 41.5 KiB |
+   | everything composed (every mixin, `size-limit/everything.js`) | **hard (4th)** | 39010 / 38.10 | 41.5 KiB |
    | `+ withIo` | soft | 13525 / 13.21 | 14 KiB |
    | `+ withRender` | soft | 16048 / 15.67 | 15 KiB |
    | `+ withRender + withTheme` | soft | 16742 / 16.35 | 16 KiB |
    | `+ withRender + withInteraction + withResponsive` | soft | 23256 / 22.71 | 21 KiB |
    | `+ withRender + withViewport` | soft | 16967 / 16.57 | 16 KiB |
    | `+ withConflicts` (headless) | soft | 10322 / 10.08 | 10 KiB |
-   | `+ withRender + withEditHooks` | soft | 17397 / 16.99 | 16 KiB |
+   | `+ withRender + withEditHooks` | soft | 17495 / 17.09 | 16 KiB |
    | `+ withRender + withRtl` | soft | 16542 / 16.15 | 15.5 KiB |
-   | `+ withRender + withGrid` | soft | 22203 / 21.68 | 20 KiB |
+   | `+ withRender + withGrid` | soft | 22320 / 21.80 | 20 KiB |
 
    Table re-measured 2026-11-13 after the grid-columns seam PR (G0: multi-consumer `handle.paintHooks`, `fixedLabelWidth`, `internal.announce`, the inert Canvas `grid` option and the `part: 'cell'` types). Against master 5440bf3 (gzip bytes): hello world +0 (8380, 68 B left), `+ withRender + withInteraction` 21655 -> 21749 (+94, 11 B left), kitchen sink 26432 -> 26535 (+103, 345 B left); soft fixtures +0 (`+ withIo`, `+ withConflicts`) .. +128 (`+ withRtl`). A feature seam, NOT an exemption claim; it is over the spec's +90 B per hard fixture by 4 / 13 B because the review asked for composition-time registration (hooks see the mount paint, `withRtl` always last, isolated dispatch, a writer that survives unmount), which cost about +14 / +21 B on top of the first cut. The new fourth gate is measured, not compared.
+
+   Table re-measured 2026-11-14 after the edit-hooks cells PR (G5: `withEditHooks` reports `part: 'cell'` + `columnId` when `withGrid` is composed; `collapseBelow` was already complete). Against master e6942c2 (gzip bytes): hello world +0 (8380, 68 B left), `+ withRender + withInteraction` +0 (21749, 11 B left), kitchen sink +0 (26537, 343 B left); soft `+ withRender + withEditHooks` 17397 -> 17495 (+98), `+ withRender + withGrid` 22203 -> 22320 (+117), every other fixture +0. The everything gate went 38795 -> 39010 (+215), which is the sum of those two (both mixins are composed there); limit and baseline unchanged (G5 is not in the build-out window), so G6 has 1950 B of measured growth left under the 40960 B cap (was 2165). The cost is one internal optional `internal.colAt(target, x)` (set by `withGrid`, read by `withEditHooks`: a `data-column-id` ancestor, else the pinned column's blank part resolved by x against the column offsets) plus the `columnId` plumbing in `edit-hooks/mixin.ts`; the grid-side half is the larger one so no hard fixture pays for it. Canvas needed no new code (G2's `hitTestRow().columnId`).
 
    Table re-measured 2026-11-13 after the grid columns PR (G1: `@fluxgantt/core/grid`, the SVG painter, `exportGridCsv`). Against master 88f4e8c (gzip bytes): hello world +0 (8380, 68 B left), `+ withRender + withInteraction` +0 (21749, 11 B left), kitchen sink 26535 -> 26537 (+2, from `writeRow` becoming an exported symbol of `io/csv.ts`; 343 B left); every other existing fixture +0 except `+ withIo` -3; the new `+ withRender + withGrid` soft fixture is 20555 B (75 B OVER its 20 KiB reference, a soft warning: the review fixes cost +401 B). The everything gate went 32877 -> 37274 (+4397 B) because it now composes `withGrid`, and is re-based under the build-out window (see the decision log).
 
