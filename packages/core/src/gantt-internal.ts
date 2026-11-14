@@ -159,11 +159,14 @@ export interface GanttInternal {
    *  kept last. Passed to the SVG renderer by `render/mixin.ts`; Canvas ignores it. */
   paints?: PaintHook[];
 
-  /** Set by `withGrid` (SVG): the grid column a pointer or keyboard target belongs to. A target inside a
-   *  `[data-column-id]` element reports that id; a target inside the pinned column's own box (the blank part
-   *  of a cell) is resolved by `clientX` against the column offsets, `name` included. Anything else is
-   *  `undefined`. Read by `withEditHooks` (`part: 'cell'`). Canvas answers through `hitTestRow().columnId`. */
-  colAt?: (target: Element, clientX?: number) => string | undefined;
+  /** Set by `withGrid` on every instance (the Canvas keyboard path reads it through the a11y layer's
+   *  `[data-column-id]` ancestor too; do not install it for SVG only). Returns `[columnId, row]` for the grid
+   *  column a pointer or keyboard target belongs to, else `undefined`. A target inside a `[data-column-id]`
+   *  element answers with that id; a target inside the pinned column's own box (the blank part of a cell) is
+   *  resolved by `clientX` against the column offsets, `name` included, and `row` is the pinned clone row
+   *  spanning `clientY` (the whole band, not just its text), when there is one. Read by `withEditHooks`
+   *  (`part: 'cell'`; `name` gives `'label'`). Canvas pointers answer through `hitTestRow().columnId`. */
+  colAt?: (target: Element, clientX?: number, clientY?: number) => readonly [string, Element | undefined] | undefined;
 
   // --- Mount slot (writer: render/mixin.ts) ---
   mountOf(): MountState | undefined;

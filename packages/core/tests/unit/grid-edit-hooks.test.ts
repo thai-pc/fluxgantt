@@ -68,7 +68,7 @@ describe.each([false, true])('SVG, rtl=%s', (rtl) => {
     const hooked = withEditHooks(g);
     const seen = listen(hooked);
     hooked.mount(container);
-    return seen;
+    return { ...seen, g: hooked as typeof hooked & ReturnType<typeof withGrid> };
   }
   const pinned = (task: string, sel: string): Element =>
     container.querySelector(`.fg-timeline__sticky-column [data-task-id="${task}"] ${sel}`)!;
@@ -84,27 +84,99 @@ describe.each([false, true])('SVG, rtl=%s', (rtl) => {
     expect(context[0]).toMatchObject({ taskId: 'c', part: 'cell', columnId: 'duration', source: 'pointer' });
   });
 
-  it('the blank part of a pinned cell resolves by x against the column offsets, from the inline-start edge', () => {
-    const { activated, context } = make(true);
+  const r = (l: number, t: number, w: number, h: number): DOMRect =>
+    ({ left: l, top: t, right: l + w, bottom: t + h, x: l, y: t, width: w, height: h, toJSON: () => ({}) }) as DOMRect;
+  // The pinned column spans the chart: a 32 px header, then 32 px rows (p, a, c). The row groups' own boxes are
+  // bar-only (a 19 px bar centred in the band), as in a browser: the arithmetic must not depend on them.
+  const LEFT = 100;
+  function layout(): Element {
     const pin = container.querySelector('.fg-timeline__sticky-column')!;
-    const left = 100;
-    const r = (l: number, t: number, w: number, h: number): DOMRect =>
-      ({ left: l, top: t, right: l + w, bottom: t + h, x: l, y: t, width: w, height: h, toJSON: () => ({}) }) as DOMRect;
-    vi.spyOn(pin, 'getBoundingClientRect').mockReturnValue(r(left, 0, 652, 600));
+    vi.spyOn(pin, 'getBoundingClientRect').mockReturnValue(r(LEFT, 0, 652, 600));
     ['p', 'a', 'c'].forEach((id, i) =>
-      vi.spyOn(container.querySelector(`.fg-timeline__row[data-task-id="${id}"]`)!, 'getBoundingClientRect').mockReturnValue(r(0, 40 + i * 30, 2000, 30)),
+      vi.spyOn(container.querySelector(`.fg-timeline__row[data-task-id="${id}"]`)!, 'getBoundingClientRect').mockReturnValue(r(0, 32 + i * 32 + 6, 2000, 19)),
     );
-    // Offsets: name 0..220, start 220..340, end 340..460, duration 460..556, progress 556..652.
-    const at = (d: number): number => (rtl ? left + 652 - d : left + d);
-    dbl(pin, at(280), 80); // row `a`, `start`
-    ctx(pin, at(600), 115); // row `c`, `progress`
-    dbl(pin, at(100), 80); // the blank part of the name column
-    dbl(pin, at(280), 10); // above every row
+    return pin;
+  }
+  // Offsets: name 0..220, start 220..340, end 340..460, duration 460..556, progress 556..652.
+  const at = (d: number): number => (rtl ? LEFT + 652 - d : LEFT + d);
+
+  it('the blank part of a pinned cell resolves by x, from the inline-start edge, and by y across the whole row band', () => {
+    const { activated, context } = make(true);
+    const pin = layout();
+    dbl(pin, at(280), 66); // 2 px under the top of row `a`, `start`
+    ctx(pin, at(600), 127); // 1 px above the bottom of row `c`, `progress`
+    dbl(pin, at(100), 94); // the blank part of the name column, 2 px above the bottom of `a`
+    dbl(pin, at(280), 10); // the header
+    dbl(pin, at(280), 140); // below the last row
     expect(activated).toHaveLength(2);
     expect(activated[0]).toMatchObject({ taskId: 'a', part: 'cell', columnId: 'start' });
     expect(context[0]).toMatchObject({ taskId: 'c', part: 'cell', columnId: 'progress' });
+    expect(context).toHaveLength(1);
     expect(activated[1]).toMatchObject({ taskId: 'a', part: 'label' });
     expect('columnId' in activated[1]!).toBe(false);
+  });
+
+  it('the row height follows the density', () => {
+    const base = withInteraction(withRender(createGantt({ tasks: TASKS, density: 'touch', ...(rtl ? { rtl: true } : {}) })));
+    const g = withEditHooks(withGrid(rtl ? withRtl(base) : base));
+    const { activated } = listen(g);
+    g.mount(container);
+    const pin = container.querySelector('.fg-timeline__sticky-column')!;
+    vi.spyOn(pin, 'getBoundingClientRect').mockReturnValue(r(LEFT, 0, 652, 600));
+    dbl(pin, at(280), 32 + 48 + 2); // 48 px rows: the second row is `a`
+    expect(activated[0]).toMatchObject({ taskId: 'a', part: 'cell', columnId: 'start' });
+  });
+
+  it('the blank-part x resolution follows resizeGridColumn and setGridColumns', () => {
+    const { activated, g } = make(true);
+    const pin = layout();
+    g.resizeGridColumn('start', 200); // start 220..420, end 420..540
+    dbl(pin, at(400), 66);
+    expect(activated[0]).toMatchObject({ columnId: 'start' });
+    g.setGridColumns([{ id: 'name' }, { id: 'owner', header: 'Owner', width: 100, value: () => 'x' }]);
+    layout();
+    dbl(container.querySelector('.fg-timeline__sticky-column')!, at(300), 66);
+    expect(activated[1]).toMatchObject({ taskId: 'a', part: 'cell', columnId: 'owner' });
+    dbl(container.querySelector('.fg-timeline__sticky-column')!, at(400), 66); // past the last column
+    expect(activated).toHaveLength(2);
+  });
+
+  it('a touch long-press on a cell (its text or its blank part) reports the cell once', () => {
+    vi.useFakeTimers();
+    const { context } = make(true);
+    const press = (el: Element, x: number, y: number): void => {
+      el.dispatchEvent(Object.assign(new MouseEvent('pointerdown', { bubbles: true, clientX: x, clientY: y }), { pointerType: 'touch', pointerId: 1, isPrimary: true }));
+      vi.advanceTimersByTime(500);
+    };
+    press(pinned('a', '[data-column-id="end"]'), 5, 6);
+    const pin = layout();
+    press(pin, at(600), 66);
+    expect(context).toHaveLength(2);
+    expect(context[0]).toMatchObject({ taskId: 'a', part: 'cell', columnId: 'end', source: 'long-press' });
+    expect(context[1]).toMatchObject({ taskId: 'a', part: 'cell', columnId: 'progress', source: 'long-press' });
+  });
+
+  it('a column sizer emits nothing (double-click, context menu, touch long-press)', () => {
+    vi.useFakeTimers();
+    const { activated, context } = make(true);
+    const sizer = container.querySelector('.fg-grid__sizer')!;
+    expect(sizer).not.toBeNull();
+    dbl(sizer);
+    ctx(sizer);
+    sizer.dispatchEvent(Object.assign(new MouseEvent('pointerdown', { bubbles: true }), { pointerType: 'touch', pointerId: 1, isPrimary: true }));
+    vi.advanceTimersByTime(600);
+    expect(activated).toHaveLength(0);
+    expect(context).toHaveLength(0);
+  });
+
+  it('the pinned corner header is not a task gesture', () => {
+    const { activated, context } = make(true);
+    const corner = container.querySelector('.fg-timeline__sticky-corner')!;
+    const head = corner.querySelector('text')!;
+    dbl(head);
+    ctx(corner);
+    expect(activated).toHaveLength(0);
+    expect(context).toHaveLength(0);
   });
 
   it('the name column keeps its part and carries no columnId', () => {
@@ -150,6 +222,13 @@ describe.each([false, true])('SVG, rtl=%s', (rtl) => {
     const parent = container.querySelector<SVGElement>('.fg-timeline__row[data-task-id="p"]')!;
     parent.focus();
     expect(key(parent, 'Enter').defaultPrevented).toBe(true); // the collapse toggle
+    expect(activated).toHaveLength(1);
+    // Enter from a cell of a parent row toggles it too, and is not an activation.
+    const pc = container.querySelector<SVGElement>('.fg-timeline__row[data-task-id="p"] [data-column-id="end"]')!;
+    pc.setAttribute('tabindex', '-1');
+    parent.focus();
+    pc.focus();
+    expect(key(pc, 'Enter').defaultPrevented).toBe(true);
     expect(activated).toHaveLength(1);
   });
 

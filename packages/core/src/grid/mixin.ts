@@ -24,7 +24,7 @@ import type { CanvasGridPainter, CanvasRendererHandle } from '../render/canvas-r
 import { getInternal } from '../gantt-internal.js';
 import { resolveColumns, publicColumn, type Column } from './columns.js';
 import { gridCsv } from './csv.js';
-import type { GridView } from './fit.js';
+import { HEADER_HEIGHT, type GridView } from './fit.js';
 import { attachKeys, gridPaint, type ResizeEnv } from './resize.js';
 import type * as ResizeUi from './resize-ui.js';
 import { createGridPaint } from './svg-grid.js';
@@ -127,13 +127,17 @@ export function withGrid<T extends GanttInstance>(
   let svgEnv: ResizeEnv | undefined;
 
   const paints = (internal.paints ??= []);
-  internal.colAt = (t, x = NaN) => {
-    const r = t.closest('.fg-timeline__sticky-column')?.getBoundingClientRect();
+  internal.colAt = (t, x = NaN, y = NaN) => {
+    const pin = t.closest('.fg-timeline__sticky-column');
+    const r = pin?.getBoundingClientRect();
     const d = r ? (internal.mountOf()?.handle.mirrorX ? r.right - x : x - r.left) : NaN;
-    return (
+    const id =
       t.closest('[data-column-id]')?.getAttribute('data-column-id') ??
-      view.cols.find((c, i) => d >= view.offs[i]! && d < view.offs[i]! + c.width)?.id
-    );
+      view.cols.find((c, i) => d >= view.offs[i]! && d < view.offs[i]! + c.width)?.id;
+    // The row spanning y, by arithmetic (a pinned clone row's box is only its text): rows start under the header
+    // and the first label sits at its centre, which gives the row height at any density.
+    const h = 2 * (Number(pin?.querySelector('.fg-timeline__row-label')?.getAttribute('y')) - HEADER_HEIGHT);
+    return id ? [id, pin?.querySelectorAll('g[data-row-index]')[Math.floor((y - r!.top - HEADER_HEIGHT) / h)]] : undefined;
   };
   paints.push(createGridPaint(internal, () => view, values));
   paints.push((e) => {
