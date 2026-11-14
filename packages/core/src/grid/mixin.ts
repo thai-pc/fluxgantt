@@ -24,7 +24,7 @@ import type { CanvasGridPainter, CanvasRendererHandle } from '../render/canvas-r
 import { getInternal } from '../gantt-internal.js';
 import { resolveColumns, publicColumn, type Column } from './columns.js';
 import { gridCsv } from './csv.js';
-import type { GridView } from './fit.js';
+import { HEADER_HEIGHT, type GridView } from './fit.js';
 import { attachKeys, gridPaint, type ResizeEnv } from './resize.js';
 import type * as ResizeUi from './resize-ui.js';
 import { createGridPaint } from './svg-grid.js';
@@ -64,6 +64,8 @@ const viewOf = (all: readonly Column[], cols: readonly Column[]): GridView => {
  *   It can therefore disagree with the bar when a host's `duration` disagrees with its dates.
  * - `collapseBelow` hides every column but `name` in a narrow container, for assistive technology too;
  *   a container that shrinks to fit its content may not re-expand.
+ * - With `withEditHooks` composed, `task:activated` / `task:context-requested` from a cell report `part: 'cell'` and its
+ *   `columnId` (every column but `name`, which keeps `'label'` for the pointer and `'row'` for the keyboard).
  * - Keyboard (after the APG treegrid pattern; the chart stays ONE Tab stop, the active row). In ROW mode, Right
  *   on a collapsed parent expands it, on an expanded parent or a leaf it enters the first cell; Left on an
  *   expanded parent collapses it, otherwise it moves to (and selects) the parent row; Ctrl/Cmd+Home/End go to the
@@ -125,6 +127,18 @@ export function withGrid<T extends GanttInstance>(
   let svgEnv: ResizeEnv | undefined;
 
   const paints = (internal.paints ??= []);
+  internal.colAt = (t, x = NaN, y = NaN) => {
+    const pin = t.closest('.fg-timeline__sticky-column');
+    const r = pin?.getBoundingClientRect();
+    const d = r ? (internal.mountOf()?.handle.mirrorX ? r.right - x : x - r.left) : NaN;
+    const id =
+      t.closest('[data-column-id]')?.getAttribute('data-column-id') ??
+      view.cols.find((c, i) => d >= view.offs[i]! && d < view.offs[i]! + c.width)?.id;
+    // The row spanning y, by arithmetic (a pinned clone row's box is only its text): rows start under the header
+    // and the first label sits at its centre, which gives the row height at any density.
+    const h = 2 * (Number(pin?.querySelector('.fg-timeline__row-label')?.getAttribute('y')) - HEADER_HEIGHT);
+    return id ? [id, pin?.querySelectorAll('g[data-row-index]')[Math.floor((y - r!.top - HEADER_HEIGHT) / h)]] : undefined;
+  };
   paints.push(createGridPaint(internal, () => view, values));
   paints.push((e) => {
     if (svgEnv) gridPaint(svgEnv, e);

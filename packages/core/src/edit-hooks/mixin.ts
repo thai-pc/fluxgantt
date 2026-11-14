@@ -33,11 +33,11 @@ const DRAG_THRESHOLD_PX = 4;
 /** Touch slop: larger than the mouse threshold because fingers jitter. */
 const TOUCH_SLOP_PX = 8;
 
+// The payload's identity part: spread into the emitted event. `columnId` is present only on a grid cell.
 interface Hit {
-  readonly id: TaskId;
+  readonly taskId: TaskId;
   readonly part: TaskHitPart;
-  /** Canvas: the point is on the bar, where a drag (4 px) can start. */
-  readonly onBar?: boolean;
+  readonly columnId?: string;
 }
 
 /** Adds host edit hooks (double-click, context menu, keyboard) to a mounted chart. */
@@ -70,23 +70,31 @@ export function withEditHooks<T extends GanttInstance>(
       | { hit: Hit; x: number; y: number; px: number; py: number; slop: number; pid: number }
       | undefined;
 
+    // Canvas: the last `resolve` point is on the bar (kept out of the payload).
+    let onBar = false;
     const resolve = (target: EventTarget | null, x: number, y: number): Hit | undefined => {
       if (!Number.isFinite(x) || !Number.isFinite(y)) return undefined;
       let id: string | null;
       let part: TaskHitPart = 'row';
-      let onBar = false;
+      onBar = false;
+      let col: string | undefined;
       if (handle.hitTestRow) {
         const hit = handle.hitTestRow(x, y);
         if (!hit || hit.hitToggle) return undefined;
         id = hit.taskId;
         onBar = hit.onBar === true;
         if (hit.onLabel) part = 'label';
+        col = hit.columnId;
       } else {
         if (!(target instanceof Element) || target.closest('.fg-timeline__row-toggle'))
           return undefined;
+        // With a grid: the column under the pointer (`name` too) and the row spanning y, by arithmetic.
+        const at = internal.colAt?.(target, x, y);
+        col = at?.[0];
         // The painted grid sits outside the row groups: fall back to the row spanning y.
         const row =
           target.closest('[data-row-index]') ??
+          at?.[1] ??
           (target.closest('.fg-timeline__grid') &&
             Array.from(root.querySelectorAll('[data-row-index]')).find((r) => {
               const b = r.getBoundingClientRect();
@@ -95,11 +103,12 @@ export function withEditHooks<T extends GanttInstance>(
         if (!row) return undefined;
         id = row.getAttribute('data-task-id');
         if (target.closest('.fg-task')) part = 'bar';
-        else if (target.closest('.fg-timeline__row-label')) part = 'label';
+        else if (col || target.closest('.fg-timeline__row-label')) part = 'label';
       }
+      if (col && col !== 'name') part = 'cell'; // `name` keeps `label` / `row`
       // A forged or stale id never leaves the library.
       return id !== null && internal.tasks.has(toTaskId(id))
-        ? { id: toTaskId(id), part, onBar }
+        ? { taskId: toTaskId(id), part, ...(part === 'cell' ? { columnId: col! } : {}) }
         : undefined;
     };
 
@@ -113,8 +122,7 @@ export function withEditHooks<T extends GanttInstance>(
       let prevented = false;
       // Relies on a SYNCHRONOUS emit (reads `prevented` right after); true only outside a command.
       internal.emit('task:context-requested', {
-        taskId: hit.id,
-        part: hit.part,
+        ...hit,
         source,
         clientX: x,
         clientY: y,
@@ -150,7 +158,7 @@ export function withEditHooks<T extends GanttInstance>(
         py: e.clientY,
         // On a bar, a drag (4 px) must win over the long-press; elsewhere nothing can drag, so
         // the wider touch slop applies.
-        slop: hit.part === 'bar' || hit.onBar ? DRAG_THRESHOLD_PX : TOUCH_SLOP_PX,
+        slop: hit.part === 'bar' || onBar ? DRAG_THRESHOLD_PX : TOUCH_SLOP_PX,
         pid: e.pointerId,
       };
       press = state;
@@ -162,7 +170,7 @@ export function withEditHooks<T extends GanttInstance>(
       // `unmount()` has no hook: bail out unless this handle is still the mounted one.
       if (disposed || internal.mountOf()?.handle !== handle) return;
       // The row may have been removed meanwhile (a repaint alone keeps the id valid).
-      if (!internal.tasks.has(state.hit.id)) return;
+      if (!internal.tasks.has(state.hit.taskId)) return;
       originPrevented = emitContext(state.hit, 'long-press', state.px, state.py);
       // The gesture now belongs to the host's menu: end it for the drag / selection recognizers
       // (both treat a window `pointercancel` as a cancel and commit nothing).
@@ -188,8 +196,7 @@ export function withEditHooks<T extends GanttInstance>(
       const hit = resolve(e.target, e.clientX, e.clientY);
       if (!hit) return;
       internal.emit('task:activated', {
-        taskId: hit.id,
-        part: hit.part,
+        ...hit,
         source: 'pointer',
         clientX: e.clientX,
         clientY: e.clientY,
@@ -248,11 +255,13 @@ export function withEditHooks<T extends GanttInstance>(
         x = (Number.isFinite(rect.left) ? rect.left : 0) + handle.getLabelColumnWidth();
         y = Number.isFinite(rect.top) ? rect.top : 0;
       }
+      // A focused grid cell (not `name`, which has no `data-column-id`) is reported as the cell.
+      const cellId = internal.colAt?.(target as Element)?.[0];
+      const hit: Hit = cellId ? { taskId: id, part: 'cell', columnId: cellId } : { taskId: id, part: 'row' };
       if (activate) {
         e.preventDefault();
         internal.emit('task:activated', {
-          taskId: id,
-          part: 'row',
+          ...hit,
           source: 'keyboard',
           clientX: x,
           clientY: y,
@@ -260,7 +269,7 @@ export function withEditHooks<T extends GanttInstance>(
         return;
       }
       origin = 'keyboard';
-      originPrevented = emitContext({ id, part: 'row' }, 'keyboard', x, y);
+      originPrevented = emitContext(hit, 'keyboard', x, y);
       if (originPrevented) e.preventDefault();
     };
 

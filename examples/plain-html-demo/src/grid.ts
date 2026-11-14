@@ -16,6 +16,7 @@
 //   ?wide=1       spread the filler tasks over ~520 days and add 20 holidays (the PR #125 duration trap)
 //   ?longcols=1   name + five custom columns whose values are ~1000 characters (the fit() cost budget)
 //   ?resizable=0  `resizable: false` (no drag handles; Alt+Arrow on a header does nothing)
+//   ?hooks=1      also compose `withEditHooks`; `task:activated` / `task:context-requested` land on `window.__events`
 //   ?grid=0       do not compose withGrid (the baseline for the performance budgets)
 //   ?deps=1       keep the four dependencies even when ?rows pads the plan, and keep the filler tasks inside Mar-May so
 //                 the plan's chain stays the critical path (a truncated critical row on the Canvas renderer)
@@ -30,6 +31,7 @@ import { withResponsive } from '@fluxgantt/core/responsive';
 import { withTheme } from '@fluxgantt/core/theme';
 import { withRtl } from '@fluxgantt/core/rtl';
 import { withGrid, type GridColumnInput } from '@fluxgantt/core/grid';
+import { withEditHooks } from '@fluxgantt/core/edit-hooks';
 
 const params = new URLSearchParams(window.location.search);
 const rtl = params.get('rtl') === '1';
@@ -145,7 +147,7 @@ const themed = withTheme(responsive);
 if (themeParam === 'dark' || themeParam === 'light') themed.setTheme(themeParam);
 if (themeParam) document.documentElement.dataset['theme'] = themed.getResolvedTheme();
 const composed = withRtl(themeParam ? themed : responsive);
-const gantt = params.get('grid') === '0'
+const plain = params.get('grid') === '0'
   ? Object.assign(composed, { exportGridCsv: () => '', setGridColumns: (_: GridColumnInput[]) => {} })
   : withGrid(composed, {
       columns,
@@ -153,6 +155,17 @@ const gantt = params.get('grid') === '0'
       durationUnit: params.get('hours') === '1' ? 'hours' : 'days',
       resizable: params.get('resizable') !== '0',
     });
+const gantt = params.get('hooks') === '1' ? withEditHooks(plain) : plain;
+if (params.get('hooks') === '1') {
+  const events: { name: string; payload: unknown }[] = [];
+  (window as unknown as Record<string, unknown>)['__events'] = events;
+  for (const name of ['task:activated', 'task:context-requested'] as const) {
+    gantt.on(name, (p) => {
+      events.push({ name, payload: { ...p } });
+      if (name === 'task:context-requested') (p as { preventDefault(): void }).preventDefault();
+    });
+  }
+}
 
 const t0 = performance.now();
 gantt.mount(document.getElementById('gantt')!);

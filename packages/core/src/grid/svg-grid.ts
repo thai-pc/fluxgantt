@@ -97,10 +97,10 @@ export function createGridPaint(
       const [x, anchor] = place(col, v.offs[i]!);
       const shown = cut(full, col.width - 2 * PAD);
       const t = textEl(x, y, anchor, shown, shown !== full ? full : undefined);
+      t.setAttribute('data-column-id', col.id); // before the clone: the visible pinned text is the pointer target (edit hooks)
       out?.append(t.cloneNode(true));
       t.setAttribute('role', 'gridcell');
       t.setAttribute('aria-colindex', String(i + 1));
-      t.setAttribute('data-column-id', col.id);
       if (shown !== full) t.setAttribute('aria-label', full);
       real.append(t);
     });
