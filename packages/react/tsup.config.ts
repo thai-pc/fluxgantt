@@ -1,17 +1,26 @@
-import { readFile, writeFile } from 'node:fs/promises';
+import { readdir, readFile, writeFile } from 'node:fs/promises';
 import { defineConfig } from 'tsup';
 
 const USE_CLIENT_DIRECTIVE = '"use client";\n';
 
 export default defineConfig({
-  entry: ['src/index.ts'],
+  // `grid` / `grid-editing` are opt-in entries (`@fluxgantt/react/grid`, `/grid-editing`): the default entry
+  // never imports them, so a chart without a grid ships no grid code. ESM code-splits the code they share
+  // with `index` into a chunk; CJS stays one self-contained file per entry.
+  entry: { index: 'src/index.ts', grid: 'src/grid.tsx', 'grid-editing': 'src/grid-editing.tsx' },
   format: ['esm', 'cjs'],
   dts: true,
   sourcemap: true,
   clean: true,
   treeshake: true,
   target: 'es2022',
-  external: ['react', 'react-dom', 'react/jsx-runtime', '@fluxgantt/core'],
+  external: [
+    'react',
+    'react-dom',
+    'react/jsx-runtime',
+    '@fluxgantt/core',
+    /^@fluxgantt\/core\//,
+  ],
   // `"use client"` marks the Next.js App Router client boundary (see spec-react-wrapper.md
   // §1/§10 — additive, NOT SSR/RSC support). Kept as `banner` for self-documenting intent, but
   // esbuild's bundler treats a leading string-literal statement as a "module level directive"
@@ -22,7 +31,11 @@ export default defineConfig({
   // (the final shipped file's first line), independent of tsup/esbuild's internal AST.
   banner: { js: USE_CLIENT_DIRECTIVE.trim() },
   async onSuccess() {
-    for (const file of ['dist/index.js', 'dist/index.cjs']) {
+    // Every emitted entry AND shared chunk (a chunk of a "use client" module is client code too).
+    const files = (await readdir('dist'))
+      .filter((f) => f.endsWith('.js') || f.endsWith('.cjs'))
+      .map((f) => `dist/${f}`);
+    for (const file of files) {
       const contents = await readFile(file, 'utf8');
       if (!contents.startsWith(USE_CLIENT_DIRECTIVE)) {
         await writeFile(file, USE_CLIENT_DIRECTIVE + contents);

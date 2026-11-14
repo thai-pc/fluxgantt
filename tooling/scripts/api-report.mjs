@@ -18,6 +18,27 @@ import { listEntries } from '../api-report/entries.mjs';
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const base = JSON.parse(readFileSync(join(repoRoot, 'tooling/api-report/api-extractor.base.json'), 'utf8'));
 
+/**
+ * Sorts every run of consecutive Vue `"onX-y"?:` event-prop lines. A component's inferred props list its
+ * emits in TypeScript's union order, which depends on type-interning order and was seen to differ between
+ * identical builds (a flaky `--check`). The set of members is what the lock is about, not their order.
+ * Only the COMPARISON is normalized; committed reports keep whatever order the extractor wrote.
+ */
+function normalize(text) {
+  const lines = text.split('\n');
+  const out = [];
+  for (let i = 0; i < lines.length;) {
+    if (!/^\s+"on[A-Z][^"]*"\?:/.test(lines[i])) {
+      out.push(lines[i++]);
+      continue;
+    }
+    const run = [];
+    while (i < lines.length && /^\s+"on[A-Z][^"]*"\?:/.test(lines[i])) run.push(lines[i++]);
+    out.push(...run.sort());
+  }
+  return out.join('\n');
+}
+
 function run(mode) {
   const local = mode === 'update';
   let failed = 0;
@@ -53,13 +74,22 @@ function run(mode) {
         if (m.logLevel === 'warning' && m.category === 'Extractor') m.handled = true;
       },
     });
-    const stale = result.apiReportChanged;
     const label = `${e.name}.api.md`;
+    const committedFile = join(e.pkgDir, 'etc', label);
+    const generatedFile = join(tempFolder, label);
+    let stale = result.apiReportChanged;
+    if (!local && stale && existsSync(committedFile) && existsSync(generatedFile)) {
+      stale =
+        normalize(readFileSync(committedFile, 'utf8')) !==
+        normalize(readFileSync(generatedFile, 'utf8'));
+    }
     if (result.errorCount > 0 || (!local && stale)) {
       failed++;
       const committed = join(e.pkgDir, 'etc', label);
       if (result.errorCount > 0) {
-        console.error(`api-report: ${label}: extractor reported ${result.errorCount} error(s), see above`);
+        console.error(
+          `api-report: ${label}: extractor reported ${result.errorCount} error(s), see above`,
+        );
       } else if (!existsSync(committed)) {
         console.error(`api-report: ${label} is missing (not committed)`);
       } else {
@@ -83,7 +113,11 @@ function run(mode) {
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  const mode = process.argv.includes('--update') ? 'update' : process.argv.includes('--check') ? 'check' : null;
+  const mode = process.argv.includes('--update')
+    ? 'update'
+    : process.argv.includes('--check')
+      ? 'check'
+      : null;
   if (!mode) {
     console.error('usage: api-report.mjs --check | --update');
     process.exit(2);

@@ -3,7 +3,13 @@
 // — deliberately NOT a `.vue` SFC (resolution #4). Consumers still use it from an ordinary SFC
 // template (`<FluxGantt :tasks="tasks" @task-moved="onMoved" />`) — only OUR source avoids the
 // SFC compiler; nothing about this changes how a consumer writes their own template.
-import { defineComponent, h, onBeforeUnmount, type PropType } from 'vue';
+import {
+  defineComponent,
+  h,
+  onBeforeUnmount,
+  type ComponentObjectPropsOptions,
+  type PropType,
+} from 'vue';
 import { useFluxGantt } from './use-flux-gantt.js';
 import type {
   DateInput,
@@ -18,6 +24,7 @@ import type {
   TaskContextRequestedPayload,
   TaskId,
   TaskUpdatedPayload,
+  UnsubscribeFn,
 } from '@fluxgantt/core';
 import type {
   DependencyInput,
@@ -60,7 +67,7 @@ import type {
  * `Object.assign`s plain closures directly onto the instance, so those methods are own
  * properties and never appear on the prototype chain the way the base class's do.
  */
-function exposableInstance(instance: GanttInstance): GanttInstance {
+export function exposableInstance(instance: GanttInstance): GanttInstance {
   const bound: Record<string, unknown> = {};
   const seen = new Set<string>();
   let proto: object | null = instance;
@@ -77,6 +84,88 @@ function exposableInstance(instance: GanttInstance): GanttInstance {
   }
   return bound as unknown as GanttInstance;
 }
+
+/** Loosely typed `emit`, so one bridge serves the default and the grid components. */
+export type Emit = (event: string, ...args: unknown[]) => void;
+
+/**
+ * Subscribes the 11 `GanttEventMap` events every wrapper component bridges to `emit`. Called in `setup()`
+ * (before `mount()`, see the comment there); shared with the opt-in grid components.
+ */
+export function bridgeGantt(instance: GanttInstance, emit: Emit): UnsubscribeFn[] {
+  return [
+    instance.on('task:added', (task) => emit('task-added', task)),
+    instance.on('task:updated', (payload) => emit('task-updated', payload)),
+    instance.on('task:moved', (task, prevStart) => emit('task-moved', task, prevStart)),
+    instance.on('task:resized', (task, prevDuration) => emit('task-resized', task, prevDuration)),
+    instance.on('task:progressed', (task, prevProgress) =>
+      emit('task-progressed', task, prevProgress),
+    ),
+    instance.on('task:removed', (taskId) => emit('task-removed', taskId)),
+    instance.on('dependency:added', (dep) => emit('dependency-added', dep)),
+    instance.on('dependency:removed', (depId) => emit('dependency-removed', depId)),
+    instance.on('critical-path:computed', (ids) => emit('critical-path-computed', ids)),
+    instance.on('task:activated', (payload) => emit('task-activated', payload)),
+    instance.on('task:context-requested', (payload) => emit('task-context-requested', payload)),
+  ];
+}
+
+/** The props of `<FluxGantt>`, shared with the opt-in grid components (`@fluxgantt/vue/grid`). */
+export const ganttProps = {
+  tasks: { type: Array as PropType<readonly TaskInput[]>, required: false },
+  dependencies: { type: Array as PropType<readonly DependencyInput[]>, required: false },
+  calendar: { type: Object as PropType<WorkingCalendar>, required: false },
+  viewMode: { type: String as PropType<ViewMode>, required: false },
+  density: { type: String as PropType<Density>, required: false },
+  locale: { type: String, required: false },
+  ariaLabel: { type: String, required: false },
+  messages: { type: Object as PropType<GanttMessages>, required: false },
+  theme: {
+    type: String as PropType<'light' | 'dark' | 'auto'>,
+    required: false,
+    validator: (v: string) => v === 'light' || v === 'dark' || v === 'auto',
+  },
+  canvasViewportHeight: { type: Number, required: false },
+  schedulingMode: { type: String as PropType<SchedulingMode>, required: false },
+  historyLimit: { type: Number, required: false },
+  initialCollapsed: { type: Array as PropType<readonly TaskId[]>, required: false },
+  rollup: { type: Function as PropType<RollupProvider>, required: false },
+  // `default: undefined` overrides Vue's Boolean-prop special case (an absent Boolean prop
+  // WITHOUT an explicit default resolves to `false`, not `undefined`) — preserves the
+  // facade's real tri-state ("unset" lets `GanttConfig`'s own default apply, distinct from
+  // an explicit `false`).
+  readOnly: { type: Boolean, required: false, default: undefined },
+  enableDependencyDrag: { type: Boolean, required: false, default: undefined },
+  rtl: { type: Boolean, required: false, default: undefined },
+  onTaskChange: {
+    type: Function as PropType<(task: Task, prev: Task) => void>,
+    required: false,
+  },
+} satisfies ComponentObjectPropsOptions;
+
+/** The emits of `<FluxGantt>`, shared with the opt-in grid components. */
+export const ganttEmits = {
+  // Vue's object-form `emits` both registers the 11 events at runtime (so `v-on`/`@x`
+  // listeners on unknown events still fall through as attrs correctly, and Vue's dev-mode
+  // "unknown event" warning doesn't fire) AND drives TypeScript's inference of `emit`'s
+  // signature inside `setup()` — the non-macro equivalent of `defineEmits<FluxGanttEmits>()`.
+  // Validators always return `true` (no runtime payload re-validation here — the payload
+  // already came from `@fluxgantt/core`'s own typed `GanttEventMap`, not external/untrusted
+  // input); their PARAMETER TYPES, not their return value, are what TypeScript uses for
+  // inference. Must be kept in sync with `FluxGanttEmits` in types.ts BY HAND — see §9
+  // (guarded by the mandatory drift-guard test, tests/flux-gantt.test.ts).
+  'task-added': (_task: Task) => true,
+  'task-updated': (_payload: TaskUpdatedPayload) => true,
+  'task-moved': (_task: Task, _prevStart: DateInput) => true,
+  'task-resized': (_task: Task, _prevDuration: number) => true,
+  'task-progressed': (_task: Task, _prevProgress: number) => true,
+  'task-removed': (_taskId: TaskId) => true,
+  'dependency-added': (_dependency: Dependency) => true,
+  'dependency-removed': (_dependencyId: DependencyId) => true,
+  'critical-path-computed': (_criticalTaskIds: readonly TaskId[]) => true,
+  'task-activated': (_payload: TaskActivatedPayload) => true,
+  'task-context-requested': (_payload: TaskContextRequestedPayload) => true,
+} satisfies Record<string, (...args: never[]) => true>;
 
 /**
  * Note on construction-only props: every `GanttConfig` prop except `theme` and `onTaskChange`
@@ -100,59 +189,8 @@ function exposableInstance(instance: GanttInstance): GanttInstance {
  */
 export const FluxGantt = defineComponent({
   name: 'FluxGantt',
-  props: {
-    tasks: { type: Array as PropType<readonly TaskInput[]>, required: false },
-    dependencies: { type: Array as PropType<readonly DependencyInput[]>, required: false },
-    calendar: { type: Object as PropType<WorkingCalendar>, required: false },
-    viewMode: { type: String as PropType<ViewMode>, required: false },
-    density: { type: String as PropType<Density>, required: false },
-    locale: { type: String, required: false },
-    ariaLabel: { type: String, required: false },
-    messages: { type: Object as PropType<GanttMessages>, required: false },
-    theme: {
-      type: String as PropType<'light' | 'dark' | 'auto'>,
-      required: false,
-      validator: (v: string) => v === 'light' || v === 'dark' || v === 'auto',
-    },
-    canvasViewportHeight: { type: Number, required: false },
-    schedulingMode: { type: String as PropType<SchedulingMode>, required: false },
-    historyLimit: { type: Number, required: false },
-    initialCollapsed: { type: Array as PropType<readonly TaskId[]>, required: false },
-    rollup: { type: Function as PropType<RollupProvider>, required: false },
-    // `default: undefined` overrides Vue's Boolean-prop special case (an absent Boolean prop
-    // WITHOUT an explicit default resolves to `false`, not `undefined`) — preserves the
-    // facade's real tri-state ("unset" lets `GanttConfig`'s own default apply, distinct from
-    // an explicit `false`).
-    readOnly: { type: Boolean, required: false, default: undefined },
-    enableDependencyDrag: { type: Boolean, required: false, default: undefined },
-    rtl: { type: Boolean, required: false, default: undefined },
-    onTaskChange: {
-      type: Function as PropType<(task: Task, prev: Task) => void>,
-      required: false,
-    },
-  },
-  emits: {
-    // Vue's object-form `emits` both registers the 11 events at runtime (so `v-on`/`@x`
-    // listeners on unknown events still fall through as attrs correctly, and Vue's dev-mode
-    // "unknown event" warning doesn't fire) AND drives TypeScript's inference of `emit`'s
-    // signature inside `setup()` — the non-macro equivalent of `defineEmits<FluxGanttEmits>()`.
-    // Validators always return `true` (no runtime payload re-validation here — the payload
-    // already came from `@fluxgantt/core`'s own typed `GanttEventMap`, not external/untrusted
-    // input); their PARAMETER TYPES, not their return value, are what TypeScript uses for
-    // inference. Must be kept in sync with `FluxGanttEmits` in types.ts BY HAND — see §9
-    // (guarded by the mandatory drift-guard test, tests/flux-gantt.test.ts).
-    'task-added': (_task: Task) => true,
-    'task-updated': (_payload: TaskUpdatedPayload) => true,
-    'task-moved': (_task: Task, _prevStart: DateInput) => true,
-    'task-resized': (_task: Task, _prevDuration: number) => true,
-    'task-progressed': (_task: Task, _prevProgress: number) => true,
-    'task-removed': (_taskId: TaskId) => true,
-    'dependency-added': (_dependency: Dependency) => true,
-    'dependency-removed': (_dependencyId: DependencyId) => true,
-    'critical-path-computed': (_criticalTaskIds: readonly TaskId[]) => true,
-    'task-activated': (_payload: TaskActivatedPayload) => true,
-    'task-context-requested': (_payload: TaskContextRequestedPayload) => true,
-  },
+  props: ganttProps,
+  emits: ganttEmits,
   setup(props, { emit, expose }) {
     // `props` (Vue's reactive props proxy) is passed straight through as `UseFluxGanttConfig`
     // — NOT destructured/spread first, so `useFluxGantt`'s internal `config.onTaskChange?.()`
@@ -167,23 +205,7 @@ export const FluxGantt = defineComponent({
     // AFTER the composable's mount onMounted) would miss that first emit. `on()` works headless
     // (pre-mount), so subscribing during setup is safe. Split from useFluxGantt only because
     // `emit` doesn't exist inside a bare composable.
-    const unsubs: Array<() => void> = [
-      instance.on('task:added', (task) => emit('task-added', task)),
-      instance.on('task:updated', (payload) => emit('task-updated', payload)),
-      instance.on('task:moved', (task, prevStart) => emit('task-moved', task, prevStart)),
-      instance.on('task:resized', (task, prevDuration) => emit('task-resized', task, prevDuration)),
-      instance.on('task:progressed', (task, prevProgress) =>
-        emit('task-progressed', task, prevProgress),
-      ),
-      instance.on('task:removed', (taskId) => emit('task-removed', taskId)),
-      instance.on('dependency:added', (dep) => emit('dependency-added', dep)),
-      instance.on('dependency:removed', (depId) => emit('dependency-removed', depId)),
-      instance.on('critical-path:computed', (ids) => emit('critical-path-computed', ids)),
-      instance.on('task:activated', (payload) => emit('task-activated', payload)),
-      instance.on('task:context-requested', (payload) =>
-        emit('task-context-requested', payload),
-      ),
-    ];
+    const unsubs = bridgeGantt(instance, emit as unknown as Emit);
 
     onBeforeUnmount(() => {
       for (const unsub of unsubs) unsub();

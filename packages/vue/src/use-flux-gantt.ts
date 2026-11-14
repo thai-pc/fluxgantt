@@ -26,7 +26,7 @@
 // SEPARATE `onMounted`/`onBeforeUnmount` pair for the 8 event→emit bridges, because `emit` only
 // exists inside a component's `setup()` context — a freestanding composable has no `emit` to
 // call. See `FluxGantt.ts` and §6 for how the two hook pairs interleave safely.
-import { onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { onBeforeUnmount, onMounted, ref, watch, type Ref } from 'vue';
 import { createGantt } from '@fluxgantt/core';
 import { withRender, type RenderCapability } from '@fluxgantt/core/render';
 import { withInteraction } from '@fluxgantt/core/interaction';
@@ -41,13 +41,35 @@ import type { UseFluxGanttConfig, UseFluxGanttResult } from './types.js';
 // Minimal ambient declaration for `process.env.NODE_ENV`, mirroring react's own — this
 // package intentionally has no `@types/node` dependency. See use-flux-gantt.ts in
 // packages/react for the identical pattern/rationale.
-declare const process: { readonly env?: { readonly NODE_ENV?: string } } | undefined;
+declare const process: { readonly env: { readonly NODE_ENV?: string } };
+
+/** The instance every wrapper composes (see `useGantt`). */
+export type BaseInstance = GanttInstance & RenderCapability & ViewportCapability & ThemeCapability;
+
+/**
+ * Internal seam for the opt-in grid entries (`@fluxgantt/vue/grid`, `/grid-editing`); NOT exported from
+ * any package entry. `compose` adds mixins to the instance before `withRtl` is applied on top (so `withRtl`
+ * stays last). The default `useFluxGantt` passes none, so a non-grid consumer never imports grid code.
+ */
+export interface GanttPlugin<C extends UseFluxGanttConfig, I extends BaseInstance> {
+  readonly compose: (instance: BaseInstance, config: C) => I;
+  /** Names the component in the "invalid initial config" error. */
+  readonly label?: string;
+}
 
 /** Creates and owns a Gantt instance for the lifetime of the component. */
 export function useFluxGantt(config: UseFluxGanttConfig): UseFluxGanttResult {
+  return useGantt(config);
+}
+
+/** Shared body of `useFluxGantt` and the grid composables (see `GanttPlugin`). */
+export function useGantt<C extends UseFluxGanttConfig, I extends BaseInstance = BaseInstance>(
+  config: C,
+  plugin?: GanttPlugin<C, I>,
+): { readonly containerRef: Ref<HTMLDivElement | null>; readonly instance: I } {
   const containerRef = ref<HTMLDivElement | null>(null);
 
-  let instance: GanttInstance & RenderCapability & ViewportCapability & ThemeCapability;
+  let instance: I;
   try {
     // `pickConstructionConfig` copies only fields that are actually set (`exactOptionalPropertyTypes`,
     // and so core defaults apply to the rest) — see `gantt-config.ts`.
@@ -58,27 +80,28 @@ export function useFluxGantt(config: UseFluxGanttConfig): UseFluxGanttResult {
     // IO (`/io`) is deliberately NOT composed: the wrapper exposes no import/export surface, so
     // a consumer who never calls it never downloads it.
     // `/rtl` (the `rtl` prop) is composed unconditionally: `withRtl` returns at once unless `rtl === true`.
-    instance = withRtl(
-      withTheme(
-        withViewport(
-          withEditHooks(
-            withInteraction(
-              withRender(
-                createGantt({
-                  ...pickConstructionConfig(config),
-                  // Always constructed light so no OS `matchMedia` listener is armed before
-                  // mount; the real theme is applied in `onMounted` and disarmed in
-                  // `onBeforeUnmount`. Unset means 'light' here, not core's 'auto', because
-                  // wrapper charts have always been light; hosts opt in with `theme="auto"`.
-                  theme: 'light',
-                  onTaskChange: (task, prev) => config.onTaskChange?.(task, prev),
-                }),
-              ),
+    const composed = withTheme(
+      withViewport(
+        withEditHooks(
+          withInteraction(
+            withRender(
+              createGantt({
+                ...pickConstructionConfig(config),
+                // Always constructed light so no OS `matchMedia` listener is armed before
+                // mount; the real theme is applied in `onMounted` and disarmed in
+                // `onBeforeUnmount`. Unset means 'light' here, not core's 'auto', because
+                // wrapper charts have always been light; hosts opt in with `theme="auto"`.
+                theme: 'light',
+                onTaskChange: (task, prev) => config.onTaskChange?.(task, prev),
+              }),
             ),
           ),
         ),
       ),
     );
+    // `I` is `BaseInstance` exactly when there is no plugin (the default parameter), so the cast only
+    // restates that. `withRtl` goes on last, over whatever the plugin composed.
+    instance = withRtl(plugin?.compose(composed, config) ?? (composed as I));
   } catch (err) {
     // Same re-throw-with-context contract as react (invalid INITIAL tasks/dependencies —
     // duplicate id, self/duplicate/cyclic link — throws synchronously from `createGantt`).
@@ -86,7 +109,7 @@ export function useFluxGantt(config: UseFluxGanttConfig): UseFluxGanttResult {
     // came from `<FluxGantt>`'s initial props.
     const message = err instanceof Error ? err.message : String(err);
     throw new Error(
-      `[@fluxgantt/vue] invalid initial config passed to useFluxGantt/<FluxGantt>: ${message}`,
+      `[@fluxgantt/vue] invalid initial config passed to ${plugin?.label ?? 'useFluxGantt/<FluxGantt>'}: ${message}`,
       err instanceof Error ? { cause: err } : undefined,
     );
   }
@@ -106,27 +129,36 @@ export function useFluxGantt(config: UseFluxGanttConfig): UseFluxGanttResult {
   // needed the way react's `initialTasksRef` comparison needs one. A plain, non-reactive
   // `config` object simply never triggers this watcher — consistent with "nothing to warn
   // about," since Vue has no way to observe a mutation on a non-reactive object regardless.
-  if (!(typeof process !== 'undefined' && process.env?.NODE_ENV === 'production')) {
-    watch(
-      () => config.tasks,
-      () => {
-        console.warn(
-          '[@fluxgantt/vue] useFluxGantt: `tasks` changed identity after the instance was ' +
-            'created. `tasks` is only used as the initial value (uncontrolled) — further ' +
-            'changes are ignored. Mutate via the returned `instance` (`addTask`/`updateTask`/' +
-            '`removeTask`) instead.',
-        );
-      },
-    );
-    watch(
-      () => config.dependencies,
-      () => {
-        console.warn(
-          '[@fluxgantt/vue] useFluxGantt: `dependencies` changed identity after the instance ' +
-            'was created. Same uncontrolled contract as `tasks` — use `linkTasks`/`unlinkTasks`.',
-        );
-      },
-    );
+  // Dev-only. The bare `process.env.NODE_ENV !== 'production'` member expression is what bundlers
+  // replace (esbuild/Vite `define`, webpack `DefinePlugin`), so a production build drops the watchers
+  // AND the warning text. The `try` covers an unbundled load with no `process` global (dev behaviour
+  // there: no warnings); a `typeof process` guard would keep the warnings in production browser
+  // bundles, where `process` is undefined at runtime.
+  try {
+    if (process.env.NODE_ENV !== 'production') {
+      watch(
+        () => config.tasks,
+        () => {
+          console.warn(
+            '[@fluxgantt/vue] useFluxGantt: `tasks` changed identity after the instance was ' +
+              'created. `tasks` is only used as the initial value (uncontrolled) — further ' +
+              'changes are ignored. Mutate via the returned `instance` (`addTask`/`updateTask`/' +
+              '`removeTask`) instead.',
+          );
+        },
+      );
+      watch(
+        () => config.dependencies,
+        () => {
+          console.warn(
+            '[@fluxgantt/vue] useFluxGantt: `dependencies` changed identity after the instance ' +
+              'was created. Same uncontrolled contract as `tasks` — use `linkTasks`/`unlinkTasks`.',
+          );
+        },
+      );
+    }
+  } catch (e) {
+    if (!(e instanceof ReferenceError)) throw e;
   }
 
   // Mount/unmount lifecycle only — NOT the 8 event bridges (those live in `<FluxGantt>`

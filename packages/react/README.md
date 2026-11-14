@@ -63,6 +63,52 @@ on every render.
 Full prop table, the `useFluxGantt` hook, and the uncontrolled-data rationale:
 [the React docs page](https://fluxgantt.thai-pc.com/docs/frameworks/react).
 
+## Grid columns (beta)
+
+`@fluxgantt/react/grid` exports `FluxGanttGrid`: `<FluxGantt>` with the pinned grid columns of
+`@fluxgantt/core/grid`. `@fluxgantt/react/grid-editing` exports `FluxGanttGridEditing`, which adds inline
+cell editing. A chart that imports neither ships no grid code.
+
+```tsx
+import { FluxGanttGridEditing, type GridColumnInput } from '@fluxgantt/react/grid-editing';
+
+// Read the saved widths back: the library never persists them.
+const saved: Record<string, number> = JSON.parse(localStorage.getItem('gantt-widths') ?? '{}');
+
+// Define column functions outside the component (or `useCallback` them): a new function
+// identity on every render re-applies the columns and logs a dev warning.
+const columns: GridColumnInput[] = [
+  { id: 'name', ...(saved['name'] ? { width: saved['name'] } : {}) },
+  { id: 'start', ...(saved['start'] ? { width: saved['start'] } : {}) },
+  {
+    id: 'owner',
+    header: 'Owner',
+    value: (task) => String(task.meta?.['owner'] ?? ''),
+    ...(saved['owner'] ? { width: saved['owner'] } : {}),
+  },
+];
+
+export function Plan() {
+  return (
+    <FluxGanttGridEditing
+      tasks={tasks}
+      gridColumns={columns}
+      onColumnResized={({ widths }) => localStorage.setItem('gantt-widths', JSON.stringify(widths))}
+      onCellEditRequested={(e) => {
+        // e.preventDefault() here opens YOUR editor instead of the built-in one
+      }}
+    />
+  );
+}
+```
+
+`gridColumns` changes are applied with `setGridColumns` (no remount). A re-apply keeps the width the user
+dragged for every column whose declared `width` did not change, and waits while a cell is being edited.
+So re-passing the same columns does not reset user widths: to reset, change the declared `width`s, call
+`ref.current.setGridColumns(...)`, or change `key`. The ref also carries `getGridColumns`, `setGridColumns`,
+`resizeGridColumn`, `exportGridCsv` and, with editing, `startCellEdit`, `cancelCellEdit`, `isEditingCell`.
+The core grid is `@beta`, so these entries are too.
+
 ## License
 
 MIT
