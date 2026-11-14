@@ -296,8 +296,12 @@ describe('property: plan-then-write equals the old write-then-cascade path', () 
           let refThrew = false;
           try {
             refStore.update(target, patch);
-            const { shifts } = computeCascade(refStore.all(), g.getDependencies(), cal, [target]);
-            for (const s of shifts) refStore.update(s.taskId, { start: s.start, end: s.end });
+            // `updateTask` only cascades for a patch that touches the schedule (a `{}` or `type`-only
+            // patch writes and stops, even when the stored data already violates a link).
+            if (patch.start !== undefined || patch.end !== undefined || patch.duration !== undefined) {
+              const { shifts } = computeCascade(refStore.all(), g.getDependencies(), cal, [target]);
+              for (const s of shifts) refStore.update(s.taskId, { start: s.start, end: s.end });
+            }
           } catch {
             refThrew = true;
           }
@@ -311,7 +315,7 @@ describe('property: plan-then-write equals the old write-then-cascade path', () 
           if (!threw) expect(snap(g.getTasks())).toEqual(snap(refStore.all()));
         },
       ),
-      { numRuns: 200 },
+      { numRuns: Number(process.env.FG_RUNS ?? 200), ...(process.env.FG_SEED ? { seed: Number(process.env.FG_SEED), path: process.env.FG_PATH } : {}) },
     );
   });
 });
