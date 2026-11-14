@@ -227,17 +227,19 @@ describe('the editor on Canvas', () => {
     const { handle, label } = await mountCanvas();
     label.getBoundingClientRect = () => rect(0, W);
     handle.canvas.getBoundingClientRect = () => rect(0, 2000);
-    handle.pointerEventTarget.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, clientX: 4, clientY: 32 + ROW * 0.5 }));
+    handle.pointerEventTarget.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, clientX: 12, clientY: 32 + ROW * 0.5 }));
+    await flush();
+    expect(editor(), 'toggle gutter').toBeNull();
     handle.pointerEventTarget.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, clientX: 400, clientY: 590 }));
     await flush();
-    expect(editor()).toBeNull();
+    expect(editor(), 'below the rows').toBeNull();
   });
 
   it('startCellEdit finds the row in the a11y window, and says false for a row that is not there', async () => {
     const { g } = await mountCanvas();
     expect(g.startCellEdit(id('b'), 'duration')).toBe(true);
     await flush();
-    expect(editor()?.getAttribute('aria-label')).toBe('Duration, b');
+    expect(editor()?.getAttribute('aria-label')).toBe('Duration (days), b');
     g.cancelCellEdit();
     const many = Array.from({ length: 400 }, (_, i) => t(`r${i}`));
     const big = await mountCanvas({ tasks: many });
@@ -270,4 +272,58 @@ describe('the editor on Canvas', () => {
     expect(editor()).toBeNull();
     expect(cellOf(ro.layer, 'a', 'name').getAttribute('aria-readonly')).toBe('true');
   });
+
+  it('a row scrolled out of the a11y window keeps its editor on the row (cached index), hidden while it is off screen, and Enter writes that task', async () => {
+    const many = Array.from({ length: 400 }, (_, i) => t(`r${i}`));
+    const { g, handle, label } = await mountCanvas({ tasks: many });
+    label.getBoundingClientRect = () => rect(0, W);
+    handle.canvas.getBoundingClientRect = () => rect(0, 2000);
+    handle.pointerEventTarget.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true, clientX: 100, clientY: 32 + ROW * 5.5 }));
+    await flush();
+    const input = editor()!;
+    expect(input.getAttribute('aria-label')).toBe('Name, r5');
+    expect(input.style.top).toBe(`${32 + 5 * ROW}px`);
+    container.scrollTop = 6000;
+    handle.update({ ...handle.getRenderState().input });
+    await flush();
+    expect(container.querySelector('[role=row][data-task-id="r5"]')).toBeNull(); // out of the window now
+    expect(editor()).toBe(input); // not cancelled
+    expect(input.style.top).toBe(`${32 + 5 * ROW - 6000}px`); // placed by the cached index, not frozen at the old spot
+    expect(input.style.opacity).toBe('0'); // hidden: behind the header, off screen
+    container.scrollTop = 0;
+    handle.update({ ...handle.getRenderState().input });
+    await flush();
+    expect(input.style.opacity).toBe('');
+    type(input, 'Edited r5');
+    await press(input, 'Enter');
+    expect(g.getTask(id('r5'))!.name).toBe('Edited r5');
+    expect(g.getTask(id('r6'))!.name).toBe('r6');
+  });
+
+  it('collapsing a parent of the edited row cancels the edit without a write', async () => {
+    const { g, handle, label } = await mountCanvas();
+    label.getBoundingClientRect = () => rect(0, W);
+    handle.canvas.getBoundingClientRect = () => rect(0, 2000);
+    handle.pointerEventTarget.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true, clientX: 100, clientY: 32 + ROW * 1.5 }));
+    await flush();
+    expect(editor()?.getAttribute('aria-label')).toBe('Name, a');
+    type(editor()!, 'unsaved');
+    g.toggleCollapse(id('p')); // this harness does not wire the render effect: repaint with the collapsed set
+    handle.update({ ...handle.getRenderState().input, collapsedIds: new Set([id('p')]) } as never);
+    await flush();
+    expect(editor()).toBeNull();
+    expect(g.getTask(id('a'))!.name).toBe('a');
+    expect(g.isEditingCell()).toBe(false);
+  });
+
+  it('a renderer rebuilt under an open editor (remount) closes it', async () => {
+    const { g } = await mountCanvas();
+    expect(g.startCellEdit(id('a'), 'name')).toBe(true);
+    await flush();
+    expect(editor()).not.toBeNull();
+    g.unmount();
+    expect(g.isEditingCell()).toBe(false);
+    expect(container.querySelector('.fg-grid__editor-host')).toBeNull();
+  });
 });
+

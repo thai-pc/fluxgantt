@@ -60,7 +60,7 @@ for (const canvas of [false, true]) {
       const { nodes } = await cdp.send('Accessibility.getPartialAXTree', { nodeId, fetchRelatives: false });
       const input = nodes[0]!;
       expect(input.role?.value).toBe('textbox');
-      expect(String(input.name?.value)).toBe('Duration, Design');
+      expect(String(input.name?.value)).toBe('Duration (days), Design');
       expect(input.properties?.find((p) => p.name === 'invalid')?.value.value).toBe('true');
       const all = await cdp.send('Accessibility.getFullAXTree');
       const byId = new Map(all.nodes.map((n) => [n.nodeId, n]));

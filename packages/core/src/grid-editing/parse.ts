@@ -11,6 +11,9 @@ import { UNSAFE_TEXT } from '../grid/columns.js';
 /** Longest edit string, in characters (numbers: `MAX_NUMBER_CHARS`). */
 export const MAX_EDIT_CHARS = 1000;
 const MAX_NUMBER_CHARS = 32;
+/** The core's name cap (`MAX_NAME_LENGTH` in `io/limits.ts`, enforced by the JSON and CSV importers): a longer name would make
+ *  an export that the library's own import rejects. Not imported, so the io chunk graph stays as it is. */
+export const MAX_NAME_LENGTH = 500;
 
 export type Parsed<T> = { readonly ok: T } | { readonly error: EditErrorReason };
 

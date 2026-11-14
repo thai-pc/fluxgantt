@@ -37,56 +37,99 @@ test('mounting with withGridEditing composed costs about what mounting without i
   expect(ratio).toBeLessThan(1.25); // the spec's +3 % is the quiet-machine target; this is a loaded-runner backstop
 });
 
-test('opening and closing an editor at 2000 SVG rows is cheap and never repaints the chart', async ({ page }) => {
+// Before the G6 review fixes (keyboard open and close, loaded dev box): SVG 2000 rows open ~80 ms, close ~35 ms; Canvas 5000 rows
+// open ~255 ms, close ~330 ms (each one a full renderer repaint).
+test('opening and closing an editor from the keyboard at 2000 SVG rows is cheap and never repaints the chart', async ({ page }) => {
   test.setTimeout(240_000);
   await open(page, 'edit=1&rows=2000&wide=1&cols=6&collapse=0');
-  await page.evaluate(() => (window as unknown as { __gantt: G }).__gantt.startCellEdit('filler-1000', 'name'));
-  await page.waitForSelector('#gantt .fg-grid__editor'); // the editor code has loaded
-  await page.evaluate(() => (window as unknown as { __gantt: G }).__gantt.cancelCellEdit());
-  const r = await page.evaluate(() => {
-    const g = (window as unknown as { __gantt: G }).__gantt;
+  const result = await page.evaluate(async () => {
+    const root = document.querySelector<HTMLElement>('#gantt')!;
+    const id = 'filler-1000';
+    const rowEl = () => root.querySelector<HTMLElement>(`[role=row][data-task-id="${id}"]`)!;
+    const next = () => new Promise<void>((r) => setTimeout(r, 0));
     let mutations = 0;
     const mo = new MutationObserver((l) => (mutations += l.length));
-    mo.observe(document.querySelector('#gantt svg.fg-timeline')!, { childList: true, subtree: true });
-    const times: number[] = [];
-    for (let i = 0; i < 10; i++) {
-      (document.activeElement as HTMLElement | null)?.blur();
-      const t0 = performance.now();
-      g.startCellEdit(`filler-${1000 + i}`, 'start');
-      document.querySelector<HTMLElement>('#gantt .fg-grid__editor')!.blur(); // closes it: a blur commits nothing here
-      times.push(performance.now() - t0);
+    mo.observe(root.querySelector('svg.fg-timeline')!, { childList: true, subtree: true });
+    const open: number[] = [];
+    const close: number[] = [];
+    for (let i = 0; i < 8; i++) {
+      rowEl().focus({ preventScroll: true });
+      const cell = rowEl().querySelector<HTMLElement>('[role=gridcell][aria-colindex="2"]')!;
+      cell.setAttribute('tabindex', '-1');
+      cell.focus({ preventScroll: true });
+      mo.takeRecords();
+      let t0 = performance.now();
+      cell.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+      await Promise.resolve(); // the claimed key acts in a microtask once the code has loaded
+      await Promise.resolve();
+      const input = root.querySelector<HTMLInputElement>('.fg-grid__editor');
+      if (i > 0) open.push(performance.now() - t0); // the first one loads the chunk
+      if (!input) { await next(); continue; }
+      t0 = performance.now();
+      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+      if (i > 0) close.push(performance.now() - t0);
+      await next();
     }
-    return { times, takeRecords: mo.takeRecords().length + mutations };
+    return { open, close, mutations: mutations + mo.takeRecords().length };
   });
-  // Measured ~110 ms on a loaded dev box: inserting and removing the host makes the browser lay out the 2000-row SVG layer
-  // twice (an absolutely positioned host halves it, but cannot pin to the grid column); the editor's own code is ~1 ms.
-  console.log(`open+close at 2000 SVG rows: median ${median(r.times).toFixed(1)} ms`);
-  expect(r.takeRecords).toBe(0); // nothing inside the chart svg changed: no repaint
-  expect(median(r.times)).toBeLessThan(300);
+  const m = (xs: number[]) => xs.slice().sort((a, b) => a - b)[Math.floor(xs.length / 2)]!;
+  console.log(`SVG 2000 rows, keyboard: open median ${m(result.open).toFixed(1)} ms, close ${m(result.close).toFixed(1)} ms`);
+  expect(result.open.length).toBeGreaterThan(3);
+  expect(result.mutations).toBe(0); // nothing inside the chart svg changed
+  // Measured after the fixes: open ~60 ms, close ~21 ms (the layout of the 2000-row chart; the editor's own code is ~1 ms).
+  expect(m(result.open)).toBeLessThan(120);
+  expect(m(result.close)).toBeLessThan(60);
 });
 
-test('opening and closing an editor at 5000 Canvas rows is O(1)', async ({ page }) => {
+test('opening and closing an editor from the keyboard at 5000 Canvas rows does not repaint the chart for the editor', async ({ page }) => {
   test.setTimeout(240_000);
   await open(page, 'edit=1&rows=5000&cols=6', true);
-  await page.evaluate(() => (window as unknown as { __gantt: G }).__gantt.startCellEdit('req', 'name'));
-  await page.waitForSelector('#gantt .fg-grid__editor');
-  await page.evaluate(() => (window as unknown as { __gantt: G }).__gantt.cancelCellEdit());
-  const times = await page.evaluate(() => {
-    const g = (window as unknown as { __gantt: G }).__gantt;
-    const out: number[] = [];
-    for (let i = 0; i < 10; i++) {
-      (document.activeElement as HTMLElement | null)?.blur();
-      const t0 = performance.now();
-      g.startCellEdit('design', 'start');
-      document.querySelector<HTMLElement>('#gantt .fg-grid__editor')!.blur();
-      out.push(performance.now() - t0);
+  const result = await page.evaluate(async () => {
+    const root = document.querySelector<HTMLElement>('#gantt')!;
+    const layer = root.querySelector('.fg-timeline-a11y-layer')!;
+    const rowEl = () => root.querySelector<HTMLElement>('[role=row][data-task-id="design"]')!;
+    const next = () => new Promise<void>((r) => setTimeout(r, 0));
+    let repaints = 0;
+    const mo = new MutationObserver(() => repaints++);
+    mo.observe(layer, { childList: true });
+    const open: number[] = [];
+    const close: number[] = [];
+    const repaintsOpen: number[] = [];
+    const repaintsClose: number[] = [];
+    for (let i = 0; i < 8; i++) {
+      rowEl().focus({ preventScroll: true });
+      let cell = rowEl().querySelector<HTMLElement>('[role=gridcell][aria-colindex="2"]')!;
+      cell.setAttribute('tabindex', '-1');
+      cell.focus({ preventScroll: true });
+      cell = (document.activeElement as HTMLElement) ?? cell;
+      await next();
+      mo.takeRecords();
+      repaints = 0;
+      let t0 = performance.now();
+      cell.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+      await Promise.resolve();
+      await Promise.resolve();
+      const input = root.querySelector<HTMLInputElement>('.fg-grid__editor');
+      if (i > 0) open.push(performance.now() - t0);
+      mo.takeRecords();
+      if (i > 0) repaintsOpen.push(repaints);
+      if (!input) { await next(); continue; }
+      repaints = 0;
+      t0 = performance.now();
+      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+      if (i > 0) close.push(performance.now() - t0);
+      mo.takeRecords();
+      await next();
+      if (i > 0) repaintsClose.push(repaints);
     }
-    return out;
+    return { open, close, repaintsOpen, repaintsClose };
   });
-  // Opening does not touch the chart (~4 ms measured). Closing with Escape or Enter returns focus to the a11y cell, which makes
-  // the Canvas renderer repaint its window on `focusin` (the renderer's own cost, as for any cell focus): that is not measured here.
-  console.log(`open+close at 5000 Canvas rows: median ${median(times).toFixed(1)} ms`);
-  expect(median(times)).toBeLessThan(100);
+  const m = (xs: number[]) => xs.slice().sort((a, b) => a - b)[Math.floor(xs.length / 2)]!;
+  console.log(`Canvas 5000 rows, keyboard: open median ${m(result.open).toFixed(1)} ms, close ${m(result.close).toFixed(1)} ms`);
+  expect(result.open.length).toBeGreaterThan(3);
+  // Measured after the fixes: open ~2 ms, close ~0.5 ms (no renderer repaint for the editor).
+  expect(m(result.open)).toBeLessThan(25);
+  expect(m(result.close)).toBeLessThan(25);
 });
 
 test('one committed edit costs about what the same store write costs without the editor (2000 tasks / 520 days / 20 holidays)', async ({ page }) => {

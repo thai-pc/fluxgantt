@@ -15,6 +15,6 @@
     "Base + withRender + withEditHooks (dblclick/contextmenu/keyboard host hooks, gzip)": 16194,
     "Base + withRender + withRtl (mirrored right-to-left chart, gzip)": 15284,
     "Base + withRender + withGrid (pinned columns grid + CSV report, gzip)": 22203,
-    "Base + withRender + withInteraction + withGrid + withGridEditing (editable grid, eager shell, gzip)": 29127
+    "Base + withRender + withInteraction + withGrid + withGridEditing (editable grid, eager shell, gzip)": 29336
   }
 }

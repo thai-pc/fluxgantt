@@ -46,6 +46,8 @@ export interface EditEnv {
   canEdit(id: string, ci: number): boolean;
   /** The editable cell `t` is, or that F2 on a row means (the name cell): `[taskId, columnIndex]`. */
   cellOf(t: Element | null, f2: boolean): readonly [string, number] | undefined;
+  /** The editable cell under a pointer (`[taskId, columnIndex]`): SVG through `colAt`, Canvas through `hitTestRow`. */
+  hit(t: Element, x: number, y: number): readonly [string, number] | undefined;
 }
 
 /**
@@ -59,8 +61,9 @@ export interface EditEnv {
  * - Gestures: Enter (on a focused cell) and F2 (on a row, meaning its name cell, or on a cell) open the editor; so does
  *   a double-click or double-tap on a pinned cell. Enter or Tab commits, Escape cancels, blur commits a valid value
  *   (`commitOnBlur`) and discards an invalid one. On a cell that is NOT editable, Enter and F2 behave exactly as
- *   without this mixin (a parent row's Enter toggles it, `withEditHooks` reports the cell). A double-click is not
- *   consumed, so `task:activated` still fires next to the editor.
+ *   without this mixin (a parent row's Enter toggles it, `withEditHooks` reports the cell). A double-click or
+ *   double-tap on an editable cell is claimed the same way: the editor opens and `task:activated` does NOT fire (on a
+ *   cell that is not editable it fires as before).
  * - Each edit is ONE store write (`updateTask`, `resizeTask` or `setProgress`): one undo entry, one `task:updated`.
  *   A start date keeps the bar's working duration and snaps forward to a working day; an end date snaps back to one
  *   and must stay after the start; a value that changes nothing writes nothing.
@@ -70,7 +73,8 @@ export interface EditEnv {
  *   through `withInteraction`'s live region (without it, focus returning to the cell makes the screen reader read it).
  *   A cell gets `aria-readonly="true"` when it takes focus and is not editable.
  * - The editor code loads on first use; the first key after a cell takes focus may act a moment late. A resize of a
- *   column, `collapseBelow`, `setGridColumns`, removing the task or an import closes the editor without a write.
+ *   column, `collapseBelow`, `setGridColumns`, removing the task or an import closes the editor without a write; moving to another window or tab commits
+ *   it, as a blur does (`commitOnBlur: false` discards it).
  *   Out of scope: type-to-edit, range copy and paste, select or user-picker editors (build them on
  *   `cell:edit-requested`).
  *
@@ -122,7 +126,20 @@ export function withGridEditing<T extends GanttInstance & GridCapability>(
   instance.on('renderer:selected', () => {
     const handle = internal.mountOf()?.handle;
     if (!handle) return;
-    const env: EditEnv = { container: handle.container, handle, gantt: instance, internal, opts: options, st, canEdit, cellOf };
+    const hit: EditEnv['hit'] = (t, x, y) => {
+      let id: string | null | undefined;
+      let col: string | undefined;
+      if ('paintHooks' in handle) {
+        const at = internal.colAt?.(t, x, y);
+        [id, col] = [(t.closest('[data-row-index]') ?? at?.[1])?.getAttribute('data-task-id'), at?.[0]];
+      } else {
+        const h = handle.hitTestRow(x, y);
+        [id, col] = h && !h.hitToggle ? [h.taskId, h.columnId] : [];
+      }
+      const ci = grid().view.all.findIndex((c) => c.id === col);
+      return id && canEdit(id, ci) ? [id, ci] : undefined;
+    };
+    const env: EditEnv = { container: handle.container, handle, gantt: instance, internal, opts: options, st, canEdit, cellOf, hit };
     cur = env;
     const c = env.container;
     // Claimed here, synchronously: a deferred `preventDefault` would let Enter toggle the row.
@@ -142,8 +159,18 @@ export function withGridEditing<T extends GanttInstance & GridCapability>(
       e.stopPropagation();
       void load().then((m) => m?.key(env, f2));
     };
+    // A double-click on an editable cell is claimed here too (the editor opens, `task:activated` does not fire, as for
+    // Enter and F2). A touch's down and up go to the lazy half, which pairs them into a double-tap.
     const onPointer = (e: Event): void => {
-      if (act.includes('dblclick') && (e.type === 'dblclick' || (e as PointerEvent).pointerType === 'touch')) void load().then((m) => m?.dbl(env, e));
+      const p = e as PointerEvent;
+      const dbl = e.type === 'dblclick';
+      if (!act.includes('dblclick') || (!dbl && p.pointerType !== 'touch') || (e.target as Element).closest?.('input')) return;
+      const at = dbl ? hit(e.target as Element, p.clientX, p.clientY) : undefined;
+      if (dbl) {
+        if (!at) return;
+        e.stopPropagation();
+      }
+      void load().then((m) => m?.dbl(env, e, at));
     };
     const onFocus = (e: Event): void => {
       const t = e.target as Element;
@@ -151,18 +178,21 @@ export function withGridEditing<T extends GanttInstance & GridCapability>(
       if (!at) return;
       const ok = canEdit(...at);
       if (ok) void load(); // preload: the first key after a focus should not wait for the chunk
+      if (ok) t.removeAttribute('aria-readonly');
       else t.setAttribute('aria-readonly', 'true');
     };
     c.addEventListener('keydown', onKey, true);
     c.addEventListener('dblclick', onPointer, true);
     c.addEventListener('pointerup', onPointer, true);
+    c.addEventListener('pointerdown', onPointer, true);
     c.addEventListener('focusin', onFocus);
     const inner = handle.destroy;
     handle.destroy = (): void => {
-      st.o?.end(false);
+      st.o?.end(false, false);
       c.removeEventListener('keydown', onKey, true);
       c.removeEventListener('dblclick', onPointer, true);
       c.removeEventListener('pointerup', onPointer, true);
+      c.removeEventListener('pointerdown', onPointer, true);
       c.removeEventListener('focusin', onFocus);
       if (cur === env) cur = undefined;
       inner.call(handle);

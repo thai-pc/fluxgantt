@@ -100,6 +100,18 @@ for (const canvas of [false, true]) {
         await page.mouse.dblclick(x, y);
         await expect(editor(page)).toHaveAttribute('aria-label', 'Start, Design');
         await expect(editor(page)).toBeFocused();
+        // claimed like Enter and F2: the edit hooks (hooks=1) do not report it
+        expect(await events(page, 'task:activated')).toBe(0);
+      });
+
+      test('a double-click on a cell that is not editable still reports task:activated', async ({ page }) => {
+        await open(page, q, canvas, 772);
+        const sel = canvas ? '#gantt canvas.fg-timeline-canvas-labels' : '#gantt .fg-timeline__sticky-column';
+        const box = (await page.locator(sel).boundingBox())!;
+        const y = box.y + 32 + 16; // the summary row: its start is rolled up
+        await page.mouse.dblclick(rtl ? box.x + box.width - 280 : box.x + 280, y);
+        await expect(editor(page)).toHaveCount(0);
+        expect(await events(page, 'task:activated')).toBe(1);
       });
 
       test('the editor sits exactly on the painted cell, also after a vertical scroll', async ({ page }) => {

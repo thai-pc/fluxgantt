@@ -111,7 +111,13 @@ export function resolveColumns(input: readonly GridColumnInput[] | undefined): r
     if (
       ed !== undefined &&
       ed !== false &&
-      (builtIn || typeof ed?.commit !== 'function' || !['text', 'number', 'date'].includes(ed.type) || ed.min! > ed.max!)
+      (builtIn ||
+        typeof ed?.commit !== 'function' ||
+        !['text', 'number', 'date'].includes(ed.type) ||
+        ed.min! > ed.max! ||
+        (ed.maxLength !== undefined && !(ed.maxLength >= 1)) ||
+        (ed.initial !== undefined && typeof ed.initial !== 'function') ||
+        [ed.min, ed.max].some((v) => v !== undefined && !Number.isFinite(v)))
     ) {
       throw new RangeError(`editor of "${id}" is invalid`);
     }

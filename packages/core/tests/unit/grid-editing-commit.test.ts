@@ -144,14 +144,19 @@ describe('start', () => {
     expect(iso(g, a.end)).toBe(iso(g, addWorkingHours('2026-01-12T09:00:00+00:00[UTC]', 24, g.cal)));
   });
 
-  it('crosses the New York DST changes (2026-03-08 spring forward, 2026-11-01 fall back) on the working hours', () => {
+  it('a working span that crosses the New York DST changes (2026-03-08 spring forward, 2026-11-01 fall back) keeps its hours and its local times', () => {
     const cal = CAL('America/New_York');
-    for (const day of ['2026-03-09', '2026-11-02']) {
-      const g = setup([t('a', { start: '2026-03-02T09:00', end: '2026-03-04T17:00' })], { calendar: cal });
+    // Friday start, 24 working hours: Friday, Monday (after the change) and Tuesday, ending 17:00 local on the 10th / 3rd.
+    for (const [from, day, endDay] of [['2026-03-02', '2026-03-06', '2026-03-10'], ['2026-10-26', '2026-10-30', '2026-11-03']] as const) {
+      const g = setup([t('a', { start: `${from}T09:00`, end: `${from.slice(0, 8)}${String(Number(from.slice(8)) + 2).padStart(2, '0')}T17:00` })], { calendar: cal });
       g.edit('a', 'start', day);
       const a = g.gantt.getTask(toTaskId('a'))!;
-      expect(normalizeDate(a.start, cal.timezone).hour).toBe(9);
+      const [s, e] = [normalizeDate(a.start, cal.timezone), normalizeDate(a.end, cal.timezone)];
+      expect([s.toPlainDate().toString(), s.hour]).toEqual([day, 9]);
+      expect([e.toPlainDate().toString(), e.hour, e.minute]).toEqual([endDay, 17, 0]);
       expect(differenceInWorkingHours(a.start, a.end, cal)).toBeCloseTo(24, 9);
+      // an offset change happened inside the span
+      expect(s.offsetNanoseconds).not.toBe(e.offsetNanoseconds);
     }
   });
 
@@ -193,10 +198,11 @@ describe('duration and progress', () => {
     const hours = setup([t('a')], { calendar: CAL('UTC') }, undefined, 'hours');
     hours.edit('a', 'duration', '20');
     expect(hours.gantt.getTask(toTaskId('a'))!.duration).toBe(20);
-    expect(iso(hours, hours.gantt.getTask(toTaskId('a'))!.end)).toContain('2026-01-07T21:00'.slice(0, 0)); // resolved by the calendar
+    // 20 working hours from Mon 09:00 end at 13:00 on Wednesday (8 + 8 + 4)
+    expect(iso(hours, hours.gantt.getTask(toTaskId('a'))!.end)).toContain('2026-01-07T13:00:00');
   });
 
-  it('a calendar with no working hours counts in hours and rejects, without a write', () => {
+  it('a calendar with no working hours (or no working day) rejects a duration, without a write', () => {
     const g = setup([t('a')], { calendar: CAL('UTC', { workingHours: [{ start: '09:00', end: '09:00' }] }) });
     expect(g.plan('a', 'duration', '2')).toMatchObject({ kind: 'error', reason: 'rejected' });
     expect(g.updated).toHaveLength(0);
@@ -204,7 +210,7 @@ describe('duration and progress', () => {
 
   it('bounds duration and progress', () => {
     const g = setup([t('a')], { calendar: CAL('UTC') });
-    expect(g.plan('a', 'duration', '36501')).toMatchObject({ kind: 'error', reason: 'out-of-range', max: 36500 });
+    expect(g.plan('a', 'duration', '3651')).toMatchObject({ kind: 'error', reason: 'out-of-range', max: 3650 });
     expect(g.plan('a', 'duration', '-1')).toMatchObject({ kind: 'error', reason: 'not-a-number' });
     expect(g.plan('a', 'progress', '150')).toMatchObject({ kind: 'error', reason: 'out-of-range', min: 0, max: 100 });
     expect(g.plan('a', 'progress', 'abc')).toMatchObject({ kind: 'error', reason: 'not-a-number' });
@@ -237,51 +243,92 @@ describe('name and custom columns', () => {
   });
 
   const editor = (extra: Record<string, unknown> = {}) =>
-    [{ id: 'name' }, { id: 'owner', header: 'Owner', value: (x: { meta?: Record<string, unknown> }) => x.meta?.owner as string, editor: { type: 'text', commit: (v: string) => ({ meta: { owner: v } }), ...extra } }] as unknown as GridColumnInput[];
+    [{ id: 'name' }, { id: 'owner', header: 'Owner', value: (x: { name: string }) => x.name, editor: { type: 'text', commit: (v: string) => ({ name: v }), ...extra } }] as unknown as GridColumnInput[];
 
   it('maps the input through commit() into ONE updateTask', () => {
-    const g = setup([t('a', { meta: { owner: 'x' } })], {}, editor());
+    const g = setup([t('a')], {}, editor());
     g.edit('a', 'owner', 'Ann');
-    expect(g.gantt.getTask(toTaskId('a'))!.meta).toEqual({ owner: 'Ann' });
+    expect(g.gantt.getTask(toTaskId('a'))!.name).toBe('Ann');
     expect(g.updated).toHaveLength(1);
     g.gantt.undo();
     expect(g.gantt.canUndo()).toBe(false);
   });
 
-  it('strips id and timestamps and an own __proto__ from the patch', () => {
-    const cols = editor({ commit: () => JSON.parse('{"id":"x","createdAt":1,"updatedAt":2,"__proto__":{"polluted":1},"name":"Safe"}') });
-    const g = setup([t('a')], {}, cols);
-    const p = g.plan('a', 'owner', 'v');
-    expect(p.kind === 'write' && Object.keys(p.patch)).toEqual(['name']);
-    g.edit('a', 'owner', 'v');
-    expect(g.gantt.getTask(toTaskId('a'))!.id).toBe('a');
+  it('allows name, start, end, duration and progress only; anything else is rejected and nothing is written', () => {
+    for (const patch of [
+      '{"id":"x","name":"Safe"}',
+      '{"createdAt":1}',
+      '{"__proto__":{"polluted":1},"name":"Safe"}',
+      '{"meta":{"a":1}}',
+      '{"color":"url(javascript:alert(1))"}',
+      '{"parent":"a"}',
+      '{"type":"summary"}',
+      '{"notes":"x"}',
+      '{"extra":1}',
+    ]) {
+      const g = setup([t('a')], {}, editor({ commit: () => JSON.parse(patch) }));
+      const before = snap(g, 'a');
+      expect(g.edit('a', 'owner', 'v'), patch).toMatchObject({ kind: 'error', reason: 'rejected' });
+      expect(snap(g, 'a')).toEqual(before);
+      expect(g.updated).toHaveLength(0);
+    }
     expect(({} as Record<string, unknown>).polluted).toBeUndefined();
+    expect(setup([t('a')], {}, editor({ commit: () => [1] })).plan('a', 'owner', 'v')).toMatchObject({ kind: 'error' });
+    expect(setup([t('a')], {}, editor({ commit: () => null })).plan('a', 'owner', 'v')).toMatchObject({ kind: 'error' });
+  });
+
+  it('runs the built-in validators on each allowed field', () => {
+    const run = (patch: object) => setup([t('a')], {}, editor({ commit: () => patch })).plan('a', 'owner', 'v');
+    // name: cleaned, 500 characters at most
+    expect(run({ name: ' x‮y ' })).toMatchObject({ kind: 'write', patch: { name: 'xy' } });
+    expect(run({ name: 'x'.repeat(501) })).toMatchObject({ kind: 'error', reason: 'too-long' });
+    expect(run({ name: '  ' })).toMatchObject({ kind: 'error', reason: 'empty' });
+    expect(run({ name: 5 })).toMatchObject({ kind: 'error', reason: 'rejected' });
+    // dates: 1900..2200, end after start
+    expect(run({ start: '3000-01-05' })).toMatchObject({ kind: 'error', reason: 'not-a-date' });
+    expect(run({ start: '1800-01-05' })).toMatchObject({ kind: 'error', reason: 'not-a-date' });
+    expect(run({ start: 'not a date' })).toMatchObject({ kind: 'error', reason: 'rejected' });
+    expect(run({ end: '2026-01-02T09:00:00+00:00[UTC]' })).toMatchObject({ kind: 'error', reason: 'end-before-start' });
+    expect(run({ start: '2026-02-02T09:00:00+00:00[UTC]' })).toMatchObject({ kind: 'error', reason: 'end-before-start' });
+    expect(run({ start: '2026-01-05T09:00:00+00:00[UTC]', end: '2026-01-09T17:00:00+00:00[UTC]' })).toMatchObject({ kind: 'write' });
+    // duration: finite, in range
+    for (const duration of [Number.NaN, -1, Infinity, 87_601, '8']) expect(run({ duration }), String(duration)).toMatchObject({ kind: 'error' });
+    expect(run({ duration: 16 })).toMatchObject({ kind: 'write' });
+    // progress is a fraction
+    for (const progress of [Number.NaN, -0.1, 1.5, 50, '1']) expect(run({ progress }), String(progress)).toMatchObject({ kind: 'error' });
+    expect(run({ progress: 0.5 })).toMatchObject({ kind: 'write' });
   });
 
   it('shows a returned error capped, treats a throw as a generic rejection, and checks number bounds first', () => {
     expect(setup([t('a')], {}, editor({ commit: () => ({ error: 'e'.repeat(500) }) })).plan('a', 'owner', 'v')).toMatchObject({ kind: 'error', message: 'e'.repeat(200) });
     expect(setup([t('a')], {}, editor({ commit: () => { throw new Error('boom'); } })).plan('a', 'owner', 'v')).toMatchObject({ kind: 'error', reason: 'rejected' });
-    const num = [{ id: 'name' }, { id: 'n', header: 'N', value: () => 1, editor: { type: 'number', min: 1, max: 5, commit: (v: number) => ({ priority: v }) } }] as unknown as GridColumnInput[];
+    const num = [{ id: 'name' }, { id: 'n', header: 'N', value: () => 1, editor: { type: 'number', min: 1, max: 5, commit: (v: number) => ({ duration: v }) } }] as unknown as GridColumnInput[];
     const g = setup([t('a')], {}, num);
     expect(g.plan('a', 'n', '9')).toMatchObject({ kind: 'error', reason: 'out-of-range', min: 1, max: 5 });
     expect(g.plan('a', 'n', '3')).toMatchObject({ kind: 'write', input: 3 });
-  });
-
-  it('a bad date from commit() is rejected before the write (updateTask would write it, then throw)', () => {
-    const cols = editor({ commit: () => ({ start: 'not a date' }) });
-    const g = setup([t('a')], {}, cols);
-    const before = snap(g, 'a');
-    expect(g.edit('a', 'owner', 'v')).toMatchObject({ kind: 'error', reason: 'rejected' });
-    expect(snap(g, 'a')).toEqual(before);
-    expect(g.gantt.canUndo()).toBe(false);
-    expect(g.updated).toHaveLength(0);
+    // without a max a number is capped at 1e15 before it reaches commit()
+    const open = [{ id: 'name' }, { id: 'n', header: 'N', value: () => 1, editor: { type: 'number', commit: (v: number) => ({ duration: v }) } }] as unknown as GridColumnInput[];
+    expect(setup([t('a')], {}, open).plan('a', 'n', '9'.repeat(33))).toMatchObject({ kind: 'error', reason: 'too-long' });
+    expect(setup([t('a')], {}, open).plan('a', 'n', '9'.repeat(18))).toMatchObject({ kind: 'error', reason: 'out-of-range' });
   });
 
   it('date editors hand the commit an ISO string', () => {
     let seen: unknown;
-    const cols = [{ id: 'name' }, { id: 'due', header: 'Due', value: () => '', editor: { type: 'date', commit: (v: string) => ((seen = v), { notes: v }) } }] as unknown as GridColumnInput[];
+    const cols = [{ id: 'name' }, { id: 'due', header: 'Due', value: () => '', editor: { type: 'date', commit: (v: string) => ((seen = v), { start: v }) } }] as unknown as GridColumnInput[];
     setup([t('a')], {}, cols).plan('a', 'due', '2026-02-03');
     expect(seen).toBe('2026-02-03');
+  });
+
+  it('a name that is only different by controls or padding is a no-op', () => {
+    const g = setup([t('a', { name: '  Padded\u0000 ' })]);
+    expect(g.plan('a', 'name', 'Padded')).toEqual({ kind: 'noop' });
+  });
+
+  it('the patch of a duration edit is computed only when asked for', () => {
+    const g = setup([t('a')], { calendar: CAL('UTC') });
+    const p = g.plan('a', 'duration', '2');
+    expect(p.kind).toBe('write');
+    if (p.kind === 'write') expect(p.patch).toMatchObject({ duration: 16 });
   });
 });
 
@@ -290,9 +337,24 @@ describe('properties', () => {
     tz: fc.constantFrom('UTC', 'America/New_York', 'Asia/Ho_Chi_Minh'),
     days: fc.subarray(['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'] as const, { minLength: 3 }),
     windows: fc.constantFrom([{ start: '09:00', end: '17:00' }], [{ start: '08:00', end: '12:00' }, { start: '13:00', end: '17:30' }]),
-    holidays: fc.array(fc.integer({ min: 0, max: 60 }).map((d) => new Date(Date.UTC(2026, 0, 1 + d)).toISOString().slice(0, 10)), { maxLength: 6 }),
+    holidays: fc.array(fc.integer({ min: 0, max: 330 }).map((d) => new Date(Date.UTC(2026, 0, 1 + d)).toISOString().slice(0, 10)), { maxLength: 6 }),
   });
-  const day = fc.integer({ min: 0, max: 120 }).map((d) => new Date(Date.UTC(2026, 0, 1 + d)).toISOString().slice(0, 10));
+  const day = fc.integer({ min: 0, max: 330 }).map((d) => new Date(Date.UTC(2026, 0, 1 + d)).toISOString().slice(0, 10));
+
+  it('every write is exactly one undo entry and one task:updated, in any calendar, on any day', () => {
+    fc.assert(
+      fc.property(calArb, day, fc.constantFrom('start', 'end'), (c, d, col) => {
+        const calendar = CAL(c.tz, { workingDays: [...c.days], workingHours: c.windows.map((w) => ({ ...w })), holidays: c.holidays });
+        const g = setup([t('a', { start: '2026-01-05T09:00', end: '2026-01-08T16:00' })], { calendar });
+        const p = g.edit('a', col, d);
+        if (p.kind !== 'write') return;
+        expect(g.updated).toHaveLength(1);
+        g.gantt.undo();
+        expect(g.gantt.canUndo()).toBe(false);
+      }),
+      { numRuns: 30 },
+    );
+  });
 
   it('start edit then undo is the identity, redo restores the edit', () => {
     fc.assert(

@@ -97,7 +97,8 @@ const owner: GridColumnInput = {
   editor: {
     type: 'text',
     maxLength: 40,
-    commit: (v, t) => ({ meta: { ...t.meta, owner: String(v) } }),
+    // A custom editor may only write name, start, end, duration and progress: this one renames the task.
+    commit: (v) => ({ name: String(v) }),
   },
   value: (t) => (long ? `${String(t.meta?.['owner'])} - a custom value that is far too long to fit` : String(t.meta?.['owner'])),
 };

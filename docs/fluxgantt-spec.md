@@ -1043,7 +1043,7 @@ gantt.startCellEdit(taskId, 'start'); gantt.cancelCellEdit(); gantt.isEditingCel
 Enter or F2 on an editable cell, F2 on a row (its name cell), and a double-click or double-tap on a pinned cell open the
 editor; Enter or Tab commits, Escape cancels, blur commits a valid value. Editors: `name` text; `start` / `end` native
 date fields; `duration` a decimal in the column's unit (not `type=number`); `progress` a percent; a custom column opts in
-with `editor: { type: 'text' | 'number' | 'date', commit(input, task, ctx) }`. A summary's rolled-up cells, a milestone's
+with `editor: { type: 'text' | 'number' | 'date', commit(input, task, ctx) }` (the patch it returns may hold only `name`, `start`, `end`, `duration` and `progress`, each validated). A double-click on an editable cell is claimed like Enter and F2 (`task:activated` does not fire). A summary's rolled-up cells, a milestone's
 end and duration and everything in a `readOnly` chart are not editable. Each edit is ONE store write (`updateTask`,
 `resizeTask` or `setProgress`): one undo entry, one `task:updated`. A start date keeps the bar's working duration and
 snaps forward to a working day; an end date snaps back to one and must stay after the start. Validation is inline

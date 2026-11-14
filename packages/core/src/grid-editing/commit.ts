@@ -8,12 +8,16 @@
 //               exact instant and would not respect non-working time.
 //   end      -> `resizeTask(id, hours)`. The day snaps BACKWARD to a working day and the bar ends at that day's last
 //               working window end; it must end after it starts. `resizeTask` writes `end` and `duration` together.
-//   duration -> `resizeTask(id, hours)` (days are `hoursPerDay` hours; a calendar with no hours counts in hours).
+//   duration -> `resizeTask(id, hours)` (days are `hoursPerDay` hours). A calendar with no working hours or no working
+//               day cannot place a bar, so its start, end and duration cells are not editable.
 //   progress -> `setProgress(id, n / 100)`.      name / custom -> `updateTask(id, patch)`.
 //
 // Dates are Temporal in the calendar's zone (window starts and ends resolve DST gaps the way the calendar helpers
-// do). SECURITY (security.md): a custom `commit` result is whitelisted to patch keys (`id` and the timestamps are
-// stripped, own `__proto__` is dropped) and an error message it returns is capped; the store still validates.
+// do). SECURITY (security.md): the store does NOT validate a patch (`updateTask` writes what it is given), so a custom
+// `commit` result is vetted here: only `name`, `start`, `end`, `duration` and `progress` may appear (anything else is
+// `rejected`, nothing is written), each checked like the built-in editor of that field (name through `parseText` at the
+// 500-character core cap, dates in 1900..2200 with the end after the start, duration and progress finite and in range),
+// and an error message it returns is capped.
 import type { GanttInstance } from '../gantt.js';
 import type { GanttInternal } from '../gantt-internal.js';
 import {
@@ -30,14 +34,18 @@ import type { TaskPatch } from '../store/index.js';
 import type { EditErrorReason, Task, WorkingCalendar } from '../types.js';
 import type { Column } from '../grid/columns.js';
 import { hoursPerDay } from '../grid/values.js';
-import { parseDay, parseNumber, parseText, type Parsed } from './parse.js';
+import { UNSAFE_TEXT } from '../grid/columns.js';
+import { MAX_NAME_LENGTH, parseDay, parseNumber, parseText, type Parsed } from './parse.js';
 
-/** Longest `duration` an editor accepts: 100 years, in the column unit. */
-const MAX_DAYS = 36_500;
-const MAX_HOURS = 876_000;
+/** Longest `duration` an editor accepts: ten years, in the column unit (a longer one is a multi-second calendar walk). */
+const MAX_DAYS = 3_650;
+const MAX_HOURS = 87_600;
+/** Largest value a custom `number` editor hands to `commit`. */
+const MAX_NUMBER = 1e15;
+/** The only fields a custom editor's patch may write. */
+const WRITABLE = ['name', 'start', 'end', 'duration', 'progress'];
 /** Longest message a custom editor or host callback can show. */
 export const MAX_MESSAGE_CHARS = 200;
-const FORBIDDEN = new Set(['id', 'createdAt', 'updatedAt', '__proto__']);
 
 export interface PlanEnv {
   readonly gantt: GanttInstance;
@@ -68,6 +76,9 @@ export type Plan =
 
 const fail = (reason: EditErrorReason, extra: { message?: string; min?: number; max?: number } = {}): Plan => ({ kind: 'error', reason, ...extra });
 const bad = <T>(p: Parsed<T>): p is { readonly error: EditErrorReason } => 'error' in p;
+
+/** A calendar that cannot place a bar: no working hours, or no working day. */
+export const unschedulable = (cal: WorkingCalendar): boolean => hoursPerDay(cal) <= 0 || !cal.workingDays.length;
 
 /** The first working day on or after `day` (`step` 1) or on or before it (`step` -1); undefined if there is none. */
 function snap(day: ReturnType<ReturnType<typeof getTemporal>['PlainDate']['from']>, cal: WorkingCalendar, step: 1 | -1) {
@@ -107,13 +118,13 @@ function plan(env: PlanEnv, task: Task, col: Column, text: string, current: stri
   ) {
     return fail('rejected');
   }
-  // A calendar with no working hours cannot place a bar (the helpers would walk their million-day guard).
-  if (col.builtIn && ['start', 'end', 'duration'].includes(col.id) && hoursPerDay(cal) <= 0) return fail('rejected');
+  // The calendar helpers would walk their million-day guard.
+  if (col.builtIn && ['start', 'end', 'duration'].includes(col.id) && unschedulable(cal)) return fail('rejected');
   switch (col.builtIn ? col.id : '') {
     case 'name': {
-      const p = parseText(text);
+      const p = parseText(text, MAX_NAME_LENGTH);
       if (bad(p)) return fail(p.error);
-      return p.ok === task.name
+      return p.ok === task.name.replace(UNSAFE_TEXT, '').trim()
         ? { kind: 'noop' }
         : { kind: 'write', input: p.ok, patch: { name: p.ok }, run: () => void gantt.updateTask(id, { name: p.ok }) };
     }
@@ -148,7 +159,7 @@ function plan(env: PlanEnv, task: Task, col: Column, text: string, current: stri
       return {
         kind: 'write',
         input: p.ok,
-        patch: { end: addWorkingHours(start, hours, cal), duration: hours },
+        patch: { end, duration: hours },
         run: () => void gantt.resizeTask(id, hours),
         ...(s.moved ? { snapped: 'previous' as const } : {}),
       };
@@ -156,7 +167,7 @@ function plan(env: PlanEnv, task: Task, col: Column, text: string, current: stri
     case 'duration': {
       const p = parseNumber(text, locale);
       if (bad(p)) return fail(p.error);
-      const days = env.unit === 'days' && hoursPerDay(cal) > 0;
+      const days = env.unit === 'days';
       const max = days ? MAX_DAYS : MAX_HOURS;
       if (p.ok > max) return fail('out-of-range', { min: 0, max });
       if (Math.round(p.ok * 1e4) / 1e4 === Number(current)) return { kind: 'noop' };
@@ -165,7 +176,10 @@ function plan(env: PlanEnv, task: Task, col: Column, text: string, current: stri
       return {
         kind: 'write',
         input: p.ok,
-        patch: { end: addWorkingHours(start, hours, cal), duration: hours },
+        // Only `beforeCommit` reads it: `resizeTask` walks the calendar itself, so it is not walked twice for nothing.
+        get patch() {
+          return { end: addWorkingHours(start, hours, cal), duration: hours };
+        },
         run: () => void gantt.resizeTask(id, hours),
       };
     }
@@ -184,9 +198,8 @@ function plan(env: PlanEnv, task: Task, col: Column, text: string, current: stri
   if (ed.type === 'number') {
     const p = parseNumber(text, locale);
     if (bad(p)) return fail(p.error);
-    if ((ed.min !== undefined && p.ok < ed.min) || (ed.max !== undefined && p.ok > ed.max)) {
-      return fail('out-of-range', { ...(ed.min === undefined ? {} : { min: ed.min }), ...(ed.max === undefined ? {} : { max: ed.max }) });
-    }
+    const [lo, hi] = [ed.min ?? 0, Math.min(ed.max ?? MAX_NUMBER, MAX_NUMBER)];
+    if (p.ok < lo || p.ok > hi) return fail('out-of-range', { min: lo, max: hi });
     input = p.ok;
   } else if (ed.type === 'date') {
     const p = parseDay(text);
@@ -206,10 +219,46 @@ function plan(env: PlanEnv, task: Task, col: Column, text: string, current: stri
   }
   const message = (res as { error?: unknown } | null)?.error;
   if (typeof message === 'string') return fail('rejected', { message: message.slice(0, MAX_MESSAGE_CHARS) });
-  if (typeof res !== 'object' || res === null) return fail('rejected');
-  const patch = Object.fromEntries(Object.entries(res).filter(([k]) => !FORBIDDEN.has(k))) as TaskPatch;
-  // `updateTask` validates a date only after writing it, so a bad one from a host's `commit` is caught here instead.
-  for (const k of ['start', 'end'] as const) if (patch[k] !== undefined) normalizeDate(patch[k], cal.timezone);
-  if (Object.entries(patch).every(([k, v]) => Object.is(v, (task as unknown as Record<string, unknown>)[k]))) return { kind: 'noop' };
+  const patch = vet(task, res, cal);
+  if ('kind' in patch) return patch;
+  const instant = (v: unknown): bigint => normalizeDate(v as string, cal.timezone).epochNanoseconds;
+  if (
+    Object.entries(patch).every(([k, v]) =>
+      k === 'start' || k === 'end' ? instant(v) === instant((task as unknown as Record<string, unknown>)[k]) : Object.is(v, (task as unknown as Record<string, unknown>)[k]),
+    )
+  ) {
+    return { kind: 'noop' };
+  }
   return { kind: 'write', input, patch, run: () => void gantt.updateTask(id, patch) };
+}
+
+/**
+ * Vets a custom editor's patch (see the header): the allow-listed fields only, each valid, or a `rejected` / `end-before-start`
+ * plan. The store validates nothing, and `updateTask` writes a bad date and only then throws, so nothing unchecked reaches it.
+ */
+function vet(task: Task, res: unknown, cal: WorkingCalendar): TaskPatch | Plan {
+  if (typeof res !== 'object' || res === null || Array.isArray(res)) return fail('rejected');
+  const out: Record<string, unknown> = {};
+  for (const k of Object.keys(res)) {
+    if (!WRITABLE.includes(k)) return fail('rejected', { message: `"${k.slice(0, 40)}" cannot be written by an editor.` });
+    const v = (res as Record<string, unknown>)[k];
+    if (v === undefined) continue;
+    if (k === 'name') {
+      const p = typeof v === 'string' ? parseText(v, MAX_NAME_LENGTH) : ({ error: 'rejected' } as const);
+      if (bad(p)) return fail(p.error);
+      out[k] = p.ok;
+    } else if (k === 'start' || k === 'end') {
+      const year = normalizeDate(v as string, cal.timezone).year; // throws on a bad date: planEdit reports `rejected`
+      if (year < 1900 || year > 2200) return fail('not-a-date');
+      out[k] = v;
+    } else if (typeof v !== 'number' || !Number.isFinite(v) || v < 0 || v > (k === 'progress' ? 1 : MAX_HOURS)) {
+      return fail('out-of-range', k === 'progress' ? { min: 0, max: 1 } : { min: 0, max: MAX_HOURS });
+    } else out[k] = v;
+  }
+  if ('start' in out || 'end' in out) {
+    const s = normalizeDate((out['start'] ?? task.start) as string, cal.timezone).epochNanoseconds;
+    const e = normalizeDate((out['end'] ?? task.end) as string, cal.timezone).epochNanoseconds;
+    if (task.type === 'milestone' ? e < s : e <= s) return fail('end-before-start');
+  }
+  return out as TaskPatch;
 }

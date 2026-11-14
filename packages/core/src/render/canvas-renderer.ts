@@ -950,6 +950,7 @@ export function createCanvasRenderer(
   // Reentrancy guard (spec §5.1/§8.3) — prevents the a11y-layer rebuild's own `.focus()` call
   // (below, in render()) or DOM removal from recursively re-entering render() via focusin/
   // focusout, which the rebuild itself synchronously fires.
+  let paintedFocus = ''; // the focus the last paint showed (`handleFocusChange`)
   let isRendering = false;
   a11yLayer.addEventListener('focusin', handleFocusChange);
   a11yLayer.addEventListener('focusout', handleFocusChange);
@@ -1145,6 +1146,15 @@ export function createCanvasRenderer(
     // Focus moving to another row of this layer: the focusin that follows does the one rebuild. Rebuilding
     // on this focusout would detach the row that is about to receive focus.
     if (e.type === 'focusout' && a11yLayer.contains((e as FocusEvent).relatedTarget as Node | null)) return;
+    // Focus handed to an element that marks itself `data-fg-focus-keep` (a cell editor in a host next to the canvases)
+    // is a temporary leave: the editor returns it to the same cell, so painting twice would show nothing new.
+    if (e.type === 'focusout' && ((e as FocusEvent).relatedTarget as Element | null)?.closest?.('[data-fg-focus-keep]')) return;
+    // A focusin on the row / cell that the last paint already shows as focused changes nothing on screen.
+    if (e.type === 'focusin') {
+      const t = e.target as Element;
+      const id = t.closest?.('[data-task-id]')?.getAttribute('data-task-id');
+      if (id && `${id}|${t.getAttribute('role') === 'gridcell' ? Number(t.getAttribute('aria-colindex')) : 0}` === paintedFocus) return;
+    }
     // Focus that lands on another row (an AT cursor, a programmatic focus) makes THAT row the roving
     // one; otherwise the rebuild below would snap focus back to the old row.
     const id = e.type === 'focusin' ? (e.target as Element).getAttribute('data-task-id') : null;
@@ -1483,6 +1493,8 @@ export function createCanvasRenderer(
     // the column and a repaint never drops cell mode. The column that really got focus again gets the ring.
     const cellFocus = hadFocusInside && active?.getAttribute('role') === 'gridcell' ? Number(active.getAttribute('aria-colindex')) : 0;
     let cellFocusCol = 0;
+    // What this paint shows of the focus, so a focusin that would paint the same thing is skipped (see `handleFocusChange`).
+    paintedFocus = headFocus !== null ? `h${headFocus}` : hadFocusInside ? `${focusedTaskId}|${cellFocus}` : '';
 
     // Reuses the EXACT SAME `windowRange`/`windowedRows` the paint pass above just computed —
     // ONE shared window per render, not two independently-computed ones (spec §5.1). Only

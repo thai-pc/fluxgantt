@@ -175,16 +175,84 @@ describe('activation', () => {
     expect(req).not.toHaveBeenCalled();
   });
 
-  it('a double-click on a pinned cell opens the editor and is not consumed', async () => {
+  const cloneOf = (row: number, col: string) =>
+    container.querySelector(`.fg-timeline__sticky-column g[data-row-index="${row}"] text[data-column-id="${col}"]`) as Element;
+  const dblclick = (el: Element) => {
+    const e = new MouseEvent('dblclick', { bubbles: true, cancelable: true, clientX: 10, clientY: 10 });
+    el.dispatchEvent(e);
+    return e;
+  };
+
+  it('a double-click on an editable pinned cell opens the editor and is claimed: task:activated does not fire', async () => {
     const activated = vi.fn();
     const g2 = make({ hooks: true });
     g2.on('task:activated', activated);
-    const clone = container.querySelector('.fg-timeline__sticky-column g[data-row-index="1"] text[data-column-id="start"]') as Element;
-    const e = new MouseEvent('dblclick', { bubbles: true, cancelable: true, clientX: 10, clientY: 10 });
-    clone.dispatchEvent(e);
+    dblclick(cloneOf(1, 'start'));
     await flush();
     expect(editor()?.getAttribute('aria-label')).toBe('Start, a');
-    expect(activated).toHaveBeenCalledTimes(1); // the edit hooks still report it
+    expect(activated).not.toHaveBeenCalled(); // as for Enter and F2
+  });
+
+  it('a double-click on a cell that is not editable still fires task:activated, and no editor', async () => {
+    const activated = vi.fn();
+    const g2 = make({ hooks: true });
+    g2.on('task:activated', activated);
+    dblclick(cloneOf(0, 'start')); // a summary's start is rolled up
+    await flush();
+    expect(editor()).toBeNull();
+    expect(activated).toHaveBeenCalledTimes(1);
+    expect(activated).toHaveBeenCalledWith(expect.objectContaining({ part: 'cell', columnId: 'start' }));
+  });
+
+  it('a double-click vetoed by the host is still claimed (no task:activated, no editor, one request)', async () => {
+    const activated = vi.fn();
+    const req = vi.fn((p: { preventDefault(): void }) => p.preventDefault());
+    const g2 = make({ hooks: true });
+    g2.on('task:activated', activated);
+    g2.on('cell:edit-requested', req);
+    dblclick(cloneOf(1, 'start'));
+    await flush();
+    expect(editor()).toBeNull();
+    expect(req).toHaveBeenCalledTimes(1);
+    expect(activated).not.toHaveBeenCalled();
+  });
+
+  it('a double-tap that the host vetoes fires one request even when the browser follows with a dblclick', async () => {
+    const req = vi.fn((p: { preventDefault(): void }) => p.preventDefault());
+    const g2 = make();
+    g2.on('cell:edit-requested', req);
+    const el = cloneOf(1, 'start');
+    const touch = (type: string, t: number) => {
+      const e = new MouseEvent(type, { bubbles: true, cancelable: true, clientX: 10, clientY: 10 });
+      Object.defineProperties(e, { pointerType: { value: 'touch' }, timeStamp: { value: t } });
+      el.dispatchEvent(e);
+    };
+    for (const t of [1000, 1050, 1150, 1200]) touch(t === 1000 || t === 1150 ? 'pointerdown' : 'pointerup', t);
+    await flush();
+    expect(req).toHaveBeenCalledTimes(1);
+    const d = new MouseEvent('dblclick', { bubbles: true, cancelable: true, clientX: 10, clientY: 10 });
+    Object.defineProperty(d, 'timeStamp', { value: 1250 });
+    el.dispatchEvent(d);
+    await flush();
+    expect(req).toHaveBeenCalledTimes(1);
+  });
+
+  it('a swipe that ends near a tap is not a double-tap', async () => {
+    const req = vi.fn();
+    const g2 = make();
+    g2.on('cell:edit-requested', req);
+    const el = cloneOf(1, 'start');
+    const ev = (type: string, t: number, x: number) => {
+      const e = new MouseEvent(type, { bubbles: true, cancelable: true, clientX: x, clientY: 10 });
+      Object.defineProperties(e, { pointerType: { value: 'touch' }, timeStamp: { value: t } });
+      el.dispatchEvent(e);
+    };
+    ev('pointerdown', 1000, 10);
+    ev('pointerup', 1040, 12); // a tap
+    ev('pointerdown', 1100, 10);
+    ev('pointerup', 1200, 80); // a swipe: moved 70 px
+    await flush();
+    expect(req).not.toHaveBeenCalled();
   });
 
   it('the activation option narrows the gestures', async () => {
@@ -289,11 +357,11 @@ describe('the editor', () => {
   it('has a native type, an accessible name, autocomplete off and the right keyboard per column', async () => {
     make();
     const spec: [string, Record<string, string | null>][] = [
-      ['name', { type: 'text', 'aria-label': 'Name, a', autocomplete: 'off', inputmode: null, maxlength: '1000', autocapitalize: 'sentences' }],
+      ['name', { type: 'text', 'aria-label': 'Name, a', autocomplete: 'off', inputmode: null, maxlength: '500', autocapitalize: 'sentences' }],
       ['start', { type: 'date', 'aria-label': 'Start, a', autocomplete: 'off', maxlength: null }],
       ['end', { type: 'date' }],
-      ['duration', { type: 'text', inputmode: 'decimal', autocapitalize: 'off', maxlength: '32' }],
-      ['progress', { type: 'text', inputmode: 'numeric', maxlength: '32' }],
+      ['duration', { type: 'text', inputmode: 'decimal', autocapitalize: 'off', maxlength: '32', 'aria-label': 'Duration (days), a' }],
+      ['progress', { type: 'text', inputmode: 'decimal', maxlength: '32' }],
       ['owner', { type: 'text', 'aria-label': 'Owner, a' }],
     ];
     for (const [col, attrs] of spec) {
@@ -532,7 +600,7 @@ describe('validation', () => {
     const cases: [string, string, string][] = [
       ['name', '   ', 'Enter a value.'],
       ['end', '2026-01-02', 'The end must be after the start.'],
-      ['duration', '999999', 'Enter a value from 0 to 36500.'],
+      ['duration', '999999', 'Enter a value from 0 to 3650.'],
       ['progress', '150', 'Enter a value from 0 to 100.'],
       ['name', 'x'.repeat(1001), 'The value is too long.'],
     ];
@@ -685,7 +753,9 @@ describe('closing without a write', () => {
       type(input, i % 2 ? 'x' : 'y');
       await press(input, 'Enter');
     }
-    expect(container.querySelectorAll('.fg-grid__editor-host')).toHaveLength(0);
+    expect(container.querySelectorAll('.fg-grid__editor')).toHaveLength(0);
+    expect(container.querySelectorAll('.fg-grid__editor-host')).toHaveLength(1); // the SVG host lives as long as the mount
+    expect(container.querySelector('.fg-grid__editor-host')!.children).toHaveLength(0);
     expect(g.canUndo()).toBe(true);
   });
 });
@@ -784,6 +854,146 @@ describe('the first use', () => {
   });
 });
 
+describe('a write that throws after it landed (the store writes, records history, then emits)', () => {
+  // The bus logs a throwing `task:updated` listener; a throwing `onTaskChange` hook is what `updateTask` rethrows AFTER the
+  // write has landed and its history entry is recorded: the real write-then-throw.
+  it('a throwing onTaskChange hook: the one history entry is undone, the task is as it was, the error is shown', async () => {
+    const g = make({ config: { onTaskChange: () => { throw new Error('hook says no'); } } });
+    const input = await openAt('a', 'name');
+    type(input, 'Renamed');
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    await press(input, 'Enter');
+    expect(taskOf(g, 'a').name).toBe('a'); // rolled back, not "saved"
+    expect(editor()).toBe(input);
+    expect(errorEl().textContent).toContain('This value could not be saved.');
+    expect(errorEl().textContent).toContain('hook says no');
+    expect(g.canUndo()).toBe(false); // nothing is left to undo either
+  });
+
+  it('the same for a progress write, which is a different store method', async () => {
+    const g = make({ config: { onTaskChange: () => { throw new Error('hook says no'); } } });
+    const input = await openAt('a', 'progress');
+    type(input, '80');
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    await press(input, 'Enter');
+    expect(taskOf(g, 'a').progress).toBe(0.25);
+    expect(errorEl().textContent).toContain('hook says no');
+  });
+
+  it('when the write cannot be rolled back (history off) the editor says it is saved, not "not saved"', async () => {
+    const g = make({ config: { historyLimit: 0, onTaskChange: () => { throw new Error('hook says no'); } } });
+    const input = await openAt('a', 'name');
+    type(input, 'Kept');
+    const err = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    await press(input, 'Enter');
+    expect(taskOf(g, 'a').name).toBe('Kept');
+    expect(editor()).toBeNull(); // closed: the value is in
+    expect(err).toHaveBeenCalledWith(expect.stringContaining('could not be rolled back'), expect.anything());
+    err.mockRestore();
+  });
+
+  it('a throw before the store changed writes nothing and leaves the history alone', async () => {
+    const g = make();
+    vi.spyOn(g, 'updateTask').mockImplementation(() => {
+      throw new Error('before the write');
+    });
+    const input = await openAt('a', 'name');
+    type(input, 'x');
+    await press(input, 'Enter');
+    expect(taskOf(g, 'a').name).toBe('a');
+    expect(g.canUndo()).toBe(false);
+  });
+});
+
+describe('the editor and its mount', () => {
+  it('a remount closes the editor and the next one opens on the new mount', async () => {
+    const g = make();
+    await openAt('a', 'name');
+    g.mount(container); // an implicit remount
+    expect(g.isEditingCell()).toBe(false);
+    expect(editor()).toBeNull();
+    expect(container.querySelectorAll('.fg-grid__editor-host').length).toBeLessThanOrEqual(1);
+    expect(await openAt('b', 'name')).not.toBeNull();
+    expect(container.querySelectorAll('.fg-grid__editor')).toHaveLength(1);
+  });
+
+  it('a deferred begin after an unmount does nothing', async () => {
+    const g = make();
+    expect(g.startCellEdit(id('a'), 'name')).toBe(true);
+    g.unmount();
+    await flush();
+    expect(container.querySelector('.fg-grid__editor')).toBeNull();
+  });
+
+  it('the SVG host is kept across edits (it is not inserted and removed each time)', async () => {
+    make();
+    await openAt('a', 'name');
+    const host = container.querySelector<HTMLElement>('.fg-grid__editor-host')!;
+    expect(host.getAttribute('data-fg-focus-keep')).toBe('');
+    expect(host.style.cssText).toContain('contain: size layout style');
+    await press(editor()!, 'Escape');
+    expect(container.querySelector('.fg-grid__editor-host')).toBe(host);
+    await openAt('b', 'name');
+    expect(container.querySelector('.fg-grid__editor-host')).toBe(host);
+  });
+
+  it('collapsing the parent of the edited row cancels the edit and hands focus to the parent row', async () => {
+    const g = make();
+    await openAt('a', 'name');
+    g.toggleCollapse(id('p'));
+    await flush();
+    expect(editor()).toBeNull();
+    expect(taskOf(g, 'a').name).toBe('a');
+    expect(active()).toBe(rowOf('p'));
+  });
+
+  it('a cell that becomes editable loses aria-readonly', async () => {
+    const owned = { yes: false };
+    make({ editing: { isEditable: () => owned.yes } });
+    focus(cellOf('a', 'name'));
+    expect(cellOf('a', 'name').getAttribute('aria-readonly')).toBe('true');
+    owned.yes = true;
+    focus(rowOf('b'));
+    focus(cellOf('a', 'name'));
+    expect(cellOf('a', 'name').hasAttribute('aria-readonly')).toBe(false);
+  });
+
+  it('a request made while a command is running honours the veto read afterwards', async () => {
+    const g = make();
+    g.on('cell:edit-requested', (p) => p.preventDefault());
+    await openAt('b', 'name'); // load the code; vetoed, so no editor
+    const internal = getInternal(g);
+    // inside a command the bus queues the event: the veto is only known once the command has ended
+    (g as unknown as { addTask(t: TaskInput): unknown }).addTask(t('c'));
+    let ok = false;
+    internal.run(() => {
+      ok = g.startCellEdit(id('a'), 'name');
+    }, false);
+    await flush();
+    expect(ok).toBe(true);
+    expect(editor()).toBeNull();
+  });
+
+  it('does not open on a calendar that cannot place a bar (no working day / no working hours)', async () => {
+    for (const calendar of [
+      { workingDays: [], workingHours: [{ start: '09:00', end: '17:00' }], holidays: [], timezone: 'UTC' },
+      { workingDays: ['mon'], workingHours: [{ start: '09:00', end: '09:00' }], holidays: [], timezone: 'UTC' },
+    ]) {
+      const g = make({ config: { calendar } });
+      const req = vi.fn();
+      g.on('cell:edit-requested', req);
+      for (const col of ['start', 'end', 'duration']) expect(g.startCellEdit(id('a'), col), col).toBe(true); // the shell cannot know
+      await flush();
+      expect(editor()).toBeNull();
+      expect(req).not.toHaveBeenCalled();
+      expect(g.startCellEdit(id('a'), 'name')).toBe(true); // the name is still editable
+      await flush();
+      expect(editor()).not.toBeNull();
+      g.destroy();
+    }
+  });
+});
+
 describe('security', () => {
   it('stores hostile text as plain text and renders it only through text nodes', async () => {
     const g = make();
@@ -809,16 +1019,18 @@ describe('security', () => {
     expect(taskOf(g, 'a').name).toBe('a');
   });
 
-  it('a custom commit cannot overwrite id, timestamps or the prototype', async () => {
+  it('a custom commit can write only name, start, end, duration and progress', async () => {
     const g = make({
-      columns: [{ id: 'name' }, { ...OWNER, editor: { type: 'text', commit: () => JSON.parse('{"id":"evil","createdAt":1,"__proto__":{"x":1},"notes":"ok"}') } } as GridColumnInput],
+      columns: [{ id: 'name' }, { ...OWNER, editor: { type: 'text', commit: () => JSON.parse('{"id":"evil","createdAt":1,"__proto__":{"x":1},"color":"red","notes":"ok"}') } } as GridColumnInput],
     });
     COLS.splice(0, COLS.length, 'name', 'owner');
     const input = await openAt('a', 'owner');
     type(input, 'v');
     await press(input, 'Enter');
     COLS.splice(0, COLS.length, 'name', 'start', 'end', 'duration', 'progress', 'owner');
-    expect(taskOf(g, 'a')).toMatchObject({ id: 'a', notes: 'ok' });
+    expect(editor()).toBe(input); // rejected, still open
+    expect(taskOf(g, 'a')).toMatchObject({ id: 'a', name: 'a' });
+    expect(taskOf(g, 'a').notes).toBeUndefined();
     expect(({} as { x?: unknown }).x).toBeUndefined();
   });
 });

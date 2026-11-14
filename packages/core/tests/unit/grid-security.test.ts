@@ -208,7 +208,7 @@ describe.each(['grid', 'grid-editing'])('static source scan: no markup sinks in 
   const strip = (s: string) => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '').replace(/([^:])\/\/.*$/gm, '$1');
   it.each(readdirSync(dir).filter((f) => f.endsWith('.ts')))('%s', (file) => {
     const code = strip(readFileSync(dir + file, 'utf8'));
-    for (const sink of ['innerHTML', 'outerHTML', 'insertAdjacentHTML', 'document.write', 'eval(', 'new Function', 'setAttribute(\'style\'', 'createContextualFragment', 'DOMParser', 'srcdoc']) {
+    for (const sink of ['innerHTML', 'outerHTML', 'insertAdjacentHTML', 'document.write', 'eval(', 'new Function', 'setAttribute(\'style\'', 'createContextualFragment', 'DOMParser', 'srcdoc', 'Function(', "createElement('script')", "createElement('iframe')", "setAttribute('on", 'javascript:', 'document.cookie', 'localStorage', 'fetch(', 'XMLHttpRequest']) {
       expect(code, `${file} uses ${sink}`).not.toContain(sink);
     }
     expect(code).not.toMatch(/querySelector(All)?\(\s*`/); // no selector built from a template
