@@ -810,7 +810,8 @@ describe('property: random key, Space and repaint sequences follow a model of th
             else if (before.kind === 'cell' && vertical) {
               expect(after.kind).toBe('cell'); // column memory
               expect(after.col).toBe(before.col);
-              expect(g.getSelection()).toContain(id(after.task!)); // selection follows the row
+              // selection follows a row MOVE (at the first/last row nothing moves, and Space may have cleared it)
+              if (after.task !== before.task) expect(g.getSelection()).toContain(id(after.task!));
             } else if (before.kind === 'cell' && k === 'ArrowUp') {
               expect(where()).toBe(`head:${before.col}`);
             } else if (before.kind === 'cell' && (k === 'Home' || k === 'End')) {
@@ -829,7 +830,7 @@ describe('property: random key, Space and repaint sequences follow a model of th
           g.destroy();
         },
       ),
-      { numRuns: 25 },
+      { numRuns: Number(process.env['FC_RUNS'] ?? 25), ...(process.env['FC_SEED'] ? { seed: Number(process.env['FC_SEED']), path: process.env['FC_PATH'] ?? '' } : {}) },
     );
-  }, 120_000);
+  }, 600_000);
 });
