@@ -29,7 +29,7 @@ import {
   addWorkingHours,
 } from './compute/working-calendar.js';
 import { computeCriticalPath as computeCriticalPathFn } from './compute/critical-path.js';
-import { computeCascade } from './compute/cascade.js';
+import { computeCascade, type CascadeShift } from './compute/cascade.js';
 import { getTemporal } from './internal/temporal.js';
 import type { SvgRendererHandle } from './render/svg-renderer.js';
 // TYPE-ONLY import — erased at compile time, so it creates no runtime edge into the Canvas
@@ -158,7 +158,8 @@ export interface GanttConfig {
    *  cascade shift, and undo/redo of an update. NOT for `addTask`, `removeTask`, imports or
    *  dependency ops. It also fires for a no-op patch (nothing changed, `updatedAt` restamped).
    *  Fires after the write's split `task:*` events; the bus form is `task:updated`, which adds
-   *  `changed` and stays silent for a no-op patch.
+   *  `changed` and stays silent for a no-op patch. A throw from the hook is rethrown AFTER the write
+   *  committed and its events fired: it does not roll the write back.
    *  `onDependencyChange`/`onSelectionChange` are intentionally excluded from v1. */
   readonly onTaskChange?: (task: Task, prev: Task) => void;
 
@@ -483,6 +484,16 @@ export type UnsubscribeFn = () => void;
 export interface GanttInstance {
   // --- Task operations (no cascade, see the module doc-comment above) ------------------
   addTask(input: TaskInput): Task;
+  /**
+   * Applies `patch`. Atomic: if it throws before the write (a `start`/`end` that does not parse,
+   * a cascade error in `schedulingMode: 'auto'`, or a STORED `start`/`end` of this task that does
+   * not parse) nothing changes: no store write, history entry, revision bump or event. A task
+   * stored with an unparseable date therefore cannot be repaired here; `removeTask` and
+   * `addTask` it, or fix the data at the source. Numbers (`progress`, `duration`) are not
+   * validated: `NaN` / `Infinity` are the caller's responsibility (`setProgress` and
+   * `resizeTask` do range-check theirs). A throwing `onTaskChange` hook runs after the write is
+   * announced and is not rolled back.
+   */
   updateTask(id: TaskId, patch: TaskPatch): Task;
   removeTask(id: TaskId): void;
   moveTask(id: TaskId, newStart: DateInput): Task;
@@ -993,7 +1004,7 @@ class Gantt implements GanttInstance {
 
   setProgress(id: TaskId, progress: number): Task {
     this.#assertAlive('setProgress');
-    this.#requireTask(id, 'setProgress');
+    this.#spanNs(this.#requireTask(id, 'setProgress'));
     if (!Number.isFinite(progress) || progress < 0 || progress > 1) {
       throw new Error(`gantt.setProgress: invalid progress (${progress}) — must be in [0, 1]`);
     }
@@ -1005,50 +1016,34 @@ class Gantt implements GanttInstance {
 
     const sourceIds =
       taskId !== undefined
-        ? [this.#requireTask(taskId, 'duplicateTask').id] // throws if not found
+        ? [taskId] // the map below throws if not found
         : this.#selectionStore.all(); // current selection, insertion order
     if (sourceIds.length === 0) return [];
 
     const tz = this.#calendar.timezone;
-    const copies: Task[] = [];
 
-    this.#run(() => {
-      for (const id of sourceIds) {
-        const source = this.#taskStore.get(id);
-        if (!source) continue; // defensive: a task:added listener earlier in THIS loop could
-        // synchronously have removed a not-yet-processed source (see #emit's synchronous
-        // dispatch) — skip, mirrors the resilience #commitDeleteSelected relies on
-        // removeTask() for.
+    // Build EVERY copy's input before the first write: a source whose dates or duration make
+    // the calendar math throw aborts the command with nothing added (listeners are deferred
+    // to the outbox, so the sources cannot change while this loop runs).
+    const inputs = sourceIds.map((id): TaskInput => {
+      // Omit id/createdAt/updatedAt/start/end from the spread — id/timestamps are
+      // store-owned (addTask mints/stamps them), start/end are explicitly recomputed below.
+      const source = this.#requireTask(id, 'duplicateTask');
+      const { id: _id, ...rest } = source;
+      const sourceEnd = normalizeDate(source.end, tz);
+      const durationHours =
+        source.duration ?? differenceInWorkingHours(source.start, source.end, this.#calendar);
+      return {
+        ...rest, // name, priority, parent, type, constraint, resources, notes, color, meta,
+        // duration — all copied verbatim
+        start: sourceEnd, // offset: begins exactly when the source ends
+        end: addWorkingHours(sourceEnd, durationHours, this.#calendar), // preserves the span
+        progress: 0, // always reset — overrides `rest.progress`
+      };
+    });
 
-        // Omit id/createdAt/updatedAt/start/end from the spread — id/timestamps are
-        // store-owned (addTask mints/stamps them), start/end are explicitly recomputed below.
-        const {
-          id: _id,
-          createdAt: _createdAt,
-          updatedAt: _updatedAt,
-          start: _start,
-          end: _end,
-          ...rest
-        } = source;
-
-        const sourceEnd = normalizeDate(source.end, tz);
-        const durationHours =
-          source.duration ?? differenceInWorkingHours(source.start, source.end, this.#calendar);
-        const newEnd = addWorkingHours(sourceEnd, durationHours, this.#calendar);
-
-        const input: TaskInput = {
-          ...rest, // name, priority, parent, type, constraint, resources, notes, color, meta,
-          // duration — all copied verbatim
-          start: sourceEnd, // offset: begins exactly when the source ends
-          end: newEnd, // preserves the source's working-hours span
-          progress: 0, // always reset — overrides `rest.progress`
-        };
-
-        copies.push(this.addTask(input)); // fresh id, createdAt/updatedAt, task:added, undo op
-      }
-    }, true); // ONE history entry regardless of copies.length (0, 1, or N)
-
-    return copies;
+    // ONE history entry regardless of copies.length (0, 1, or N)
+    return this.#run(() => inputs.map((input) => this.addTask(input)), true);
   }
 
   removeTask(id: TaskId): void {
@@ -1059,7 +1054,7 @@ class Gantt implements GanttInstance {
       // 1. Compute the FULL set of tasks about to disappear (target + all hierarchy
       //    descendants) BEFORE mutating — TaskStore.remove() cascades internally, but
       //    doesn't report what it removed.
-      const removedIds = this.#collectWithDescendants(id);
+      const removedIds = this.#taskStore.subtree(id);
 
       // 1b. Snapshot the actual Task objects BEFORE mutating — needed for history (§4.1).
       const removedTasks = removedIds.map((tid) => this.#taskStore.get(tid)!);
@@ -1350,6 +1345,9 @@ class Gantt implements GanttInstance {
 
   // --- Private: mutation → split-event pipeline (Q3 + Q6) ---------------------------------
 
+  /** Writes `patch` and records/announces it. Does NOT validate: every caller either patches
+   *  only `progress` (`setProgress`, range-checked) or went through `#commitScheduleChange`,
+   *  which has already proven the dates parse. Nothing in here can throw after the write. */
   #applyPatch(id: TaskId, patch: TaskPatch): Task {
     const prev = this.#taskStore.get(id)!; // caller already asserted existence
     const next = this.#taskStore.update(id, patch);
@@ -1368,9 +1366,26 @@ class Gantt implements GanttInstance {
    * begin/end pair, not four independent ones.
    */
   #commitScheduleChange(id: TaskId, patch: TaskPatch, cascade: boolean): Task {
+    // Plan first, write second (#run's own errors only come from `onTaskChange`, after the write
+    // is announced): an unparseable date, or a cascade that throws (cycle, calendar guard), aborts
+    // here with no store write, no history entry, no revision bump and no event. The shifts are
+    // computed against the task as it WILL be after the patch.
+    const prev = this.#taskStore.get(id)!;
+    const draft = { ...prev, ...patch, id };
+    this.#spanNs(prev); // a stored task whose date does not parse cannot be written: it would throw after the write
+    this.#spanNs(draft); // throws on an unparseable date
+    const shifts =
+      cascade && this.#config.schedulingMode === 'auto'
+        ? computeCascade(
+            this.#taskStore.all().map((t) => (t.id === id ? draft : t)),
+            this.#dependencyStore.all(),
+            this.#calendar,
+            [id],
+          ).shifts
+        : [];
     return this.#run(() => {
       const next = this.#applyPatch(id, patch);
-      if (cascade) this.#maybeCascade(id);
+      for (const s of shifts) this.#applyCascadeShift(s);
       return next;
     }, true);
   }
@@ -1385,20 +1400,17 @@ class Gantt implements GanttInstance {
    * `#diffAndEmit` fire a spurious `task:resized` on what is logically a move (review finding).
    * `onTaskChange` still fires (it is a change).
    */
-  #applyCascadeShift(id: TaskId, start: DateInput, end: DateInput): void {
+  #applyCascadeShift({ taskId: id, start, end }: CascadeShift): void {
     const prev = this.#taskStore.get(id)!; // cascade only names tasks that exist
     const next = this.#taskStore.update(id, { start, end });
     this.#recordOp({ kind: 'task-update', id, prev, next });
-    if (!this.#sameInstant(prev.start, next.start, this.#calendar.timezone)) {
-      this.#emit('task:moved', next, prev.start);
-    }
+    this.#emit('task:moved', next, prev.start); // a shift is always strictly later (cascade.ts), so no same-instant guard
     this.#changed(next, prev);
   }
 
   #diffAndEmit(prev: Task, next: Task, source?: 'undo' | 'redo'): void {
-    const tz = this.#calendar.timezone;
     const meta = source ? ([{ source }] as const) : ([] as const);
-    if (!this.#sameInstant(prev.start, next.start, tz)) {
+    if (!this.#sameInstant(prev.start, next.start)) {
       this.#emit('task:moved', next, prev.start, ...meta);
     }
     // Detect a resize by the INSTANT span (end − start) changing — translation-invariant,
@@ -1407,7 +1419,7 @@ class Gantt implements GanttInstance {
     // working-hours effectiveDuration here would fire a spurious task:resized on a move that
     // shifts the span across weekends/holidays.) The payload still reports working-hours
     // duration via `effectiveDuration`.
-    if (this.#spanNs(prev, tz) !== this.#spanNs(next, tz)) {
+    if (this.#spanNs(prev) !== this.#spanNs(next)) {
       this.#emit('task:resized', next, this.#effectiveDuration(prev), ...meta);
     }
     if (prev.progress !== next.progress) {
@@ -1424,14 +1436,16 @@ class Gantt implements GanttInstance {
 
   /** Instant span (end − start) in nanoseconds — translation-invariant, so a move (both
    *  ends shifted by the same delta) preserves it. */
-  #spanNs(task: Task, timezone: string): bigint {
+  #spanNs(task: Task): bigint {
+    const timezone = this.#calendar.timezone;
     return (
       normalizeDate(task.end, timezone).epochNanoseconds -
       normalizeDate(task.start, timezone).epochNanoseconds
     );
   }
 
-  #sameInstant(a: DateInput, b: DateInput, timezone: string): boolean {
+  #sameInstant(a: DateInput, b: DateInput): boolean {
+    const timezone = this.#calendar.timezone;
     return (
       normalizeDate(a, timezone).epochNanoseconds === normalizeDate(b, timezone).epochNanoseconds
     );
@@ -1561,9 +1575,6 @@ class Gantt implements GanttInstance {
     if (changed) this.#emit('collapse:changed', this.#collapseStore.all());
   }
 
-  #collectWithDescendants(id: TaskId): TaskId[] {
-    return this.#taskStore.subtree(id);
-  }
 
   /**
    * Expands explicitly-named ids to include every descendant (recursive, all levels) of any
@@ -1576,7 +1587,7 @@ class Gantt implements GanttInstance {
     const out = new Set<TaskId>();
     for (const id of ids) {
       if (!this.#taskStore.has(id)) continue;
-      for (const t of this.#collectWithDescendants(id)) out.add(t);
+      for (const t of this.#taskStore.subtree(id)) out.add(t);
     }
     return [...out];
   }
@@ -1644,7 +1655,7 @@ class Gantt implements GanttInstance {
         (k) =>
           k !== 'updatedAt' &&
           (k === 'start' || k === 'end'
-            ? !this.#sameInstant(prev[k], next[k], this.#calendar.timezone)
+            ? !this.#sameInstant(prev[k], next[k])
             : !Object.is(prev[k], next[k])),
       ) as TaskField[];
       if (changed.length) {
@@ -1690,39 +1701,6 @@ class Gantt implements GanttInstance {
   #applySelection(ids: readonly TaskId[]): void {
     const changed = this.#selectionStore.replace(ids);
     if (changed) this.#emit('selection:changed', this.#selectionStore.all());
-  }
-
-  /**
-   * No-op unless `schedulingMode: 'auto'` (default `'manual'` — see `GanttConfig`, spec-
-   * cascade.md §4.1/§4.3). Recomputes `computeCascade` over the CURRENT store state (which
-   * already reflects `changedId`'s new position, since the caller always applies the direct
-   * mutation via `#applyPatch` BEFORE calling this) and applies each resulting shift through
-   * `#applyCascadeShift`, which emits `task:moved(task, prevStart)` for every shifted task (in
-   * the topological order `computeCascade` resolved) — but NOT `task:resized`, since a cascade
-   * shift preserves the task's working-hours duration (a pure move; see `#applyCascadeShift`).
-   * `computeCascade` already resolves the full transitive closure in one pass, so applying each
-   * shift needs no re-entrancy guard.
-   *
-   * May throw `CyclicDependencyError` (only reachable via `DependencyStore.link(...,
-   * { allowCycle: true })` used directly — `linkTasks` already rejects cycles at
-   * edge-creation time) — propagated, not swallowed, same explicit-call posture as
-   * `computeCriticalPath()`. The direct mutation that triggered this call has already
-   * committed and emitted its own event by the time such a throw happens (partial
-   * application — the mover is never rolled back).
-   */
-  #maybeCascade(changedId: TaskId): void {
-    if (this.#config.schedulingMode !== 'auto') return;
-    const result = computeCascade(
-      this.#taskStore.all(),
-      this.#dependencyStore.all(),
-      this.#calendar,
-      [changedId],
-    );
-    for (const shift of result.shifts) {
-      // Cascade shifts are pure moves (duration preserved) → emit only `task:moved`, never a
-      // spurious `task:resized` from an instant-span change across weekends (review finding).
-      this.#applyCascadeShift(shift.taskId, shift.start, shift.end);
-    }
   }
 
   /**

@@ -74,19 +74,38 @@ describe('#run outbox', () => {
     expect(log).toEqual(['k0']);
   });
 
-  it('a throwing fn still announces its committed writes, then rethrows the original error', () => {
+  it('a cascade that throws changes nothing and emits nothing; the runner stays usable', () => {
     const rec = createRecorder();
     const gantt = createGantt({ ...chain(3), onTaskChange: rec.onTaskChange });
     rec.attach(gantt);
     // Bypass the facade's cycle check (the only way to reach a cascade cycle).
     getInternal(gantt).deps.link(id('k2'), id('k0'), 'FS', { allowCycle: true });
     rec.clear();
+    const before = gantt.getTask(id('k0'))!;
     expect(() => gantt.moveTask(id('k0'), '2026-02-02T09:00')).toThrow();
-    expect(rec.log.some((l) => l.startsWith('task:moved k0'))).toBe(true);
+    expect(rec.log).toEqual([]);
+    expect(gantt.getTask(id('k0'))).toBe(before);
+    expect(gantt.canUndo()).toBe(false);
+    const seen: string[] = [];
+    gantt.on('task:progressed', (task) => seen.push(task.id));
+    gantt.setProgress(id('k1'), 0.3);
+    expect(seen).toEqual(['k1']);
+  });
+
+  it('a throwing fn still announces its committed writes, then rethrows the original error', () => {
+    const rec = createRecorder();
+    const gantt = createGantt({ ...chain(3), onTaskChange: rec.onTaskChange });
+    rec.attach(gantt);
+    rec.clear();
+    expect(() =>
+      getInternal(gantt).run(() => {
+        gantt.setProgress(id('k0'), 0.5);
+        throw new Error('fn');
+      }, true),
+    ).toThrow('fn');
+    expect(rec.log.some((l) => l.startsWith('task:progressed k0'))).toBe(true);
     expect(rec.log.some((l) => l.startsWith('onTaskChange k0'))).toBe(true);
     expect(rec.log.some((l) => l.startsWith('history:changed'))).toBe(true);
-    expect(gantt.getTask(id('k0'))!.start.toString()).toContain('2026-02-02');
-    // The runner is reusable after the failure (no stuck "inside a command" state).
     const seen: string[] = [];
     gantt.on('task:progressed', (task) => seen.push(task.id));
     gantt.setProgress(id('k1'), 0.3);
